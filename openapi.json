@@ -1,0 +1,250 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Southern Region Ops Dashboard",
+    "version": "1.0.0",
+    "description": "Live ops dashboard for Ninja Van's Southern Region (Negeri Sembilan, Melaka, Johor) last-mile fleet. Pulls parcel-level data hourly from Redash and serves parcels-in-hub, zero-attempt, on-hold, and open missing-parcel counts by station, sub-region, and region, scoped to the signed-in user's role."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness check used by the platform to confirm the backend container is up.",
+        "responses": {
+          "200": {
+            "description": "Backend is up",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Return the signed-in user's identity and role/scope, derived from the SSO-injected X-Forwarded-Email header.",
+        "responses": {
+          "200": {
+            "description": "Current user identity (unauthenticated or unprovisioned users get null/false fields)",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Me"}}}
+          }
+        }
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "summary": "Return the latest station metrics snapshot, filtered to the caller's role scope, with sub-region and region rollups.",
+        "responses": {
+          "200": {
+            "description": "Latest snapshot, scoped to the caller",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DashboardResponse"}}}
+          }
+        }
+      }
+    },
+    "/api/stations": {
+      "get": {
+        "summary": "List all Southern Region stations (hub code, name, sub-region) from the hardcoded station map.",
+        "responses": {
+          "200": {
+            "description": "All Southern Region stations",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/StationMeta"}}}}
+          }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "summary": "List all users provisioned for the dashboard, with their role and scope. Admin only.",
+        "responses": {
+          "200": {
+            "description": "All provisioned users",
+            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/UserOut"}}}}
+          },
+          "403": {"description": "Caller is not an admin"}
+        }
+      },
+      "post": {
+        "summary": "Provision a new user with a role and access scope (all / sub_region / station). Admin only.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserIn"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "User created",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResult"}}}
+          },
+          "403": {"description": "Caller is not an admin"},
+          "409": {"description": "That email is already set up"},
+          "422": {"description": "Invalid role or scope value"}
+        }
+      }
+    },
+    "/api/admin/users/{email}": {
+      "patch": {
+        "summary": "Update an existing user's role, scope, or display name. Admin only.",
+        "parameters": [
+          {"name": "email", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserIn"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "User updated",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResult"}}}
+          },
+          "403": {"description": "Caller is not an admin"},
+          "422": {"description": "Invalid role or scope value"}
+        }
+      },
+      "delete": {
+        "summary": "Remove a user's access to the dashboard. Admin only; an admin cannot remove their own access.",
+        "parameters": [
+          {"name": "email", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "User removed",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResult"}}}
+          },
+          "400": {"description": "Cannot remove your own access"},
+          "403": {"description": "Caller is not an admin"}
+        }
+      }
+    },
+    "/api/admin/refresh": {
+      "post": {
+        "summary": "Trigger an immediate Redash pull and metrics recompute, instead of waiting for the hourly scheduler. Admin only.",
+        "responses": {
+          "200": {
+            "description": "Result of the refresh that just ran",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshStatus"}}}
+          },
+          "403": {"description": "Caller is not an admin"}
+        }
+      }
+    },
+    "/api/admin/refresh-status": {
+      "get": {
+        "summary": "Return the status of the most recent refresh (scheduled or manual). Admin only.",
+        "responses": {
+          "200": {
+            "description": "Most recent refresh-log entry, or null if none have run yet",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshStatus"}}}
+          },
+          "403": {"description": "Caller is not an admin"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "properties": {"status": {"type": "string"}},
+        "required": ["status"]
+      },
+      "Me": {
+        "type": "object",
+        "properties": {
+          "email": {"type": "string", "nullable": true},
+          "provisioned": {"type": "boolean"},
+          "role": {"type": "string", "nullable": true, "description": "admin | manager | station"},
+          "scope_type": {"type": "string", "nullable": true, "description": "all | sub_region | station"},
+          "scope_value": {"type": "string", "nullable": true},
+          "display_name": {"type": "string", "nullable": true}
+        },
+        "required": ["email", "provisioned"]
+      },
+      "StationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {"type": "string"},
+          "station_name": {"type": "string"},
+          "sub_region": {"type": "string"},
+          "region": {"type": "string"},
+          "total_in_hub": {"type": "integer"},
+          "zero_attempt": {"type": "integer"},
+          "on_hold": {"type": "integer"},
+          "missing_open": {"type": "integer"}
+        },
+        "required": ["station_code", "station_name", "sub_region", "region", "total_in_hub", "zero_attempt", "on_hold", "missing_open"]
+      },
+      "GroupRow": {
+        "type": "object",
+        "properties": {
+          "key": {"type": "string"},
+          "total_in_hub": {"type": "integer"},
+          "zero_attempt": {"type": "integer"},
+          "on_hold": {"type": "integer"},
+          "missing_open": {"type": "integer"},
+          "station_count": {"type": "integer"}
+        },
+        "required": ["key", "total_in_hub", "zero_attempt", "on_hold", "missing_open", "station_count"]
+      },
+      "DashboardResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
+          "stations": {"type": "array", "items": {"$ref": "#/components/schemas/StationRow"}},
+          "sub_regions": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}},
+          "region": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}}
+        },
+        "required": ["captured_at", "stations", "sub_regions", "region"]
+      },
+      "UserOut": {
+        "type": "object",
+        "properties": {
+          "email": {"type": "string"},
+          "role": {"type": "string"},
+          "scope_type": {"type": "string"},
+          "scope_value": {"type": "string", "nullable": true},
+          "display_name": {"type": "string", "nullable": true},
+          "created_at": {"type": "string"}
+        },
+        "required": ["email", "role", "scope_type", "scope_value", "display_name", "created_at"]
+      },
+      "UserIn": {
+        "type": "object",
+        "properties": {
+          "email": {"type": "string"},
+          "role": {"type": "string", "description": "admin | manager | station"},
+          "scope_type": {"type": "string", "description": "all | sub_region | station"},
+          "scope_value": {"type": "string", "nullable": true},
+          "display_name": {"type": "string", "nullable": true}
+        },
+        "required": ["email", "role", "scope_type"]
+      },
+      "OkResult": {
+        "type": "object",
+        "properties": {
+          "ok": {"type": "boolean"},
+          "detail": {"type": "string", "nullable": true}
+        },
+        "required": ["ok"]
+      },
+      "StationMeta": {
+        "type": "object",
+        "properties": {
+          "station_code": {"type": "string"},
+          "station_name": {"type": "string"},
+          "sub_region": {"type": "string"}
+        },
+        "required": ["station_code", "station_name", "sub_region"]
+      },
+      "RefreshStatus": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "started_at": {"type": "string"},
+          "finished_at": {"type": "string", "nullable": true},
+          "status": {"type": "string", "description": "running | ok | error"},
+          "stations_count": {"type": "integer", "nullable": true},
+          "error_message": {"type": "string", "nullable": true},
+          "triggered_by": {"type": "string", "nullable": true}
+        },
+        "required": ["id", "started_at", "finished_at", "status", "stations_count", "error_message", "triggered_by"]
+      }
+    }
+  }
+}
