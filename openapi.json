@@ -217,7 +217,9 @@
           "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
           "stations": {"type": "array", "items": {"$ref": "#/components/schemas/StationRow"}},
           "zones": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}},
-          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}}
+          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}},
+          "previous_captured_at": {"type": "string", "nullable": true, "format": "date-time", "description": "Timestamp of the second-most-recent snapshot, for trend deltas"},
+          "previous_stations": {"type": "array", "items": {"$ref": "#/components/schemas/StationRow"}}
         },
         "required": ["captured_at", "stations", "zones", "regions"]
       },

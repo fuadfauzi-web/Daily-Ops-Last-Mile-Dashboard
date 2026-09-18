@@ -187,6 +187,8 @@ class DashboardResponse(BaseModel):
     stations: list[StationRow]
     zones: list[GroupRow]
     regions: list[GroupRow]
+    previous_captured_at: str | None = None
+    previous_stations: list[StationRow] = []
 
 
 def _scope_filter_stations(rows: list[dict], user: CurrentUser) -> list[dict]:
@@ -201,6 +203,21 @@ def _scope_filter_stations(rows: list[dict], user: CurrentUser) -> list[dict]:
     return []
 
 
+async def _fetch_station_rows(captured_at) -> list[dict]:
+    db_rows = await db.fetch_all(
+        f"""SELECT station_code, station_name, zone, region, {", ".join(_METRIC_COLUMNS)}
+           FROM station_metrics WHERE captured_at = %s""",
+        (captured_at,),
+    )
+    return [
+        {
+            "station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3],
+            **{col: r[4 + i] for i, col in enumerate(_METRIC_COLUMNS)},
+        }
+        for r in db_rows
+    ]
+
+
 @app.get("/api/dashboard", response_model=DashboardResponse)
 async def dashboard(user: CurrentUser = Depends(get_current_user)):
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
@@ -208,18 +225,7 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
     if captured_at is None:
         return {"captured_at": None, "stations": [], "zones": [], "regions": []}
 
-    db_rows = await db.fetch_all(
-        f"""SELECT station_code, station_name, zone, region, {", ".join(_METRIC_COLUMNS)}
-           FROM station_metrics WHERE captured_at = %s""",
-        (captured_at,),
-    )
-    all_rows = [
-        {
-            "station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3],
-            **{col: r[4 + i] for i, col in enumerate(_METRIC_COLUMNS)},
-        }
-        for r in db_rows
-    ]
+    all_rows = await _fetch_station_rows(captured_at)
     scoped = _scope_filter_stations(all_rows, user)
 
     zone_groups = rollup(scoped, "zone")
@@ -229,11 +235,23 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
         return [{**{k: g[k] for k in _METRIC_COLUMNS}, "key": g[key], "station_count": g["station_count"]}
                 for g in rows if g["station_count"] > 0]
 
+    previous = await db.fetch_one(
+        "SELECT MAX(captured_at) FROM station_metrics WHERE captured_at < %s", (captured_at,)
+    )
+    previous_captured_at = previous[0] if previous else None
+    previous_scoped: list[dict] = []
+    if previous_captured_at is not None:
+        previous_scoped = _scope_filter_stations(await _fetch_station_rows(previous_captured_at), user)
+
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
         "stations": scoped,
         "zones": to_group(zone_groups, "zone"),
         "regions": to_group(region_groups, "region"),
+        "previous_captured_at": (
+            previous_captured_at.isoformat() if hasattr(previous_captured_at, "isoformat") else previous_captured_at
+        ),
+        "previous_stations": previous_scoped,
     }
 
 

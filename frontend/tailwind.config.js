@@ -11,6 +11,10 @@ export default {
           critical: "#d03b3b",
         },
         series1: "#2a78d6",
+        brand: {
+          DEFAULT: "#E4002B",
+          dark: "#B4001F",
+        },
       },
     },
   },

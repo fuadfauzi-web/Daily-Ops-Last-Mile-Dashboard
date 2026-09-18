@@ -46,35 +46,53 @@ export default function App() {
     );
   }
 
+  const initials = (me.display_name || me.email || "?")
+    .split(/[\s.@]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join("");
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">Daily Ops Last Mile Dashboard</h1>
-            <p className="text-xs text-slate-500">
-              {me.display_name || me.email} · {me.role}
-              {me.scope_type !== "all" && ` · ${me.scope_value}`}
-            </p>
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-6 py-3">
+          <div className="flex items-center gap-3">
+            <div className="h-7 w-7 shrink-0 rounded bg-brand" />
+            <h1 className="text-base font-semibold tracking-tight text-slate-900">Daily Ops Last Mile Dashboard</h1>
           </div>
-          {me.role === "admin" && (
-            <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-              {["dashboard", "admin"].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`rounded-md px-3 py-1.5 capitalize ${
-                    tab === t ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </nav>
-          )}
+          <div className="flex items-center gap-3">
+            {me.role === "admin" && (
+              <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+                {["dashboard", "admin"].map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={`rounded-md px-3 py-1.5 capitalize ${
+                      tab === t ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </nav>
+            )}
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                {initials}
+              </div>
+              <div className="leading-tight">
+                <div className="text-sm font-medium text-slate-800">{me.display_name || me.email}</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400">
+                  {me.role}
+                  {me.scope_type !== "all" && ` · ${me.scope_value}`}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className="mx-auto max-w-[1400px] px-6 py-6">
         {tab === "dashboard" ? <Dashboard me={me} /> : <AdminPanel />}
       </main>
     </div>
