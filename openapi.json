@@ -123,6 +123,24 @@
         }
       }
     },
+    "/api/drilldown": {
+      "get": {
+        "summary": "Return the tracking numbers behind one station's metric count, for the UI's click-a-number drill-down. Served from an in-memory cache built by the last refresh.",
+        "parameters": [
+          {"name": "station_code", "in": "query", "required": true, "schema": {"type": "string"}},
+          {"name": "metric", "in": "query", "required": true, "schema": {"type": "string", "description": "One of the drilldown-eligible metric keys (all StationRow metrics except total_fresh)"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Tracking numbers for that station/metric",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DrilldownResponse"}}}
+          },
+          "403": {"description": "That station isn't in the caller's scope"},
+          "404": {"description": "Unknown station"},
+          "422": {"description": "metric is not a drilldown-eligible key"}
+        }
+      }
+    },
     "/api/admin/refresh": {
       "post": {
         "summary": "Trigger an immediate Redash pull and metrics recompute, instead of waiting for the hourly scheduler. Admin only.",
@@ -271,6 +289,17 @@
           "zones": {"type": "array", "items": {"type": "string"}}
         },
         "required": ["region", "zones"]
+      },
+      "DrilldownResponse": {
+        "type": "object",
+        "properties": {
+          "station_code": {"type": "string"},
+          "station_name": {"type": "string"},
+          "metric": {"type": "string"},
+          "tracking_numbers": {"type": "array", "items": {"type": "string"}},
+          "as_of": {"type": "string", "nullable": true, "format": "date-time", "description": "When the in-memory cache backing this was built (the last refresh); null if no refresh has run since restart"}
+        },
+        "required": ["station_code", "station_name", "metric", "tracking_numbers"]
       },
       "RefreshStatus": {
         "type": "object",

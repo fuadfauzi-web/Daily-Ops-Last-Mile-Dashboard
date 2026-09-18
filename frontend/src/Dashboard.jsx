@@ -4,6 +4,13 @@ import { api } from "./api";
 // Volume metrics: shown plainly, no severity coloring (more isn't "bad").
 const VOLUME_METRICS = new Set(["total_in_hub", "total_fresh", "still_ovfd"]);
 
+// total_fresh has no tracking-number source (query 653 is a per-hub count, not
+// parcel-level rows) -- every other metric here is backed by a TN list and clickable.
+const DRILLDOWN_METRICS = new Set([
+  "total_in_hub", "zero_attempt", "on_hold", "missing_open",
+  "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
+]);
+
 const CORE_COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
   { key: "total_in_hub", label: "In Hub" },
@@ -76,20 +83,125 @@ const SEVERITY_CLASS = {
   plain: "text-slate-700",
 };
 
-function KpiCard({ label, value, delta, deltaGood }) {
-  const showDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
-  const deltaUp = delta > 0;
-  const deltaColor = !showDelta || delta === 0 ? "text-slate-400" : deltaGood === deltaUp ? "text-status-good" : "text-status-critical";
+function MetricCell({ value, severityClass, clickable, onClick }) {
+  const content = value.toLocaleString();
+  if (!clickable) return <td className={`px-4 py-2 text-right tabular-nums ${severityClass}`}>{content}</td>;
   return (
-    <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value.toLocaleString()}</div>
-      {showDelta && (
-        <div className={`mt-1 text-xs font-medium tabular-nums ${deltaColor}`}>
-          {deltaUp ? "▲" : delta < 0 ? "▼" : "–"} {Math.abs(delta).toLocaleString()} vs last refresh
+    <td className={`px-4 py-2 text-right tabular-nums ${severityClass}`}>
+      <button onClick={onClick} className="underline decoration-dotted underline-offset-2 hover:decoration-solid">
+        {content}
+      </button>
+    </td>
+  );
+}
+
+function TnModal({ state, onClose }) {
+  const [tns, setTns] = useState(null);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!state) return;
+    setTns(null);
+    setError(null);
+    setCopied(false);
+    api
+      .drilldown(state.stationCode, state.metricKey)
+      .then((r) => setTns(r))
+      .catch((e) => setError(e.message));
+  }, [state]);
+
+  if (!state) return null;
+
+  const copy = () => {
+    if (!tns?.tracking_numbers?.length) return;
+    navigator.clipboard.writeText(tns.tracking_numbers.join("\n")).then(() => setCopied(true));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[8vh]" onClick={onClose}>
+      <div
+        className="max-h-[75vh] w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <div>
+            <div className="font-semibold text-slate-900">{state.stationName}</div>
+            <div className="text-xs text-slate-500">{state.metricLabel}</div>
+          </div>
+          <button onClick={onClose} className="text-xl leading-none text-slate-400 hover:text-slate-600">
+            &times;
+          </button>
         </div>
-      )}
+        <div className="px-4 py-3">
+          {error && <div className="text-sm text-status-critical">{error}</div>}
+          {!error && !tns && <div className="text-sm text-slate-400">Loading…</div>}
+          {tns && (
+            <>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs text-slate-500">
+                  {tns.tracking_numbers.length.toLocaleString()} tracking number
+                  {tns.tracking_numbers.length === 1 ? "" : "s"}
+                  {tns.as_of && ` · as of ${formatTime(tns.as_of)}`}
+                </div>
+                <button
+                  onClick={copy}
+                  disabled={!tns.tracking_numbers.length}
+                  className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  {copied ? "Copied!" : "Copy list"}
+                </button>
+              </div>
+              <div className="max-h-[45vh] overflow-y-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700">
+                {tns.tracking_numbers.length === 0
+                  ? "No tracking numbers."
+                  : tns.tracking_numbers.map((tn) => <div key={tn}>{tn}</div>)}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function KpiBar({ totals }) {
+  return (
+    <div className="flex flex-wrap items-center justify-around gap-3 rounded-xl bg-slate-900 px-4 py-3">
+      {CORE_COLUMNS.map((c) => (
+        <div key={c.key} className="text-center">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{c.label}</div>
+          <div className="text-lg font-semibold tabular-nums text-white">{totals[c.key].toLocaleString()}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RegionCard({ region, active, totals, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg border-t-4 bg-white p-3 text-left ring-1 ring-slate-200 ${
+        active ? "border-t-status-good bg-green-50/40" : "border-t-brand"
+      }`}
+    >
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-800">{region}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-1">
+        {[
+          { label: "Fresh", value: totals.total_fresh },
+          { label: "In Hub", value: totals.total_in_hub },
+          { label: "0 Att", value: totals.zero_attempt },
+        ].map((s) => (
+          <div key={s.label} className="rounded bg-slate-50 px-1 py-1 text-center">
+            <div className="text-[8px] uppercase text-slate-400">{s.label}</div>
+            <div className="text-xs font-bold text-slate-800">{s.value.toLocaleString()}</div>
+          </div>
+        ))}
+      </div>
+    </button>
   );
 }
 
@@ -159,6 +271,7 @@ export default function Dashboard({ me }) {
   const [sortKey, setSortKey] = useState("on_hold");
   const [sortDir, setSortDir] = useState("desc");
   const [tab, setTab] = useState("health");
+  const [modal, setModal] = useState(null);
 
   const load = () => {
     api
@@ -203,10 +316,14 @@ export default function Dashboard({ me }) {
 
   const totals = useMemo(() => sumMetrics(filteredStations), [filteredStations]);
 
-  const previousTotals = useMemo(() => {
-    if (!data || !data.previous_stations?.length) return null;
-    return sumMetrics(applyFilters(data.previous_stations));
-  }, [data, regionFilter, zoneFilter, search]);
+  const regionTotals = useMemo(() => {
+    if (!data) return {};
+    const out = {};
+    regions.forEach((r) => {
+      out[r.region] = sumMetrics(data.stations.filter((s) => s.region === r.region));
+    });
+    return out;
+  }, [data, regions]);
 
   const severityRank = useSeverityRanks(filteredStations);
 
@@ -216,6 +333,10 @@ export default function Dashboard({ me }) {
       setSortKey(key);
       setSortDir("desc");
     }
+  };
+
+  const openDrilldown = (row, col) => {
+    setModal({ stationCode: row.station_code, stationName: row.station_name, metricKey: col.key, metricLabel: col.label });
   };
 
   if (error)
@@ -230,6 +351,8 @@ export default function Dashboard({ me }) {
 
   return (
     <div className="space-y-4">
+      <TnModal state={modal} onClose={() => setModal(null)} />
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
         <div className="flex items-center gap-1.5 text-sm text-slate-500">
@@ -238,47 +361,40 @@ export default function Dashboard({ me }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {CORE_COLUMNS.map((c) => (
-          <KpiCard
-            key={c.key}
-            label={c.label}
-            value={totals[c.key]}
-            delta={previousTotals ? totals[c.key] - previousTotals[c.key] : null}
-            deltaGood={VOLUME_METRICS.has(c.key)}
+      <KpiBar totals={totals} />
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {regions.map((r) => (
+          <RegionCard
+            key={r.region}
+            region={r.region}
+            active={regionFilter === r.region}
+            totals={regionTotals[r.region] || sumMetrics([])}
+            onClick={() => {
+              setRegionFilter(regionFilter === r.region ? "all" : r.region);
+              setZoneFilter("all");
+            }}
           />
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Region</span>
-        <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
-          <button
-            onClick={() => {
-              setRegionFilter("all");
-              setZoneFilter("all");
-            }}
-            className={`rounded-md px-3 py-1 text-sm ${
-              regionFilter === "all" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
-            }`}
-          >
-            All regions
-          </button>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+        <span className="text-xs font-semibold text-slate-700">Filter:</span>
+        <select
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+          value={regionFilter}
+          onChange={(e) => {
+            setRegionFilter(e.target.value);
+            setZoneFilter("all");
+          }}
+        >
+          <option value="all">All regions</option>
           {regions.map((r) => (
-            <button
-              key={r.region}
-              onClick={() => {
-                setRegionFilter(r.region);
-                setZoneFilter("all");
-              }}
-              className={`rounded-md px-3 py-1 text-sm ${
-                regionFilter === r.region ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
-              }`}
-            >
+            <option key={r.region} value={r.region}>
               {r.region}
-            </button>
+            </option>
           ))}
-        </div>
+        </select>
         <select
           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
           value={zoneFilter}
@@ -291,6 +407,15 @@ export default function Dashboard({ me }) {
             </option>
           ))}
         </select>
+        <button
+          onClick={() => {
+            setRegionFilter("all");
+            setZoneFilter("all");
+          }}
+          className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+        >
+          Clear
+        </button>
         <input
           className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
           placeholder="Search station…"
@@ -299,23 +424,23 @@ export default function Dashboard({ me }) {
         />
       </div>
 
-      <div className="flex gap-5 border-b border-slate-200">
+      <div className="flex gap-1 rounded-t-lg bg-slate-200 p-1">
         {TABS.map((t) => (
           <button
             key={t.key}
             disabled={!t.enabled}
             onClick={() => t.enabled && setTab(t.key)}
             title={t.enabled ? undefined : "Coming soon"}
-            className={`-mb-px border-b-2 px-1 pb-2 text-sm ${
+            className={`rounded px-3 py-1.5 text-sm font-semibold ${
               tab === t.key
-                ? "border-brand font-medium text-slate-900"
+                ? "bg-brand text-white"
                 : t.enabled
-                  ? "border-transparent text-slate-500 hover:text-slate-700"
-                  : "cursor-not-allowed border-transparent text-slate-300"
+                  ? "text-slate-600 hover:bg-white"
+                  : "cursor-not-allowed text-slate-400"
             }`}
           >
             {t.label}
-            {!t.enabled && <span className="ml-1.5 text-[10px] uppercase tracking-wide">soon</span>}
+            {!t.enabled && <span className="ml-1.5 text-[9px] uppercase tracking-wide">soon</span>}
           </button>
         ))}
       </div>
@@ -325,7 +450,9 @@ export default function Dashboard({ me }) {
 
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-          <div className="text-sm font-medium text-slate-700">Station Health</div>
+          <div className="text-sm font-medium text-slate-700">
+            Station Health <span className="font-normal text-slate-400">— click a number to see tracking IDs</span>
+          </div>
           <button
             onClick={() => exportCsv(filteredStations)}
             className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -335,10 +462,10 @@ export default function Dashboard({ me }) {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
+            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
               <tr>
                 <th
-                  className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
                   onClick={() => toggleSort("station_name")}
                 >
                   Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
@@ -348,7 +475,7 @@ export default function Dashboard({ me }) {
                 {ALL_COLUMNS.map((c) => (
                   <th
                     key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
                     onClick={() => toggleSort(c.key)}
                   >
                     {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -369,9 +496,13 @@ export default function Dashboard({ me }) {
                       ? "text-slate-700"
                       : SEVERITY_CLASS[severityRank[c.key]?.(r[c.key]) || "plain"];
                     return (
-                      <td key={c.key} className={`px-4 py-2 text-right tabular-nums ${cls}`}>
-                        {r[c.key].toLocaleString()}
-                      </td>
+                      <MetricCell
+                        key={c.key}
+                        value={r[c.key]}
+                        severityClass={cls}
+                        clickable={DRILLDOWN_METRICS.has(c.key)}
+                        onClick={() => openDrilldown(r, c)}
+                      />
                     );
                   })}
                 </tr>
@@ -392,7 +523,8 @@ export default function Dashboard({ me }) {
       </div>
       <p className="text-xs text-slate-400">
         Red/amber highlights are relative to what's currently on screen (top ~15% / ~50% of that column) — there's
-        no fixed SLA target wired in yet.
+        no fixed SLA target wired in yet. "Total Fresh" isn't clickable — its source query only returns a per-hub
+        count, not individual tracking numbers.
       </p>
     </div>
   );

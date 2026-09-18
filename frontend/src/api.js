@@ -25,6 +25,8 @@ export const api = {
   dashboard: () => request("/api/dashboard"),
   stations: () => request("/api/stations"),
   regions: () => request("/api/regions"),
+  drilldown: (stationCode, metric) =>
+    request(`/api/drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`),
   users: {
     list: () => request("/api/admin/users"),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),

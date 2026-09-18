@@ -12,8 +12,8 @@ export default {
         },
         series1: "#2a78d6",
         brand: {
-          DEFAULT: "#E4002B",
-          dark: "#B4001F",
+          DEFAULT: "#D22630",
+          dark: "#A81E27",
         },
       },
     },

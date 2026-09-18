@@ -55,21 +55,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+      <header className="border-b-[3px] border-brand bg-slate-900">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-6 py-3">
           <div className="flex items-center gap-3">
-            <div className="h-7 w-7 shrink-0 rounded bg-brand" />
-            <h1 className="text-base font-semibold tracking-tight text-slate-900">Daily Ops Last Mile Dashboard</h1>
+            <div className="h-6 w-6 shrink-0 rounded-sm bg-brand" />
+            <h1 className="text-base font-semibold tracking-tight text-white">Daily Ops Last Mile Dashboard</h1>
           </div>
           <div className="flex items-center gap-3">
             {me.role === "admin" && (
-              <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+              <nav className="flex gap-1 rounded-lg bg-slate-800 p-1 text-sm">
                 {["dashboard", "admin"].map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
                     className={`rounded-md px-3 py-1.5 capitalize ${
-                      tab === t ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
+                      tab === t ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-300"
                     }`}
                   >
                     {t}
@@ -77,12 +77,12 @@ export default function App() {
                 ))}
               </nav>
             )}
-            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+            <div className="flex items-center gap-2 border-l border-slate-700 pl-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                 {initials}
               </div>
               <div className="leading-tight">
-                <div className="text-sm font-medium text-slate-800">{me.display_name || me.email}</div>
+                <div className="text-sm font-medium text-white">{me.display_name || me.email}</div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   {me.role}
                   {me.scope_type !== "all" && ` · ${me.scope_value}`}

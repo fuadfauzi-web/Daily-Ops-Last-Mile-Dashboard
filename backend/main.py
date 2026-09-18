@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import db
-from aggregate import build_station_metrics, rollup
+from aggregate import DRILLDOWN_METRICS, build_station_metrics, rollup
 from auth import CurrentUser, get_current_user
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_HEALTH_V3, QUERY_TOTAL_SHIPMENTS, RedashError, fetch_query_results,
@@ -37,6 +37,14 @@ _METRIC_COLUMNS = (
     "total_fresh", "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
 )
 
+# Tracking-number lists behind each station's metric counts, for the UI's
+# click-a-number drill-down. In-memory only (not persisted) -- rebuilt on every
+# refresh, and empty again after a restart until the next one runs. Keeping this
+# out of the database avoids storing a full tracking-number list per station per
+# hourly snapshot indefinitely.
+_tn_cache: dict[str, dict[str, list]] = {}
+_tn_cache_captured_at: str | None = None
+
 
 async def refresh_metrics(triggered_by: str | None = None) -> dict:
     """Pulls fresh data from Redash, recomputes station metrics, stores a new snapshot."""
@@ -49,9 +57,13 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         health_rows = await fetch_query_results(QUERY_HEALTH_V3)
         missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
         shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
-        by_station = build_station_metrics(health_rows, missing_rows, shipment_rows)
+        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows)
 
         captured_at = datetime.now(timezone.utc)
+        global _tn_cache_captured_at
+        _tn_cache.clear()
+        _tn_cache.update(tn_details)
+        _tn_cache_captured_at = captured_at.isoformat()
         params = [
             (
                 captured_at, row["station_code"], row["station_name"], row["zone"], row["region"],
@@ -252,6 +264,37 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
             previous_captured_at.isoformat() if hasattr(previous_captured_at, "isoformat") else previous_captured_at
         ),
         "previous_stations": previous_scoped,
+    }
+
+
+class DrilldownResponse(BaseModel):
+    station_code: str
+    station_name: str
+    metric: str
+    tracking_numbers: list[str]
+    as_of: str | None
+
+
+@app.get("/api/drilldown", response_model=DrilldownResponse)
+async def drilldown(station_code: str, metric: str, user: CurrentUser = Depends(get_current_user)):
+    """Tracking numbers behind one station's metric count, for the UI's click-to-see-TNs
+    panel. Served from the in-memory cache built by the last refresh -- empty right
+    after a restart until the next hourly (or manual) refresh runs."""
+    if metric not in DRILLDOWN_METRICS:
+        raise HTTPException(status_code=422, detail=f"metric must be one of {list(DRILLDOWN_METRICS)}")
+    hub = HUBS.get(station_code)
+    if hub is None:
+        raise HTTPException(status_code=404, detail="Unknown station")
+    name, _full_name, zone, region = hub
+    in_scope = _scope_filter_stations(
+        [{"station_code": station_code, "station_name": name, "zone": zone, "region": region}], user
+    )
+    if not in_scope:
+        raise HTTPException(status_code=403, detail="That station isn't in your scope")
+    tracking_numbers = [t for t in _tn_cache.get(station_code, {}).get(metric, []) if t]
+    return {
+        "station_code": station_code, "station_name": name, "metric": metric,
+        "tracking_numbers": tracking_numbers, "as_of": _tn_cache_captured_at,
     }
 
 
