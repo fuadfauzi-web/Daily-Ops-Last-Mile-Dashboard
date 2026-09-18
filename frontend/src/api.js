@@ -27,6 +27,12 @@ export const api = {
   regions: () => request("/api/regions"),
   drilldown: (stationCode, metric) =>
     request(`/api/drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`),
+  shipmentDetails: () => request("/api/shipment-details"),
+  shipmentDrilldown: (stationCode, metric) =>
+    request(
+      `/api/shipment-drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`
+    ),
+  routedView: () => request("/api/routed-view"),
   users: {
     list: () => request("/api/admin/users"),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),

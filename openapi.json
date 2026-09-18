@@ -141,6 +141,37 @@
         }
       }
     },
+    "/api/shipment-details": {
+      "get": {
+        "summary": "Return the latest Shipment Details snapshot (Total Fresh/Shipment, Fresh Unscan, Latlong, Fresh Attempt %, LH trip timings), scoped to the caller.",
+        "responses": {
+          "200": {"description": "Latest snapshot, scoped to the caller", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ShipmentDetailsResponse"}}}}
+        }
+      }
+    },
+    "/api/shipment-drilldown": {
+      "get": {
+        "summary": "Return the tracking numbers behind one station's Fresh Unscan or Latlong count.",
+        "parameters": [
+          {"name": "station_code", "in": "query", "required": true, "schema": {"type": "string"}},
+          {"name": "metric", "in": "query", "required": true, "schema": {"type": "string", "description": "fresh_unscan | latlong"}}
+        ],
+        "responses": {
+          "200": {"description": "Tracking numbers", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ShipmentDrilldownResponse"}}}},
+          "403": {"description": "That station isn't in the caller's scope"},
+          "404": {"description": "Unknown station"},
+          "422": {"description": "metric is not fresh_unscan or latlong"}
+        }
+      }
+    },
+    "/api/routed-view": {
+      "get": {
+        "summary": "Return the latest Routed View snapshot (Total Routed/Attendance/OVFD/Success/COD%/Success Rate/Completion Rate) at station/zone/region level, plus a driver-level breakdown, scoped to the caller.",
+        "responses": {
+          "200": {"description": "Latest snapshot, scoped to the caller", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoutedViewResponse"}}}}
+        }
+      }
+    },
     "/api/admin/refresh": {
       "post": {
         "summary": "Trigger an immediate Redash pull and metrics recompute, instead of waiting for the hourly scheduler. Admin only.",
@@ -193,13 +224,13 @@
           "zero_attempt": {"type": "integer", "description": "Subset of total_in_hub with 0 delivery attempts"},
           "zero_attempt_gt_d0": {"type": "integer", "description": "Subset of zero_attempt aged >0 days"},
           "on_hold": {"type": "integer"},
-          "pending_ats": {"type": "integer", "description": "last_scan_hub_name != dest_hub -- not yet added to a shipment to its real destination"},
+          "pending_ats_zero_attempt": {"type": "integer", "description": "last_scan_hub_name != dest_hub, 0 delivery attempts -- not yet added to a shipment to its real destination"},
+          "pending_ats_attempted": {"type": "integer", "description": "Same as pending_ats_zero_attempt but with 1+ delivery attempts already made"},
           "missing_open": {"type": "integer", "description": "Open missing-parcel tickets, total (grouped by dest_hub_name)"},
           "missing_hub": {"type": "integer", "description": "Subset of missing_open classified as a station-side issue"},
           "missing_ship_in": {"type": "integer", "description": "Subset of missing_open classified as an in-transit issue"},
           "total_fresh": {"type": "integer", "description": "Total orders received today per hub (query 653, grouped by dest_hub_name)"},
           "age_gt3": {"type": "integer", "description": "total_in_hub aged >3 days, excludes On Hold/On Vehicle for Delivery"},
-          "age_gt6_ats": {"type": "integer", "description": "Subset of pending_ats aged >6 days"},
           "reschedule": {"type": "integer", "description": "total_in_hub with 1+ delivery attempts already made"},
           "still_ovfd": {"type": "integer", "description": "Still On Vehicle for Delivery"},
           "prior_d0": {"type": "integer", "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, 0 attempts"},
@@ -209,7 +240,7 @@
           "attendance": {"type": "integer", "description": "Unique drivers with a route today, from query 512, excluding names containing OPS"},
           "cod_pct_routed": {"type": "number", "description": "% of total_routed that is COD, from query 512"}
         },
-        "required": ["total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold", "pending_ats", "missing_open", "missing_hub", "missing_ship_in", "total_fresh", "age_gt3", "age_gt6_ats", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0", "cod_pct_hub", "total_routed", "attendance", "cod_pct_routed"]
+        "required": ["total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold", "pending_ats_zero_attempt", "pending_ats_attempted", "missing_open", "missing_hub", "missing_ship_in", "total_fresh", "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0", "cod_pct_hub", "total_routed", "attendance", "cod_pct_routed"]
       },
       "StationRow": {
         "allOf": [
@@ -310,6 +341,112 @@
           "as_of": {"type": "string", "nullable": true, "format": "date-time", "description": "When the in-memory cache backing this was built (the last refresh); null if no refresh has run since restart"}
         },
         "required": ["station_code", "station_name", "metric", "tracking_numbers"]
+      },
+      "LHTrip": {
+        "type": "object",
+        "properties": {"time": {"type": "string"}, "parcels": {"type": "integer"}},
+        "required": ["time", "parcels"]
+      },
+      "ShipmentDetailFields": {
+        "type": "object",
+        "properties": {
+          "total_fresh": {"type": "integer"},
+          "total_shipment": {"type": "integer", "description": "Sum of query 1500's total_shipments per hub"},
+          "fresh_unscan": {"type": "integer", "description": "query 1239 rows where 1st_sweep_at_WM_station is blank"},
+          "latlong": {"type": "integer", "description": "query 1239 rows where shp_dest_hub_name != latest_dest_hub_name and tag doesn't contain RTS"},
+          "fresh_attempt_count": {"type": "integer", "description": "query 1239 rows where first_attempt_date is set"},
+          "fresh_attempt_pct": {"type": "number", "description": "fresh_attempt_count / total_fresh * 100; target 96%"}
+        },
+        "required": ["total_fresh", "total_shipment", "fresh_unscan", "latlong", "fresh_attempt_count", "fresh_attempt_pct"]
+      },
+      "ShipmentStationRow": {
+        "allOf": [
+          {"$ref": "#/components/schemas/ShipmentDetailFields"},
+          {"type": "object", "properties": {
+            "station_code": {"type": "string"}, "station_name": {"type": "string"},
+            "zone": {"type": "string"}, "region": {"type": "string"},
+            "lh_trips": {"type": "array", "items": {"$ref": "#/components/schemas/LHTrip"}, "description": "Up to 2 line-haul trips, sorted by arrival time"}
+          }, "required": ["station_code", "station_name", "zone", "region", "lh_trips"]}
+        ]
+      },
+      "ShipmentGroupRow": {
+        "allOf": [
+          {"$ref": "#/components/schemas/ShipmentDetailFields"},
+          {"type": "object", "properties": {"key": {"type": "string"}, "station_count": {"type": "integer"}}, "required": ["key", "station_count"]}
+        ]
+      },
+      "ShipmentDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
+          "stations": {"type": "array", "items": {"$ref": "#/components/schemas/ShipmentStationRow"}},
+          "zones": {"type": "array", "items": {"$ref": "#/components/schemas/ShipmentGroupRow"}},
+          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/ShipmentGroupRow"}}
+        },
+        "required": ["captured_at", "stations", "zones", "regions"]
+      },
+      "ShipmentDrilldownResponse": {
+        "type": "object",
+        "properties": {
+          "station_code": {"type": "string"}, "station_name": {"type": "string"}, "metric": {"type": "string"},
+          "tracking_numbers": {"type": "array", "items": {"type": "string"}},
+          "as_of": {"type": "string", "nullable": true, "format": "date-time"}
+        },
+        "required": ["station_code", "station_name", "metric", "tracking_numbers"]
+      },
+      "RoutedFields": {
+        "type": "object",
+        "properties": {
+          "total_routed": {"type": "integer"},
+          "attendance": {"type": "integer", "description": "Unique non-OPS drivers with a route today"},
+          "attendance_staff": {"type": "integer", "description": "Subset of attendance: HD/HR position codes"},
+          "attendance_independent": {"type": "integer", "description": "Subset of attendance: ID/IR position codes"},
+          "attendance_rescue": {"type": "integer", "description": "Subset of attendance whose name-prefix home station differs from the station they're currently routing at"},
+          "current_ovfd": {"type": "integer"},
+          "current_success": {"type": "integer"},
+          "total_cod": {"type": "integer"},
+          "cod_pct": {"type": "number"},
+          "success_rate": {"type": "number", "description": "current_success / total_routed * 100"},
+          "completion_rate": {"type": "number", "description": "(total_routed - current_ovfd) / total_routed * 100"}
+        },
+        "required": ["total_routed", "attendance", "attendance_staff", "attendance_independent", "attendance_rescue", "current_ovfd", "current_success", "total_cod", "cod_pct", "success_rate", "completion_rate"]
+      },
+      "RoutedStationRow": {
+        "allOf": [
+          {"$ref": "#/components/schemas/RoutedFields"},
+          {"type": "object", "properties": {"station_code": {"type": "string"}, "station_name": {"type": "string"}, "zone": {"type": "string"}, "region": {"type": "string"}}, "required": ["station_code", "station_name", "zone", "region"]}
+        ]
+      },
+      "RoutedGroupRow": {
+        "allOf": [
+          {"$ref": "#/components/schemas/RoutedFields"},
+          {"type": "object", "properties": {"key": {"type": "string"}, "station_count": {"type": "integer"}}, "required": ["key", "station_count"]}
+        ]
+      },
+      "RoutedDriverRow": {
+        "type": "object",
+        "properties": {
+          "driver_name": {"type": "string"},
+          "driver_type": {"type": "string", "description": "Staff Driver | Staff Rider | Independent Driver | Independent Rider | Unknown"},
+          "home_station": {"type": "string", "nullable": true, "description": "From the station-abbreviation prefix of the driver's name"},
+          "current_station": {"type": "string", "nullable": true},
+          "zone": {"type": "string", "nullable": true}, "region": {"type": "string", "nullable": true},
+          "is_rescue": {"type": "boolean", "description": "home_station differs from current_station"},
+          "total_routed": {"type": "integer"}, "current_success": {"type": "integer"}, "current_ovfd": {"type": "integer"}, "total_cod": {"type": "integer"},
+          "cod_pct": {"type": "number"}, "success_rate": {"type": "number"}, "completion_rate": {"type": "number"}
+        },
+        "required": ["driver_name", "driver_type", "home_station", "current_station", "is_rescue", "total_routed", "current_success", "current_ovfd", "total_cod", "cod_pct", "success_rate", "completion_rate"]
+      },
+      "RoutedViewResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
+          "stations": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedStationRow"}},
+          "zones": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedGroupRow"}},
+          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedGroupRow"}},
+          "drivers": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedDriverRow"}, "description": "Not persisted -- rebuilt in memory on every refresh, empty after a restart until the next refresh runs"}
+        },
+        "required": ["captured_at", "stations", "zones", "regions", "drivers"]
       },
       "RefreshStatus": {
         "type": "object",

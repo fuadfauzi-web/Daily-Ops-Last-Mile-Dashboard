@@ -173,6 +173,12 @@ ZONES: list[str] = sorted({v[2] for v in HUBS.values()})
 # (some are non-network partner locations) -- unmatched rows are simply skipped.
 FULL_NAME_TO_HUB: dict[str, str] = {v[1].lower(): k for k, v in HUBS.items()}
 
+# Short station abbreviation (the 2nd hyphen-separated segment of a hub code, e.g.
+# "LKN" in "C1-LKN-13-67") -> hub code. This is the code drivers' names are prefixed
+# with in query 512 (e.g. "HTM - HD - AIZAT"), so it's how attendance/driver rows get
+# matched back to a home station.
+ABBR_TO_HUB: dict[str, str] = {hub.split("-")[1]: hub for hub in HUBS if len(hub.split("-")) > 1}
+
 
 def station_lookup(hub_code: str) -> tuple[str, str, str, str] | None:
     return HUBS.get(hub_code)

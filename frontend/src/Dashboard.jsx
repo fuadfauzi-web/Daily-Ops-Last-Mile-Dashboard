@@ -1,56 +1,59 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import ShipmentDetailsTab from "./ShipmentDetailsTab";
+import RoutedViewTab from "./RoutedViewTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
 // total or a percentage, with nothing to list.
 const DRILLDOWN_METRICS = new Set([
-  "total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold", "pending_ats",
+  "total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
+  "pending_ats_zero_attempt", "pending_ats_attempted",
   "missing_open", "missing_hub", "missing_ship_in",
-  "age_gt3", "age_gt6_ats", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
+  "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
 ]);
 
 // Volume/context metrics: shown plainly, no severity coloring (more isn't "bad").
-const VOLUME_METRICS = new Set([
-  "total_fresh", "total_in_hub", "still_ovfd", "total_routed", "attendance",
-  "cod_pct_hub", "cod_pct_routed",
-]);
+const VOLUME_METRICS = new Set(["total_fresh", "total_routed", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub"]);
 
-const PERCENT_METRICS = new Set(["cod_pct_hub", "cod_pct_routed"]);
+const PERCENT_METRICS = new Set(["cod_pct_hub"]);
 
-const CORE_COLUMNS = [
+// Requested column order for the Station Health table (Region/Zone/Station are
+// separate fixed columns rendered before these).
+const ALL_COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
-  { key: "total_in_hub", label: "In Hub" },
+  { key: "total_routed", label: "Total Routed" },
+  { key: "attendance", label: "Attendance" },
   { key: "zero_attempt", label: "0 Attempt" },
+  { key: "zero_attempt_gt_d0", label: "0 Attempt >D0" },
+  { key: "total_in_hub", label: "In Hub" },
+  { key: "age_gt3", label: "Age >3" },
   { key: "on_hold", label: "On Hold" },
+  { key: "reschedule", label: "Reschedule" },
+  { key: "still_ovfd", label: "Still OVFD" },
+  { key: "cod_pct_hub", label: "COD % (Hub)" },
+  { key: "prior_d0", label: "Prior D0" },
+  { key: "prior_gt_d0", label: "Prior >D0" },
+  { key: "pending_ats_zero_attempt", label: "Pending ATS (0 Attempt)" },
+  { key: "pending_ats_attempted", label: "Pending ATS (Attempted)" },
+  { key: "missing_open", label: "Missing (Total)" },
   { key: "missing_hub", label: "Missing (Hub)" },
   { key: "missing_ship_in", label: "Missing (Ship-in)" },
 ];
 
-const EXTRA_COLUMNS = [
-  { key: "zero_attempt_gt_d0", label: "0 Attempt >D0" },
-  { key: "pending_ats", label: "Pending ATS" },
-  { key: "missing_open", label: "Missing (Total)" },
-  { key: "age_gt3", label: "Age >3" },
-  { key: "age_gt6_ats", label: "Age >6 ATS" },
-  { key: "reschedule", label: "Reschedule" },
-  { key: "still_ovfd", label: "Still OVFD" },
-  { key: "prior_d0", label: "Prior D0" },
-  { key: "prior_gt_d0", label: "Prior >D0" },
-  { key: "cod_pct_hub", label: "COD % (Hub)" },
-  { key: "total_routed", label: "Total Routed" },
-  { key: "attendance", label: "Attendance" },
-  { key: "cod_pct_routed", label: "COD % (Routed)" },
-];
+// The KPI bar's curated subset (top of page, always visible regardless of table sort).
+const CORE_COLUMNS = ALL_COLUMNS.filter((c) =>
+  ["total_fresh", "total_in_hub", "zero_attempt", "on_hold", "missing_hub", "missing_ship_in"].includes(c.key)
+);
 
-const ALL_COLUMNS = [...CORE_COLUMNS, ...EXTRA_COLUMNS];
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
 // Numerator/denominator pairs behind each percentage, for correctly weighted rollups.
-const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub", cod_pct_routed: "total_routed" };
+const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub" };
 
 const TABS = [
+  { key: "shipment", label: "Shipment Details", enabled: true },
   { key: "health", label: "Station Health", enabled: true },
-  { key: "routed", label: "Routed View", enabled: false },
+  { key: "routed", label: "Routed View", enabled: true },
   { key: "shipper", label: "Shipper Watch", enabled: false },
   { key: "aging", label: "Aging Details", enabled: false },
 ];
@@ -506,105 +509,116 @@ export default function Dashboard({ me }) {
         ))}
       </div>
 
-      <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} />
-      <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} />
+      {tab === "health" && (
+        <>
+          <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} />
+          <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} />
 
-      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-          <div className="text-sm font-medium text-slate-700">
-            Station Health <span className="font-normal text-slate-400">— click a number to see tracking IDs</span>
-          </div>
-          <button
-            onClick={() => exportCsv(filteredStations)}
-            className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            Export CSV
-          </button>
-        </div>
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
-              <tr>
-                <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                  onClick={() => toggleSort("station_name")}
-                >
-                  Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-                <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
-                  onClick={() => toggleSort("region")}
-                >
-                  Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-                <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
-                  onClick={() => toggleSort("zone")}
-                >
-                  Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-                {ALL_COLUMNS.map((c) => (
-                  <th
-                    key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
-                    onClick={() => toggleSort(c.key)}
-                  >
-                    {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                ))}
-              </tr>
-              {isGroupSort && (
-                <tr className="bg-slate-800 text-[10px] font-normal normal-case text-slate-300">
-                  <th className="sticky left-0 z-30 bg-slate-800 px-4 py-1" colSpan={3 + ALL_COLUMNS.length}>
-                    Sorted by {sortKey}, then 0-Attempt (highest first) within each {sortKey}
-                  </th>
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {filteredStations.map((r) => (
-                <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                    {r.station_name}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.region}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.zone}</td>
-                  {ALL_COLUMNS.map((c) => {
-                    const cls = VOLUME_METRICS.has(c.key)
-                      ? "text-slate-700"
-                      : SEVERITY_CLASS[severityRank[c.key]?.(r[c.key]) || "plain"];
-                    return (
-                      <MetricCell
+          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
+              <div className="text-sm font-medium text-slate-700">
+                Station Health{" "}
+                <span className="font-normal text-slate-400">— click a number to see tracking IDs</span>
+              </div>
+              <button
+                onClick={() => exportCsv(filteredStations)}
+                className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+                  <tr>
+                    <th
+                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                      onClick={() => toggleSort("station_name")}
+                    >
+                      Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th
+                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
+                      onClick={() => toggleSort("region")}
+                    >
+                      Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th
+                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
+                      onClick={() => toggleSort("zone")}
+                    >
+                      Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
+                    </th>
+                    {ALL_COLUMNS.map((c) => (
+                      <th
                         key={c.key}
-                        metricKey={c.key}
-                        value={r[c.key]}
-                        severityClass={cls}
-                        clickable={DRILLDOWN_METRICS.has(c.key)}
-                        onClick={() => openDrilldown(r, c)}
-                      />
-                    );
-                  })}
-                </tr>
-              ))}
-              {filteredStations.length === 0 && (
-                <tr>
-                  <td colSpan={3 + ALL_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
-                    No stations match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {filteredStations.length} rows · first column pinned, header freezes while scrolling
-        </div>
-      </div>
-      <p className="text-xs text-slate-400">
-        Red/amber highlights are relative to what's currently on screen (top ~15% / ~50% of that column) — there's
-        no fixed SLA target wired in yet. Total Fresh, Total Routed, Attendance and the COD% columns aren't
-        clickable — their source queries don't return individual tracking numbers.
-      </p>
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
+                        onClick={() => toggleSort(c.key)}
+                      >
+                        {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+                      </th>
+                    ))}
+                  </tr>
+                  {isGroupSort && (
+                    <tr className="bg-slate-800 text-[10px] font-normal normal-case text-slate-300">
+                      <th className="sticky left-0 z-30 bg-slate-800 px-4 py-1" colSpan={3 + ALL_COLUMNS.length}>
+                        Sorted by {sortKey}, then 0-Attempt (highest first) within each {sortKey}
+                      </th>
+                    </tr>
+                  )}
+                </thead>
+                <tbody>
+                  {filteredStations.map((r) => (
+                    <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
+                      <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
+                        {r.station_name}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.region}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.zone}</td>
+                      {ALL_COLUMNS.map((c) => {
+                        const cls = VOLUME_METRICS.has(c.key)
+                          ? "text-slate-700"
+                          : SEVERITY_CLASS[severityRank[c.key]?.(r[c.key]) || "plain"];
+                        return (
+                          <MetricCell
+                            key={c.key}
+                            metricKey={c.key}
+                            value={r[c.key]}
+                            severityClass={cls}
+                            clickable={DRILLDOWN_METRICS.has(c.key)}
+                            onClick={() => openDrilldown(r, c)}
+                          />
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {filteredStations.length === 0 && (
+                    <tr>
+                      <td colSpan={3 + ALL_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
+                        No stations match.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
+              {filteredStations.length} rows · first column pinned, header freezes while scrolling
+            </div>
+          </div>
+          <p className="text-xs text-slate-400">
+            Red/amber highlights are relative to what's currently on screen (top ~15% / ~50% of that column) —
+            there's no fixed SLA target wired in yet. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't
+            clickable — their source queries don't return individual tracking numbers.
+          </p>
+        </>
+      )}
+
+      {tab === "shipment" && (
+        <ShipmentDetailsTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} />
+      )}
+
+      {tab === "routed" && <RoutedViewTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} />}
     </div>
   );
 }
