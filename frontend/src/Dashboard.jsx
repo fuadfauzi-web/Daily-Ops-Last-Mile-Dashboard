@@ -1,12 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-const COLUMNS = [
+// Shown as top stat cards + the primary sortable columns.
+const CORE_COLUMNS = [
   { key: "total_in_hub", label: "In Hub" },
   { key: "zero_attempt", label: "0 Attempt" },
   { key: "on_hold", label: "On Hold" },
   { key: "missing_open", label: "Missing" },
+  { key: "total_fresh", label: "Fresh" },
 ];
+
+// Shown only as extra table columns (less glanceable, still sortable).
+const EXTRA_COLUMNS = [
+  { key: "age_gt3", label: "Age >3" },
+  { key: "reschedule", label: "Reschedule" },
+  { key: "still_ovfd", label: "OVFD" },
+  { key: "prior_d0", label: "Prior D0" },
+  { key: "prior_gt_d0", label: "Prior >D0" },
+];
+
+const ALL_COLUMNS = [...CORE_COLUMNS, ...EXTRA_COLUMNS];
+const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
 
 function StatCard({ label, value }) {
   return (
@@ -25,10 +39,49 @@ function formatTime(iso) {
   return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function GroupTable({ title, groupLabel, rows }) {
+  if (rows.length <= 1) return null;
+  return (
+    <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-500">
+            <tr>
+              <th className="px-4 py-2 font-medium">{groupLabel}</th>
+              {ALL_COLUMNS.map((c) => (
+                <th key={c.key} className="whitespace-nowrap px-4 py-2 text-right font-medium">
+                  {c.label}
+                </th>
+              ))}
+              <th className="px-4 py-2 text-right font-medium">Stations</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((g) => (
+              <tr key={g.key} className="border-t border-slate-100">
+                <td className="px-4 py-2 font-medium text-slate-800">{g.key}</td>
+                {ALL_COLUMNS.map((c) => (
+                  <td key={c.key} className="px-4 py-2 text-right tabular-nums">
+                    {g[c.key].toLocaleString()}
+                  </td>
+                ))}
+                <td className="px-4 py-2 text-right tabular-nums text-slate-500">{g.station_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ me }) {
   const [data, setData] = useState(null);
+  const [regions, setRegions] = useState([]);
   const [error, setError] = useState(null);
-  const [subRegionFilter, setSubRegionFilter] = useState("all");
+  const [regionFilter, setRegionFilter] = useState("all");
+  const [zoneFilter, setZoneFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("on_hold");
   const [sortDir, setSortDir] = useState("desc");
@@ -41,16 +94,22 @@ export default function Dashboard({ me }) {
   };
 
   useEffect(load, []);
+  useEffect(() => {
+    api.regions().then(setRegions).catch(() => {});
+  }, []);
 
-  const subRegions = useMemo(
-    () => (data ? [...new Set(data.stations.map((s) => s.sub_region))].sort() : []),
-    [data]
-  );
+  const zoneOptions = useMemo(() => {
+    if (!data) return [];
+    const zonesInRegion =
+      regionFilter === "all" ? data.stations : data.stations.filter((s) => s.region === regionFilter);
+    return [...new Set(zonesInRegion.map((s) => s.zone))].sort();
+  }, [data, regionFilter]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
     let rows = data.stations;
-    if (subRegionFilter !== "all") rows = rows.filter((r) => r.sub_region === subRegionFilter);
+    if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
+    if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       rows = rows.filter((r) => r.station_name.toLowerCase().includes(q));
@@ -62,18 +121,15 @@ export default function Dashboard({ me }) {
       return sortDir === "asc" ? av - bv : bv - av;
     });
     return sorted;
-  }, [data, subRegionFilter, search, sortKey, sortDir]);
+  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
   const totals = useMemo(() => {
-    return filteredStations.reduce(
-      (acc, r) => ({
-        total_in_hub: acc.total_in_hub + r.total_in_hub,
-        zero_attempt: acc.zero_attempt + r.zero_attempt,
-        on_hold: acc.on_hold + r.on_hold,
-        missing_open: acc.missing_open + r.missing_open,
-      }),
-      { total_in_hub: 0, zero_attempt: 0, on_hold: 0, missing_open: 0 }
-    );
+    const zero = Object.fromEntries(METRIC_KEYS.map((k) => [k, 0]));
+    return filteredStations.reduce((acc, r) => {
+      const next = { ...acc };
+      METRIC_KEYS.forEach((k) => (next[k] = acc[k] + r[k]));
+      return next;
+    }, zero);
   }, [filteredStations]);
 
   const toggleSort = (key) => {
@@ -101,13 +157,28 @@ export default function Dashboard({ me }) {
         <div className="flex flex-wrap gap-2">
           <select
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-            value={subRegionFilter}
-            onChange={(e) => setSubRegionFilter(e.target.value)}
+            value={regionFilter}
+            onChange={(e) => {
+              setRegionFilter(e.target.value);
+              setZoneFilter("all");
+            }}
           >
-            <option value="all">All sub-regions</option>
-            {subRegions.map((sr) => (
-              <option key={sr} value={sr}>
-                {sr}
+            <option value="all">All regions</option>
+            {regions.map((r) => (
+              <option key={r.region} value={r.region}>
+                {r.region}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            value={zoneFilter}
+            onChange={(e) => setZoneFilter(e.target.value)}
+          >
+            <option value="all">All zones</option>
+            {zoneOptions.map((z) => (
+              <option key={z} value={z}>
+                {z}
               </option>
             ))}
           </select>
@@ -120,96 +191,71 @@ export default function Dashboard({ me }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="In Hub" value={totals.total_in_hub} />
-        <StatCard label="0 Attempt" value={totals.zero_attempt} />
-        <StatCard label="On Hold" value={totals.on_hold} />
-        <StatCard label="Missing (open)" value={totals.missing_open} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {CORE_COLUMNS.map((c) => (
+          <StatCard key={c.key} label={c.label} value={totals[c.key]} />
+        ))}
       </div>
 
-      {data.sub_regions.length > 1 && (
-        <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+      <GroupTable title="By region" groupLabel="Region" rows={data.regions} />
+      <GroupTable title="By zone" groupLabel="Zone" rows={data.zones} />
+
+      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Sub-region</th>
-                {COLUMNS.map((c) => (
-                  <th key={c.key} className="px-4 py-2 text-right font-medium">
-                    {c.label}
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 font-medium"
+                  onClick={() => toggleSort("station_name")}
+                >
+                  Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
+                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Region</th>
+                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Zone</th>
+                {ALL_COLUMNS.map((c) => (
+                  <th
+                    key={c.key}
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium"
+                    onClick={() => toggleSort(c.key)}
+                  >
+                    {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 ))}
-                <th className="px-4 py-2 text-right font-medium">Stations</th>
               </tr>
             </thead>
             <tbody>
-              {data.sub_regions.map((g) => (
-                <tr key={g.key} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">{g.key}</td>
-                  {COLUMNS.map((c) => (
-                    <td key={c.key} className="px-4 py-2 text-right tabular-nums">
-                      {g[c.key].toLocaleString()}
-                    </td>
-                  ))}
-                  <td className="px-4 py-2 text-right tabular-nums text-slate-500">{g.station_count}</td>
+              {filteredStations.map((r) => {
+                const holdRate = r.total_in_hub > 0 ? r.on_hold / (r.total_in_hub + r.on_hold) : 0;
+                const flagged = holdRate > 0.15;
+                return (
+                  <tr key={r.station_code} className="border-t border-slate-100">
+                    <td className="whitespace-nowrap px-4 py-2 font-medium text-slate-800">{r.station_name}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.region}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.zone}</td>
+                    {ALL_COLUMNS.map((c) => (
+                      <td
+                        key={c.key}
+                        className={`px-4 py-2 text-right tabular-nums ${
+                          c.key === "on_hold" && flagged ? "font-semibold text-status-critical" : ""
+                        }`}
+                      >
+                        {r[c.key].toLocaleString()}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+              {filteredStations.length === 0 && (
+                <tr>
+                  <td colSpan={3 + ALL_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
+                    No stations match.
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
-      )}
-
-      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th
-                className="cursor-pointer select-none px-4 py-2 font-medium"
-                onClick={() => toggleSort("station_name")}
-              >
-                Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-              </th>
-              <th className="px-4 py-2 text-left font-medium">Sub-region</th>
-              {COLUMNS.map((c) => (
-                <th
-                  key={c.key}
-                  className="cursor-pointer select-none px-4 py-2 text-right font-medium"
-                  onClick={() => toggleSort(c.key)}
-                >
-                  {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStations.map((r) => {
-              const holdRate = r.total_in_hub > 0 ? r.on_hold / (r.total_in_hub + r.on_hold) : 0;
-              const flagged = holdRate > 0.15;
-              return (
-                <tr key={r.station_code} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-800">{r.station_name}</td>
-                  <td className="px-4 py-2 text-slate-500">{r.sub_region}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.total_in_hub.toLocaleString()}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.zero_attempt.toLocaleString()}</td>
-                  <td
-                    className={`px-4 py-2 text-right tabular-nums ${
-                      flagged ? "font-semibold text-status-critical" : ""
-                    }`}
-                  >
-                    {r.on_hold.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{r.missing_open.toLocaleString()}</td>
-                </tr>
-              );
-            })}
-            {filteredStations.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
-                  No stations match.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
       </div>
       <p className="text-xs text-slate-400">
         On Hold shown in red when it's over 15% of a station's hub + on-hold volume — a relative flag, not an

@@ -1,8 +1,9 @@
-"""Southern Region Ops Dashboard — backend.
+"""Daily Ops Last Mile Dashboard — backend.
 
-Pulls parcel-in-hub / zero-attempt / on-hold / missing-ticket counts straight from
-Redash (queries 78 and 1297), aggregates them per station/sub-region/region, and
-serves them scoped to whoever is asking (role-based access, see auth.py).
+Pulls parcel-in-hub / zero-attempt / on-hold / missing-ticket / total-fresh / age>3 /
+reschedule / OVFD / prior-tag counts straight from Redash (queries 78, 1297, 653),
+aggregates them per station/zone/region nationwide, and serves them scoped to whoever
+is asking (role-based access, see auth.py).
 
 Runtime contract: port 8000, GET /health, everything else under /api. See
 CLAUDE.md's "Substrait deployment" block for the platform's deploy rules.
@@ -20,14 +21,21 @@ from pydantic import BaseModel
 import db
 from aggregate import build_station_metrics, rollup
 from auth import CurrentUser, get_current_user
-from redash_client import QUERY_ACTIVE_MISSING, QUERY_HEALTH_V3, RedashError, fetch_query_results
-from stations import REGION_NAME, SOUTH_HUBS, SUB_REGIONS
+from redash_client import (
+    QUERY_ACTIVE_MISSING, QUERY_HEALTH_V3, QUERY_TOTAL_SHIPMENTS, RedashError, fetch_query_results,
+)
+from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
 REFRESH_INTERVAL_SECONDS = 60 * 60  # hourly, per the project brief
 _refresh_task: asyncio.Task | None = None
+
+_METRIC_COLUMNS = (
+    "total_in_hub", "zero_attempt", "on_hold", "missing_open",
+    "total_fresh", "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
+)
 
 
 async def refresh_metrics(triggered_by: str | None = None) -> dict:
@@ -40,22 +48,22 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
     try:
         health_rows = await fetch_query_results(QUERY_HEALTH_V3)
         missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
-        by_station = build_station_metrics(health_rows, missing_rows)
+        shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
+        by_station = build_station_metrics(health_rows, missing_rows, shipment_rows)
 
         captured_at = datetime.now(timezone.utc)
         params = [
             (
-                captured_at, row["station_code"], row["station_name"], row["sub_region"],
-                row["region"], row["total_in_hub"], row["zero_attempt"], row["on_hold"],
-                row["missing_open"],
+                captured_at, row["station_code"], row["station_name"], row["zone"], row["region"],
+                *[row[c] for c in _METRIC_COLUMNS],
             )
             for row in by_station.values()
         ]
         await db.execute_many(
-            """INSERT INTO station_metrics
-               (captured_at, station_code, station_name, sub_region, region,
-                total_in_hub, zero_attempt, on_hold, missing_open)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            f"""INSERT INTO station_metrics
+               (captured_at, station_code, station_name, zone, region,
+                {", ".join(_METRIC_COLUMNS)})
+               VALUES ({", ".join(["%s"] * (5 + len(_METRIC_COLUMNS)))})""",
             params,
         )
         await db.execute(
@@ -94,7 +102,7 @@ async def lifespan(app: FastAPI):
     await db.close_pool()
 
 
-app = FastAPI(title="Southern Region Ops Dashboard", lifespan=lifespan)
+app = FastAPI(title="Daily Ops Last Mile Dashboard", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
@@ -145,12 +153,18 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
 class StationRow(BaseModel):
     station_code: str
     station_name: str
-    sub_region: str
+    zone: str
     region: str
     total_in_hub: int
     zero_attempt: int
     on_hold: int
     missing_open: int
+    total_fresh: int
+    age_gt3: int
+    reschedule: int
+    still_ovfd: int
+    prior_d0: int
+    prior_gt_d0: int
 
 
 class GroupRow(BaseModel):
@@ -159,21 +173,29 @@ class GroupRow(BaseModel):
     zero_attempt: int
     on_hold: int
     missing_open: int
+    total_fresh: int
+    age_gt3: int
+    reschedule: int
+    still_ovfd: int
+    prior_d0: int
+    prior_gt_d0: int
     station_count: int
 
 
 class DashboardResponse(BaseModel):
     captured_at: str | None
     stations: list[StationRow]
-    sub_regions: list[GroupRow]
-    region: list[GroupRow]
+    zones: list[GroupRow]
+    regions: list[GroupRow]
 
 
 def _scope_filter_stations(rows: list[dict], user: CurrentUser) -> list[dict]:
     if user.scope_type == "all":
         return rows
-    if user.scope_type == "sub_region":
-        return [r for r in rows if r["sub_region"] == user.scope_value]
+    if user.scope_type == "region":
+        return [r for r in rows if r["region"] == user.scope_value]
+    if user.scope_type == "zone":
+        return [r for r in rows if r["zone"] == user.scope_value]
     if user.scope_type == "station":
         return [r for r in rows if r["station_name"] == user.scope_value]
     return []
@@ -184,41 +206,34 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
     captured_at = latest[0] if latest else None
     if captured_at is None:
-        return {"captured_at": None, "stations": [], "sub_regions": [], "region": []}
+        return {"captured_at": None, "stations": [], "zones": [], "regions": []}
 
     db_rows = await db.fetch_all(
-        """SELECT station_code, station_name, sub_region, region,
-                  total_in_hub, zero_attempt, on_hold, missing_open
+        f"""SELECT station_code, station_name, zone, region, {", ".join(_METRIC_COLUMNS)}
            FROM station_metrics WHERE captured_at = %s""",
         (captured_at,),
     )
     all_rows = [
         {
-            "station_code": r[0], "station_name": r[1], "sub_region": r[2], "region": r[3],
-            "total_in_hub": r[4], "zero_attempt": r[5], "on_hold": r[6], "missing_open": r[7],
+            "station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3],
+            **{col: r[4 + i] for i, col in enumerate(_METRIC_COLUMNS)},
         }
         for r in db_rows
     ]
     scoped = _scope_filter_stations(all_rows, user)
 
-    sub_region_groups = rollup(scoped, "sub_region")
+    zone_groups = rollup(scoped, "zone")
     region_groups = rollup(scoped, "region")
 
     def to_group(rows, key):
-        return [
-            {
-                "key": g[key], "total_in_hub": g["total_in_hub"], "zero_attempt": g["zero_attempt"],
-                "on_hold": g["on_hold"], "missing_open": g["missing_open"],
-                "station_count": g["station_count"],
-            }
-            for g in rows if g["station_count"] > 0
-        ]
+        return [{**{k: g[k] for k in _METRIC_COLUMNS}, "key": g[key], "station_count": g["station_count"]}
+                for g in rows if g["station_count"] > 0]
 
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
         "stations": scoped,
-        "sub_regions": to_group(sub_region_groups, "sub_region"),
-        "region": to_group(region_groups, "region"),
+        "zones": to_group(zone_groups, "zone"),
+        "regions": to_group(region_groups, "region"),
     }
 
 
@@ -238,7 +253,7 @@ class UserOut(BaseModel):
 class UserIn(BaseModel):
     email: str
     role: str  # 'admin' | 'manager' | 'station'
-    scope_type: str  # 'all' | 'sub_region' | 'station'
+    scope_type: str  # 'all' | 'region' | 'zone' | 'station'
     scope_value: str | None = None
     display_name: str | None = None
 
@@ -269,7 +284,7 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
 
 
 _VALID_ROLES = {"admin", "manager", "station"}
-_VALID_SCOPE_TYPES = {"all", "sub_region", "station"}
+_VALID_SCOPE_TYPES = {"all", "region", "zone", "station"}
 
 
 def _validate_user_in(payload: UserIn) -> None:
@@ -277,10 +292,12 @@ def _validate_user_in(payload: UserIn) -> None:
         raise HTTPException(status_code=422, detail=f"role must be one of {sorted(_VALID_ROLES)}")
     if payload.scope_type not in _VALID_SCOPE_TYPES:
         raise HTTPException(status_code=422, detail=f"scope_type must be one of {sorted(_VALID_SCOPE_TYPES)}")
-    if payload.scope_type == "sub_region" and payload.scope_value not in SUB_REGIONS:
-        raise HTTPException(status_code=422, detail=f"scope_value must be one of {SUB_REGIONS}")
+    if payload.scope_type == "region" and payload.scope_value not in REGIONS:
+        raise HTTPException(status_code=422, detail=f"scope_value must be one of {REGIONS}")
+    if payload.scope_type == "zone" and payload.scope_value not in ZONES:
+        raise HTTPException(status_code=422, detail=f"scope_value must be one of {ZONES}")
     if payload.scope_type == "station":
-        valid_names = {name for name, _ in SOUTH_HUBS.values()}
+        valid_names = {name for name, _full, _zone, _region in HUBS.values()}
         if payload.scope_value not in valid_names:
             raise HTTPException(status_code=422, detail="scope_value must be a valid station name")
 
@@ -325,15 +342,26 @@ async def delete_user(email: str, user: CurrentUser = Depends(get_current_user))
 class StationMeta(BaseModel):
     station_code: str
     station_name: str
-    sub_region: str
+    zone: str
+    region: str
 
 
 @app.get("/api/stations", response_model=list[StationMeta])
 async def list_stations(user: CurrentUser = Depends(get_current_user)):
     return [
-        {"station_code": code, "station_name": name, "sub_region": sub}
-        for code, (name, sub) in sorted(SOUTH_HUBS.items(), key=lambda kv: kv[1][0])
+        {"station_code": code, "station_name": name, "zone": zone, "region": region}
+        for code, (name, _full, zone, region) in sorted(HUBS.items(), key=lambda kv: kv[1][0])
     ]
+
+
+class RegionMeta(BaseModel):
+    region: str
+    zones: list[str]
+
+
+@app.get("/api/regions", response_model=list[RegionMeta])
+async def list_regions(user: CurrentUser = Depends(get_current_user)):
+    return [{"region": r, "zones": zs} for r, zs in ZONES_BY_REGION.items()]
 
 
 # ---------------------------------------------------------------------------

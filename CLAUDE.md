@@ -65,7 +65,10 @@ the backend on `:8000` (reading `DATABASE_URL`) and `npm run dev` in `frontend/`
 
 ## This project
 
-Southern Region Ops Dashboard for Ninja Van's Fleet team (see `substrait.yaml` for the
-full description). Business logic notes live as comments in `backend/aggregate.py` —
-read that before changing what a metric means; it records which numbers were
-cross-checked against the source Google Sheet and which are still unverified.
+Daily Ops Last Mile Dashboard for Ninja Van's Fleet team — nationwide (see
+`substrait.yaml` for the full description). Business logic notes live as comments in
+`backend/aggregate.py` — read that before changing what a metric means; it records
+which numbers were cross-checked against the source Google Sheets / old Apps Script
+and which are still unverified. `backend/stations.py` is the nationwide station
+reference (143 active/virtual stations, 5 regions), generated from the "Region List"
+master sheet — do not hand-edit without regenerating from that source.

@@ -17,7 +17,7 @@ from db import fetch_one
 class CurrentUser:
     email: str
     role: str  # 'admin' | 'manager' | 'station'
-    scope_type: str  # 'all' | 'sub_region' | 'station'
+    scope_type: str  # 'all' | 'region' | 'zone' | 'station'
     scope_value: str | None
     display_name: str | None
 

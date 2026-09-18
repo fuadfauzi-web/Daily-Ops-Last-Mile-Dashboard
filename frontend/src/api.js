@@ -24,6 +24,7 @@ export const api = {
   me: () => request("/api/me"),
   dashboard: () => request("/api/dashboard"),
   stations: () => request("/api/stations"),
+  regions: () => request("/api/regions"),
   users: {
     list: () => request("/api/admin/users"),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),

@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-
-const SUB_REGIONS = ["South 1", "South 2", "South 3", "South 4"];
 
 const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "", display_name: "" };
 
 export default function AdminPanel() {
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
+  const [regions, setRegions] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
@@ -19,8 +18,11 @@ export default function AdminPanel() {
   useEffect(() => {
     loadUsers();
     api.stations().then(setStations).catch(() => {});
+    api.regions().then(setRegions).catch(() => {});
     loadRefreshStatus();
   }, []);
+
+  const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -96,7 +98,7 @@ export default function AdminPanel() {
 
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <div className="font-medium text-slate-800">Add teammate</div>
-        <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <input
             required
             type="email"
@@ -117,7 +119,7 @@ export default function AdminPanel() {
             onChange={(e) => setForm({ ...form, role: e.target.value })}
           >
             <option value="station">Station staff</option>
-            <option value="manager">Sub-region manager</option>
+            <option value="manager">Manager</option>
             <option value="admin">Admin</option>
           </select>
           <select
@@ -126,7 +128,8 @@ export default function AdminPanel() {
             onChange={(e) => setForm({ ...form, scope_type: e.target.value, scope_value: "" })}
           >
             <option value="station">Sees: one station</option>
-            <option value="sub_region">Sees: one sub-region</option>
+            <option value="zone">Sees: one zone</option>
+            <option value="region">Sees: one region</option>
             <option value="all">Sees: everything</option>
           </select>
           {form.scope_type === "station" && (
@@ -139,22 +142,37 @@ export default function AdminPanel() {
               <option value="">Pick a station…</option>
               {stations.map((s) => (
                 <option key={s.station_code} value={s.station_name}>
-                  {s.station_name} ({s.sub_region})
+                  {s.station_name} ({s.zone})
                 </option>
               ))}
             </select>
           )}
-          {form.scope_type === "sub_region" && (
+          {form.scope_type === "zone" && (
             <select
               required
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
               value={form.scope_value}
               onChange={(e) => setForm({ ...form, scope_value: e.target.value })}
             >
-              <option value="">Pick a sub-region…</option>
-              {SUB_REGIONS.map((sr) => (
-                <option key={sr} value={sr}>
-                  {sr}
+              <option value="">Pick a zone…</option>
+              {allZones.map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
+          )}
+          {form.scope_type === "region" && (
+            <select
+              required
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              value={form.scope_value}
+              onChange={(e) => setForm({ ...form, scope_value: e.target.value })}
+            >
+              <option value="">Pick a region…</option>
+              {regions.map((r) => (
+                <option key={r.region} value={r.region}>
+                  {r.region}
                 </option>
               ))}
             </select>
@@ -186,7 +204,7 @@ export default function AdminPanel() {
                 <td className="px-4 py-2 text-slate-500">{u.display_name || "—"}</td>
                 <td className="px-4 py-2 capitalize">{u.role}</td>
                 <td className="px-4 py-2 text-slate-500">
-                  {u.scope_type === "all" ? "Everything" : u.scope_value}
+                  {u.scope_type === "all" ? "Everything" : `${u.scope_value} (${u.scope_type})`}
                 </td>
                 <td className="px-4 py-2 text-right">
                   <button onClick={() => remove(u.email)} className="text-xs text-status-critical hover:underline">

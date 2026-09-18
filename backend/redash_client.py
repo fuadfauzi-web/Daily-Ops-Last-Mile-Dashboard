@@ -11,8 +11,9 @@ REDASH_BASE_URL = os.getenv("REDASH_BASE_URL", "").rstrip("/")
 REDASH_API_KEY = os.getenv("REDASH_API_KEY", "")
 
 # Query IDs this app depends on (see backend/aggregate.py for how each is used).
-QUERY_HEALTH_V3 = 78  # parcel-level: in-hub / zero-attempt / on-hold / aging
+QUERY_HEALTH_V3 = 78  # parcel-level: in-hub / zero-attempt / on-hold / reschedule / age>3 / prior / OVFD
 QUERY_ACTIVE_MISSING = 1297  # open missing-parcel tickets
+QUERY_TOTAL_SHIPMENTS = 653  # per-hub total orders today ("Total Fresh")
 
 
 class RedashError(RuntimeError):

@@ -51,7 +51,7 @@ export default function App() {
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Southern Region Ops</h1>
+            <h1 className="text-lg font-semibold text-slate-900">Daily Ops Last Mile Dashboard</h1>
             <p className="text-xs text-slate-500">
               {me.display_name || me.email} · {me.role}
               {me.scope_type !== "all" && ` · ${me.scope_value}`}
