@@ -1,9 +1,9 @@
 """Daily Ops Last Mile Dashboard — backend.
 
-Pulls parcel-in-hub / zero-attempt / on-hold / missing-ticket / total-fresh / age>3 /
-reschedule / OVFD / prior-tag counts straight from Redash (queries 78, 1297, 653),
-aggregates them per station/zone/region nationwide, and serves them scoped to whoever
-is asking (role-based access, see auth.py).
+Pulls parcel-level and route-level data straight from Redash (queries 78, 1297, 653,
+512 -- see aggregate.py for exactly how each field is used), aggregates it per
+station/zone/region nationwide, and serves it scoped to whoever is asking
+(role-based access, see auth.py).
 
 Runtime contract: port 8000, GET /health, everything else under /api. See
 CLAUDE.md's "Substrait deployment" block for the platform's deploy rules.
@@ -19,10 +19,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import db
-from aggregate import DRILLDOWN_METRICS, build_station_metrics, rollup
+from aggregate import DRILLDOWN_METRICS, METRIC_KEYS, build_station_metrics, rollup
 from auth import CurrentUser, get_current_user
 from redash_client import (
-    QUERY_ACTIVE_MISSING, QUERY_HEALTH_V3, QUERY_TOTAL_SHIPMENTS, RedashError, fetch_query_results,
+    QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_TOTAL_SHIPMENTS,
+    RedashError, fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
@@ -32,10 +33,7 @@ log = logging.getLogger("dashboard")
 REFRESH_INTERVAL_SECONDS = 60 * 60  # hourly, per the project brief
 _refresh_task: asyncio.Task | None = None
 
-_METRIC_COLUMNS = (
-    "total_in_hub", "zero_attempt", "on_hold", "missing_open",
-    "total_fresh", "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
-)
+_METRIC_COLUMNS = METRIC_KEYS
 
 # Tracking-number lists behind each station's metric counts, for the UI's
 # click-a-number drill-down. In-memory only (not persisted) -- rebuilt on every
@@ -57,7 +55,8 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         health_rows = await fetch_query_results(QUERY_HEALTH_V3)
         missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
         shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
-        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows)
+        routed_rows = await fetch_query_results(QUERY_DELIVERY_PERFORMANCE)
+        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, routed_rows)
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at
@@ -162,35 +161,37 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
 # Dashboard
 # ---------------------------------------------------------------------------
 
-class StationRow(BaseModel):
+class MetricFields(BaseModel):
+    total_in_hub: int
+    zero_attempt: int
+    zero_attempt_gt_d0: int
+    on_hold: int
+    pending_ats: int
+    missing_open: int
+    missing_hub: int
+    missing_ship_in: int
+    total_fresh: int
+    age_gt3: int
+    age_gt6_ats: int
+    reschedule: int
+    still_ovfd: int
+    prior_d0: int
+    prior_gt_d0: int
+    cod_pct_hub: float
+    total_routed: int
+    attendance: int
+    cod_pct_routed: float
+
+
+class StationRow(MetricFields):
     station_code: str
     station_name: str
     zone: str
     region: str
-    total_in_hub: int
-    zero_attempt: int
-    on_hold: int
-    missing_open: int
-    total_fresh: int
-    age_gt3: int
-    reschedule: int
-    still_ovfd: int
-    prior_d0: int
-    prior_gt_d0: int
 
 
-class GroupRow(BaseModel):
+class GroupRow(MetricFields):
     key: str
-    total_in_hub: int
-    zero_attempt: int
-    on_hold: int
-    missing_open: int
-    total_fresh: int
-    age_gt3: int
-    reschedule: int
-    still_ovfd: int
-    prior_d0: int
-    prior_gt_d0: int
     station_count: int
 
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "Daily Ops Last Mile Dashboard",
     "version": "2.0.0",
-    "description": "Live nationwide operations dashboard for Ninja Van's last-mile fleet (143 stations across Southern, Northern, Klang Valley, East Coast, and East Malaysia). Pulls parcel-level data hourly from Redash and serves parcels-in-hub, zero-attempt, on-hold, total-fresh, age>3, reschedule, still-OVFD, prior-tag, and open missing-parcel counts by station, zone, and region, scoped to the signed-in user's role."
+    "description": "Live nationwide operations dashboard for Ninja Van's last-mile fleet (143 stations across Southern, Northern, Klang Valley, East Coast, and East Malaysia). Pulls parcel-level and route-level data hourly from Redash (queries 78, 1297, 653, 512) and serves in-hub/zero-attempt/on-hold/pending-ATS/aging/prior-tag/COD% counts plus Missing Hub-vs-Ship-in and Total Routed/Attendance, by station/zone/region, scoped to the signed-in user's role. Every count has a click-to-see-tracking-numbers drill-down except route-level totals and percentages."
   },
   "paths": {
     "/health": {
@@ -187,19 +187,29 @@
       },
       "MetricFields": {
         "type": "object",
+        "description": "All fields are grouped by last_scan_hub_name (where a parcel physically is right now) unless noted otherwise -- see backend/aggregate.py for the full formulas.",
         "properties": {
-          "total_in_hub": {"type": "integer", "description": "Parcels currently at the hub (not on hold, not dispatched)"},
+          "total_in_hub": {"type": "integer", "description": "last_scan_hub_name == dest_hub, excludes On Hold/On Vehicle for Delivery"},
           "zero_attempt": {"type": "integer", "description": "Subset of total_in_hub with 0 delivery attempts"},
+          "zero_attempt_gt_d0": {"type": "integer", "description": "Subset of zero_attempt aged >0 days"},
           "on_hold": {"type": "integer"},
-          "missing_open": {"type": "integer", "description": "Open missing-parcel tickets"},
-          "total_fresh": {"type": "integer", "description": "Total orders received today per hub"},
-          "age_gt3": {"type": "integer", "description": "Parcels aged >2 days at current hub, excluding On Hold"},
-          "reschedule": {"type": "integer", "description": "At hub with 1+ delivery attempts already made"},
+          "pending_ats": {"type": "integer", "description": "last_scan_hub_name != dest_hub -- not yet added to a shipment to its real destination"},
+          "missing_open": {"type": "integer", "description": "Open missing-parcel tickets, total (grouped by dest_hub_name)"},
+          "missing_hub": {"type": "integer", "description": "Subset of missing_open classified as a station-side issue"},
+          "missing_ship_in": {"type": "integer", "description": "Subset of missing_open classified as an in-transit issue"},
+          "total_fresh": {"type": "integer", "description": "Total orders received today per hub (query 653, grouped by dest_hub_name)"},
+          "age_gt3": {"type": "integer", "description": "total_in_hub aged >3 days, excludes On Hold/On Vehicle for Delivery"},
+          "age_gt6_ats": {"type": "integer", "description": "Subset of pending_ats aged >6 days"},
+          "reschedule": {"type": "integer", "description": "total_in_hub with 1+ delivery attempts already made"},
           "still_ovfd": {"type": "integer", "description": "Still On Vehicle for Delivery"},
-          "prior_d0": {"type": "integer", "description": "PRIOR-tagged, at hub, 0 attempts"},
-          "prior_gt_d0": {"type": "integer", "description": "PRIOR-tagged, aged >0 days, excluding On Hold"}
+          "prior_d0": {"type": "integer", "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, 0 attempts"},
+          "prior_gt_d0": {"type": "integer", "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, aged >0 days"},
+          "cod_pct_hub": {"type": "number", "description": "% of total_in_hub that is COD"},
+          "total_routed": {"type": "integer", "description": "From query 512, matched by full station name"},
+          "attendance": {"type": "integer", "description": "Unique drivers with a route today, from query 512, excluding names containing OPS"},
+          "cod_pct_routed": {"type": "number", "description": "% of total_routed that is COD, from query 512"}
         },
-        "required": ["total_in_hub", "zero_attempt", "on_hold", "missing_open", "total_fresh", "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0"]
+        "required": ["total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold", "pending_ats", "missing_open", "missing_hub", "missing_ship_in", "total_fresh", "age_gt3", "age_gt6_ats", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0", "cod_pct_hub", "total_routed", "attendance", "cod_pct_routed"]
       },
       "StationRow": {
         "allOf": [

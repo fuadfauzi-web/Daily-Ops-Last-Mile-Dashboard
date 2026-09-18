@@ -1,12 +1,14 @@
 description: >
   Live nationwide operations dashboard for Ninja Van's last-mile fleet (143 stations
   across Southern, Northern, Klang Valley, East Coast, and East Malaysia). Pulls
-  parcel-level data hourly from Redash and shows parcels-in-hub, zero-attempt,
-  on-hold, total-fresh, age>3, reschedule, still-OVFD, prior-tag, and open
-  missing-parcel counts by station, zone, and region. Access is role-based: admins
-  see everything and manage who can see what, region managers see one region, zone
-  managers see one zone, station staff see only their station. For Fleet Managers
-  and their regional/station teams.
+  parcel- and route-level data hourly from Redash and shows in-hub, zero-attempt,
+  on-hold, pending-ATS, aging, prior-tag, and COD% counts by station/zone/region
+  (grouped by where each parcel physically is, not just its intended destination),
+  a Missing Hub-vs-Ship-in split, and Total Routed/Attendance from route data. Every
+  count can be clicked to see the underlying tracking numbers. Access is role-based:
+  admins see everything and manage who can see what, region managers see one region,
+  zone managers see one zone, station staff see only their station. For Fleet
+  Managers and their regional/station teams.
 
 database: oceanbase
 

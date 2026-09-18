@@ -1,34 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-// Volume metrics: shown plainly, no severity coloring (more isn't "bad").
-const VOLUME_METRICS = new Set(["total_in_hub", "total_fresh", "still_ovfd"]);
-
-// total_fresh has no tracking-number source (query 653 is a per-hub count, not
-// parcel-level rows) -- every other metric here is backed by a TN list and clickable.
+// Metrics with an actual tracking-number list behind them server-side (mirrors
+// backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
+// total or a percentage, with nothing to list.
 const DRILLDOWN_METRICS = new Set([
-  "total_in_hub", "zero_attempt", "on_hold", "missing_open",
-  "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
+  "total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold", "pending_ats",
+  "missing_open", "missing_hub", "missing_ship_in",
+  "age_gt3", "age_gt6_ats", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
 ]);
+
+// Volume/context metrics: shown plainly, no severity coloring (more isn't "bad").
+const VOLUME_METRICS = new Set([
+  "total_fresh", "total_in_hub", "still_ovfd", "total_routed", "attendance",
+  "cod_pct_hub", "cod_pct_routed",
+]);
+
+const PERCENT_METRICS = new Set(["cod_pct_hub", "cod_pct_routed"]);
 
 const CORE_COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
   { key: "total_in_hub", label: "In Hub" },
   { key: "zero_attempt", label: "0 Attempt" },
   { key: "on_hold", label: "On Hold" },
-  { key: "missing_open", label: "Missing" },
+  { key: "missing_hub", label: "Missing (Hub)" },
+  { key: "missing_ship_in", label: "Missing (Ship-in)" },
 ];
 
 const EXTRA_COLUMNS = [
+  { key: "zero_attempt_gt_d0", label: "0 Attempt >D0" },
+  { key: "pending_ats", label: "Pending ATS" },
+  { key: "missing_open", label: "Missing (Total)" },
   { key: "age_gt3", label: "Age >3" },
+  { key: "age_gt6_ats", label: "Age >6 ATS" },
   { key: "reschedule", label: "Reschedule" },
   { key: "still_ovfd", label: "Still OVFD" },
   { key: "prior_d0", label: "Prior D0" },
   { key: "prior_gt_d0", label: "Prior >D0" },
+  { key: "cod_pct_hub", label: "COD % (Hub)" },
+  { key: "total_routed", label: "Total Routed" },
+  { key: "attendance", label: "Attendance" },
+  { key: "cod_pct_routed", label: "COD % (Routed)" },
 ];
 
 const ALL_COLUMNS = [...CORE_COLUMNS, ...EXTRA_COLUMNS];
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
+// Numerator/denominator pairs behind each percentage, for correctly weighted rollups.
+const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub", cod_pct_routed: "total_routed" };
 
 const TABS = [
   { key: "health", label: "Station Health", enabled: true },
@@ -37,13 +55,43 @@ const TABS = [
   { key: "aging", label: "Aging Details", enabled: false },
 ];
 
+function fmt(key, value) {
+  if (PERCENT_METRICS.has(key)) return `${value.toFixed(1)}%`;
+  return value.toLocaleString();
+}
+
 function sumMetrics(rows) {
   const zero = Object.fromEntries(METRIC_KEYS.map((k) => [k, 0]));
-  return rows.reduce((acc, r) => {
+  const withPctNumerators = rows.reduce((acc, r) => {
     const next = { ...acc };
-    METRIC_KEYS.forEach((k) => (next[k] = acc[k] + (r[k] || 0)));
+    METRIC_KEYS.forEach((k) => {
+      if (PERCENT_METRICS.has(k)) return;
+      next[k] = acc[k] + (r[k] || 0);
+    });
     return next;
   }, zero);
+  Object.entries(PERCENT_SOURCE).forEach(([pctKey, denomKey]) => {
+    const numerator = rows.reduce((sum, r) => sum + ((r[pctKey] || 0) / 100) * (r[denomKey] || 0), 0);
+    withPctNumerators[pctKey] = withPctNumerators[denomKey] ? Math.round((numerator / withPctNumerators[denomKey]) * 1000) / 10 : 0;
+  });
+  return withPctNumerators;
+}
+
+// Client-side equivalent of backend rollup(), used so "By region"/"By zone" reflect
+// whatever the user currently has filtered/searched for, not the server's unfiltered
+// totals.
+function localRollup(rows, groupKey) {
+  const groups = {};
+  rows.forEach((r) => {
+    const key = r[groupKey];
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+  return Object.entries(groups).map(([key, groupRows]) => ({
+    key,
+    station_count: groupRows.length,
+    ...sumMetrics(groupRows),
+  }));
 }
 
 function formatTime(iso) {
@@ -83,8 +131,8 @@ const SEVERITY_CLASS = {
   plain: "text-slate-700",
 };
 
-function MetricCell({ value, severityClass, clickable, onClick }) {
-  const content = value.toLocaleString();
+function MetricCell({ metricKey, value, severityClass, clickable, onClick }) {
+  const content = fmt(metricKey, value);
   if (!clickable) return <td className={`px-4 py-2 text-right tabular-nums ${severityClass}`}>{content}</td>;
   return (
     <td className={`px-4 py-2 text-right tabular-nums ${severityClass}`}>
@@ -171,7 +219,7 @@ function KpiBar({ totals }) {
       {CORE_COLUMNS.map((c) => (
         <div key={c.key} className="text-center">
           <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{c.label}</div>
-          <div className="text-lg font-semibold tabular-nums text-white">{totals[c.key].toLocaleString()}</div>
+          <div className="text-lg font-semibold tabular-nums text-white">{fmt(c.key, totals[c.key])}</div>
         </div>
       ))}
     </div>
@@ -207,6 +255,7 @@ function RegionCard({ region, active, totals, onClick }) {
 
 function GroupTable({ title, groupLabel, rows }) {
   if (rows.length <= 1) return null;
+  const sorted = [...rows].sort((a, b) => a.key.localeCompare(b.key));
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
       <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
@@ -224,12 +273,12 @@ function GroupTable({ title, groupLabel, rows }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((g) => (
+            {sorted.map((g) => (
               <tr key={g.key} className="border-t border-slate-100">
                 <td className="whitespace-nowrap px-4 py-2 font-medium text-slate-800">{g.key}</td>
                 {ALL_COLUMNS.map((c) => (
                   <td key={c.key} className="px-4 py-2 text-right tabular-nums text-slate-700">
-                    {g[c.key].toLocaleString()}
+                    {fmt(c.key, g[c.key])}
                   </td>
                 ))}
                 <td className="px-4 py-2 text-right tabular-nums text-slate-500">{g.station_count}</td>
@@ -303,10 +352,19 @@ export default function Dashboard({ me }) {
     return out;
   };
 
+  // Clicking the Region/Zone header sorts primarily by that column, tie-broken by
+  // 0-Attempt descending, so the worst offender in each region/zone surfaces first.
+  const isGroupSort = sortKey === "region" || sortKey === "zone";
+
   const filteredStations = useMemo(() => {
     if (!data) return [];
     const rows = applyFilters(data.stations);
     return [...rows].sort((a, b) => {
+      if (isGroupSort) {
+        const cmp = sortDir === "asc" ? a[sortKey].localeCompare(b[sortKey]) : b[sortKey].localeCompare(a[sortKey]);
+        if (cmp !== 0) return cmp;
+        return b.zero_attempt - a.zero_attempt;
+      }
       const av = a[sortKey];
       const bv = b[sortKey];
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -315,6 +373,9 @@ export default function Dashboard({ me }) {
   }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
   const totals = useMemo(() => sumMetrics(filteredStations), [filteredStations]);
+
+  const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
+  const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
 
   const regionTotals = useMemo(() => {
     if (!data) return {};
@@ -331,7 +392,7 @@ export default function Dashboard({ me }) {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else {
       setSortKey(key);
-      setSortDir("desc");
+      setSortDir(key === "region" || key === "zone" ? "asc" : "desc");
     }
   };
 
@@ -445,8 +506,8 @@ export default function Dashboard({ me }) {
         ))}
       </div>
 
-      <GroupTable title="By region" groupLabel="Region" rows={data.regions} />
-      <GroupTable title="By zone" groupLabel="Zone" rows={data.zones} />
+      <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} />
+      <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} />
 
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
@@ -460,7 +521,7 @@ export default function Dashboard({ me }) {
             Export CSV
           </button>
         </div>
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
               <tr>
@@ -470,8 +531,18 @@ export default function Dashboard({ me }) {
                 >
                   Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Region</th>
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Zone</th>
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
+                  onClick={() => toggleSort("region")}
+                >
+                  Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
+                  onClick={() => toggleSort("zone")}
+                >
+                  Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
                 {ALL_COLUMNS.map((c) => (
                   <th
                     key={c.key}
@@ -482,6 +553,13 @@ export default function Dashboard({ me }) {
                   </th>
                 ))}
               </tr>
+              {isGroupSort && (
+                <tr className="bg-slate-800 text-[10px] font-normal normal-case text-slate-300">
+                  <th className="sticky left-0 z-30 bg-slate-800 px-4 py-1" colSpan={3 + ALL_COLUMNS.length}>
+                    Sorted by {sortKey}, then 0-Attempt (highest first) within each {sortKey}
+                  </th>
+                </tr>
+              )}
             </thead>
             <tbody>
               {filteredStations.map((r) => (
@@ -498,6 +576,7 @@ export default function Dashboard({ me }) {
                     return (
                       <MetricCell
                         key={c.key}
+                        metricKey={c.key}
                         value={r[c.key]}
                         severityClass={cls}
                         clickable={DRILLDOWN_METRICS.has(c.key)}
@@ -518,13 +597,13 @@ export default function Dashboard({ me }) {
           </table>
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {filteredStations.length} rows · first column pinned, scroll horizontally for all metrics
+          {filteredStations.length} rows · first column pinned, header freezes while scrolling
         </div>
       </div>
       <p className="text-xs text-slate-400">
         Red/amber highlights are relative to what's currently on screen (top ~15% / ~50% of that column) — there's
-        no fixed SLA target wired in yet. "Total Fresh" isn't clickable — its source query only returns a per-hub
-        count, not individual tracking numbers.
+        no fixed SLA target wired in yet. Total Fresh, Total Routed, Attendance and the COD% columns aren't
+        clickable — their source queries don't return individual tracking numbers.
       </p>
     </div>
   );

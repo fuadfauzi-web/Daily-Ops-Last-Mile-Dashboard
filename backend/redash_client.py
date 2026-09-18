@@ -14,6 +14,7 @@ REDASH_API_KEY = os.getenv("REDASH_API_KEY", "")
 QUERY_HEALTH_V3 = 78  # parcel-level: in-hub / zero-attempt / on-hold / reschedule / age>3 / prior / OVFD
 QUERY_ACTIVE_MISSING = 1297  # open missing-parcel tickets
 QUERY_TOTAL_SHIPMENTS = 653  # per-hub total orders today ("Total Fresh")
+QUERY_DELIVERY_PERFORMANCE = 512  # route-level: Total Routed / Attendance / COD %
 
 
 class RedashError(RuntimeError):
