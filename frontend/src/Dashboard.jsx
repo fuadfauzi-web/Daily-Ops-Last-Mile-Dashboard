@@ -12,6 +12,7 @@ import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
 import TabBar from "./components/TabBar";
 import Skeleton from "./components/Skeleton";
+import ActionBoard from "./ActionBoard";
 import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
@@ -44,9 +45,8 @@ const CARD_STATS = [
   { key: "age_gt3", label: "Age>3" },
 ];
 
-// TODO(Phase 6): add an "action" Action Board tab and make it the default
-// landing tab for a first-ever visit instead of "health".
 const TABS = [
+  { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
   { key: "routed", label: "Routed View" },
@@ -127,8 +127,7 @@ export default function Dashboard({ me }) {
   const [sortKey, setSortKey] = useState("on_hold");
   const [sortDir, setSortDir] = useState("desc");
   // Remembers the last tab this user had open, per Phase 5 -- a first-ever
-  // visit (nothing saved yet) lands on Station Health until Phase 6 adds an
-  // Action Board to land on instead.
+  // visit (nothing saved yet) lands on the Action Board, per Phase 6.
   const tabStorageKey = `dashboard-tab-${me.email}`;
   const [tab, setTabState] = useState(() => {
     try {
@@ -137,7 +136,7 @@ export default function Dashboard({ me }) {
     } catch {
       /* private browsing / storage blocked -- just use the default */
     }
-    return "health";
+    return "action";
   });
   const setTab = (key) => {
     setTabState(key);
@@ -251,6 +250,14 @@ export default function Dashboard({ me }) {
     (data?.yesterday_stations || []).forEach((r) => m.set(r.station_code, r));
     return m;
   }, [data]);
+
+  // Restricted to exactly the same stations as filteredStations -- the
+  // Action Board aggregates by region/zone, and an aggregate delta is only
+  // meaningful if both days are summed over the same set of stations.
+  const filteredYesterdayStations = useMemo(() => {
+    const codes = new Set(filteredStations.map((s) => s.station_code));
+    return (data?.yesterday_stations || []).filter((s) => codes.has(s.station_code));
+  }, [filteredStations, data]);
 
   // Summary cards: one level below whatever's currently "effective" -- the filter
   // pick (for admins) or the user's own fixed scope. Region cards -> pick one ->
@@ -451,6 +458,26 @@ export default function Dashboard({ me }) {
       )}
 
       <TabBar tabs={TABS} activeKey={tab} onSelect={setTab} />
+
+      {tab === "action" && (
+        <ActionBoard
+          stations={filteredStations}
+          yesterdayStations={filteredYesterdayStations}
+          capturedAt={data.captured_at}
+          thresholdRows={thresholdRows}
+          me={me}
+          onFilterTo={(filterLevel, value, region) => {
+            if (filterLevel === "region") {
+              setRegionFilter(value);
+              setZoneFilter("all");
+            } else if (filterLevel === "zone") {
+              if (region) setRegionFilter(region);
+              setZoneFilter(value);
+            }
+            setTab("health");
+          }}
+        />
+      )}
 
       {tab === "health" && (
         <>
