@@ -16,9 +16,9 @@ export default function SummaryCard({ label, stats, active, clickable, onClick, 
       </div>
       <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}>
         {stats.map((s) => (
-          <div key={s.key} className="rounded bg-slate-50 px-1 py-1 text-center">
-            <div className="font-display text-[11px] uppercase text-slate-400">{s.label}</div>
-            <div className={`text-xs tabular-nums text-ink ${emphasis ? "font-extrabold" : "font-bold"}`}>{s.value}</div>
+          <div key={s.key} className="min-w-0 rounded bg-slate-50 px-1 py-1 text-center">
+            <div className="truncate font-display text-[11px] uppercase text-slate-400">{s.label}</div>
+            <div className={`truncate text-xs tabular-nums text-ink ${emphasis ? "font-extrabold" : "font-bold"}`}>{s.value}</div>
           </div>
         ))}
       </div>

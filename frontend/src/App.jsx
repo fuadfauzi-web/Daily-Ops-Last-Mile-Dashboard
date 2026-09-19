@@ -65,12 +65,12 @@ export default function App() {
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Logo />
-            <div className="hidden h-6 w-px bg-slate-200 sm:block" />
-            <h1 className="hidden font-display text-sm font-semibold tracking-tight text-ink sm:block">Daily Ops Last Mile</h1>
+            <div className="hidden h-6 w-px bg-slate-200 lg:block" />
+            <h1 className="hidden font-display text-sm font-semibold tracking-tight text-ink lg:block">Daily Ops Last Mile</h1>
           </div>
 
           {/* Desktop chrome: density toggle, nav, user block all inline. */}
-          <div className="hidden items-center gap-3 sm:flex">
+          <div className="hidden items-center gap-3 lg:flex">
             <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
               <button
                 onClick={() => setDensity("compact")}
@@ -119,14 +119,14 @@ export default function App() {
           <button
             onClick={() => setMenuOpen((v) => !v)}
             aria-label="Menu"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white sm:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white lg:hidden"
           >
             {initials}
           </button>
         </div>
 
         {menuOpen && (
-          <div className="border-t border-slate-100 bg-white px-4 py-3 sm:hidden">
+          <div className="border-t border-slate-100 bg-white px-4 py-3 lg:hidden">
             <div className="mb-3">
               <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
               <div className="text-xs uppercase tracking-wide text-slate-400">
