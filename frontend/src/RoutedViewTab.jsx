@@ -42,15 +42,15 @@ function formatTime(iso) {
 
 function successRateClass(rate) {
   if (rate < 70) return "text-status-critical font-semibold";
-  if (rate < 85) return "text-amber-600 font-medium";
+  if (rate < 85) return "text-status-warning font-medium";
   return "text-status-good font-semibold";
 }
 
 function completionRateClass(rate) {
   if (rate >= 100) return "text-status-good font-semibold";
-  if (rate >= 80) return "text-lime-600 font-medium";
-  if (rate >= 60) return "text-amber-600 font-medium";
-  if (rate >= 40) return "text-orange-600 font-medium";
+  if (rate >= 80) return "text-status-good font-medium";
+  if (rate >= 60) return "text-status-warning font-medium";
+  if (rate >= 40) return "text-status-warning font-semibold";
   return "text-status-critical font-semibold";
 }
 
@@ -205,14 +205,14 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
               <tr>
                 {showRegionCol && (
                   <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Region</th>
                 )}
                 {showZoneCol && <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Zone</th>}
                 <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                   onClick={() => toggleSort("name")}
                 >
                   {level === "driver" ? "Driver" : LEVELS.find((l) => l.key === level).label}{" "}
@@ -220,7 +220,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                 </th>
                 {isGroupLevel && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("station_count")}
                   >
                     Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
@@ -228,7 +228,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                 )}
                 {showDriverStationCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("station_name")}
                   >
                     Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
@@ -236,14 +236,14 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                 )}
                 {!isDriverLevel && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("attendance")}
                   >
                     Attendance {sortKey === "attendance" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 )}
                 <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                   onClick={() => toggleSort("total_routed")}
                 >
                   Total Routed {sortKey === "total_routed" && (sortDir === "asc" ? "↑" : "↓")}
@@ -251,7 +251,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                 {columns.map((c) => (
                   <th
                     key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort(c.key)}
                   >
                     {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}

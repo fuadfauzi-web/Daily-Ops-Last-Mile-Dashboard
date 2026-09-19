@@ -197,7 +197,7 @@ export default function AdminPanel({ me }) {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-status-critical ring-1 ring-red-200">
+        <div className="rounded-lg bg-status-critical/5 px-4 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">
           {error}
         </div>
       )}
@@ -229,7 +229,7 @@ export default function AdminPanel({ me }) {
             <button
               onClick={doRefresh}
               disabled={refreshing}
-              className="rounded-lg bg-series1 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {refreshing ? "Refreshing…" : "Refresh now"}
             </button>
@@ -346,7 +346,7 @@ export default function AdminPanel({ me }) {
             )}
             <button
               type="submit"
-              className="rounded-lg bg-series1 px-4 py-1.5 text-sm font-medium text-white sm:col-span-2 lg:col-span-1"
+              className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white sm:col-span-2 lg:col-span-1"
             >
               {editingEmail ? "Save changes" : "Add"}
             </button>
@@ -363,7 +363,7 @@ export default function AdminPanel({ me }) {
               >
                 Download template (.csv)
               </button>
-              <label className="rounded-lg bg-series1 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 cursor-pointer">
+              <label className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 cursor-pointer">
                 Upload filled-in CSV
                 <input type="file" accept=".csv" onChange={bulkFileChange} className="hidden" />
               </label>
@@ -384,7 +384,7 @@ export default function AdminPanel({ me }) {
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
                 />
-                <button type="submit" className="rounded-lg bg-series1 px-4 py-1.5 text-sm font-medium text-white">
+                <button type="submit" className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white">
                   Add all
                 </button>
               </form>
@@ -436,7 +436,7 @@ export default function AdminPanel({ me }) {
                   </td>
                   <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                   <td className="px-4 py-2 text-right">
-                    <button onClick={() => startEdit(u)} className="mr-3 text-xs text-series1 hover:underline">
+                    <button onClick={() => startEdit(u)} className="mr-3 text-xs text-brand hover:underline">
                       Edit
                     </button>
                     <button onClick={() => remove(u.email)} className="text-xs text-status-critical hover:underline">

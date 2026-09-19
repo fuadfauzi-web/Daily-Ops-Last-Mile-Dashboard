@@ -158,11 +158,11 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
               <tr>
                 {!hideRegionCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("region")}
                   >
                     Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
@@ -170,14 +170,14 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
                 )}
                 {!hideZoneCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("zone")}
                   >
                     Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 )}
                 <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                   onClick={() => toggleSort("station_name")}
                 >
                   Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
@@ -185,7 +185,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
                 {COLUMNS.map((c) => (
                   <th
                     key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort(c.key)}
                   >
                     {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}

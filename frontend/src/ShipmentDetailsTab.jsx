@@ -18,10 +18,10 @@ function formatTime(iso) {
 // "after 10am pre-warning, after 11am warning, after 12pm red flag"
 function tripBadgeClass(isoTime) {
   const hour = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T")).getHours();
-  if (hour >= 12) return "bg-red-100 text-red-700";
-  if (hour >= 11) return "bg-amber-100 text-amber-700";
-  if (hour >= 10) return "bg-blue-100 text-blue-700";
-  return "bg-green-100 text-green-700";
+  if (hour >= 12) return "bg-status-critical/10 text-status-critical";
+  if (hour >= 11) return "bg-status-warning/10 text-status-warning";
+  if (hour >= 10) return "bg-status-neutral/10 text-status-neutral";
+  return "bg-status-good/10 text-status-good";
 }
 
 function tripLabel(isoTime) {
@@ -175,11 +175,11 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
               <tr>
                 {!hideRegionCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("region")}
                   >
                     Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
@@ -187,14 +187,14 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                 )}
                 {!hideZoneCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort("zone")}
                   >
                     Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 )}
                 <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                   onClick={() => toggleSort("station_name")}
                 >
                   Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
@@ -202,7 +202,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                 {COLUMNS.map((c) => (
                   <th
                     key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleSort(c.key)}
                   >
                     {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -210,7 +210,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                 ))}
                 <th className="whitespace-nowrap px-4 py-2 text-left font-medium">LH Timing (1st / 2nd trip)</th>
                 <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                   onClick={() => toggleSort("process_time_minutes")}
                 >
                   Process Time {sortKey === "process_time_minutes" && (sortDir === "asc" ? "↑" : "↓")}

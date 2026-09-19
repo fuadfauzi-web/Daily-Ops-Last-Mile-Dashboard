@@ -65,25 +65,25 @@ function GroupTable({ title, groupLabel, rows }) {
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
+      <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">{title}</div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
               <th
-                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-medium hover:bg-slate-200"
+                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-display font-medium hover:bg-slate-200"
                 onClick={() => toggleSort("key")}
               >
                 {groupLabel} {sortKey === "key" && (sortDir === "asc" ? "↑" : "↓")}
               </th>
               <th
-                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-slate-200"
                 onClick={() => toggleSort("station_count")}
               >
                 Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
               </th>
               <th
-                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-slate-200"
                 onClick={() => toggleSort("total")}
               >
                 Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
@@ -91,7 +91,7 @@ function GroupTable({ title, groupLabel, rows }) {
               {AGE_BUCKETS.map((b) => (
                 <th
                   key={b.key}
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-slate-200"
                   onClick={() => toggleSort(b.key)}
                 >
                   {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -227,16 +227,16 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
           <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={zoneGroups} />
 
           <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-            <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
+            <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">
               {data.type_label} — pivot
             </div>
             <div className="max-h-[50vh] overflow-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+                <thead className="sticky top-0 z-20 bg-ink text-left text-white">
                   <tr>
                     {!hideRegionCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("region")}
                       >
                         Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
@@ -244,20 +244,20 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                     )}
                     {!hideZoneCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("zone")}
                       >
                         Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                       </th>
                     )}
                     <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                       onClick={() => toggleSort("station_name")}
                     >
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
                     <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                       onClick={() => toggleSort("total")}
                     >
                       Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
@@ -265,7 +265,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                     {AGE_BUCKETS.map((b) => (
                       <th
                         key={b.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort(b.key)}
                       >
                         {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -306,15 +306,15 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
           </div>
 
           <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-            <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
+            <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">
               {data.type_label} — tracking numbers
             </div>
             <div className="max-h-[60vh] overflow-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+                <thead className="sticky top-0 z-20 bg-ink text-left text-white">
                   <tr>
                     <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                       onClick={() => toggleTnSort("station_name")}
                     >
                       Station {tnSortKey === "station_name" && (tnSortDir === "asc" ? "↑" : "↓")}
@@ -322,7 +322,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                     {TN_COLUMNS.map((c) => (
                       <th
                         key={c.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleTnSort(c.key)}
                       >
                         {c.label} {tnSortKey === c.key && (tnSortDir === "asc" ? "↑" : "↓")}

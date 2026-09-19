@@ -96,13 +96,13 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">Tracking numbers</div>
+      <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">Tracking numbers</div>
       <div className="max-h-[50vh] overflow-auto">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+          <thead className="sticky top-0 z-20 bg-ink text-left text-white">
             <tr>
               <th
-                className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                 onClick={() => toggleTnSort("station_name")}
               >
                 Station {tnSortKey === "station_name" && (tnSortDir === "asc" ? "↑" : "↓")}
@@ -110,7 +110,7 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
               {TN_COLUMNS.map((c) => (
                 <th
                   key={c.key}
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                   onClick={() => toggleTnSort(c.key)}
                 >
                   {c.label} {tnSortKey === c.key && (tnSortDir === "asc" ? "↑" : "↓")}
@@ -237,11 +237,11 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
           <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
             <div className="max-h-[40vh] overflow-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+                <thead className="sticky top-0 z-20 bg-ink text-left text-white">
                   <tr>
                     {!hideRegionCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("region")}
                       >
                         Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
@@ -249,14 +249,14 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
                     )}
                     {!hideZoneCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("zone")}
                       >
                         Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                       </th>
                     )}
                     <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                       onClick={() => toggleSort("station_name")}
                     >
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
@@ -264,7 +264,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
                     {STAGE_TN_COLUMNS.map((c) => (
                       <th
                         key={c.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort(c.key)}
                       >
                         {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -396,11 +396,11 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
           <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
             <div className="max-h-[45vh] overflow-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+                <thead className="sticky top-0 z-20 bg-ink text-left text-white">
                   <tr>
                     {!hideRegionCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("region")}
                       >
                         Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
@@ -408,20 +408,20 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
                     )}
                     {!hideZoneCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("zone")}
                       >
                         Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                       </th>
                     )}
                     <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                       onClick={() => toggleSort("station_name")}
                     >
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
                     <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                       onClick={() => toggleSort("total")}
                     >
                       Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
@@ -429,7 +429,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
                     {AGE_BUCKETS.map((b) => (
                       <th
                         key={b.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort(b.key)}
                       >
                         {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}

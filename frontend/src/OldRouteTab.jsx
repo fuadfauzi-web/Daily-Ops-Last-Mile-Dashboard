@@ -138,14 +138,14 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
       <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
 
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">By station</div>
+        <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">By station</div>
         <div className="max-h-[40vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
               <tr>
                 {!hideRegionCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleStationSort("region")}
                   >
                     Region {stationSortKey === "region" && (stationSortDir === "asc" ? "↑" : "↓")}
@@ -153,20 +153,20 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
                 )}
                 {!hideZoneCol && (
                   <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleStationSort("zone")}
                   >
                     Zone {stationSortKey === "zone" && (stationSortDir === "asc" ? "↑" : "↓")}
                   </th>
                 )}
                 <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                   onClick={() => toggleStationSort("station_name")}
                 >
                   Station {stationSortKey === "station_name" && (stationSortDir === "asc" ? "↑" : "↓")}
                 </th>
                 <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                   onClick={() => toggleStationSort("total_tn")}
                 >
                   Total TN {stationSortKey === "total_tn" && (stationSortDir === "asc" ? "↑" : "↓")}
@@ -210,10 +210,10 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
         </div>
         <div className="max-h-[40vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
               <tr>
                 <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                   onClick={() => toggleDriverSort("driver_name")}
                 >
                   Driver {driverSortKey === "driver_name" && (driverSortDir === "asc" ? "↑" : "↓")}
@@ -222,7 +222,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
                   <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Station</th>
                 )}
                 <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                   onClick={() => toggleDriverSort("total_tn")}
                 >
                   Total TN {driverSortKey === "total_tn" && (driverSortDir === "asc" ? "↑" : "↓")}
@@ -268,10 +268,10 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
         </div>
         <div className="max-h-[55vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
               <tr>
                 <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                   onClick={() => toggleTnSort("station_name")}
                 >
                   Station {tnSortKey === "station_name" && (tnSortDir === "asc" ? "↑" : "↓")}
@@ -279,7 +279,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
                 {TN_COLUMNS.map((c) => (
                   <th
                     key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                     onClick={() => toggleTnSort(c.key)}
                   >
                     {c.label} {tnSortKey === c.key && (tnSortDir === "asc" ? "↑" : "↓")}

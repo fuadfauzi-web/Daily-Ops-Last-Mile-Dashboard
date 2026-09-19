@@ -141,7 +141,7 @@ function useSeverityRanks(rows) {
 
 const SEVERITY_CLASS = {
   critical: "font-semibold text-status-critical",
-  warning: "font-medium text-amber-600",
+  warning: "font-medium text-status-warning",
   plain: "text-slate-700",
 };
 
@@ -233,17 +233,17 @@ function SummaryCard({ label, active, clickable, totals, onClick, emphasis }) {
     <Wrapper
       onClick={clickable ? onClick : undefined}
       className={`rounded-lg bg-white p-3 text-left ring-1 ring-slate-200 ${
-        emphasis ? "border-t-[6px] border-t-brand" : `border-t-4 ${active ? "border-t-status-good bg-green-50/40" : "border-t-brand"}`
+        emphasis ? "border-t-[6px] border-t-brand" : `border-t-4 ${active ? "border-t-status-good bg-status-good/10" : "border-t-brand"}`
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between">
-        <span className={`text-xs text-slate-800 ${emphasis ? "font-extrabold" : "font-semibold"}`}>{label}</span>
+        <span className={`font-display text-xs text-ink ${emphasis ? "font-extrabold" : "font-semibold"}`}>{label}</span>
       </div>
       <div className="grid grid-cols-5 gap-1">
         {CARD_STATS.map((s) => (
           <div key={s.key} className="rounded bg-slate-50 px-1 py-1 text-center">
-            <div className="text-[8px] uppercase text-slate-400">{s.label}</div>
-            <div className={`text-xs text-slate-800 ${emphasis ? "font-extrabold" : "font-bold"}`}>{fmt(s.key, totals[s.key])}</div>
+            <div className="font-display text-[11px] uppercase text-slate-400">{s.label}</div>
+            <div className={`text-xs tabular-nums text-ink ${emphasis ? "font-extrabold" : "font-bold"}`}>{fmt(s.key, totals[s.key])}</div>
           </div>
         ))}
       </div>
@@ -274,19 +274,19 @@ function GroupTable({ title, groupLabel, rows }) {
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
+      <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">{title}</div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
               <th
-                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-medium hover:bg-slate-200"
+                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-display font-medium hover:bg-slate-200"
                 onClick={() => toggleSort("key")}
               >
                 {groupLabel} {sortKey === "key" && (sortDir === "asc" ? "↑" : "↓")}
               </th>
               <th
-                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-slate-200"
                 onClick={() => toggleSort("station_count")}
               >
                 Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
@@ -294,7 +294,7 @@ function GroupTable({ title, groupLabel, rows }) {
               {ALL_COLUMNS.map((c) => (
                 <th
                   key={c.key}
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-slate-200"
                   onClick={() => toggleSort(c.key)}
                 >
                   {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -538,7 +538,7 @@ export default function Dashboard({ me }) {
 
       {showFilterBar && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
-          <span className="text-xs font-semibold text-slate-700">Filter:</span>
+          <span className="font-display text-xs font-semibold text-slate-700">Filter:</span>
           {canPickRegion && (
             <select
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
@@ -590,7 +590,7 @@ export default function Dashboard({ me }) {
                 setRegionFilter("all");
                 setZoneFilter("all");
               }}
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+              className="rounded-lg bg-ink px-3 py-1.5 font-display text-xs font-medium text-white"
             >
               Clear
             </button>
@@ -611,7 +611,7 @@ export default function Dashboard({ me }) {
             disabled={!t.enabled}
             onClick={() => t.enabled && setTab(t.key)}
             title={t.enabled ? undefined : "Coming soon"}
-            className={`rounded px-3 py-1.5 text-sm font-semibold ${
+            className={`rounded px-3 py-1.5 font-display text-sm font-semibold ${
               tab === t.key
                 ? "bg-brand text-white"
                 : t.enabled
@@ -620,7 +620,7 @@ export default function Dashboard({ me }) {
             }`}
           >
             {t.label}
-            {!t.enabled && <span className="ml-1.5 text-[9px] uppercase tracking-wide">soon</span>}
+            {!t.enabled && <span className="ml-1.5 text-[11px] uppercase tracking-wide">soon</span>}
           </button>
         ))}
       </div>
@@ -632,24 +632,24 @@ export default function Dashboard({ me }) {
 
           <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-              <div className="text-sm font-medium text-slate-700">
+              <div className="font-display text-sm font-medium text-slate-700">
                 Station Health{" "}
                 <span className="font-normal text-slate-400">— click a number to see tracking IDs</span>
               </div>
               <button
                 onClick={() => exportCsv(filteredStations)}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
                 Export CSV
               </button>
             </div>
             <div className="max-h-[70vh] overflow-auto">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+                <thead className="sticky top-0 z-20 bg-ink text-left text-white">
                   <tr>
                     {!hideRegionCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("region")}
                       >
                         Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
@@ -657,14 +657,14 @@ export default function Dashboard({ me }) {
                     )}
                     {!hideZoneCol && (
                       <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort("zone")}
                       >
                         Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                       </th>
                     )}
                     <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
                       onClick={() => toggleSort("station_name")}
                     >
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
@@ -672,7 +672,7 @@ export default function Dashboard({ me }) {
                     {ALL_COLUMNS.map((c) => (
                       <th
                         key={c.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
                         onClick={() => toggleSort(c.key)}
                       >
                         {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
