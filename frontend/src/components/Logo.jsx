@@ -9,16 +9,19 @@ import { useState } from "react";
 const logoFiles = import.meta.glob("../assets/ninjavan-logo.*", { eager: true, query: "?url", import: "default" });
 const logoSrc = Object.values(logoFiles)[0] || null;
 
-export default function Logo({ className = "h-6 w-6" }) {
+// heightClass sizes the real (wide) wordmark by height only, width auto, so its
+// aspect ratio is never squashed. The fallback has no real aspect ratio to keep,
+// so it gets an explicit square size instead.
+export default function Logo({ heightClass = "h-7", fallbackSize = "h-7 w-7" }) {
   const [failed, setFailed] = useState(false);
   if (!logoSrc || failed) {
-    return <div className={`shrink-0 rounded-sm bg-brand ${className}`} />;
+    return <div className={`shrink-0 rounded-sm bg-brand ${fallbackSize}`} />;
   }
   return (
     <img
       src={logoSrc}
       alt="Ninja Van"
-      className={`shrink-0 object-contain ${className}`}
+      className={`shrink-0 w-auto ${heightClass}`}
       onError={() => setFailed(true)}
     />
   );

@@ -58,9 +58,10 @@ export default function App() {
     <div className="min-h-screen bg-slate-50">
       <header className="border-b-[3px] border-brand bg-white">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <Logo className="h-7 w-7" />
-            <h1 className="font-display text-base font-semibold tracking-tight text-ink">Daily Ops Last Mile Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <Logo />
+            <div className="h-6 w-px bg-slate-200" />
+            <h1 className="font-display text-sm font-semibold tracking-tight text-ink">Daily Ops Last Mile</h1>
           </div>
           <div className="flex items-center gap-3">
             {(me.role === "admin" || me.role === "manager" || me.role === "region") && (
