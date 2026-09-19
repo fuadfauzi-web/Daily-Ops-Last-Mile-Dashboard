@@ -1,7 +1,7 @@
 <!-- BEGIN substrait-app contract (v7) — managed by the substrait plugin (link/deploy); edits inside this block are overwritten on update. Delete the whole block to opt out. -->
 ## Substrait deployment
 
-**Linked app:** `southern-ops-dashboard-staging` — https://southern-ops-dashboard-staging--dev.ninjavan.apps.substrait.build
+**Linked app:** `southern-ops-dashboard` — https://southern-ops-dashboard--dev.ninjavan.apps.substrait.build
 
 This project deploys to the **Substrait platform** (linked via the gitignored
 `.substrait/config.json`). Deploy with **`/substrait:deploy`** (packages source-only,
