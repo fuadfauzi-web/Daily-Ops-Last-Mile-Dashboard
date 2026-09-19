@@ -23,6 +23,9 @@ const AGE_BUCKETS = [
   { key: "age_7_plus", label: "Age 7+" },
 ];
 
+// Mirrors backend/main.py's AGING_TN_ROWS_CAP -- for the truncation notice only.
+const AGING_TN_ROWS_CAP = 2000;
+
 const TN_COLUMNS = [
   { key: "tracking_number", label: "Tracking Number" },
   { key: "status", label: "Status" },
@@ -352,6 +355,12 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             </div>
             <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
               {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by last_scan_hub_name, not dest_hub
+              {data.tn_rows_truncated && (
+                <span className="ml-1 font-medium text-status-critical">
+                  · showing the oldest {AGING_TN_ROWS_CAP.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
+                  nationwide — filter by region/zone/station to see the rest
+                </span>
+              )}
             </div>
           </div>
         </>

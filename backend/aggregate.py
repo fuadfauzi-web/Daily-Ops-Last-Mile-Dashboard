@@ -188,7 +188,7 @@ def build_station_metrics(
             if attempts == 0:
                 row["pending_ats_zero_attempt"] += 1
                 tns["pending_ats_zero_attempt"].append(tn)
-            else:
+            elif status == "Arrived at Sorting Hub":
                 row["pending_ats_attempted"] += 1
                 tns["pending_ats_attempted"].append(tn)
             continue
@@ -368,6 +368,7 @@ def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[di
     """Sums Shipment Details station_rows up to zone or region level. lh_trips isn't
     meaningful summed across stations, so group rows omit it."""
     groups: dict[str, dict] = {}
+    process_time_samples: dict[str, list[float]] = {}
     for row in station_rows:
         key = row[group_key]
         g = groups.setdefault(
@@ -376,8 +377,12 @@ def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[di
         for k in SHIPMENT_DETAIL_KEYS:
             g[k] += row[k]
         g["station_count"] += 1
-    for g in groups.values():
+        if row["process_time_minutes"] is not None:
+            process_time_samples.setdefault(key, []).append(row["process_time_minutes"])
+    for key, g in groups.items():
         g["fresh_attempt_pct"] = round(g["fresh_attempt_count"] / g["total_fresh"] * 100, 1) if g["total_fresh"] else 0.0
+        samples = process_time_samples.get(key)
+        g["process_time_minutes"] = round(sum(samples) / len(samples), 1) if samples else None
     return list(groups.values())
 
 
@@ -685,6 +690,7 @@ def build_shipper_watch(
     # the correct hub and that hub needs to attempt them" -- read as: only a
     # parcel's correct hub is on the hook for it, so exclude rows where it's
     # elsewhere. ASSUMPTION -- confirm this reading is right once live.
+    _ZALORA_ZERO_ATTEMPT_EXCLUDED_STATUSES = {"En-route to Sorting Hub", "On Vehicle for Delivery", "Pending Reschedule"}
     for r in zalora_rows:
         if r.get("dest_hub_name") != r.get("last_sweep_hub_name"):
             continue
@@ -693,7 +699,8 @@ def build_shipper_watch(
         if row is None:
             continue
         tn = r.get("tracking_id")
-        if (r.get("delivery_attempts") or 0) == 0:
+        status = r.get("granular_status")
+        if (r.get("delivery_attempts") or 0) == 0 and status not in _ZALORA_ZERO_ATTEMPT_EXCLUDED_STATUSES:
             row["zalora_zero_attempt"] += 1
             tn_details[hub]["zalora_zero_attempt"].append(tn)
         if r.get("granular_status") == "On Vehicle for Delivery":
@@ -853,5 +860,73 @@ def rollup_aging(station_rows: list[dict], group_key: str) -> list[dict]:
         )
         for k in AGING_KEYS:
             g[k] += row[k]
+        g["station_count"] += 1
+    return list(groups.values())
+
+
+# ---------------------------------------------------------------------------
+# Old Route tab (query 1451, "XB: Aging OVFD Parcels") -- tracking numbers still
+# stuck on the route they were first put on, days ago. The query itself already
+# filters to "routed to last mile hubs, rts_flag=0, days_from_driver_inbound>=1",
+# so every row here already qualifies as stuck; this just aggregates/lists them.
+# Columns used: tracking_id, route_id, route_hub_name (a hub code, same as
+# elsewhere), days_since_driver_inbound ("Age"), driver_name (same "<abbr> - <pos>
+# - <name>" format as query 512), shipper_name, route_date.
+# ---------------------------------------------------------------------------
+
+OLD_ROUTE_ROWS_CAP = 2000  # same rationale as Aging Details' cap -- bound payload size
+
+
+def _empty_old_route_row(hub_code: str) -> dict:
+    name, _full, zone, region = HUBS[hub_code]
+    return {"station_code": hub_code, "station_name": name, "zone": zone, "region": region, "total_tn": 0}
+
+
+def build_old_route(old_route_rows: list[dict]) -> tuple[dict[str, dict], list[dict], list[dict]]:
+    """Returns ({hub_code: pivot_row}, [tn_row, ...], [driver_row, ...])."""
+    by_station = {hub: _empty_old_route_row(hub) for hub in HUBS}
+    tn_rows: list[dict] = []
+    driver_agg: dict[str, dict] = {}
+
+    for r in old_route_rows:
+        hub = r.get("route_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        row["total_tn"] += 1
+        age = r.get("days_since_driver_inbound") or 0
+        driver_name = r.get("driver_name") or ""
+        tn_rows.append({
+            "station_code": hub, "station_name": row["station_name"], "zone": row["zone"], "region": row["region"],
+            "tracking_number": r.get("tracking_id"), "route_id": r.get("route_id"),
+            "route_date": r.get("route_date"), "age": age,
+            "driver_name": driver_name, "shipper_name": r.get("shipper_name"),
+        })
+
+        parsed = _parse_driver(driver_name)
+        d = driver_agg.setdefault(parsed["name"], {
+            "driver_name": parsed["name"], "driver_type": parsed["label"], "current_hub": hub, "total_tn": 0,
+        })
+        d["total_tn"] += 1
+
+    driver_rows = []
+    for d in driver_agg.values():
+        hub_info = HUBS.get(d["current_hub"])
+        driver_rows.append({
+            "driver_name": d["driver_name"], "driver_type": d["driver_type"],
+            "station_name": hub_info[0] if hub_info else d["current_hub"],
+            "zone": hub_info[2] if hub_info else None, "region": hub_info[3] if hub_info else None,
+            "total_tn": d["total_tn"],
+        })
+
+    return by_station, tn_rows, driver_rows
+
+
+def rollup_old_route(station_rows: list[dict], group_key: str) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(key, {group_key: key, "region": row["region"], "station_count": 0, "total_tn": 0})
+        g["total_tn"] += row["total_tn"]
         g["station_count"] += 1
     return list(groups.values())

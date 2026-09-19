@@ -39,6 +39,7 @@ export const api = {
       `/api/shipper-drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`
     ),
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
+  oldRoute: () => request("/api/old-route"),
   users: {
     list: () => request("/api/admin/users"),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),

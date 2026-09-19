@@ -485,6 +485,23 @@
           }
         }
       }
+    },
+    "/api/old-route": {
+      "get": {
+        "summary": "Return the latest Old Route snapshot -- tracking numbers still stuck on their original Route ID/date (query 1451) -- at region/zone/station/driver level, scoped to the caller.",
+        "responses": {
+          "200": {
+            "description": "Latest snapshot, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OldRouteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1702,6 +1719,13 @@
               "$ref": "#/components/schemas/AgingRow"
             },
             "description": "Full TN-level detail for this type, scoped to the caller"
+          },
+          "tn_rows_total": {
+            "type": "integer",
+            "description": "True count before the 2000-row cap"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1712,7 +1736,9 @@
           "stations",
           "zones",
           "regions",
-          "tn_rows"
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
         ]
       },
       "AgingRow": {
@@ -1757,6 +1783,183 @@
           "station_name",
           "attempts",
           "age"
+        ]
+      },
+      "OldRouteStationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "total_tn"
+        ]
+      },
+      "OldRouteGroupRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "station_count": {
+            "type": "integer"
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "region",
+          "station_count",
+          "total_tn"
+        ]
+      },
+      "OldRouteTnRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "tracking_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "route_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "route_date": {
+            "type": "string",
+            "nullable": true
+          },
+          "age": {
+            "type": "integer",
+            "description": "days_since_driver_inbound"
+          },
+          "driver_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipper_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "age"
+        ]
+      },
+      "OldRouteDriverRow": {
+        "type": "object",
+        "properties": {
+          "driver_name": {
+            "type": "string"
+          },
+          "driver_type": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "zone": {
+            "type": "string",
+            "nullable": true
+          },
+          "region": {
+            "type": "string",
+            "nullable": true
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "driver_name",
+          "driver_type",
+          "total_tn"
+        ]
+      },
+      "OldRouteResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OldRouteStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OldRouteGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OldRouteGroupRow"
+            }
+          },
+          "drivers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OldRouteDriverRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OldRouteTnRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions",
+          "drivers",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
         ]
       }
     }

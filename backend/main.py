@@ -1,10 +1,10 @@
 """Daily Ops Last Mile Dashboard — backend.
 
 Pulls parcel-level and route-level data straight from Redash (queries 78, 1297, 653,
-512, 1239, 1500, 1296, 1585 -- see aggregate.py for exactly how each field is used),
-aggregates it per station/zone/region nationwide across five views (Station Health,
-Shipment Details, Routed View, Shipper Watch, Aging Details), and serves it scoped to
-whoever is asking (role-based access, see auth.py).
+512, 1239, 1500, 1296, 1585, 58, 1451 -- see aggregate.py for exactly how each field
+is used), aggregates it per station/zone/region nationwide across six views (Station
+Health, Shipment Details, Routed View, Shipper Watch, Aging Details, Old Route), and
+serves it scoped to whoever is asking (role-based access, see auth.py).
 
 Runtime contract: port 8000, GET /health, everything else under /api. See
 CLAUDE.md's "Substrait deployment" block for the platform's deploy rules.
@@ -22,16 +22,17 @@ from pydantic import BaseModel
 import db
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, METRIC_KEYS,
-    ROUTED_STATION_KEYS, SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS,
-    SHIPPER_WATCH_KEYS,
-    build_aging_details, build_routed_view, build_shipment_details, build_shipper_watch, build_station_metrics,
-    merge_routed_into_station_metrics, rollup, rollup_aging, rollup_routed, rollup_shipment_details,
-    rollup_shipper_watch,
+    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS,
+    SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
+    build_aging_details, build_old_route, build_routed_view, build_shipment_details, build_shipper_watch,
+    build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging, rollup_old_route, rollup_routed,
+    rollup_shipment_details, rollup_shipper_watch,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
-    QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_RESTOCK_NXD,
-    QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP, QUERY_ZALORA_NXD, RedashError, fetch_query_results,
+    QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
+    QUERY_RESTOCK_NXD, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP, QUERY_ZALORA_NXD, RedashError,
+    fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
@@ -70,6 +71,11 @@ _shipper_tn_cache_captured_at: str | None = None
 _aging_rows_cache: dict[str, list[dict]] = {t: [] for t in AGING_TYPES}
 _aging_rows_captured_at: str | None = None
 
+# Old Route's TN-level rows and driver rollup, same in-memory pattern.
+_old_route_rows: list[dict] = []
+_old_route_drivers: list[dict] = []
+_old_route_captured_at: str | None = None
+
 _SHIPMENT_COLUMNS = SHIPMENT_DETAIL_KEYS + ("fresh_attempt_pct", "process_time_minutes")
 _ROUTED_COLUMNS = ROUTED_STATION_KEYS + ("cod_pct", "success_rate", "completion_rate")
 _SHIPPER_COLUMNS = SHIPPER_WATCH_KEYS
@@ -93,6 +99,7 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
         restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
         unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
+        old_route_raw_rows = await fetch_query_results(QUERY_OLD_ROUTE)
 
         by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
@@ -100,10 +107,12 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
+        old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
         global _shipper_tn_cache_captured_at, _aging_rows_captured_at
+        global _old_route_rows, _old_route_drivers, _old_route_captured_at
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -118,6 +127,9 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         _aging_rows_cache.clear()
         _aging_rows_cache.update(aging_by_type_rows)
         _aging_rows_captured_at = captured_at.isoformat()
+        _old_route_rows = old_route_tn_rows
+        _old_route_drivers = old_route_driver_rows
+        _old_route_captured_at = captured_at.isoformat()
 
         params = [
             (
@@ -194,6 +206,16 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
                (captured_at, type, station_code, station_name, zone, region, {", ".join(_AGING_COLUMNS)})
                VALUES ({", ".join(["%s"] * (6 + len(_AGING_COLUMNS)))})""",
             aging_params,
+        )
+
+        old_route_params = [
+            (captured_at, row["station_code"], row["station_name"], row["zone"], row["region"], row["total_tn"])
+            for row in old_route_by_station.values()
+        ]
+        await db.execute_many(
+            """INSERT INTO old_route (captured_at, station_code, station_name, zone, region, total_tn)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            old_route_params,
         )
 
         await db.execute(
@@ -802,6 +824,11 @@ class AgingRow(BaseModel):
     dest_hub: str | None
 
 
+AGING_TN_ROWS_CAP = 2000  # nationwide "Overall" can be tens of thousands of parcels;
+# capping keeps the response fast. Sorted worst-first (oldest), so the cap still
+# surfaces what matters most; narrowing with region/zone/search sees the rest.
+
+
 class AgingDetailsResponse(BaseModel):
     captured_at: str | None
     type: str
@@ -811,6 +838,8 @@ class AgingDetailsResponse(BaseModel):
     zones: list[AgingGroupRow]
     regions: list[AgingGroupRow]
     tn_rows: list[AgingRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
 
 
 async def _fetch_aging_rows(captured_at, aging_type: str) -> list[dict]:
@@ -839,6 +868,7 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
         return {
             "captured_at": None, "type": type, "type_label": AGING_TYPE_LABELS[type],
             "buckets": list(AGING_BUCKET_LABELS.values()), "stations": [], "zones": [], "regions": [], "tn_rows": [],
+            "tn_rows_total": 0, "tn_rows_truncated": False,
         }
 
     all_rows = await _fetch_aging_rows(captured_at, type)
@@ -852,6 +882,10 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
         ]
 
     tn_rows = [r for r in _aging_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows)
+    tn_rows_truncated = tn_rows_total > AGING_TN_ROWS_CAP
+    if tn_rows_truncated:
+        tn_rows = sorted(tn_rows, key=lambda r: r["age"], reverse=True)[:AGING_TN_ROWS_CAP]
 
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
@@ -862,6 +896,113 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
         "zones": to_group(rollup_aging(scoped, "zone"), "zone"),
         "regions": to_group(rollup_aging(scoped, "region"), "region"),
         "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Old Route (query 1451) -- tracking numbers stuck on their original Route ID/date.
+# ---------------------------------------------------------------------------
+
+OLD_ROUTE_COLUMNS = ("total_tn",)
+
+
+class OldRouteStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    total_tn: int
+
+
+class OldRouteGroupRow(BaseModel):
+    key: str
+    region: str
+    station_count: int
+    total_tn: int
+
+
+class OldRouteTnRow(BaseModel):
+    station_code: str
+    station_name: str
+    tracking_number: str | None
+    route_id: str | None
+    route_date: str | None
+    age: int
+    driver_name: str | None
+    shipper_name: str | None
+
+
+class OldRouteDriverRow(BaseModel):
+    driver_name: str
+    driver_type: str
+    station_name: str | None
+    zone: str | None
+    region: str | None
+    total_tn: int
+
+
+class OldRouteResponse(BaseModel):
+    captured_at: str | None
+    stations: list[OldRouteStationRow]
+    zones: list[OldRouteGroupRow]
+    regions: list[OldRouteGroupRow]
+    drivers: list[OldRouteDriverRow]
+    tn_rows: list[OldRouteTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+async def _fetch_old_route_rows(captured_at) -> list[dict]:
+    db_rows = await db.fetch_all(
+        """SELECT station_code, station_name, zone, region, total_tn
+           FROM old_route WHERE captured_at = %s""",
+        (captured_at,),
+    )
+    return [
+        {"station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3], "total_tn": r[4]}
+        for r in db_rows
+    ]
+
+
+@app.get("/api/old-route", response_model=OldRouteResponse)
+async def old_route(user: CurrentUser = Depends(get_current_user)):
+    latest = await db.fetch_one("SELECT MAX(captured_at) FROM old_route")
+    captured_at = latest[0] if latest else None
+    if captured_at is None:
+        return {
+            "captured_at": None, "stations": [], "zones": [], "regions": [], "drivers": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    all_rows = await _fetch_old_route_rows(captured_at)
+    scoped = _scope_filter_stations(all_rows, user)
+    scoped_codes = {r["station_code"] for r in scoped}
+
+    def to_group(rows, key):
+        return [
+            {"key": g[key], "region": g["region"], "station_count": g["station_count"], "total_tn": g["total_tn"]}
+            for g in rows if g["station_count"] > 0
+        ]
+
+    driver_rows = _scope_filter_stations(_old_route_drivers, user)
+
+    tn_rows = [r for r in _old_route_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows)
+    tn_rows_truncated = tn_rows_total > OLD_ROUTE_ROWS_CAP
+    if tn_rows_truncated:
+        tn_rows = sorted(tn_rows, key=lambda r: r["age"], reverse=True)[:OLD_ROUTE_ROWS_CAP]
+
+    return {
+        "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
+        "stations": scoped,
+        "zones": to_group(rollup_old_route(scoped, "zone"), "zone"),
+        "regions": to_group(rollup_old_route(scoped, "region"), "region"),
+        "drivers": driver_rows,
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
     }
 
 

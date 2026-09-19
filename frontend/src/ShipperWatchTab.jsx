@@ -8,19 +8,19 @@ import { api } from "./api";
 // two breach buckets. None of this has been cross-checked against live data yet --
 // numbers are provisional until confirmed.
 const COLUMNS = [
+  { key: "zalora_zero_attempt", label: "Zalora NXD 0 Attempt", clickable: true },
+  { key: "zalora_ovfd", label: "Zalora NXD OVFD", clickable: true },
+  { key: "zalora_other", label: "Zalora NXD Other Status", clickable: true },
   { key: "amway_zero_attempt", label: "Amway 0 Attempt", clickable: true },
   { key: "amway_aging", label: "Amway Aging >D0", clickable: true },
   { key: "watson_zero_attempt", label: "Watson 0 Attempt", clickable: true },
   { key: "watson_aging", label: "Watson Aging >D0", clickable: true },
-  { key: "orca_ovfd", label: "Orca OVFD", clickable: true },
-  { key: "orca_other", label: "Orca Other Status", clickable: true },
-  { key: "zalora_zero_attempt", label: "Zalora NXD 0 Attempt", clickable: true },
-  { key: "zalora_ovfd", label: "Zalora NXD OVFD", clickable: true },
-  { key: "zalora_other", label: "Zalora NXD Other Status", clickable: true },
   { key: "restock_bundles", label: "Restock Bundles", clickable: true },
   { key: "restock_pieces", label: "Restock Pieces", clickable: true },
   { key: "restock_potential_breach", label: "Restock Potential Breach", clickable: true },
   { key: "restock_breach", label: "Restock Breach", clickable: true },
+  { key: "orca_ovfd", label: "Orca OVFD", clickable: true },
+  { key: "orca_other", label: "Orca Other Status", clickable: true },
 ];
 
 function formatTime(iso) {
@@ -102,7 +102,7 @@ function TnModal({ state, onClose }) {
 export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [sortKey, setSortKey] = useState("amway_zero_attempt");
+  const [sortKey, setSortKey] = useState("zalora_zero_attempt");
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
 

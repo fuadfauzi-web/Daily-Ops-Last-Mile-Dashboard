@@ -4,6 +4,7 @@ import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
 import AgingDetailsTab from "./AgingDetailsTab";
+import OldRouteTab from "./OldRouteTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -39,7 +40,6 @@ const ALL_COLUMNS = [
   { key: "prior_gt_d0", label: "Prior >D0" },
   { key: "unsweep_document", label: "Unsweep Document" },
   { key: "unsweep_parcel", label: "Unsweep Parcel" },
-  { key: "missing_open", label: "Missing (Total)" },
   { key: "missing_hub", label: "Missing (Hub)" },
   { key: "missing_ship_in", label: "Missing (Ship-in)" },
   { key: "pending_ats_zero_attempt", label: "Pending ATS (0 Attempt)" },
@@ -65,6 +65,7 @@ const TABS = [
   { key: "routed", label: "Routed View", enabled: true },
   { key: "shipper", label: "Shipper Watch", enabled: true },
   { key: "aging", label: "Aging Details", enabled: true },
+  { key: "oldroute", label: "Old Route", enabled: true },
 ];
 
 function fmt(key, value) {
@@ -233,7 +234,7 @@ function SummaryCard({ label, active, clickable, totals, onClick, emphasis }) {
       onClick={clickable ? onClick : undefined}
       className={`rounded-lg border-t-4 p-3 text-left ring-1 ${
         emphasis
-          ? "border-t-amber-400 bg-slate-900 ring-slate-900"
+          ? "border-t-brand bg-black ring-black"
           : `bg-white ring-slate-200 ${active ? "border-t-status-good bg-green-50/40" : "border-t-brand"}`
       }`}
     >
@@ -242,8 +243,8 @@ function SummaryCard({ label, active, clickable, totals, onClick, emphasis }) {
       </div>
       <div className="grid grid-cols-5 gap-1">
         {CARD_STATS.map((s) => (
-          <div key={s.key} className={`rounded px-1 py-1 text-center ${emphasis ? "bg-slate-800" : "bg-slate-50"}`}>
-            <div className={`text-[8px] uppercase ${emphasis ? "text-amber-300" : "text-slate-400"}`}>{s.label}</div>
+          <div key={s.key} className={`rounded px-1 py-1 text-center ${emphasis ? "bg-brand" : "bg-slate-50"}`}>
+            <div className={`text-[8px] uppercase ${emphasis ? "text-red-100" : "text-slate-400"}`}>{s.label}</div>
             <div className={`text-xs font-bold ${emphasis ? "text-white" : "text-slate-800"}`}>{fmt(s.key, totals[s.key])}</div>
           </div>
         ))}
@@ -762,6 +763,13 @@ export default function Dashboard({ me }) {
 
       {tab === "aging" && (
         <AgingDetailsTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
+      )}
+
+      {tab === "oldroute" && (
+        <OldRouteTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
         />

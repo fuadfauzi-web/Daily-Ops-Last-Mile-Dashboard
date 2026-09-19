@@ -20,6 +20,7 @@ QUERY_LH_TIMING = 1500  # Line-haul trip arrivals: Total Shipment / LH Timing
 QUERY_ZALORA_NXD = 1296  # KAM: Active Zalora NXD Parcels -- Shipper Watch
 QUERY_RESTOCK_NXD = 1585  # Restock NXD -- Shipper Watch
 QUERY_UNSWEEP = 58  # Unswept tracking numbers -- Station Health's Unsweep column
+QUERY_OLD_ROUTE = 1451  # "XB: Aging OVFD Parcels" -- TNs stuck on an old Route ID/date
 
 
 class RedashError(RuntimeError):
