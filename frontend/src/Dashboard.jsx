@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
+import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
+import { ALL_COLUMNS } from "./lib/metrics";
 import SummaryCard from "./components/SummaryCard";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
@@ -24,34 +26,7 @@ const DRILLDOWN_METRICS = new Set([
   "unsweep_document", "unsweep_parcel",
 ]);
 
-// Volume/context metrics: shown plainly, no severity coloring (more isn't "bad").
-const VOLUME_METRICS = new Set(["total_fresh", "total_routed", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub"]);
-
 const PERCENT_METRICS = new Set(["cod_pct_hub"]);
-
-// Requested column order for the Station Health table (Region/Zone/Station are
-// separate fixed columns rendered before these).
-const ALL_COLUMNS = [
-  { key: "total_fresh", label: "Total Fresh" },
-  { key: "total_routed", label: "Total Routed" },
-  { key: "attendance", label: "Attendance" },
-  { key: "zero_attempt", label: "0 Attempt" },
-  { key: "zero_attempt_gt_d0", label: "0 Attempt >D0" },
-  { key: "total_in_hub", label: "In Hub" },
-  { key: "age_gt3", label: "Age >3" },
-  { key: "on_hold", label: "On Hold" },
-  { key: "reschedule", label: "Reschedule" },
-  { key: "still_ovfd", label: "Still OVFD" },
-  { key: "cod_pct_hub", label: "COD % (Hub)" },
-  { key: "prior_d0", label: "Prior D0" },
-  { key: "prior_gt_d0", label: "Prior >D0" },
-  { key: "unsweep_document", label: "Unsweep Document" },
-  { key: "unsweep_parcel", label: "Unsweep Parcel" },
-  { key: "missing_hub", label: "Missing (Hub)" },
-  { key: "missing_ship_in", label: "Missing (Ship-in)" },
-  { key: "pending_ats_zero_attempt", label: "Pending ATS (0 Attempt)" },
-  { key: "pending_ats_attempted", label: "Pending ATS (Attempted)" },
-];
 
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
 // Numerator/denominator pairs behind each percentage, for correctly weighted rollups.
@@ -115,37 +90,6 @@ function localRollup(rows, groupKey) {
   }));
 }
 
-// Rank-based severity: top ~15% of a column (among currently visible rows) is
-// flagged red, next ~35% amber. Relative, not an SLA target — there's no fixed
-// threshold from the business yet, so this highlights outliers within what's on
-// screen rather than inventing an absolute number.
-function useSeverityRanks(rows) {
-  return useMemo(() => {
-    const ranks = {};
-    METRIC_KEYS.forEach((key) => {
-      if (VOLUME_METRICS.has(key)) return;
-      const sorted = [...rows].map((r) => r[key]).sort((a, b) => a - b);
-      const n = sorted.length;
-      ranks[key] = (value) => {
-        if (n === 0) return "plain";
-        let idx = sorted.findIndex((v) => v >= value);
-        if (idx === -1) idx = n - 1;
-        const pct = idx / n;
-        if (pct >= 0.85) return "critical";
-        if (pct >= 0.5) return "warning";
-        return "plain";
-      };
-    });
-    return ranks;
-  }, [rows]);
-}
-
-const SEVERITY_CLASS = {
-  critical: "font-semibold text-status-critical",
-  warning: "font-medium text-status-warning",
-  plain: "text-slate-700",
-};
-
 function exportCsv(rows) {
   const header = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
   const lines = [header.join(",")];
@@ -166,6 +110,7 @@ function exportCsv(rows) {
 }
 
 export default function Dashboard({ me }) {
+  const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
   const [error, setError] = useState(null);
@@ -306,8 +251,6 @@ export default function Dashboard({ me }) {
     }));
   }, [data, visibleRegions, scopedStations, cardMode, effectiveRegion, zoneFilter, me.scope_value]);
 
-  const severityRank = useSeverityRanks(filteredStations);
-
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else {
@@ -340,14 +283,27 @@ export default function Dashboard({ me }) {
     ...(!hideRegionCol ? [{ key: "region", label: "Region", render: (r) => r.region, className: () => "text-slate-500" }] : []),
     ...(!hideZoneCol ? [{ key: "zone", label: "Zone", render: (r) => r.zone, className: () => "text-slate-500" }] : []),
     { key: "station_name", label: "Station", sticky: true, align: "left", render: (r) => r.station_name },
-    ...ALL_COLUMNS.map((c) => ({
-      key: c.key,
-      label: c.label,
-      render: (r) => fmt(c.key, r[c.key]),
-      className: (r) =>
-        VOLUME_METRICS.has(c.key) ? "text-slate-700" : SEVERITY_CLASS[severityRank[c.key]?.(r[c.key]) || "plain"],
-      onClick: DRILLDOWN_METRICS.has(c.key) ? (r) => openDrilldown(r, c) : undefined,
-    })),
+    ...ALL_COLUMNS.map((c) => {
+      // Header greying reflects the nationwide row -- whether a metric has an
+      // SLA at all isn't something that should flip on/off per region.
+      const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
+      return {
+        key: c.key,
+        label: c.label,
+        reference: isReference,
+        render: (r) => {
+          if (isReference) return fmt(c.key, r[c.key]);
+          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key]);
+          return `${SEVERITY_MARK[sev]}${fmt(c.key, r[c.key])}`;
+        },
+        className: (r) => {
+          if (isReference) return SEVERITY_CLASS.reference;
+          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key]);
+          return SEVERITY_CLASS[sev];
+        },
+        onClick: DRILLDOWN_METRICS.has(c.key) ? (r) => openDrilldown(r, c) : undefined,
+      };
+    }),
   ];
 
   return (
@@ -461,9 +417,9 @@ export default function Dashboard({ me }) {
             footer={`${filteredStations.length} rows · first column pinned, header freezes while scrolling`}
           />
           <p className="text-xs text-slate-400">
-            Red/amber highlights are relative to what's currently on screen (top ~15% / ~50% of that column) —
-            there's no fixed SLA target wired in yet. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't
-            clickable — their source queries don't return individual tracking numbers.
+            ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
+            SLA, never scored. Targets are set in Admin → SLA Targets. Total Fresh, Total Routed, Attendance and
+            COD % (Hub) aren't clickable — their source queries don't return individual tracking numbers.
           </p>
         </>
       )}

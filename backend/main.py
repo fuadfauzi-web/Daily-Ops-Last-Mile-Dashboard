@@ -1454,3 +1454,87 @@ def _refresh_row_to_dict(row) -> dict:
         "id": row[0], "started_at": str(row[1]), "finished_at": str(row[2]) if row[2] else None,
         "status": row[3], "stations_count": row[4], "error_message": row[5], "triggered_by": row[6],
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin: SLA thresholds (Station Health severity, editable in-app instead of
+# hardcoded rank-based coloring -- see backend/resources/db/migration/V13)
+# ---------------------------------------------------------------------------
+
+# Mirrors frontend/src/thresholds.js's METRICS keys exactly -- these are the
+# only metric_key values a threshold row may target. Deliberately a subset of
+# aggregate.METRIC_KEYS: that tuple also carries a couple of internal-only
+# fields (missing_open, cod_pct_routed) that never became a Station Health
+# column, so they have nothing to score.
+_SLA_METRIC_KEYS = (
+    "total_fresh", "total_routed", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
+    "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
+    "unsweep_document", "unsweep_parcel", "missing_hub", "missing_ship_in",
+    "pending_ats_zero_attempt", "pending_ats_attempted",
+)
+_SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
+
+
+class ThresholdRow(BaseModel):
+    metric_key: str
+    scope: str  # "nationwide" or a region name
+    scored: bool
+    direction: str  # "higher-is-worse" | "lower-is-worse"
+    warning_at: float
+    critical_at: float
+    changed_by: str | None = None
+    changed_at: str | None = None
+
+
+class ThresholdsIn(BaseModel):
+    rows: list[ThresholdRow]
+
+
+@app.get("/api/thresholds", response_model=list[ThresholdRow])
+async def get_thresholds(user: CurrentUser = Depends(get_current_user)):
+    rows = await db.fetch_all(
+        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, changed_by, changed_at "
+        "FROM sla_thresholds"
+    )
+    return [
+        {
+            "metric_key": r[0], "scope": r[1], "scored": bool(r[2]), "direction": r[3],
+            "warning_at": r[4], "critical_at": r[5], "changed_by": r[6],
+            "changed_at": str(r[7]) if r[7] else None,
+        }
+        for r in rows
+    ]
+
+
+def _require_can_edit_thresholds(user: CurrentUser) -> None:
+    if user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+
+
+@app.put("/api/thresholds", response_model=OkResult)
+async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_current_user)):
+    _require_can_edit_thresholds(user)
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="No rows given")
+
+    now = datetime.now(timezone.utc)
+    params = []
+    for row in payload.rows:
+        if row.metric_key not in _SLA_METRIC_KEYS:
+            raise HTTPException(status_code=422, detail=f"Unknown metric_key: {row.metric_key}")
+        if row.scope != "nationwide" and row.scope not in REGIONS:
+            raise HTTPException(status_code=422, detail=f"scope must be 'nationwide' or one of {REGIONS}")
+        if row.direction not in _SLA_DIRECTIONS:
+            raise HTTPException(status_code=422, detail=f"direction must be one of {sorted(_SLA_DIRECTIONS)}")
+        params.append((
+            row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
+            user.email, now,
+            int(row.scored), row.direction, row.warning_at, row.critical_at, user.email, now,
+        ))
+    await db.execute_many(
+        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, changed_by, changed_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+           ON DUPLICATE KEY UPDATE scored=%s, direction=%s, warning_at=%s, critical_at=%s, changed_by=%s, changed_at=%s""",
+        params,
+    )
+    return {"ok": True}

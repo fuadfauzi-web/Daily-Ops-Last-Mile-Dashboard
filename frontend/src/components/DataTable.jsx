@@ -52,6 +52,9 @@ export default function DataTable({
                       align === "center" ? "text-center" : "text-left",
                       sortable ? `cursor-pointer select-none ${headHover}` : "",
                       c.sticky ? `sticky left-0 z-30 ${stickyHeadBg}` : "",
+                      // Reference (unscored) columns render muted even inside the
+                      // otherwise-white dark header text, so "no SLA" reads at a glance.
+                      c.reference ? "text-slate-400" : "",
                     ].join(" ")}
                     onClick={sortable ? () => onSort(c.key) : undefined}
                   >

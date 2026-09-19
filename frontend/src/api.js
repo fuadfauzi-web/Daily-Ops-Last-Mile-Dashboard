@@ -60,4 +60,8 @@ export const api = {
     trigger: () => request("/api/admin/refresh", { method: "POST" }),
     status: () => request("/api/admin/refresh-status"),
   },
+  thresholds: {
+    list: () => request("/api/thresholds"),
+    save: (rows) => request("/api/thresholds", { method: "PUT", body: JSON.stringify({ rows }) }),
+  },
 };
