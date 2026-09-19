@@ -62,7 +62,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b-[3px] border-brand bg-white">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Logo />
             <div className="hidden h-6 w-px bg-slate-200 lg:block" />
@@ -169,7 +169,7 @@ export default function App() {
           </div>
         )}
       </header>
-      <main className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6 sm:py-6">
+      <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
         {tab === "dashboard" ? <Dashboard me={me} /> : <AdminPanel me={me} />}
       </main>
     </div>

@@ -192,7 +192,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
               onChange={(e) => setDriverSearch(e.target.value)}
             />
           )}
-          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+          <div className="flex flex-nowrap gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
             {LEVELS.map((l) => (
               <button
                 key={l.key}
@@ -201,7 +201,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                   setSortKey("total_routed");
                   setSortDir("desc");
                 }}
-                className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
+                className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ${
                   level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                 }`}
               >

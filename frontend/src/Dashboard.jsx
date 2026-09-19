@@ -443,14 +443,14 @@ export default function Dashboard({ me }) {
         />
       )}
 
-      <div className="flex gap-1 rounded-t-lg bg-slate-200 p-1">
+      <div className="flex flex-nowrap gap-1 overflow-x-auto rounded-t-lg bg-slate-200 p-1">
         {TABS.map((t) => (
           <button
             key={t.key}
             disabled={!t.enabled}
             onClick={() => t.enabled && setTab(t.key)}
             title={t.enabled ? undefined : "Coming soon"}
-            className={`min-h-[44px] rounded px-3 py-1.5 font-display text-sm font-semibold ${
+            className={`min-h-[44px] shrink-0 whitespace-nowrap rounded px-3 py-1.5 font-display text-sm font-semibold ${
               tab === t.key
                 ? "bg-brand text-white"
                 : t.enabled
