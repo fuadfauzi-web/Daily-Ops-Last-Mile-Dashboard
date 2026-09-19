@@ -7,7 +7,7 @@ import { Component } from "react";
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, componentStack: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -16,13 +16,14 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error("Unhandled render error:", error, info);
+    this.setState({ componentStack: info.componentStack });
   }
 
   render() {
     if (this.state.error) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-          <div className="max-w-md rounded-xl bg-white p-6 text-center ring-1 ring-slate-200">
+          <div className="max-w-lg rounded-xl bg-white p-6 text-center ring-1 ring-slate-200">
             <h1 className="font-display text-lg font-semibold text-ink">Something went wrong</h1>
             <p className="mt-2 text-sm text-slate-600">
               {this.state.error.message || "An unexpected error occurred."}
@@ -33,6 +34,14 @@ export default class ErrorBoundary extends Component {
             >
               Reload
             </button>
+            {/* Which component crashed -- an internal ops tool, so showing this
+                to whoever hits it (usually the person reporting the bug) beats
+                asking them to open devtools every time. */}
+            {this.state.componentStack && (
+              <pre className="mt-4 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-left font-mono text-[11px] text-slate-500">
+                {this.state.componentStack.trim()}
+              </pre>
+            )}
           </div>
         </div>
       );
