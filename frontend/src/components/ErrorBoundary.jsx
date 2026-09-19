@@ -34,11 +34,17 @@ export default class ErrorBoundary extends Component {
             >
               Reload
             </button>
-            {/* Which component crashed -- an internal ops tool, so showing this
-                to whoever hits it (usually the person reporting the bug) beats
-                asking them to open devtools every time. */}
-            {this.state.componentStack && (
+            {/* Which component crashed and the actual exception's own call
+                stack -- an internal ops tool, so showing this to whoever hits
+                it (usually the person reporting the bug) beats asking them to
+                open devtools every time. */}
+            {this.state.error.stack && (
               <pre className="mt-4 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-left font-mono text-[11px] text-slate-500">
+                {this.state.error.stack.trim()}
+              </pre>
+            )}
+            {this.state.componentStack && (
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-left font-mono text-[11px] text-slate-500">
                 {this.state.componentStack.trim()}
               </pre>
             )}
