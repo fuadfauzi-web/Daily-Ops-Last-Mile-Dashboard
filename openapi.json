@@ -115,7 +115,7 @@
             }
           },
           "403": {
-            "description": "Caller is not an admin"
+            "description": "Admin access required"
           }
         }
       },
@@ -143,7 +143,7 @@
             }
           },
           "403": {
-            "description": "Caller is not an admin"
+            "description": "Admin, Manager, or Region staff access required"
           },
           "409": {
             "description": "That email is already set up"
@@ -189,7 +189,7 @@
             }
           },
           "403": {
-            "description": "Caller is not an admin"
+            "description": "Admin access required"
           },
           "422": {
             "description": "Invalid role or scope value"
@@ -223,7 +223,7 @@
             "description": "Cannot remove your own access"
           },
           "403": {
-            "description": "Caller is not an admin"
+            "description": "Admin access required"
           }
         }
       }
@@ -367,7 +367,7 @@
             }
           },
           "403": {
-            "description": "Caller is not an admin"
+            "description": "Admin access required"
           }
         }
       }
@@ -387,7 +387,7 @@
             }
           },
           "403": {
-            "description": "Caller is not an admin"
+            "description": "Admin access required"
           }
         }
       }
@@ -505,7 +505,7 @@
     },
     "/api/rpu": {
       "get": {
-        "summary": "Return the latest RPU snapshot (query 1397) across all 3 pickup stages, filterable by stage and/or shipper, scoped to the caller.",
+        "summary": "Return the latest RPU snapshot (query 1397). The station/zone/region summary always breaks out every stage as its own column; the `stage` filter only narrows the tn_rows list, scoped to the caller.",
         "parameters": [
           {
             "name": "stage",
@@ -547,7 +547,7 @@
     },
     "/api/admin/users/bulk": {
       "post": {
-        "summary": "Add several teammates at once with the same role and access level (admin or manager).",
+        "summary": "Add several teammates at once, each with their own role and scope (Admin, Manager, or Region staff).",
         "requestBody": {
           "required": true,
           "content": {
@@ -560,7 +560,7 @@
         },
         "responses": {
           "200": {
-            "description": "Which emails were added vs already set up",
+            "description": "Which emails were added, already set up, or had an invalid row",
             "content": {
               "application/json": {
                 "schema": {
@@ -570,10 +570,10 @@
             }
           },
           "403": {
-            "description": "Admin or Manager access required"
+            "description": "Admin, Manager, or Region staff access required"
           },
           "422": {
-            "description": "No emails given, or role/scope invalid"
+            "description": "No rows given"
           }
         }
       }
@@ -2103,6 +2103,16 @@
           "region": {
             "type": "string"
           },
+          "pending_pickup_tn": {
+            "type": "integer"
+          },
+          "ovfd_tn": {
+            "type": "integer",
+            "description": "\"En Route to Sorting Hub\" stage (granular_status=Van en-route to pickup)"
+          },
+          "pending_inbound_tn": {
+            "type": "integer"
+          },
           "total_tn": {
             "type": "integer"
           }
@@ -2112,6 +2122,9 @@
           "station_name",
           "zone",
           "region",
+          "pending_pickup_tn",
+          "ovfd_tn",
+          "pending_inbound_tn",
           "total_tn"
         ]
       },
@@ -2127,6 +2140,15 @@
           "station_count": {
             "type": "integer"
           },
+          "pending_pickup_tn": {
+            "type": "integer"
+          },
+          "ovfd_tn": {
+            "type": "integer"
+          },
+          "pending_inbound_tn": {
+            "type": "integer"
+          },
           "total_tn": {
             "type": "integer"
           }
@@ -2135,6 +2157,9 @@
           "key",
           "region",
           "station_count",
+          "pending_pickup_tn",
+          "ovfd_tn",
+          "pending_inbound_tn",
           "total_tn"
         ]
       },
@@ -2257,29 +2282,16 @@
       "BulkUserIn": {
         "type": "object",
         "properties": {
-          "emails": {
+          "users": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
-          },
-          "role": {
-            "type": "string",
-            "description": "station | region | manager | admin"
-          },
-          "scope_type": {
-            "type": "string",
-            "description": "all | region | zone | station"
-          },
-          "scope_value": {
-            "type": "string",
-            "nullable": true
+              "$ref": "#/components/schemas/UserIn"
+            },
+            "description": "Each row can have its own role/scope"
           }
         },
         "required": [
-          "emails",
-          "role",
-          "scope_type"
+          "users"
         ]
       },
       "BulkUserResult": {
@@ -2297,11 +2309,19 @@
               "type": "string"
             },
             "description": "Already set up, not re-added"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "\"<email>: <reason>\" for rows with an invalid role/scope"
           }
         },
         "required": [
           "added",
-          "skipped"
+          "skipped",
+          "errors"
         ]
       },
       "RpuAgingResponse": {

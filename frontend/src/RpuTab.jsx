@@ -30,6 +30,15 @@ const AGE_BUCKETS = [
   { key: "age_7_plus", label: "Age 7+" },
 ];
 
+// The summary table always breaks out every stage as its own column -- the
+// status filter (STAGES above) only narrows the tracking-number table below it.
+const STAGE_TN_COLUMNS = [
+  { key: "pending_pickup_tn", label: "Pending Pick Up" },
+  { key: "ovfd_tn", label: "En Route to Sorting Hub" },
+  { key: "pending_inbound_tn", label: "Pending Inbound" },
+  { key: "total_tn", label: "Total TN" },
+];
+
 const TN_COLUMNS = [
   { key: "tracking_number", label: "Tracking Number" },
   { key: "status", label: "Status" },
@@ -252,12 +261,15 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
                     >
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                      onClick={() => toggleSort("total_tn")}
-                    >
-                      Total TN {sortKey === "total_tn" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
+                    {STAGE_TN_COLUMNS.map((c) => (
+                      <th
+                        key={c.key}
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        onClick={() => toggleSort(c.key)}
+                      >
+                        {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -268,14 +280,21 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
                         {r.station_name}
                       </td>
-                      <td className="px-4 py-2 text-center tabular-nums font-semibold text-status-critical">
-                        {r.total_tn.toLocaleString()}
-                      </td>
+                      {STAGE_TN_COLUMNS.map((c) => (
+                        <td
+                          key={c.key}
+                          className={`px-4 py-2 text-center tabular-nums ${
+                            c.key === "total_tn" ? "font-semibold text-status-critical" : "text-slate-700"
+                          }`}
+                        >
+                          {r[c.key].toLocaleString()}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                   {filteredStations.length === 0 && (
                     <tr>
-                      <td colSpan={leadingCols + 1} className="px-4 py-6 text-center text-slate-400">
+                      <td colSpan={leadingCols + STAGE_TN_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
                         No stations match.
                       </td>
                     </tr>

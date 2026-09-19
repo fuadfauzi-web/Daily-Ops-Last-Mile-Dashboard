@@ -23,7 +23,7 @@ from pydantic import BaseModel
 import db
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, METRIC_KEYS,
-    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS, SHIPMENT_DETAIL_KEYS,
+    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS, SHIPMENT_DETAIL_KEYS,
     SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     bucket_rpu_aging, build_aging_details, build_old_route, build_routed_view, build_rpu, build_shipment_details,
     build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging,
@@ -96,17 +96,25 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         (started_at, triggered_by),
     )
     try:
-        health_rows = await fetch_query_results(QUERY_HEALTH_V3)
-        missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
-        shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
-        routed_rows = await fetch_query_results(QUERY_DELIVERY_PERFORMANCE)
-        tracker_rows = await fetch_query_results(QUERY_SHIPMENT_TRACKER)
-        lh_rows = await fetch_query_results(QUERY_LH_TIMING)
-        zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
-        restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
-        unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
-        old_route_raw_rows = await fetch_query_results(QUERY_OLD_ROUTE)
-        rpu_raw_rows = await fetch_query_results(QUERY_RPU)
+        # Each fetch also asks Redash to actually re-run the query first (see
+        # redash_client._trigger_refresh) -- that can take a while, so all 11
+        # run concurrently rather than one after another.
+        (
+            health_rows, missing_rows, shipment_rows, routed_rows, tracker_rows, lh_rows,
+            zalora_rows, restock_rows, unsweep_rows, old_route_raw_rows, rpu_raw_rows,
+        ) = await asyncio.gather(
+            fetch_query_results(QUERY_HEALTH_V3),
+            fetch_query_results(QUERY_ACTIVE_MISSING),
+            fetch_query_results(QUERY_TOTAL_SHIPMENTS),
+            fetch_query_results(QUERY_DELIVERY_PERFORMANCE),
+            fetch_query_results(QUERY_SHIPMENT_TRACKER),
+            fetch_query_results(QUERY_LH_TIMING),
+            fetch_query_results(QUERY_ZALORA_NXD),
+            fetch_query_results(QUERY_RESTOCK_NXD),
+            fetch_query_results(QUERY_UNSWEEP),
+            fetch_query_results(QUERY_OLD_ROUTE),
+            fetch_query_results(QUERY_RPU),
+        )
 
         by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
@@ -229,12 +237,15 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         )
 
         rpu_params = [
-            (captured_at, row["station_code"], row["station_name"], row["zone"], row["region"], row["total_tn"])
+            (
+                captured_at, row["station_code"], row["station_name"], row["zone"], row["region"],
+                *[row[c] for c in RPU_PIVOT_KEYS],
+            )
             for row in rpu_by_station.values()
         ]
         await db.execute_many(
-            """INSERT INTO rpu_snapshot (captured_at, station_code, station_name, zone, region, total_tn)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
+            f"""INSERT INTO rpu_snapshot (captured_at, station_code, station_name, zone, region, {", ".join(RPU_PIVOT_KEYS)})
+               VALUES ({", ".join(["%s"] * (5 + len(RPU_PIVOT_KEYS)))})""",
             rpu_params,
         )
 
@@ -1041,6 +1052,9 @@ class RpuStationRow(BaseModel):
     station_name: str
     zone: str
     region: str
+    pending_pickup_tn: int
+    ovfd_tn: int
+    pending_inbound_tn: int
     total_tn: int
 
 
@@ -1048,6 +1062,9 @@ class RpuGroupRow(BaseModel):
     key: str
     region: str
     station_count: int
+    pending_pickup_tn: int
+    ovfd_tn: int
+    pending_inbound_tn: int
     total_tn: int
 
 
@@ -1102,23 +1119,25 @@ async def rpu(stage: str = "all", shipper: str | None = None, user: CurrentUser 
     all_scoped = _rpu_scoped_rows(user)
     shippers = _rpu_shippers(all_scoped)
 
-    rows = all_scoped
-    if stage != "all":
-        rows = [r for r in rows if r["stage"] == stage]
-    if shipper:
-        rows = [r for r in rows if r["shipper_name"] == shipper]
-
-    scoped_stations = rpu_station_pivot(rows)
+    # The status filter only narrows the TN table -- the summary always shows
+    # every stage as its own column, so it stays built from every row
+    # (shipper-filtered, but not stage-filtered).
+    pivot_rows = [r for r in all_scoped if r["shipper_name"] == shipper] if shipper else all_scoped
+    scoped_stations = rpu_station_pivot(pivot_rows)
 
     def to_group(g_rows, key):
         return [
-            {"key": g[key], "region": g["region"], "station_count": g["station_count"], "total_tn": g["total_tn"]}
+            {**{k: g[k] for k in RPU_PIVOT_KEYS}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
             for g in g_rows if g["station_count"] > 0
         ]
 
-    tn_rows_total = len(rows)
+    tn_rows_source = pivot_rows if stage == "all" else [r for r in pivot_rows if r["stage"] == stage]
+    tn_rows_total = len(tn_rows_source)
     tn_rows_truncated = tn_rows_total > RPU_ROWS_CAP
-    tn_rows = sorted(rows, key=lambda r: r["age"], reverse=True)[:RPU_ROWS_CAP] if tn_rows_truncated else rows
+    tn_rows = (
+        sorted(tn_rows_source, key=lambda r: r["age"], reverse=True)[:RPU_ROWS_CAP]
+        if tn_rows_truncated else tn_rows_source
+    )
 
     return {
         "captured_at": _rpu_rows_captured_at,
@@ -1228,8 +1247,15 @@ class OkResult(BaseModel):
 
 
 def _require_admin(user: CurrentUser) -> None:
-    if user.role not in ("admin", "manager"):
-        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+    """Full admin page access (view/edit/remove everyone, trigger refresh) --
+    admin-only. Manager/Region staff get add-only, see _require_can_add_users."""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+def _require_can_add_users(user: CurrentUser) -> None:
+    if user.role not in ("admin", "manager", "region"):
+        raise HTTPException(status_code=403, detail="Admin, Manager, or Region staff access required")
 
 
 @app.get("/api/admin/users", response_model=list[UserOut])
@@ -1268,7 +1294,7 @@ def _validate_user_in(payload: UserIn) -> None:
 
 @app.post("/api/admin/users", response_model=OkResult)
 async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
+    _require_can_add_users(user)
     _validate_user_in(payload)
     existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (payload.email,))
     if existing:
@@ -1283,38 +1309,42 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
 
 
 class BulkUserIn(BaseModel):
-    emails: list[str]
-    role: str
-    scope_type: str
-    scope_value: str | None = None
+    users: list[UserIn]
 
 
 class BulkUserResult(BaseModel):
     added: list[str]
     skipped: list[str]  # already set up
+    errors: list[str]  # "<email>: <reason>" -- bad role/scope for that row
 
 
 @app.post("/api/admin/users/bulk", response_model=BulkUserResult)
 async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
-    _validate_user_in(UserIn(email="placeholder@ninjavan.co", role=payload.role, scope_type=payload.scope_type, scope_value=payload.scope_value))
-    emails = [e.strip() for e in payload.emails if e.strip()]
-    if not emails:
-        raise HTTPException(status_code=422, detail="No emails given")
+    _require_can_add_users(user)
+    if not payload.users:
+        raise HTTPException(status_code=422, detail="No rows given")
 
-    added, skipped = [], []
-    for email in emails:
+    added, skipped, errors = [], [], []
+    for row in payload.users:
+        email = row.email.strip()
+        if not email:
+            continue
+        try:
+            _validate_user_in(row)
+        except HTTPException as exc:
+            errors.append(f"{email}: {exc.detail}")
+            continue
         existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (email,))
         if existing:
             skipped.append(email)
             continue
         await db.execute(
-            """INSERT INTO users (email, role, scope_type, scope_value, invited_by)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (email, payload.role, payload.scope_type, payload.scope_value, user.email),
+            """INSERT INTO users (email, role, scope_type, scope_value, display_name, invited_by)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (email, row.role, row.scope_type, row.scope_value, row.display_name, user.email),
         )
         added.append(email)
-    return {"added": added, "skipped": skipped}
+    return {"added": added, "skipped": skipped, "errors": errors}
 
 
 @app.patch("/api/admin/users/{email}", response_model=OkResult)

@@ -814,6 +814,10 @@ AGING_TYPE_LABELS = {
 
 
 def _age_bucket(age: int) -> str:
+    # RPU's age (days_since_scheduled_date) can be negative for a pickup
+    # scheduled in the future -- treat "not due yet" the same as day 0.
+    if age <= 0:
+        return "0"
     if age <= 3:
         return str(age)
     if age <= 6:
@@ -994,17 +998,24 @@ RPU_STAGE_LABELS = {
 RPU_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route
 
 
+RPU_STAGE_COLUMNS = tuple(f"{s}_tn" for s in RPU_STAGE_LABELS)  # pending_pickup_tn, ovfd_tn, pending_inbound_tn
+RPU_PIVOT_KEYS = RPU_STAGE_COLUMNS + ("total_tn",)
+
+
 def _empty_rpu_row(hub_code: str) -> dict:
     name, _full, zone, region = HUBS[hub_code]
-    return {"station_code": hub_code, "station_name": name, "zone": zone, "region": region, "total_tn": 0}
+    row = {"station_code": hub_code, "station_name": name, "zone": zone, "region": region}
+    row.update({k: 0 for k in RPU_PIVOT_KEYS})
+    return row
 
 
 def build_rpu(rpu_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
-    """Returns ({hub_code: pivot_row}, [row, ...]) -- the pivot is a simple
-    nationwide total (every stage, no filters) just so something is persisted
-    and visible right after a restart; the real filtering (by stage/shipper/
-    age-bucket) all happens at request time in main.py off the flat row list,
-    which is cheap enough given RPU's row counts."""
+    """Returns ({hub_code: pivot_row}, [row, ...]) -- the pivot always breaks
+    out every stage as its own column (the status filter on the RPU Status
+    tab only narrows the TN table, not this summary), persisted just so
+    something is visible right after a restart; the real filtering (by
+    stage/shipper/age-bucket) all happens at request time in main.py off the
+    flat row list, which is cheap enough given RPU's row counts."""
     by_station = {hub: _empty_rpu_row(hub) for hub in HUBS}
     rows_out: list[dict] = []
 
@@ -1016,6 +1027,7 @@ def build_rpu(rpu_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
         stage = RPU_STATUS_TO_STAGE.get(status)
         if stage is None:
             continue
+        by_station[hub][f"{stage}_tn"] += 1
         by_station[hub]["total_tn"] += 1
         rows_out.append({
             "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
@@ -1034,21 +1046,29 @@ def rollup_rpu(station_rows: list[dict], group_key: str) -> list[dict]:
     groups: dict[str, dict] = {}
     for row in station_rows:
         key = row[group_key]
-        g = groups.setdefault(key, {group_key: key, "region": row["region"], "station_count": 0, "total_tn": 0})
-        g["total_tn"] += row["total_tn"]
+        g = groups.setdefault(
+            key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in RPU_PIVOT_KEYS}}
+        )
+        for k in RPU_PIVOT_KEYS:
+            g[k] += row[k]
         g["station_count"] += 1
     return list(groups.values())
 
 
 def rpu_station_pivot(rows: list[dict]) -> list[dict]:
-    """Builds a station-level Total TN pivot from an already-filtered flat RPU
-    row list (stage/shipper filters applied by the caller before this)."""
+    """Builds a per-station, per-stage TN-count pivot from an already
+    shipper-filtered (but NOT stage-filtered -- every stage is its own
+    column) flat RPU row list."""
     pivot: dict[str, dict] = {}
     for r in rows:
         p = pivot.setdefault(
             r["station_code"],
-            {"station_code": r["station_code"], "station_name": r["station_name"], "zone": r["zone"], "region": r["region"], "total_tn": 0},
+            {
+                "station_code": r["station_code"], "station_name": r["station_name"],
+                "zone": r["zone"], "region": r["region"], **{k: 0 for k in RPU_PIVOT_KEYS},
+            },
         )
+        p[f"{r['stage']}_tn"] += 1
         p["total_tn"] += 1
     return list(pivot.values())
 

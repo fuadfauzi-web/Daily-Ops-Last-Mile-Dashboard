@@ -62,7 +62,7 @@ export default function App() {
             <h1 className="text-base font-semibold tracking-tight text-white">Daily Ops Last Mile Dashboard</h1>
           </div>
           <div className="flex items-center gap-3">
-            {(me.role === "admin" || me.role === "manager") && (
+            {(me.role === "admin" || me.role === "manager" || me.role === "region") && (
               <nav className="flex gap-1 rounded-lg bg-slate-800 p-1 text-sm">
                 {["dashboard", "admin"].map((t) => (
                   <button
@@ -93,7 +93,7 @@ export default function App() {
         </div>
       </header>
       <main className="mx-auto max-w-[1400px] px-6 py-6">
-        {tab === "dashboard" ? <Dashboard me={me} /> : <AdminPanel />}
+        {tab === "dashboard" ? <Dashboard me={me} /> : <AdminPanel me={me} />}
       </main>
     </div>
   );

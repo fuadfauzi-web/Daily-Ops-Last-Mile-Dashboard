@@ -17,11 +17,12 @@ description: >
   Hub/Pending Inbound in one status-filterable view, plus RPU Aging with the same
   age-bucket pivot as Aging Details -- both filterable to any shipper). Every
   parcel-level count can be clicked to see the underlying tracking numbers. Access
-  is role-based: admins and managers see everything and manage who can see what
-  (managers can also add/edit users and trigger refreshes), region staff see one
-  region, station staff see only their station. Refreshes every 30 minutes,
-  pulling whatever each Redash query last computed. For Fleet Managers and their
-  regional/station teams.
+  is role-based: admins see and manage everything (the only role that can view/edit
+  the team list or trigger a refresh); managers and region staff can add teammates
+  (single or bulk) but not the rest of admin; station staff just see their station.
+  Refreshes every 30 minutes, asking Redash to re-run each query first rather than
+  just reading its last cached result. For Fleet Managers and their regional/
+  station teams.
 
 database: oceanbase
 
