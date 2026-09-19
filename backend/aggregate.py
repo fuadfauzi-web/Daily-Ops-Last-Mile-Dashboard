@@ -327,7 +327,9 @@ def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[di
     groups: dict[str, dict] = {}
     for row in station_rows:
         key = row[group_key]
-        g = groups.setdefault(key, {group_key: key, "station_count": 0, **{k: 0 for k in SHIPMENT_DETAIL_KEYS}})
+        g = groups.setdefault(
+            key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in SHIPMENT_DETAIL_KEYS}}
+        )
         for k in SHIPMENT_DETAIL_KEYS:
             g[k] += row[k]
         g["station_count"] += 1
@@ -340,13 +342,13 @@ def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[di
 # Routed View tab (query 512)
 # ---------------------------------------------------------------------------
 
-# Driver name format: "<station abbr> - <position code> - <name>". Position code ->
-# (label, is_staff). HD/HR are full-time staff, ID/IR are part-time/independent.
+# Driver name format: "<station abbr> - <position code> - <name>". HD/HR are
+# full-time "Hybrid" staff (Driver/Rider), ID/IR are part-time "Independent".
 _DRIVER_POSITION_LABELS = {
-    "HD": ("Staff Driver", True),
-    "HR": ("Staff Rider", True),
-    "ID": ("Independent Driver", False),
-    "IR": ("Independent Rider", False),
+    "HD": "Hybrid Driver",
+    "HR": "Hybrid Rider",
+    "ID": "Independent Driver",
+    "IR": "Independent Rider",
 }
 
 
@@ -358,21 +360,19 @@ def _parse_driver(driver_name: str) -> dict | None:
         return None
     parts = [p.strip() for p in (driver_name or "").split("-")]
     if len(parts) < 3:
-        return {"name": driver_name, "home_hub": None, "position": None, "label": "Unknown", "is_staff": None}
+        return {"name": driver_name, "home_hub": None, "position": None, "label": "Unknown"}
     abbr, position = parts[0].upper(), parts[1].upper()
-    label, is_staff = _DRIVER_POSITION_LABELS.get(position, ("Unknown", None))
     return {
         "name": driver_name,
         "home_hub": ABBR_TO_HUB.get(abbr),
         "position": position,
-        "label": label,
-        "is_staff": is_staff,
+        "label": _DRIVER_POSITION_LABELS.get(position, "Unknown"),
     }
 
 
 ROUTED_STATION_KEYS = (
-    "total_routed", "attendance", "attendance_staff", "attendance_independent", "attendance_rescue",
-    "current_ovfd", "current_success", "total_cod",
+    "total_routed", "attendance", "attendance_hd", "attendance_hr", "attendance_id", "attendance_ir",
+    "attendance_rescue", "current_ovfd", "current_success", "total_cod",
 )
 
 
@@ -423,15 +423,14 @@ def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[di
         if parsed["name"] not in seen_drivers[hub]:
             seen_drivers[hub].add(parsed["name"])
             row["attendance"] += 1
-            if parsed["is_staff"] is True:
-                row["attendance_staff"] += 1
-            elif parsed["is_staff"] is False:
-                row["attendance_independent"] += 1
+            position_key = {"HD": "attendance_hd", "HR": "attendance_hr", "ID": "attendance_id", "IR": "attendance_ir"}.get(parsed["position"])
+            if position_key:
+                row[position_key] += 1
             if parsed["home_hub"] and parsed["home_hub"] != hub:
                 row["attendance_rescue"] += 1
 
         d = driver_agg.setdefault(parsed["name"], {
-            "driver_name": parsed["name"], "label": parsed["label"], "is_staff": parsed["is_staff"],
+            "driver_name": parsed["name"], "label": parsed["label"],
             "home_hub": parsed["home_hub"], "current_hub": hub, "is_rescue": parsed["home_hub"] not in (None, hub),
             "total_routed": 0, "current_success": 0, "current_ovfd": 0, "total_cod": 0,
         })
@@ -465,18 +464,19 @@ def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[di
     return by_station, driver_rows
 
 
-def rollup_routed(station_rows: list[dict], group_key: str) -> list[dict]:
-    """Sums Routed View station_rows up to zone or region level, recomputing rates."""
+def rollup_routed(station_rows: list[dict], group_key: str, extra_keys: tuple[str, ...] = ()) -> list[dict]:
+    """Sums Routed View station_rows up to zone or region level, recomputing rates.
+    extra_keys sums additional plain-integer fields merged onto station_rows by the
+    caller (e.g. zero_attempt from Station Health) without adding them to
+    ROUTED_STATION_KEYS/the DB schema."""
+    all_keys = ROUTED_STATION_KEYS + extra_keys
     groups: dict[str, dict] = {}
-    order = ZONES if group_key == "zone" else REGIONS
-    for key in order:
-        g = {group_key: key, "station_count": 0}
-        g.update({k: 0 for k in ROUTED_STATION_KEYS})
-        groups[key] = g
     for row in station_rows:
         key = row[group_key]
-        g = groups.setdefault(key, {group_key: key, "station_count": 0, **{k: 0 for k in ROUTED_STATION_KEYS}})
-        for k in ROUTED_STATION_KEYS:
+        g = groups.setdefault(
+            key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in all_keys}}
+        )
+        for k in all_keys:
             g[k] += row[k]
         g["station_count"] += 1
     return [_with_rates(g) for g in groups.values()]

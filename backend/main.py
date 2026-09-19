@@ -214,6 +214,7 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
     )
     if row is None:
         return {"email": x_forwarded_email, "provisioned": False}
+    await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
     return {
         "email": row[0], "provisioned": True, "role": row[1], "scope_type": row[2],
         "scope_value": row[3], "display_name": row[4],
@@ -482,9 +483,12 @@ async def shipment_drilldown(station_code: str, metric: str, user: CurrentUser =
 
 class RoutedFields(BaseModel):
     total_routed: int
+    zero_attempt: int
     attendance: int
-    attendance_staff: int
-    attendance_independent: int
+    attendance_hd: int
+    attendance_hr: int
+    attendance_id: int
+    attendance_ir: int
     attendance_rescue: int
     current_ovfd: int
     current_success: int
@@ -503,6 +507,7 @@ class RoutedStationRow(RoutedFields):
 
 class RoutedGroupRow(RoutedFields):
     key: str
+    region: str
     station_count: int
 
 
@@ -554,11 +559,27 @@ async def routed_view(user: CurrentUser = Depends(get_current_user)):
         return {"captured_at": None, "stations": [], "zones": [], "regions": [], "drivers": []}
 
     all_rows = await _fetch_routed_rows(captured_at)
+
+    # "Total 0 Attempt" -- merged in from the latest Station Health snapshot so it's
+    # visible alongside routed metrics without duplicating that computation here.
+    health_latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
+    zero_attempt_by_station: dict[str, int] = {}
+    if health_latest and health_latest[0] is not None:
+        for r in await db.fetch_all(
+            "SELECT station_code, zero_attempt FROM station_metrics WHERE captured_at = %s", (health_latest[0],)
+        ):
+            zero_attempt_by_station[r[0]] = r[1]
+    for row in all_rows:
+        row["zero_attempt"] = zero_attempt_by_station.get(row["station_code"], 0)
+
     scoped = _scope_filter_stations(all_rows, user)
+    extra_keys = ("zero_attempt",)
 
     def to_group(rows, key):
-        return [{**{k: g[k] for k in _ROUTED_COLUMNS}, "key": g[key], "station_count": g["station_count"]}
-                for g in rows if g["station_count"] > 0]
+        return [
+            {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+            for g in rows if g["station_count"] > 0
+        ]
 
     driver_rows = _scope_filter_stations(
         [{**d, "station_name": d["current_station"], "zone": d["zone"], "region": d["region"]} for d in _routed_drivers],
@@ -568,8 +589,8 @@ async def routed_view(user: CurrentUser = Depends(get_current_user)):
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
         "stations": scoped,
-        "zones": to_group(rollup_routed(scoped, "zone"), "zone"),
-        "regions": to_group(rollup_routed(scoped, "region"), "region"),
+        "zones": to_group(rollup_routed(scoped, "zone", extra_keys), "zone"),
+        "regions": to_group(rollup_routed(scoped, "region", extra_keys), "region"),
         "drivers": driver_rows,
     }
 
@@ -585,6 +606,7 @@ class UserOut(BaseModel):
     scope_value: str | None
     display_name: str | None
     created_at: str
+    last_seen_at: str | None
 
 
 class UserIn(BaseModel):
@@ -609,12 +631,12 @@ def _require_admin(user: CurrentUser) -> None:
 async def list_users(user: CurrentUser = Depends(get_current_user)):
     _require_admin(user)
     rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_value, display_name, created_at FROM users ORDER BY created_at"
+        "SELECT email, role, scope_type, scope_value, display_name, created_at, last_seen_at FROM users ORDER BY created_at"
     )
     return [
         {
             "email": r[0], "role": r[1], "scope_type": r[2], "scope_value": r[3],
-            "display_name": r[4], "created_at": str(r[5]),
+            "display_name": r[4], "created_at": str(r[5]), "last_seen_at": str(r[6]) if r[6] else None,
         }
         for r in rows
     ]

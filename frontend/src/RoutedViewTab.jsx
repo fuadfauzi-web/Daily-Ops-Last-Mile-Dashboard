@@ -8,12 +8,12 @@ const LEVELS = [
   { key: "driver", label: "Driver" },
 ];
 
+// Station/Zone/Region-level columns, in display order (after Stations/Total Routed).
 const STATION_COLUMNS = [
-  { key: "total_routed", label: "Total Routed" },
-  { key: "attendance", label: "Attendance" },
-  { key: "attendance_staff", label: "Staff" },
-  { key: "attendance_independent", label: "Independent" },
-  { key: "attendance_rescue", label: "Rescue" },
+  { key: "zero_attempt", label: "Total 0 Attempt" },
+  { key: "attendance", label: "Attendance", render: "attendance" },
+  { key: "hybrid_total", label: "Hybrid", render: "hybrid" },
+  { key: "independent_total", label: "Independent", render: "independent" },
   { key: "current_ovfd", label: "Current OVFD" },
   { key: "current_success", label: "Current Success" },
   { key: "cod_pct", label: "COD %", percent: true },
@@ -28,6 +28,7 @@ const DRIVER_COLUMNS = [
   { key: "cod_pct", label: "COD %", percent: true },
   { key: "success_rate", label: "Success Rate", percent: true, rate: "success" },
   { key: "completion_rate", label: "Completion Rate", percent: true, rate: "completion" },
+  { key: "tenure", label: "Tenure", render: "tenure" },
 ];
 
 function formatTime(iso) {
@@ -56,6 +57,19 @@ function rateClass(col, value) {
   return "text-slate-700";
 }
 
+// Renders the special composite-format columns: Attendance shows "N (R Rescue)",
+// Hybrid/Independent show their HD/HR or ID/IR sub-counts as "1HD/9HR".
+function renderCell(col, r) {
+  if (col.render === "attendance") {
+    return r.attendance_rescue > 0 ? `${r.attendance} (${r.attendance_rescue} Rescue)` : `${r.attendance}`;
+  }
+  if (col.render === "hybrid") return `${r.attendance_hd}HD/${r.attendance_hr}HR`;
+  if (col.render === "independent") return `${r.attendance_id}ID/${r.attendance_ir}IR`;
+  if (col.render === "tenure") return "— (pending Metabase link)";
+  const value = r[col.key];
+  return col.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
+}
+
 export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -77,6 +91,14 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
     else if (level === "zone") base = data.zones.map((g) => ({ ...g, name: g.key }));
     else if (level === "station") base = data.stations.map((s) => ({ ...s, name: s.station_name }));
     else base = data.drivers.map((d) => ({ ...d, name: d.driver_name }));
+
+    if (level !== "driver") {
+      base = base.map((r) => ({
+        ...r,
+        hybrid_total: (r.attendance_hd || 0) + (r.attendance_hr || 0),
+        independent_total: (r.attendance_id || 0) + (r.attendance_ir || 0),
+      }));
+    }
 
     if (level === "zone" || level === "station" || level === "driver") {
       if (regionFilter !== "all") base = base.filter((r) => r.region === regionFilter);
@@ -113,6 +135,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
     return <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>;
 
   const isDriverLevel = level === "driver";
+  const isGroupLevel = level === "region" || level === "zone";
   const columns = isDriverLevel ? DRIVER_COLUMNS : STATION_COLUMNS;
 
   return (
@@ -125,7 +148,8 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
               key={l.key}
               onClick={() => {
                 setLevel(l.key);
-                setSortKey(l.key === "driver" ? "total_routed" : "total_routed");
+                setSortKey("total_routed");
+                setSortDir("desc");
               }}
               className={`rounded-md px-3 py-1 text-sm font-medium ${
                 level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
@@ -149,42 +173,34 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
                   {level === "driver" ? "Driver" : LEVELS.find((l) => l.key === level).label}{" "}
                   {sortKey === "name" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
-                {isDriverLevel && (
-                  <>
-                    <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Type</th>
-                    <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Home Station</th>
-                    <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Current Station</th>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
-                      onClick={() => toggleSort("is_rescue")}
-                    >
-                      Rescue? {sortKey === "is_rescue" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Tenure</th>
-                  </>
-                )}
-                {!isDriverLevel && level !== "region" && (
-                  <th className="whitespace-nowrap px-4 py-2 text-left font-medium">
-                    {level === "zone" ? "Region" : "Zone"}
-                  </th>
-                )}
-                {columns.map((c) => (
+                {isGroupLevel && (
                   <th
-                    key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
-                    onClick={() => toggleSort(c.key)}
-                  >
-                    {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                ))}
-                {!isDriverLevel && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
                     onClick={() => toggleSort("station_count")}
                   >
                     Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 )}
+                {!isDriverLevel && level !== "region" && (
+                  <th className="whitespace-nowrap px-4 py-2 text-center font-medium">
+                    {level === "zone" ? "Region" : "Zone"}
+                  </th>
+                )}
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  onClick={() => toggleSort("total_routed")}
+                >
+                  Total Routed {sortKey === "total_routed" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
+                {columns.map((c) => (
+                  <th
+                    key={c.key}
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    onClick={() => toggleSort(c.key)}
+                  >
+                    {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -193,40 +209,20 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
                   <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
                     {r.name}
                   </td>
-                  {isDriverLevel && (
-                    <>
-                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.driver_type}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.home_station || "—"}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.current_station || "—"}</td>
-                      <td className="whitespace-nowrap px-4 py-2">
-                        {r.is_rescue ? (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">
-                            Rescue
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-slate-400">— (pending Metabase link)</td>
-                    </>
+                  {isGroupLevel && (
+                    <td className="px-4 py-2 text-center tabular-nums text-slate-500">{r.station_count}</td>
                   )}
                   {!isDriverLevel && level !== "region" && (
-                    <td className="whitespace-nowrap px-4 py-2 text-slate-500">
+                    <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">
                       {level === "zone" ? r.region : r.zone}
                     </td>
                   )}
-                  {columns.map((c) => {
-                    const value = r[c.key];
-                    const content = c.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
-                    return (
-                      <td key={c.key} className={`px-4 py-2 text-right tabular-nums ${c.rate ? rateClass(c, value) : "text-slate-700"}`}>
-                        {content}
-                      </td>
-                    );
-                  })}
-                  {!isDriverLevel && (
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-500">{r.station_count}</td>
-                  )}
+                  <td className="px-4 py-2 text-center tabular-nums text-slate-700">{r.total_routed.toLocaleString()}</td>
+                  {columns.map((c) => (
+                    <td key={c.key} className={`px-4 py-2 text-center tabular-nums ${c.rate ? rateClass(c, r[c.key]) : "text-slate-700"}`}>
+                      {renderCell(c, r)}
+                    </td>
+                  ))}
                 </tr>
               ))}
               {rows.length === 0 && (
@@ -241,7 +237,8 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search }) {
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
           {rows.length} rows · Completion Rate = (Total Routed − Current OVFD) / Total Routed — 100% means nothing
-          is left on the vehicle. Driver tenure needs the Metabase driver-tenure connection to be set up.
+          is left on the vehicle. Attendance shows rescue drivers in parentheses when present; Hybrid/Independent
+          break down by HD/HR/ID/IR. Driver tenure needs the Metabase driver-tenure connection to be set up.
         </div>
       </div>
     </div>

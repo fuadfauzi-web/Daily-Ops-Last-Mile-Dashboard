@@ -41,14 +41,18 @@ const ALL_COLUMNS = [
   { key: "missing_ship_in", label: "Missing (Ship-in)" },
 ];
 
-// The KPI bar's curated subset (top of page, always visible regardless of table sort).
-const CORE_COLUMNS = ALL_COLUMNS.filter((c) =>
-  ["total_fresh", "total_in_hub", "zero_attempt", "on_hold", "missing_hub", "missing_ship_in"].includes(c.key)
-);
-
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
 // Numerator/denominator pairs behind each percentage, for correctly weighted rollups.
 const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub" };
+
+// The summary cards' fixed 5-stat set, per spec.
+const CARD_STATS = [
+  { key: "total_fresh", label: "Fresh" },
+  { key: "total_routed", label: "Routed" },
+  { key: "zero_attempt", label: "0 Att" },
+  { key: "total_in_hub", label: "In Hub" },
+  { key: "age_gt3", label: "Age>3" },
+];
 
 const TABS = [
   { key: "shipment", label: "Shipment Details", enabled: true },
@@ -87,13 +91,14 @@ function localRollup(rows, groupKey) {
   const groups = {};
   rows.forEach((r) => {
     const key = r[groupKey];
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(r);
+    if (!groups[key]) groups[key] = { region: r.region, rows: [] };
+    groups[key].rows.push(r);
   });
-  return Object.entries(groups).map(([key, groupRows]) => ({
+  return Object.entries(groups).map(([key, g]) => ({
     key,
-    station_count: groupRows.length,
-    ...sumMetrics(groupRows),
+    region: g.region,
+    station_count: g.rows.length,
+    ...sumMetrics(g.rows),
   }));
 }
 
@@ -136,9 +141,9 @@ const SEVERITY_CLASS = {
 
 function MetricCell({ metricKey, value, severityClass, clickable, onClick }) {
   const content = fmt(metricKey, value);
-  if (!clickable) return <td className={`px-4 py-2 text-right tabular-nums ${severityClass}`}>{content}</td>;
+  if (!clickable) return <td className={`px-4 py-2 text-center tabular-nums ${severityClass}`}>{content}</td>;
   return (
-    <td className={`px-4 py-2 text-right tabular-nums ${severityClass}`}>
+    <td className={`px-4 py-2 text-center tabular-nums ${severityClass}`}>
       <button onClick={onClick} className="underline decoration-dotted underline-offset-2 hover:decoration-solid">
         {content}
       </button>
@@ -216,49 +221,51 @@ function TnModal({ state, onClose }) {
   );
 }
 
-function KpiBar({ totals }) {
+function SummaryCard({ label, active, clickable, totals, onClick }) {
+  const Wrapper = clickable ? "button" : "div";
   return (
-    <div className="flex flex-wrap items-center justify-around gap-3 rounded-xl bg-slate-900 px-4 py-3">
-      {CORE_COLUMNS.map((c) => (
-        <div key={c.key} className="text-center">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{c.label}</div>
-          <div className="text-lg font-semibold tabular-nums text-white">{fmt(c.key, totals[c.key])}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RegionCard({ region, active, totals, onClick }) {
-  return (
-    <button
-      onClick={onClick}
+    <Wrapper
+      onClick={clickable ? onClick : undefined}
       className={`rounded-lg border-t-4 bg-white p-3 text-left ring-1 ring-slate-200 ${
         active ? "border-t-status-good bg-green-50/40" : "border-t-brand"
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-800">{region}</span>
+        <span className="text-xs font-semibold text-slate-800">{label}</span>
       </div>
-      <div className="grid grid-cols-3 gap-1">
-        {[
-          { label: "Fresh", value: totals.total_fresh },
-          { label: "In Hub", value: totals.total_in_hub },
-          { label: "0 Att", value: totals.zero_attempt },
-        ].map((s) => (
-          <div key={s.label} className="rounded bg-slate-50 px-1 py-1 text-center">
+      <div className="grid grid-cols-5 gap-1">
+        {CARD_STATS.map((s) => (
+          <div key={s.key} className="rounded bg-slate-50 px-1 py-1 text-center">
             <div className="text-[8px] uppercase text-slate-400">{s.label}</div>
-            <div className="text-xs font-bold text-slate-800">{s.value.toLocaleString()}</div>
+            <div className="text-xs font-bold text-slate-800">{fmt(s.key, totals[s.key])}</div>
           </div>
         ))}
       </div>
-    </button>
+    </Wrapper>
   );
 }
 
 function GroupTable({ title, groupLabel, rows }) {
+  const [sortKey, setSortKey] = useState("key");
+  const [sortDir, setSortDir] = useState("asc");
+
   if (rows.length <= 1) return null;
-  const sorted = [...rows].sort((a, b) => a.key.localeCompare(b.key));
+
+  const toggleSort = (key) => {
+    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir(key === "key" ? "asc" : "desc");
+    }
+  };
+
+  const sorted = [...rows].sort((a, b) => {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
       <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
@@ -266,25 +273,41 @@ function GroupTable({ title, groupLabel, rows }) {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">{groupLabel}</th>
+              <th
+                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-medium hover:bg-slate-200"
+                onClick={() => toggleSort("key")}
+              >
+                {groupLabel} {sortKey === "key" && (sortDir === "asc" ? "↑" : "↓")}
+              </th>
+              <th
+                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                onClick={() => toggleSort("station_count")}
+              >
+                Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
+              </th>
               {ALL_COLUMNS.map((c) => (
-                <th key={c.key} className="whitespace-nowrap px-4 py-2 text-right font-medium">
-                  {c.label}
+                <th
+                  key={c.key}
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                  onClick={() => toggleSort(c.key)}
+                >
+                  {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
               ))}
-              <th className="whitespace-nowrap px-4 py-2 text-right font-medium">Stations</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((g) => (
               <tr key={g.key} className="border-t border-slate-100">
-                <td className="whitespace-nowrap px-4 py-2 font-medium text-slate-800">{g.key}</td>
+                <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
+                  {g.key}
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-slate-500">{g.station_count}</td>
                 {ALL_COLUMNS.map((c) => (
-                  <td key={c.key} className="px-4 py-2 text-right tabular-nums text-slate-700">
+                  <td key={c.key} className="px-4 py-2 text-center tabular-nums text-slate-700">
                     {fmt(c.key, g[c.key])}
                   </td>
                 ))}
-                <td className="px-4 py-2 text-right tabular-nums text-slate-500">{g.station_count}</td>
               </tr>
             ))}
           </tbody>
@@ -324,6 +347,10 @@ export default function Dashboard({ me }) {
   const [sortDir, setSortDir] = useState("desc");
   const [tab, setTab] = useState("health");
   const [modal, setModal] = useState(null);
+
+  const canPickRegion = me.scope_type === "all";
+  const canPickZone = me.scope_type === "all" || me.scope_type === "region";
+  const showFilterBar = me.scope_type !== "station";
 
   const load = () => {
     api
@@ -375,19 +402,54 @@ export default function Dashboard({ me }) {
     });
   }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
-  const totals = useMemo(() => sumMetrics(filteredStations), [filteredStations]);
-
   const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
   const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
 
-  const regionTotals = useMemo(() => {
-    if (!data) return {};
-    const out = {};
-    regions.forEach((r) => {
-      out[r.region] = sumMetrics(data.stations.filter((s) => s.region === r.region));
-    });
-    return out;
-  }, [data, regions]);
+  // Summary cards: one level below whatever's currently "effective" -- the filter
+  // pick (for admins) or the user's own fixed scope. Region cards -> pick one ->
+  // zone cards for it; a region-scoped user goes straight to their zone cards; a
+  // zone-scoped user gets their one zone's card; a station-scoped user gets none.
+  const effectiveRegion = regionFilter !== "all" ? regionFilter : me.scope_type === "region" ? me.scope_value : null;
+
+  const cardMode = me.scope_type === "station" ? "none" : me.scope_type === "zone" ? "single-zone" : effectiveRegion ? "zones" : "regions";
+
+  const cards = useMemo(() => {
+    if (!data || cardMode === "none") return [];
+    if (cardMode === "regions") {
+      return regions.map((r) => ({
+        key: r.region,
+        label: r.region,
+        active: false,
+        clickable: true,
+        totals: sumMetrics(data.stations.filter((s) => s.region === r.region)),
+        onClick: () => {
+          setRegionFilter(r.region);
+          setZoneFilter("all");
+        },
+      }));
+    }
+    if (cardMode === "single-zone") {
+      return [
+        {
+          key: me.scope_value,
+          label: me.scope_value,
+          active: false,
+          clickable: false,
+          totals: sumMetrics(data.stations.filter((s) => s.zone === me.scope_value)),
+        },
+      ];
+    }
+    // zones within effectiveRegion
+    const zones = [...new Set(data.stations.filter((s) => s.region === effectiveRegion).map((s) => s.zone))].sort();
+    return zones.map((z) => ({
+      key: z,
+      label: z,
+      active: zoneFilter === z,
+      clickable: true,
+      totals: sumMetrics(data.stations.filter((s) => s.zone === z)),
+      onClick: () => setZoneFilter(zoneFilter === z ? "all" : z),
+    }));
+  }, [data, regions, cardMode, effectiveRegion, zoneFilter, me.scope_value]);
 
   const severityRank = useSeverityRanks(filteredStations);
 
@@ -425,68 +487,67 @@ export default function Dashboard({ me }) {
         </div>
       </div>
 
-      <KpiBar totals={totals} />
+      {cards.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {cards.map((c) => (
+            <SummaryCard key={c.key} label={c.label} active={c.active} clickable={c.clickable} totals={c.totals} onClick={c.onClick} />
+          ))}
+        </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {regions.map((r) => (
-          <RegionCard
-            key={r.region}
-            region={r.region}
-            active={regionFilter === r.region}
-            totals={regionTotals[r.region] || sumMetrics([])}
-            onClick={() => {
-              setRegionFilter(regionFilter === r.region ? "all" : r.region);
-              setZoneFilter("all");
-            }}
+      {showFilterBar && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+          <span className="text-xs font-semibold text-slate-700">Filter:</span>
+          {canPickRegion && (
+            <select
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              value={regionFilter}
+              onChange={(e) => {
+                setRegionFilter(e.target.value);
+                setZoneFilter("all");
+              }}
+            >
+              <option value="all">All regions</option>
+              {regions.map((r) => (
+                <option key={r.region} value={r.region}>
+                  {r.region}
+                </option>
+              ))}
+            </select>
+          )}
+          {canPickZone && (
+            <select
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              value={zoneFilter}
+              onChange={(e) => setZoneFilter(e.target.value)}
+            >
+              <option value="all">All zones</option>
+              {zoneOptions.map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
+          )}
+          {(canPickRegion || canPickZone) && (
+            <button
+              onClick={() => {
+                setRegionFilter("all");
+                setZoneFilter("all");
+              }}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+            >
+              Clear
+            </button>
+          )}
+          <input
+            className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            placeholder="Search station…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
-        <span className="text-xs font-semibold text-slate-700">Filter:</span>
-        <select
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-          value={regionFilter}
-          onChange={(e) => {
-            setRegionFilter(e.target.value);
-            setZoneFilter("all");
-          }}
-        >
-          <option value="all">All regions</option>
-          {regions.map((r) => (
-            <option key={r.region} value={r.region}>
-              {r.region}
-            </option>
-          ))}
-        </select>
-        <select
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-          value={zoneFilter}
-          onChange={(e) => setZoneFilter(e.target.value)}
-        >
-          <option value="all">All zones</option>
-          {zoneOptions.map((z) => (
-            <option key={z} value={z}>
-              {z}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => {
-            setRegionFilter("all");
-            setZoneFilter("all");
-          }}
-          className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
-        >
-          Clear
-        </button>
-        <input
-          className="ml-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-          placeholder="Search station…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+        </div>
+      )}
 
       <div className="flex gap-1 rounded-t-lg bg-slate-200 p-1">
         {TABS.map((t) => (
@@ -538,13 +599,13 @@ export default function Dashboard({ me }) {
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
                     <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
+                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
                       onClick={() => toggleSort("region")}
                     >
                       Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
                     <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium hover:bg-brand"
+                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
                       onClick={() => toggleSort("zone")}
                     >
                       Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
@@ -552,7 +613,7 @@ export default function Dashboard({ me }) {
                     {ALL_COLUMNS.map((c) => (
                       <th
                         key={c.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
                         onClick={() => toggleSort(c.key)}
                       >
                         {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -573,8 +634,8 @@ export default function Dashboard({ me }) {
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
                         {r.station_name}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.region}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.zone}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>
                       {ALL_COLUMNS.map((c) => {
                         const cls = VOLUME_METRICS.has(c.key)
                           ? "text-slate-700"

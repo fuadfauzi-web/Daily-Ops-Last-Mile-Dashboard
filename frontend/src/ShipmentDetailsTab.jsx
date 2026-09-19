@@ -167,12 +167,12 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search })
                 >
                   Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Region</th>
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">Zone</th>
+                <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Region</th>
+                <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Zone</th>
                 {COLUMNS.map((c) => (
                   <th
                     key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right font-medium hover:bg-brand"
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
                     onClick={() => toggleSort(c.key)}
                   >
                     {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
@@ -187,22 +187,22 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search })
                   <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
                     {r.station_name}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.region}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-500">{r.zone}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>
                   {COLUMNS.map((c) => {
                     const value = r[c.key];
                     const content = c.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
                     const pctClass = c.key === "fresh_attempt_pct" ? (value >= 96 ? "text-status-good font-semibold" : "text-status-critical font-semibold") : "";
                     if (!c.clickable) {
                       return (
-                        <td key={c.key} className={`px-4 py-2 text-right tabular-nums ${pctClass}`}>
+                        <td key={c.key} className={`px-4 py-2 text-center tabular-nums ${pctClass}`}>
                           {content}
                           {c.key === "fresh_attempt_pct" && <span className="ml-1 text-[10px] text-slate-400">/96%</span>}
                         </td>
                       );
                     }
                     return (
-                      <td key={c.key} className="px-4 py-2 text-right tabular-nums">
+                      <td key={c.key} className="px-4 py-2 text-center tabular-nums">
                         <button
                           onClick={() =>
                             setModal({ stationCode: r.station_code, stationName: r.station_name, metricKey: c.key, metricLabel: c.label })

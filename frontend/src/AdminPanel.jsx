@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "", display_name: "" };
+const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "" };
+
+function formatTime(iso) {
+  if (!iso) return "Never";
+  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
+  return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
+}
 
 export default function AdminPanel() {
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [editingEmail, setEditingEmail] = useState(null);
   const [error, setError] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -24,12 +31,29 @@ export default function AdminPanel() {
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
+  const startEdit = (u) => {
+    setEditingEmail(u.email);
+    setForm({ email: u.email, role: u.role, scope_type: u.scope_type, scope_value: u.scope_value || "" });
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingEmail(null);
+    setForm(emptyForm);
+    setError(null);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
     try {
       const payload = { ...form, scope_value: form.scope_type === "all" ? null : form.scope_value };
-      await api.users.add(payload);
+      if (editingEmail) {
+        await api.users.update(editingEmail, payload);
+        setEditingEmail(null);
+      } else {
+        await api.users.add(payload);
+      }
       setForm(emptyForm);
       loadUsers();
     } catch (e) {
@@ -41,6 +65,7 @@ export default function AdminPanel() {
     if (!confirm(`Remove access for ${email}?`)) return;
     try {
       await api.users.remove(email);
+      if (editingEmail === email) cancelEdit();
       loadUsers();
     } catch (e) {
       setError(e.message);
@@ -97,21 +122,23 @@ export default function AdminPanel() {
       </div>
 
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-        <div className="font-medium text-slate-800">Add teammate</div>
-        <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="flex items-center justify-between">
+          <div className="font-medium text-slate-800">{editingEmail ? `Edit access — ${editingEmail}` : "Add teammate"}</div>
+          {editingEmail && (
+            <button onClick={cancelEdit} className="text-xs text-slate-500 hover:underline">
+              Cancel edit
+            </button>
+          )}
+        </div>
+        <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <input
             required
             type="email"
+            disabled={!!editingEmail}
             placeholder="name@ninjavan.co"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
-          />
-          <input
-            placeholder="Display name (optional)"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            value={form.display_name}
-            onChange={(e) => setForm({ ...form, display_name: e.target.value })}
           />
           <select
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
@@ -181,7 +208,7 @@ export default function AdminPanel() {
             type="submit"
             className="rounded-lg bg-series1 px-4 py-1.5 text-sm font-medium text-white sm:col-span-2 lg:col-span-1"
           >
-            Add
+            {editingEmail ? "Save changes" : "Add"}
           </button>
         </form>
       </div>
@@ -191,22 +218,25 @@ export default function AdminPanel() {
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
               <th className="px-4 py-2 font-medium">Email</th>
-              <th className="px-4 py-2 font-medium">Name</th>
               <th className="px-4 py-2 font-medium">Role</th>
               <th className="px-4 py-2 font-medium">Scope</th>
+              <th className="px-4 py-2 font-medium">Last opened</th>
               <th className="px-4 py-2 font-medium"></th>
             </tr>
           </thead>
           <tbody>
             {(users || []).map((u) => (
-              <tr key={u.email} className="border-t border-slate-100">
+              <tr key={u.email} className={`border-t border-slate-100 ${editingEmail === u.email ? "bg-blue-50/50" : ""}`}>
                 <td className="px-4 py-2">{u.email}</td>
-                <td className="px-4 py-2 text-slate-500">{u.display_name || "—"}</td>
                 <td className="px-4 py-2 capitalize">{u.role}</td>
                 <td className="px-4 py-2 text-slate-500">
                   {u.scope_type === "all" ? "Everything" : `${u.scope_value} (${u.scope_type})`}
                 </td>
+                <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                 <td className="px-4 py-2 text-right">
+                  <button onClick={() => startEdit(u)} className="mr-3 text-xs text-series1 hover:underline">
+                    Edit
+                  </button>
                   <button onClick={() => remove(u.email)} className="text-xs text-status-critical hover:underline">
                     Remove
                   </button>

@@ -290,9 +290,10 @@
           "scope_type": {"type": "string"},
           "scope_value": {"type": "string", "nullable": true},
           "display_name": {"type": "string", "nullable": true},
-          "created_at": {"type": "string"}
+          "created_at": {"type": "string"},
+          "last_seen_at": {"type": "string", "nullable": true, "description": "Last time this user's /api/me was called (i.e. last opened the dashboard)"}
         },
-        "required": ["email", "role", "scope_type", "scope_value", "display_name", "created_at"]
+        "required": ["email", "role", "scope_type", "scope_value", "display_name", "created_at", "last_seen_at"]
       },
       "UserIn": {
         "type": "object",
@@ -398,9 +399,12 @@
         "type": "object",
         "properties": {
           "total_routed": {"type": "integer"},
+          "zero_attempt": {"type": "integer", "description": "Merged in from the latest Station Health snapshot"},
           "attendance": {"type": "integer", "description": "Unique non-OPS drivers with a route today"},
-          "attendance_staff": {"type": "integer", "description": "Subset of attendance: HD/HR position codes"},
-          "attendance_independent": {"type": "integer", "description": "Subset of attendance: ID/IR position codes"},
+          "attendance_hd": {"type": "integer", "description": "Subset of attendance: Hybrid Driver (full-time staff)"},
+          "attendance_hr": {"type": "integer", "description": "Subset of attendance: Hybrid Rider (full-time staff)"},
+          "attendance_id": {"type": "integer", "description": "Subset of attendance: Independent Driver (part-time)"},
+          "attendance_ir": {"type": "integer", "description": "Subset of attendance: Independent Rider (part-time)"},
           "attendance_rescue": {"type": "integer", "description": "Subset of attendance whose name-prefix home station differs from the station they're currently routing at"},
           "current_ovfd": {"type": "integer"},
           "current_success": {"type": "integer"},
@@ -409,7 +413,7 @@
           "success_rate": {"type": "number", "description": "current_success / total_routed * 100"},
           "completion_rate": {"type": "number", "description": "(total_routed - current_ovfd) / total_routed * 100"}
         },
-        "required": ["total_routed", "attendance", "attendance_staff", "attendance_independent", "attendance_rescue", "current_ovfd", "current_success", "total_cod", "cod_pct", "success_rate", "completion_rate"]
+        "required": ["total_routed", "zero_attempt", "attendance", "attendance_hd", "attendance_hr", "attendance_id", "attendance_ir", "attendance_rescue", "current_ovfd", "current_success", "total_cod", "cod_pct", "success_rate", "completion_rate"]
       },
       "RoutedStationRow": {
         "allOf": [
@@ -420,7 +424,7 @@
       "RoutedGroupRow": {
         "allOf": [
           {"$ref": "#/components/schemas/RoutedFields"},
-          {"type": "object", "properties": {"key": {"type": "string"}, "station_count": {"type": "integer"}}, "required": ["key", "station_count"]}
+          {"type": "object", "properties": {"key": {"type": "string"}, "region": {"type": "string", "description": "The zone's parent region (for zone-level rows) or the region itself (for region-level rows)"}, "station_count": {"type": "integer"}}, "required": ["key", "region", "station_count"]}
         ]
       },
       "RoutedDriverRow": {
