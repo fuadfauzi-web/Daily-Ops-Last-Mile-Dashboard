@@ -1,12 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
+// Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt
+// and Aging(>Day0) are what matters. Orca: OVFD vs everything else (no confirmed TN
+// pattern for Orca -- see backend/aggregate.py). Zalora: 0-Attempt + OVFD/Other split,
+// only for parcels sitting at their correct hub. Restock: bundle/piece counts plus its
+// two breach buckets. None of this has been cross-checked against live data yet --
+// numbers are provisional until confirmed.
 const COLUMNS = [
-  { key: "total_fresh", label: "Total Fresh" },
-  { key: "total_shipment", label: "Total Shipment" },
-  { key: "fresh_unscan", label: "Fresh Unscan", clickable: true },
-  { key: "latlong", label: "Latlong", clickable: true },
-  { key: "fresh_attempt_pct", label: "Fresh Attempt %", percent: true },
+  { key: "amway_zero_attempt", label: "Amway 0 Attempt", clickable: true },
+  { key: "amway_aging", label: "Amway Aging >D0", clickable: true },
+  { key: "watson_zero_attempt", label: "Watson 0 Attempt", clickable: true },
+  { key: "watson_aging", label: "Watson Aging >D0", clickable: true },
+  { key: "orca_ovfd", label: "Orca OVFD", clickable: true },
+  { key: "orca_other", label: "Orca Other Status", clickable: true },
+  { key: "zalora_zero_attempt", label: "Zalora 0 Attempt", clickable: true },
+  { key: "zalora_ovfd", label: "Zalora OVFD", clickable: true },
+  { key: "zalora_other", label: "Zalora Other Status", clickable: true },
+  { key: "restock_bundles", label: "Restock Bundles" },
+  { key: "restock_pieces", label: "Restock Pieces" },
+  { key: "restock_potential_breach", label: "Restock Potential Breach" },
+  { key: "restock_breach", label: "Restock Breach" },
 ];
 
 function formatTime(iso) {
@@ -15,30 +29,7 @@ function formatTime(iso) {
   return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-// "after 10am pre-warning, after 11am warning, after 12pm red flag"
-function tripBadgeClass(isoTime) {
-  const hour = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T")).getHours();
-  if (hour >= 12) return "bg-red-100 text-red-700";
-  if (hour >= 11) return "bg-amber-100 text-amber-700";
-  if (hour >= 10) return "bg-blue-100 text-blue-700";
-  return "bg-green-100 text-green-700";
-}
-
-function tripLabel(isoTime) {
-  const d = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T"));
-  return d.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-function TripBadge({ trip }) {
-  if (!trip) return <span className="text-slate-300">—</span>;
-  return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${tripBadgeClass(trip.time)}`}>
-      {tripLabel(trip.time)} · {trip.parcels.toLocaleString()}
-    </span>
-  );
-}
-
-function ShipmentTnModal({ state, onClose }) {
+function TnModal({ state, onClose }) {
   const [tns, setTns] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -49,7 +40,7 @@ function ShipmentTnModal({ state, onClose }) {
     setError(null);
     setCopied(false);
     api
-      .shipmentDrilldown(state.stationCode, state.metricKey)
+      .shipperDrilldown(state.stationCode, state.metricKey)
       .then((r) => setTns(r))
       .catch((e) => setError(e.message));
   }, [state]);
@@ -108,10 +99,10 @@ function ShipmentTnModal({ state, onClose }) {
   );
 }
 
-export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me }) {
+export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [sortKey, setSortKey] = useState("fresh_unscan");
+  const [sortKey, setSortKey] = useState("amway_zero_attempt");
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
 
@@ -120,7 +111,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
 
   useEffect(() => {
     api
-      .shipmentDetails()
+      .shipperWatch()
       .then(setData)
       .catch((e) => setError(e.message));
   }, []);
@@ -155,9 +146,11 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
   if (!data.captured_at)
     return <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>;
 
+  const leadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
+
   return (
     <div className="space-y-3">
-      <ShipmentTnModal state={modal} onClose={() => setModal(null)} />
+      <TnModal state={modal} onClose={() => setModal(null)} />
       <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="max-h-[70vh] overflow-auto">
@@ -195,7 +188,6 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                     {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 ))}
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">LH Timing (1st / 2nd trip)</th>
               </tr>
             </thead>
             <tbody>
@@ -212,13 +204,10 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                   </td>
                   {COLUMNS.map((c) => {
                     const value = r[c.key];
-                    const content = c.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
-                    const pctClass = c.key === "fresh_attempt_pct" ? (value >= 96 ? "text-status-good font-semibold" : "text-status-critical font-semibold") : "";
                     if (!c.clickable) {
                       return (
-                        <td key={c.key} className={`px-4 py-2 text-center tabular-nums ${pctClass}`}>
-                          {content}
-                          {c.key === "fresh_attempt_pct" && <span className="ml-1 text-[10px] text-slate-400">/96%</span>}
+                        <td key={c.key} className="px-4 py-2 text-center tabular-nums text-slate-700">
+                          {value.toLocaleString()}
                         </td>
                       );
                     }
@@ -232,25 +221,16 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                             value > 0 ? "font-semibold text-status-critical" : "text-slate-700"
                           }`}
                         >
-                          {content}
+                          {value.toLocaleString()}
                         </button>
                       </td>
                     );
                   })}
-                  <td className="whitespace-nowrap px-4 py-2">
-                    <div className="flex gap-1.5">
-                      <TripBadge trip={r.lh_trips[0]} />
-                      <TripBadge trip={r.lh_trips[1]} />
-                    </div>
-                  </td>
                 </tr>
               ))}
               {filteredStations.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1) + COLUMNS.length + 1}
-                    className="px-4 py-6 text-center text-slate-400"
-                  >
+                  <td colSpan={leadingCols + COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
                     No stations match.
                   </td>
                 </tr>
@@ -259,7 +239,10 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
           </table>
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {filteredStations.length} rows · LH Timing: green &lt;10am, blue 10–11am, amber 11am–12pm, red after 12pm
+          {filteredStations.length} rows · Amway/Watson SLA: attempt day 0, succeed before day 3. Zalora only
+          counts parcels at their correct hub (dest hub = last sweep hub). Restock is counted by bundle, not by
+          individual parcel — "Pieces" is the actual parcel count. These formulas haven't been checked against
+          live data yet — flag anything that looks off.
         </div>
       </div>
     </div>

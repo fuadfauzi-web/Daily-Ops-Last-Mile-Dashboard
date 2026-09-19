@@ -1,17 +1,18 @@
 description: >
   Live nationwide operations dashboard for Ninja Van's last-mile fleet (143 stations
   across Southern, Northern, Klang Valley, East Coast, and East Malaysia). Pulls
-  parcel- and route-level data hourly from Redash across three views: Station Health
+  parcel- and route-level data hourly from Redash across five views: Station Health
   (in-hub, zero-attempt, on-hold, pending-ATS, aging, prior-tag, COD%, Missing
   Hub-vs-Ship-in -- grouped by where each parcel physically is, not just its intended
   destination), Shipment Details (fresh unscan, latlong, fresh-attempt %, line-haul
-  trip timing), and Routed View (Total Routed/Attendance/OVFD/Success/COD%/Success
-  Rate/Completion Rate at region/zone/station/driver level, with staff-vs-independent
-  and rescue-route driver breakdowns). Every parcel-level count can be clicked to see
-  the underlying tracking numbers. Access is role-based: admins see everything and
-  manage who can see what, region managers see one region, zone managers see one
-  zone, station staff see only their station. For Fleet Managers and their
-  regional/station teams.
+  trip timing), Routed View (Total Routed/Attendance/OVFD/Success/COD%/Success
+  Rate/Completion Rate at region/zone/station/driver level, with hybrid-vs-independent
+  and rescue-route driver breakdowns), Shipper Watch (hypercare-SLA shippers Amway/
+  Watson/Orca, plus Zalora and Restock NXD monitoring), and Aging Details (a station x
+  age-bucket pivot). Every parcel-level count can be clicked to see the underlying
+  tracking numbers. Access is role-based: admins see everything and manage who can see
+  what, region managers see one region, zone managers see one zone, station staff see
+  only their station. For Fleet Managers and their regional/station teams.
 
 database: oceanbase
 

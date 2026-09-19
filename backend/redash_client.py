@@ -17,6 +17,8 @@ QUERY_TOTAL_SHIPMENTS = 653  # per-hub total orders today ("Total Fresh")
 QUERY_DELIVERY_PERFORMANCE = 512  # route-level: Total Routed / Attendance / COD % / Routed View
 QUERY_SHIPMENT_TRACKER = 1239  # Fresh Unscan / Latlong / Fresh Attempt %
 QUERY_LH_TIMING = 1500  # Line-haul trip arrivals: Total Shipment / LH Timing
+QUERY_ZALORA_NXD = 1296  # KAM: Active Zalora NXD Parcels -- Shipper Watch
+QUERY_RESTOCK_NXD = 1585  # Restock NXD -- Shipper Watch
 
 
 class RedashError(RuntimeError):

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
+import ShipperWatchTab from "./ShipperWatchTab";
+import AgingDetailsTab from "./AgingDetailsTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -58,8 +60,8 @@ const TABS = [
   { key: "shipment", label: "Shipment Details", enabled: true },
   { key: "health", label: "Station Health", enabled: true },
   { key: "routed", label: "Routed View", enabled: true },
-  { key: "shipper", label: "Shipper Watch", enabled: false },
-  { key: "aging", label: "Aging Details", enabled: false },
+  { key: "shipper", label: "Shipper Watch", enabled: true },
+  { key: "aging", label: "Aging Details", enabled: true },
 ];
 
 function fmt(key, value) {
@@ -318,11 +320,11 @@ function GroupTable({ title, groupLabel, rows }) {
 }
 
 function exportCsv(rows) {
-  const header = ["Station", "Region", "Zone", ...ALL_COLUMNS.map((c) => c.label)];
+  const header = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
   const lines = [header.join(",")];
   rows.forEach((r) => {
     lines.push(
-      [r.station_name, r.region, r.zone, ...ALL_COLUMNS.map((c) => r[c.key])]
+      [r.region, r.zone, r.station_name, ...ALL_COLUMNS.map((c) => r[c.key])]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(",")
     );
@@ -351,6 +353,14 @@ export default function Dashboard({ me }) {
   const canPickRegion = me.scope_type === "all";
   const canPickZone = me.scope_type === "all" || me.scope_type === "region";
   const showFilterBar = me.scope_type !== "station";
+
+  // Region/Zone columns are redundant once they can only ever hold one value --
+  // either an admin has filtered down to one, or the viewer's own access is
+  // already confined to one. Hide them in that case instead of showing a
+  // constant column.
+  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
+  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const leadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
 
   const load = () => {
     api
@@ -412,6 +422,9 @@ export default function Dashboard({ me }) {
   const effectiveRegion = regionFilter !== "all" ? regionFilter : me.scope_type === "region" ? me.scope_value : null;
 
   const cardMode = me.scope_type === "station" ? "none" : me.scope_type === "zone" ? "single-zone" : effectiveRegion ? "zones" : "regions";
+
+  // Nationwide total, only meaningful (and only shown) when nothing is filtered down.
+  const showTotalCard = cardMode === "regions" && zoneFilter === "all";
 
   const cards = useMemo(() => {
     if (!data || cardMode === "none") return [];
@@ -486,6 +499,10 @@ export default function Dashboard({ me }) {
           {filteredStations.length} stations in scope
         </div>
       </div>
+
+      {showTotalCard && (
+        <SummaryCard label="Total Malaysia" active={false} clickable={false} totals={sumMetrics(data.stations)} />
+      )}
 
       {cards.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -592,23 +609,27 @@ export default function Dashboard({ me }) {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
                   <tr>
+                    {!hideRegionCol && (
+                      <th
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        onClick={() => toggleSort("region")}
+                      >
+                        Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
+                      </th>
+                    )}
+                    {!hideZoneCol && (
+                      <th
+                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                        onClick={() => toggleSort("zone")}
+                      >
+                        Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
+                      </th>
+                    )}
                     <th
                       className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
                       onClick={() => toggleSort("station_name")}
                     >
                       Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                      onClick={() => toggleSort("region")}
-                    >
-                      Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                      onClick={() => toggleSort("zone")}
-                    >
-                      Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
                     {ALL_COLUMNS.map((c) => (
                       <th
@@ -622,7 +643,7 @@ export default function Dashboard({ me }) {
                   </tr>
                   {isGroupSort && (
                     <tr className="bg-slate-800 text-[10px] font-normal normal-case text-slate-300">
-                      <th className="sticky left-0 z-30 bg-slate-800 px-4 py-1" colSpan={3 + ALL_COLUMNS.length}>
+                      <th className="bg-slate-800 px-4 py-1" colSpan={leadingCols + ALL_COLUMNS.length}>
                         Sorted by {sortKey}, then 0-Attempt (highest first) within each {sortKey}
                       </th>
                     </tr>
@@ -631,11 +652,15 @@ export default function Dashboard({ me }) {
                 <tbody>
                   {filteredStations.map((r) => (
                     <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
+                      {!hideRegionCol && (
+                        <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>
+                      )}
+                      {!hideZoneCol && (
+                        <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>
+                      )}
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
                         {r.station_name}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>
                       {ALL_COLUMNS.map((c) => {
                         const cls = VOLUME_METRICS.has(c.key)
                           ? "text-slate-700"
@@ -655,7 +680,7 @@ export default function Dashboard({ me }) {
                   ))}
                   {filteredStations.length === 0 && (
                     <tr>
-                      <td colSpan={3 + ALL_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
+                      <td colSpan={leadingCols + ALL_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
                         No stations match.
                       </td>
                     </tr>
@@ -676,10 +701,18 @@ export default function Dashboard({ me }) {
       )}
 
       {tab === "shipment" && (
-        <ShipmentDetailsTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} />
+        <ShipmentDetailsTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />
       )}
 
-      {tab === "routed" && <RoutedViewTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} />}
+      {tab === "routed" && (
+        <RoutedViewTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />
+      )}
+
+      {tab === "shipper" && (
+        <ShipperWatchTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />
+      )}
+
+      {tab === "aging" && <AgingDetailsTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />}
     </div>
   );
 }

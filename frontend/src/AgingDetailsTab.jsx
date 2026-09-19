@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-const COLUMNS = [
-  { key: "total_fresh", label: "Total Fresh" },
-  { key: "total_shipment", label: "Total Shipment" },
-  { key: "fresh_unscan", label: "Fresh Unscan", clickable: true },
-  { key: "latlong", label: "Latlong", clickable: true },
-  { key: "fresh_attempt_pct", label: "Fresh Attempt %", percent: true },
+// Station x age-bucket pivot, grouped by last_scan_hub_name like the rest of the app
+// -- but unlike the main Age>3 metric, this INCLUDES On Hold / On Vehicle for Delivery
+// statuses, so it's the full picture of everything sitting in a hub by age.
+const AGE_BUCKETS = [
+  { key: "age_0", label: "Age 0" },
+  { key: "age_1", label: "Age 1" },
+  { key: "age_2", label: "Age 2" },
+  { key: "age_3", label: "Age 3" },
+  { key: "age_4_6", label: "Age 4-6" },
+  { key: "age_7_plus", label: "Age 7+" },
 ];
 
 function formatTime(iso) {
@@ -15,30 +19,7 @@ function formatTime(iso) {
   return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-// "after 10am pre-warning, after 11am warning, after 12pm red flag"
-function tripBadgeClass(isoTime) {
-  const hour = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T")).getHours();
-  if (hour >= 12) return "bg-red-100 text-red-700";
-  if (hour >= 11) return "bg-amber-100 text-amber-700";
-  if (hour >= 10) return "bg-blue-100 text-blue-700";
-  return "bg-green-100 text-green-700";
-}
-
-function tripLabel(isoTime) {
-  const d = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T"));
-  return d.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-function TripBadge({ trip }) {
-  if (!trip) return <span className="text-slate-300">—</span>;
-  return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${tripBadgeClass(trip.time)}`}>
-      {tripLabel(trip.time)} · {trip.parcels.toLocaleString()}
-    </span>
-  );
-}
-
-function ShipmentTnModal({ state, onClose }) {
+function TnModal({ state, onClose }) {
   const [tns, setTns] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -49,7 +30,7 @@ function ShipmentTnModal({ state, onClose }) {
     setError(null);
     setCopied(false);
     api
-      .shipmentDrilldown(state.stationCode, state.metricKey)
+      .agingDrilldown(state.stationCode, state.bucketKey)
       .then((r) => setTns(r))
       .catch((e) => setError(e.message));
   }, [state]);
@@ -70,7 +51,7 @@ function ShipmentTnModal({ state, onClose }) {
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
             <div className="font-semibold text-slate-900">{state.stationName}</div>
-            <div className="text-xs text-slate-500">{state.metricLabel}</div>
+            <div className="text-xs text-slate-500">{state.bucketLabel}</div>
           </div>
           <button onClick={onClose} className="text-xl leading-none text-slate-400 hover:text-slate-600">
             &times;
@@ -108,10 +89,89 @@ function ShipmentTnModal({ state, onClose }) {
   );
 }
 
-export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me }) {
+function GroupTable({ title, groupLabel, rows }) {
+  const [sortKey, setSortKey] = useState("key");
+  const [sortDir, setSortDir] = useState("asc");
+
+  if (rows.length <= 1) return null;
+
+  const toggleSort = (key) => {
+    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir(key === "key" ? "asc" : "desc");
+    }
+  };
+
+  const sorted = [...rows].sort((a, b) => {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+
+  return (
+    <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-500">
+            <tr>
+              <th
+                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-medium hover:bg-slate-200"
+                onClick={() => toggleSort("key")}
+              >
+                {groupLabel} {sortKey === "key" && (sortDir === "asc" ? "↑" : "↓")}
+              </th>
+              <th
+                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                onClick={() => toggleSort("station_count")}
+              >
+                Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
+              </th>
+              <th
+                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                onClick={() => toggleSort("total")}
+              >
+                Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
+              </th>
+              {AGE_BUCKETS.map((b) => (
+                <th
+                  key={b.key}
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
+                  onClick={() => toggleSort(b.key)}
+                >
+                  {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((g) => (
+              <tr key={g.key} className="border-t border-slate-100">
+                <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
+                  {g.key}
+                </td>
+                <td className="px-4 py-2 text-center tabular-nums text-slate-500">{g.station_count}</td>
+                <td className="px-4 py-2 text-center tabular-nums text-slate-700">{g.total.toLocaleString()}</td>
+                {AGE_BUCKETS.map((b) => (
+                  <td key={b.key} className="px-4 py-2 text-center tabular-nums text-slate-700">
+                    {g[b.key].toLocaleString()}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [sortKey, setSortKey] = useState("fresh_unscan");
+  const [sortKey, setSortKey] = useState("total");
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
 
@@ -120,7 +180,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
 
   useEffect(() => {
     api
-      .shipmentDetails()
+      .agingDetails()
       .then(setData)
       .catch((e) => setError(e.message));
   }, []);
@@ -142,6 +202,9 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
     });
   }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
+  const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
+  const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
+
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else {
@@ -155,10 +218,16 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
   if (!data.captured_at)
     return <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>;
 
+  const leadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
+
   return (
     <div className="space-y-3">
-      <ShipmentTnModal state={modal} onClose={() => setModal(null)} />
+      <TnModal state={modal} onClose={() => setModal(null)} />
       <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
+
+      <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={regionGroups} />
+      <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={zoneGroups} />
+
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
@@ -186,16 +255,21 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                 >
                   Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
                 </th>
-                {COLUMNS.map((c) => (
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  onClick={() => toggleSort("total")}
+                >
+                  Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
+                {AGE_BUCKETS.map((b) => (
                   <th
-                    key={c.key}
+                    key={b.key}
                     className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                    onClick={() => toggleSort(c.key)}
+                    onClick={() => toggleSort(b.key)}
                   >
-                    {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+                    {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                 ))}
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium">LH Timing (1st / 2nd trip)</th>
               </tr>
             </thead>
             <tbody>
@@ -210,47 +284,29 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                   <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
                     {r.station_name}
                   </td>
-                  {COLUMNS.map((c) => {
-                    const value = r[c.key];
-                    const content = c.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
-                    const pctClass = c.key === "fresh_attempt_pct" ? (value >= 96 ? "text-status-good font-semibold" : "text-status-critical font-semibold") : "";
-                    if (!c.clickable) {
-                      return (
-                        <td key={c.key} className={`px-4 py-2 text-center tabular-nums ${pctClass}`}>
-                          {content}
-                          {c.key === "fresh_attempt_pct" && <span className="ml-1 text-[10px] text-slate-400">/96%</span>}
-                        </td>
-                      );
-                    }
+                  <td className="px-4 py-2 text-center tabular-nums text-slate-700">{r.total.toLocaleString()}</td>
+                  {AGE_BUCKETS.map((b) => {
+                    const value = r[b.key];
                     return (
-                      <td key={c.key} className="px-4 py-2 text-center tabular-nums">
+                      <td key={b.key} className="px-4 py-2 text-center tabular-nums">
                         <button
                           onClick={() =>
-                            setModal({ stationCode: r.station_code, stationName: r.station_name, metricKey: c.key, metricLabel: c.label })
+                            setModal({ stationCode: r.station_code, stationName: r.station_name, bucketKey: b.key, bucketLabel: b.label })
                           }
                           className={`underline decoration-dotted underline-offset-2 hover:decoration-solid ${
                             value > 0 ? "font-semibold text-status-critical" : "text-slate-700"
                           }`}
                         >
-                          {content}
+                          {value.toLocaleString()}
                         </button>
                       </td>
                     );
                   })}
-                  <td className="whitespace-nowrap px-4 py-2">
-                    <div className="flex gap-1.5">
-                      <TripBadge trip={r.lh_trips[0]} />
-                      <TripBadge trip={r.lh_trips[1]} />
-                    </div>
-                  </td>
                 </tr>
               ))}
               {filteredStations.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1) + COLUMNS.length + 1}
-                    className="px-4 py-6 text-center text-slate-400"
-                  >
+                  <td colSpan={leadingCols + 1 + AGE_BUCKETS.length} className="px-4 py-6 text-center text-slate-400">
                     No stations match.
                   </td>
                 </tr>
@@ -259,9 +315,26 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
           </table>
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {filteredStations.length} rows · LH Timing: green &lt;10am, blue 10–11am, amber 11am–12pm, red after 12pm
+          {filteredStations.length} rows · Grouped by last_scan_hub_name like the rest of the app, but includes On
+          Hold / On Vehicle for Delivery so this is everything sitting in a hub by age, not just what's awaiting
+          attempt.
         </div>
       </div>
     </div>
   );
+}
+
+function localRollup(rows, groupKey) {
+  const groups = {};
+  rows.forEach((r) => {
+    const key = r[groupKey];
+    if (!groups[key]) {
+      groups[key] = { key, region: r.region, station_count: 0, total: 0 };
+      AGE_BUCKETS.forEach((b) => (groups[key][b.key] = 0));
+    }
+    groups[key].station_count += 1;
+    groups[key].total += r.total;
+    AGE_BUCKETS.forEach((b) => (groups[key][b.key] += r[b.key]));
+  });
+  return Object.values(groups);
 }

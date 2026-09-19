@@ -12,7 +12,13 @@
         "responses": {
           "200": {
             "description": "Backend is up",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
           }
         }
       }
@@ -23,7 +29,13 @@
         "responses": {
           "200": {
             "description": "Current user identity (unauthenticated or unprovisioned users get null/false fields)",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Me"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
           }
         }
       }
@@ -34,7 +46,13 @@
         "responses": {
           "200": {
             "description": "Latest snapshot, scoped to the caller",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DashboardResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -45,7 +63,16 @@
         "responses": {
           "200": {
             "description": "All active/virtual stations",
-            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/StationMeta"}}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StationMeta"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -56,7 +83,16 @@
         "responses": {
           "200": {
             "description": "All regions with their zones",
-            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/RegionMeta"}}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegionMeta"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -67,25 +103,54 @@
         "responses": {
           "200": {
             "description": "All provisioned users",
-            "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/UserOut"}}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserOut"
+                  }
+                }
+              }
+            }
           },
-          "403": {"description": "Caller is not an admin"}
+          "403": {
+            "description": "Caller is not an admin"
+          }
         }
       },
       "post": {
         "summary": "Provision a new user with a role and access scope (all / region / zone / station). Admin only.",
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserIn"}}}
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserIn"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "User created",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResult"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
           },
-          "403": {"description": "Caller is not an admin"},
-          "409": {"description": "That email is already set up"},
-          "422": {"description": "Invalid role or scope value"}
+          "403": {
+            "description": "Caller is not an admin"
+          },
+          "409": {
+            "description": "That email is already set up"
+          },
+          "422": {
+            "description": "Invalid role or scope value"
+          }
         }
       }
     },
@@ -93,33 +158,73 @@
       "patch": {
         "summary": "Update an existing user's role, scope, or display name. Admin only.",
         "parameters": [
-          {"name": "email", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserIn"}}}
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserIn"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "User updated",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResult"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
           },
-          "403": {"description": "Caller is not an admin"},
-          "422": {"description": "Invalid role or scope value"}
+          "403": {
+            "description": "Caller is not an admin"
+          },
+          "422": {
+            "description": "Invalid role or scope value"
+          }
         }
       },
       "delete": {
         "summary": "Remove a user's access to the dashboard. Admin only; an admin cannot remove their own access.",
         "parameters": [
-          {"name": "email", "in": "path", "required": true, "schema": {"type": "string"}}
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "User removed",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResult"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
           },
-          "400": {"description": "Cannot remove your own access"},
-          "403": {"description": "Caller is not an admin"}
+          "400": {
+            "description": "Cannot remove your own access"
+          },
+          "403": {
+            "description": "Caller is not an admin"
+          }
         }
       }
     },
@@ -127,17 +232,44 @@
       "get": {
         "summary": "Return the tracking numbers behind one station's metric count, for the UI's click-a-number drill-down. Served from an in-memory cache built by the last refresh.",
         "parameters": [
-          {"name": "station_code", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "metric", "in": "query", "required": true, "schema": {"type": "string", "description": "One of the drilldown-eligible metric keys (all StationRow metrics except total_fresh)"}}
+          {
+            "name": "station_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "One of the drilldown-eligible metric keys (all StationRow metrics except total_fresh)"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Tracking numbers for that station/metric",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DrilldownResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrilldownResponse"
+                }
+              }
+            }
           },
-          "403": {"description": "That station isn't in the caller's scope"},
-          "404": {"description": "Unknown station"},
-          "422": {"description": "metric is not a drilldown-eligible key"}
+          "403": {
+            "description": "That station isn't in the caller's scope"
+          },
+          "404": {
+            "description": "Unknown station"
+          },
+          "422": {
+            "description": "metric is not a drilldown-eligible key"
+          }
         }
       }
     },
@@ -145,7 +277,16 @@
       "get": {
         "summary": "Return the latest Shipment Details snapshot (Total Fresh/Shipment, Fresh Unscan, Latlong, Fresh Attempt %, LH trip timings), scoped to the caller.",
         "responses": {
-          "200": {"description": "Latest snapshot, scoped to the caller", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ShipmentDetailsResponse"}}}}
+          "200": {
+            "description": "Latest snapshot, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailsResponse"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -153,14 +294,44 @@
       "get": {
         "summary": "Return the tracking numbers behind one station's Fresh Unscan or Latlong count.",
         "parameters": [
-          {"name": "station_code", "in": "query", "required": true, "schema": {"type": "string"}},
-          {"name": "metric", "in": "query", "required": true, "schema": {"type": "string", "description": "fresh_unscan | latlong"}}
+          {
+            "name": "station_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "fresh_unscan | latlong"
+            }
+          }
         ],
         "responses": {
-          "200": {"description": "Tracking numbers", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ShipmentDrilldownResponse"}}}},
-          "403": {"description": "That station isn't in the caller's scope"},
-          "404": {"description": "Unknown station"},
-          "422": {"description": "metric is not fresh_unscan or latlong"}
+          "200": {
+            "description": "Tracking numbers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDrilldownResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "That station isn't in the caller's scope"
+          },
+          "404": {
+            "description": "Unknown station"
+          },
+          "422": {
+            "description": "metric is not fresh_unscan or latlong"
+          }
         }
       }
     },
@@ -168,7 +339,16 @@
       "get": {
         "summary": "Return the latest Routed View snapshot (Total Routed/Attendance/OVFD/Success/COD%/Success Rate/Completion Rate) at station/zone/region level, plus a driver-level breakdown, scoped to the caller.",
         "responses": {
-          "200": {"description": "Latest snapshot, scoped to the caller", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RoutedViewResponse"}}}}
+          "200": {
+            "description": "Latest snapshot, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutedViewResponse"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -178,9 +358,17 @@
         "responses": {
           "200": {
             "description": "Result of the refresh that just ran",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshStatus"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshStatus"
+                }
+              }
+            }
           },
-          "403": {"description": "Caller is not an admin"}
+          "403": {
+            "description": "Caller is not an admin"
+          }
         }
       }
     },
@@ -190,9 +378,141 @@
         "responses": {
           "200": {
             "description": "Most recent refresh-log entry, or null if none have run yet",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RefreshStatus"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshStatus"
+                }
+              }
+            }
           },
-          "403": {"description": "Caller is not an admin"}
+          "403": {
+            "description": "Caller is not an admin"
+          }
+        }
+      }
+    },
+    "/api/shipper-watch": {
+      "get": {
+        "summary": "Return the latest Shipper Watch snapshot (Amway/Watson/Orca hypercare, Zalora NXD, Restock NXD), scoped to the caller.",
+        "responses": {
+          "200": {
+            "description": "Latest snapshot, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipperWatchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shipper-drilldown": {
+      "get": {
+        "summary": "Return the tracking numbers behind one station's Shipper Watch metric count.",
+        "parameters": [
+          {
+            "name": "station_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "amway_zero_attempt | amway_aging | watson_zero_attempt | watson_aging | orca_ovfd | orca_other | zalora_zero_attempt | zalora_ovfd | zalora_other"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tracking numbers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipperDrilldownResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "That station isn't in the caller's scope"
+          },
+          "404": {
+            "description": "Unknown station"
+          },
+          "422": {
+            "description": "metric is not one of the Shipper Watch drilldown metrics"
+          }
+        }
+      }
+    },
+    "/api/aging-details": {
+      "get": {
+        "summary": "Return the latest Aging Details snapshot (station x age-bucket pivot), scoped to the caller.",
+        "responses": {
+          "200": {
+            "description": "Latest snapshot, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgingDetailsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/aging-drilldown": {
+      "get": {
+        "summary": "Return the tracking numbers behind one station's parcel count in one age bucket.",
+        "parameters": [
+          {
+            "name": "station_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "age_0 | age_1 | age_2 | age_3 | age_4_6 | age_7_plus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tracking numbers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgingDrilldownResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "That station isn't in the caller's scope"
+          },
+          "404": {
+            "description": "Unknown station"
+          },
+          "422": {
+            "description": "bucket is not one of the six age buckets"
+          }
         }
       }
     }
@@ -201,269 +521,1226 @@
     "schemas": {
       "Health": {
         "type": "object",
-        "properties": {"status": {"type": "string"}},
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "Me": {
         "type": "object",
         "properties": {
-          "email": {"type": "string", "nullable": true},
-          "provisioned": {"type": "boolean"},
-          "role": {"type": "string", "nullable": true, "description": "admin | manager | station"},
-          "scope_type": {"type": "string", "nullable": true, "description": "all | region | zone | station"},
-          "scope_value": {"type": "string", "nullable": true},
-          "display_name": {"type": "string", "nullable": true}
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "provisioned": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string",
+            "nullable": true,
+            "description": "admin | manager | station"
+          },
+          "scope_type": {
+            "type": "string",
+            "nullable": true,
+            "description": "all | region | zone | station"
+          },
+          "scope_value": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          }
         },
-        "required": ["email", "provisioned"]
+        "required": [
+          "email",
+          "provisioned"
+        ]
       },
       "MetricFields": {
         "type": "object",
         "description": "All fields are grouped by last_scan_hub_name (where a parcel physically is right now) unless noted otherwise -- see backend/aggregate.py for the full formulas.",
         "properties": {
-          "total_in_hub": {"type": "integer", "description": "last_scan_hub_name == dest_hub, excludes On Hold/On Vehicle for Delivery"},
-          "zero_attempt": {"type": "integer", "description": "Subset of total_in_hub with 0 delivery attempts"},
-          "zero_attempt_gt_d0": {"type": "integer", "description": "Subset of zero_attempt aged >0 days"},
-          "on_hold": {"type": "integer"},
-          "pending_ats_zero_attempt": {"type": "integer", "description": "last_scan_hub_name != dest_hub, 0 delivery attempts -- not yet added to a shipment to its real destination"},
-          "pending_ats_attempted": {"type": "integer", "description": "Same as pending_ats_zero_attempt but with 1+ delivery attempts already made"},
-          "missing_open": {"type": "integer", "description": "Open missing-parcel tickets, total (grouped by dest_hub_name)"},
-          "missing_hub": {"type": "integer", "description": "Subset of missing_open classified as a station-side issue"},
-          "missing_ship_in": {"type": "integer", "description": "Subset of missing_open classified as an in-transit issue"},
-          "total_fresh": {"type": "integer", "description": "Total orders received today per hub (query 653, grouped by dest_hub_name)"},
-          "age_gt3": {"type": "integer", "description": "total_in_hub aged >3 days, excludes On Hold/On Vehicle for Delivery"},
-          "reschedule": {"type": "integer", "description": "total_in_hub with 1+ delivery attempts already made"},
-          "still_ovfd": {"type": "integer", "description": "Still On Vehicle for Delivery"},
-          "prior_d0": {"type": "integer", "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, 0 attempts"},
-          "prior_gt_d0": {"type": "integer", "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, aged >0 days"},
-          "cod_pct_hub": {"type": "number", "description": "% of total_in_hub that is COD"},
-          "total_routed": {"type": "integer", "description": "From query 512, matched by full station name"},
-          "attendance": {"type": "integer", "description": "Unique drivers with a route today, from query 512, excluding names containing OPS"},
-          "cod_pct_routed": {"type": "number", "description": "% of total_routed that is COD, from query 512"}
+          "total_in_hub": {
+            "type": "integer",
+            "description": "last_scan_hub_name == dest_hub, excludes On Hold/On Vehicle for Delivery"
+          },
+          "zero_attempt": {
+            "type": "integer",
+            "description": "Subset of total_in_hub with 0 delivery attempts"
+          },
+          "zero_attempt_gt_d0": {
+            "type": "integer",
+            "description": "Subset of zero_attempt aged >0 days"
+          },
+          "on_hold": {
+            "type": "integer"
+          },
+          "pending_ats_zero_attempt": {
+            "type": "integer",
+            "description": "last_scan_hub_name != dest_hub, 0 delivery attempts -- not yet added to a shipment to its real destination"
+          },
+          "pending_ats_attempted": {
+            "type": "integer",
+            "description": "Same as pending_ats_zero_attempt but with 1+ delivery attempts already made"
+          },
+          "missing_open": {
+            "type": "integer",
+            "description": "Open missing-parcel tickets, total (grouped by dest_hub_name)"
+          },
+          "missing_hub": {
+            "type": "integer",
+            "description": "Subset of missing_open classified as a station-side issue"
+          },
+          "missing_ship_in": {
+            "type": "integer",
+            "description": "Subset of missing_open classified as an in-transit issue"
+          },
+          "total_fresh": {
+            "type": "integer",
+            "description": "Total orders received today per hub (query 653, grouped by dest_hub_name)"
+          },
+          "age_gt3": {
+            "type": "integer",
+            "description": "total_in_hub aged >3 days, excludes On Hold/On Vehicle for Delivery"
+          },
+          "reschedule": {
+            "type": "integer",
+            "description": "total_in_hub with 1+ delivery attempts already made"
+          },
+          "still_ovfd": {
+            "type": "integer",
+            "description": "Still On Vehicle for Delivery"
+          },
+          "prior_d0": {
+            "type": "integer",
+            "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, 0 attempts"
+          },
+          "prior_gt_d0": {
+            "type": "integer",
+            "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, aged >0 days"
+          },
+          "cod_pct_hub": {
+            "type": "number",
+            "description": "% of total_in_hub that is COD"
+          },
+          "total_routed": {
+            "type": "integer",
+            "description": "From query 512, matched by full station name"
+          },
+          "attendance": {
+            "type": "integer",
+            "description": "Unique drivers with a route today, from query 512, excluding names containing OPS"
+          },
+          "cod_pct_routed": {
+            "type": "number",
+            "description": "% of total_routed that is COD, from query 512"
+          }
         },
-        "required": ["total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold", "pending_ats_zero_attempt", "pending_ats_attempted", "missing_open", "missing_hub", "missing_ship_in", "total_fresh", "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0", "cod_pct_hub", "total_routed", "attendance", "cod_pct_routed"]
+        "required": [
+          "total_in_hub",
+          "zero_attempt",
+          "zero_attempt_gt_d0",
+          "on_hold",
+          "pending_ats_zero_attempt",
+          "pending_ats_attempted",
+          "missing_open",
+          "missing_hub",
+          "missing_ship_in",
+          "total_fresh",
+          "age_gt3",
+          "reschedule",
+          "still_ovfd",
+          "prior_d0",
+          "prior_gt_d0",
+          "cod_pct_hub",
+          "total_routed",
+          "attendance",
+          "cod_pct_routed"
+        ]
       },
       "StationRow": {
         "allOf": [
-          {"$ref": "#/components/schemas/MetricFields"},
+          {
+            "$ref": "#/components/schemas/MetricFields"
+          },
           {
             "type": "object",
             "properties": {
-              "station_code": {"type": "string"},
-              "station_name": {"type": "string"},
-              "zone": {"type": "string"},
-              "region": {"type": "string"}
+              "station_code": {
+                "type": "string"
+              },
+              "station_name": {
+                "type": "string"
+              },
+              "zone": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              }
             },
-            "required": ["station_code", "station_name", "zone", "region"]
+            "required": [
+              "station_code",
+              "station_name",
+              "zone",
+              "region"
+            ]
           }
         ]
       },
       "GroupRow": {
         "allOf": [
-          {"$ref": "#/components/schemas/MetricFields"},
+          {
+            "$ref": "#/components/schemas/MetricFields"
+          },
           {
             "type": "object",
             "properties": {
-              "key": {"type": "string", "description": "The zone or region name this row rolls up"},
-              "station_count": {"type": "integer"}
+              "key": {
+                "type": "string",
+                "description": "The zone or region name this row rolls up"
+              },
+              "station_count": {
+                "type": "integer"
+              }
             },
-            "required": ["key", "station_count"]
+            "required": [
+              "key",
+              "station_count"
+            ]
           }
         ]
       },
       "DashboardResponse": {
         "type": "object",
         "properties": {
-          "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
-          "stations": {"type": "array", "items": {"$ref": "#/components/schemas/StationRow"}},
-          "zones": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}},
-          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/GroupRow"}},
-          "previous_captured_at": {"type": "string", "nullable": true, "format": "date-time", "description": "Timestamp of the second-most-recent snapshot, for trend deltas"},
-          "previous_stations": {"type": "array", "items": {"$ref": "#/components/schemas/StationRow"}}
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupRow"
+            }
+          },
+          "previous_captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Timestamp of the second-most-recent snapshot, for trend deltas"
+          },
+          "previous_stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationRow"
+            }
+          }
         },
-        "required": ["captured_at", "stations", "zones", "regions"]
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions"
+        ]
       },
       "UserOut": {
         "type": "object",
         "properties": {
-          "email": {"type": "string"},
-          "role": {"type": "string"},
-          "scope_type": {"type": "string"},
-          "scope_value": {"type": "string", "nullable": true},
-          "display_name": {"type": "string", "nullable": true},
-          "created_at": {"type": "string"},
-          "last_seen_at": {"type": "string", "nullable": true, "description": "Last time this user's /api/me was called (i.e. last opened the dashboard)"}
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "scope_type": {
+            "type": "string"
+          },
+          "scope_value": {
+            "type": "string",
+            "nullable": true
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "Last time this user's /api/me was called (i.e. last opened the dashboard)"
+          }
         },
-        "required": ["email", "role", "scope_type", "scope_value", "display_name", "created_at", "last_seen_at"]
+        "required": [
+          "email",
+          "role",
+          "scope_type",
+          "scope_value",
+          "display_name",
+          "created_at",
+          "last_seen_at"
+        ]
       },
       "UserIn": {
         "type": "object",
         "properties": {
-          "email": {"type": "string"},
-          "role": {"type": "string", "description": "admin | manager | station"},
-          "scope_type": {"type": "string", "description": "all | region | zone | station"},
-          "scope_value": {"type": "string", "nullable": true, "description": "Region name, zone name, or station name, matching scope_type"},
-          "display_name": {"type": "string", "nullable": true}
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "description": "admin | manager | station"
+          },
+          "scope_type": {
+            "type": "string",
+            "description": "all | region | zone | station"
+          },
+          "scope_value": {
+            "type": "string",
+            "nullable": true,
+            "description": "Region name, zone name, or station name, matching scope_type"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          }
         },
-        "required": ["email", "role", "scope_type"]
+        "required": [
+          "email",
+          "role",
+          "scope_type"
+        ]
       },
       "OkResult": {
         "type": "object",
         "properties": {
-          "ok": {"type": "boolean"},
-          "detail": {"type": "string", "nullable": true}
+          "ok": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          }
         },
-        "required": ["ok"]
+        "required": [
+          "ok"
+        ]
       },
       "StationMeta": {
         "type": "object",
         "properties": {
-          "station_code": {"type": "string"},
-          "station_name": {"type": "string"},
-          "zone": {"type": "string"},
-          "region": {"type": "string"}
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          }
         },
-        "required": ["station_code", "station_name", "zone", "region"]
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region"
+        ]
       },
       "RegionMeta": {
         "type": "object",
         "properties": {
-          "region": {"type": "string"},
-          "zones": {"type": "array", "items": {"type": "string"}}
+          "region": {
+            "type": "string"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         },
-        "required": ["region", "zones"]
+        "required": [
+          "region",
+          "zones"
+        ]
       },
       "DrilldownResponse": {
         "type": "object",
         "properties": {
-          "station_code": {"type": "string"},
-          "station_name": {"type": "string"},
-          "metric": {"type": "string"},
-          "tracking_numbers": {"type": "array", "items": {"type": "string"}},
-          "as_of": {"type": "string", "nullable": true, "format": "date-time", "description": "When the in-memory cache backing this was built (the last refresh); null if no refresh has run since restart"}
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "tracking_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "as_of": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "When the in-memory cache backing this was built (the last refresh); null if no refresh has run since restart"
+          }
         },
-        "required": ["station_code", "station_name", "metric", "tracking_numbers"]
+        "required": [
+          "station_code",
+          "station_name",
+          "metric",
+          "tracking_numbers"
+        ]
       },
       "LHTrip": {
         "type": "object",
-        "properties": {"time": {"type": "string"}, "parcels": {"type": "integer"}},
-        "required": ["time", "parcels"]
+        "properties": {
+          "time": {
+            "type": "string"
+          },
+          "parcels": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "parcels"
+        ]
       },
       "ShipmentDetailFields": {
         "type": "object",
         "properties": {
-          "total_fresh": {"type": "integer"},
-          "total_shipment": {"type": "integer", "description": "Sum of query 1500's total_shipments per hub"},
-          "fresh_unscan": {"type": "integer", "description": "query 1239 rows where 1st_sweep_at_WM_station is blank"},
-          "latlong": {"type": "integer", "description": "query 1239 rows where shp_dest_hub_name != latest_dest_hub_name and tag doesn't contain RTS"},
-          "fresh_attempt_count": {"type": "integer", "description": "query 1239 rows where first_attempt_date is set"},
-          "fresh_attempt_pct": {"type": "number", "description": "fresh_attempt_count / total_fresh * 100; target 96%"}
+          "total_fresh": {
+            "type": "integer"
+          },
+          "total_shipment": {
+            "type": "integer",
+            "description": "Sum of query 1500's total_shipments per hub"
+          },
+          "fresh_unscan": {
+            "type": "integer",
+            "description": "query 1239 rows where 1st_sweep_at_WM_station is blank"
+          },
+          "latlong": {
+            "type": "integer",
+            "description": "query 1239 rows where shp_dest_hub_name != latest_dest_hub_name and tag doesn't contain RTS"
+          },
+          "fresh_attempt_count": {
+            "type": "integer",
+            "description": "query 1239 rows where first_attempt_date is set"
+          },
+          "fresh_attempt_pct": {
+            "type": "number",
+            "description": "fresh_attempt_count / total_fresh * 100; target 96%"
+          }
         },
-        "required": ["total_fresh", "total_shipment", "fresh_unscan", "latlong", "fresh_attempt_count", "fresh_attempt_pct"]
+        "required": [
+          "total_fresh",
+          "total_shipment",
+          "fresh_unscan",
+          "latlong",
+          "fresh_attempt_count",
+          "fresh_attempt_pct"
+        ]
       },
       "ShipmentStationRow": {
         "allOf": [
-          {"$ref": "#/components/schemas/ShipmentDetailFields"},
-          {"type": "object", "properties": {
-            "station_code": {"type": "string"}, "station_name": {"type": "string"},
-            "zone": {"type": "string"}, "region": {"type": "string"},
-            "lh_trips": {"type": "array", "items": {"$ref": "#/components/schemas/LHTrip"}, "description": "Up to 2 line-haul trips, sorted by arrival time"}
-          }, "required": ["station_code", "station_name", "zone", "region", "lh_trips"]}
+          {
+            "$ref": "#/components/schemas/ShipmentDetailFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "station_code": {
+                "type": "string"
+              },
+              "station_name": {
+                "type": "string"
+              },
+              "zone": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "lh_trips": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LHTrip"
+                },
+                "description": "Up to 2 line-haul trips, sorted by arrival time"
+              }
+            },
+            "required": [
+              "station_code",
+              "station_name",
+              "zone",
+              "region",
+              "lh_trips"
+            ]
+          }
         ]
       },
       "ShipmentGroupRow": {
         "allOf": [
-          {"$ref": "#/components/schemas/ShipmentDetailFields"},
-          {"type": "object", "properties": {"key": {"type": "string"}, "station_count": {"type": "integer"}}, "required": ["key", "station_count"]}
+          {
+            "$ref": "#/components/schemas/ShipmentDetailFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "station_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "key",
+              "station_count"
+            ]
+          }
         ]
       },
       "ShipmentDetailsResponse": {
         "type": "object",
         "properties": {
-          "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
-          "stations": {"type": "array", "items": {"$ref": "#/components/schemas/ShipmentStationRow"}},
-          "zones": {"type": "array", "items": {"$ref": "#/components/schemas/ShipmentGroupRow"}},
-          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/ShipmentGroupRow"}}
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipmentStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipmentGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipmentGroupRow"
+            }
+          }
         },
-        "required": ["captured_at", "stations", "zones", "regions"]
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions"
+        ]
       },
       "ShipmentDrilldownResponse": {
         "type": "object",
         "properties": {
-          "station_code": {"type": "string"}, "station_name": {"type": "string"}, "metric": {"type": "string"},
-          "tracking_numbers": {"type": "array", "items": {"type": "string"}},
-          "as_of": {"type": "string", "nullable": true, "format": "date-time"}
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "tracking_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "as_of": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
         },
-        "required": ["station_code", "station_name", "metric", "tracking_numbers"]
+        "required": [
+          "station_code",
+          "station_name",
+          "metric",
+          "tracking_numbers"
+        ]
       },
       "RoutedFields": {
         "type": "object",
         "properties": {
-          "total_routed": {"type": "integer"},
-          "zero_attempt": {"type": "integer", "description": "Merged in from the latest Station Health snapshot"},
-          "attendance": {"type": "integer", "description": "Unique non-OPS drivers with a route today"},
-          "attendance_hd": {"type": "integer", "description": "Subset of attendance: Hybrid Driver (full-time staff)"},
-          "attendance_hr": {"type": "integer", "description": "Subset of attendance: Hybrid Rider (full-time staff)"},
-          "attendance_id": {"type": "integer", "description": "Subset of attendance: Independent Driver (part-time)"},
-          "attendance_ir": {"type": "integer", "description": "Subset of attendance: Independent Rider (part-time)"},
-          "attendance_rescue": {"type": "integer", "description": "Subset of attendance whose name-prefix home station differs from the station they're currently routing at"},
-          "current_ovfd": {"type": "integer"},
-          "current_success": {"type": "integer"},
-          "total_cod": {"type": "integer"},
-          "cod_pct": {"type": "number"},
-          "success_rate": {"type": "number", "description": "current_success / total_routed * 100"},
-          "completion_rate": {"type": "number", "description": "(total_routed - current_ovfd) / total_routed * 100"}
+          "total_routed": {
+            "type": "integer"
+          },
+          "zero_attempt": {
+            "type": "integer",
+            "description": "Merged in from the latest Station Health snapshot"
+          },
+          "attendance": {
+            "type": "integer",
+            "description": "Unique non-OPS drivers with a route today"
+          },
+          "attendance_hd": {
+            "type": "integer",
+            "description": "Subset of attendance: Hybrid Driver (full-time staff)"
+          },
+          "attendance_hr": {
+            "type": "integer",
+            "description": "Subset of attendance: Hybrid Rider (full-time staff)"
+          },
+          "attendance_id": {
+            "type": "integer",
+            "description": "Subset of attendance: Independent Driver (part-time)"
+          },
+          "attendance_ir": {
+            "type": "integer",
+            "description": "Subset of attendance: Independent Rider (part-time)"
+          },
+          "attendance_rescue": {
+            "type": "integer",
+            "description": "Subset of attendance whose name-prefix home station differs from the station they're currently routing at"
+          },
+          "current_ovfd": {
+            "type": "integer"
+          },
+          "current_success": {
+            "type": "integer"
+          },
+          "total_cod": {
+            "type": "integer"
+          },
+          "cod_pct": {
+            "type": "number"
+          },
+          "success_rate": {
+            "type": "number",
+            "description": "current_success / total_routed * 100"
+          },
+          "completion_rate": {
+            "type": "number",
+            "description": "(total_routed - current_ovfd) / total_routed * 100"
+          }
         },
-        "required": ["total_routed", "zero_attempt", "attendance", "attendance_hd", "attendance_hr", "attendance_id", "attendance_ir", "attendance_rescue", "current_ovfd", "current_success", "total_cod", "cod_pct", "success_rate", "completion_rate"]
+        "required": [
+          "total_routed",
+          "zero_attempt",
+          "attendance",
+          "attendance_hd",
+          "attendance_hr",
+          "attendance_id",
+          "attendance_ir",
+          "attendance_rescue",
+          "current_ovfd",
+          "current_success",
+          "total_cod",
+          "cod_pct",
+          "success_rate",
+          "completion_rate"
+        ]
       },
       "RoutedStationRow": {
         "allOf": [
-          {"$ref": "#/components/schemas/RoutedFields"},
-          {"type": "object", "properties": {"station_code": {"type": "string"}, "station_name": {"type": "string"}, "zone": {"type": "string"}, "region": {"type": "string"}}, "required": ["station_code", "station_name", "zone", "region"]}
+          {
+            "$ref": "#/components/schemas/RoutedFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "station_code": {
+                "type": "string"
+              },
+              "station_name": {
+                "type": "string"
+              },
+              "zone": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "station_code",
+              "station_name",
+              "zone",
+              "region"
+            ]
+          }
         ]
       },
       "RoutedGroupRow": {
         "allOf": [
-          {"$ref": "#/components/schemas/RoutedFields"},
-          {"type": "object", "properties": {"key": {"type": "string"}, "region": {"type": "string", "description": "The zone's parent region (for zone-level rows) or the region itself (for region-level rows)"}, "station_count": {"type": "integer"}}, "required": ["key", "region", "station_count"]}
+          {
+            "$ref": "#/components/schemas/RoutedFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string",
+                "description": "The zone's parent region (for zone-level rows) or the region itself (for region-level rows)"
+              },
+              "station_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "key",
+              "region",
+              "station_count"
+            ]
+          }
         ]
       },
       "RoutedDriverRow": {
         "type": "object",
         "properties": {
-          "driver_name": {"type": "string"},
-          "driver_type": {"type": "string", "description": "Staff Driver | Staff Rider | Independent Driver | Independent Rider | Unknown"},
-          "home_station": {"type": "string", "nullable": true, "description": "From the station-abbreviation prefix of the driver's name"},
-          "current_station": {"type": "string", "nullable": true},
-          "zone": {"type": "string", "nullable": true}, "region": {"type": "string", "nullable": true},
-          "is_rescue": {"type": "boolean", "description": "home_station differs from current_station"},
-          "total_routed": {"type": "integer"}, "current_success": {"type": "integer"}, "current_ovfd": {"type": "integer"}, "total_cod": {"type": "integer"},
-          "cod_pct": {"type": "number"}, "success_rate": {"type": "number"}, "completion_rate": {"type": "number"}
+          "driver_name": {
+            "type": "string"
+          },
+          "driver_type": {
+            "type": "string",
+            "description": "Hybrid Driver | Hybrid Rider | Independent Driver | Independent Rider | Unknown"
+          },
+          "home_station": {
+            "type": "string",
+            "nullable": true,
+            "description": "From the station-abbreviation prefix of the driver's name"
+          },
+          "current_station": {
+            "type": "string",
+            "nullable": true
+          },
+          "zone": {
+            "type": "string",
+            "nullable": true
+          },
+          "region": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_rescue": {
+            "type": "boolean",
+            "description": "home_station differs from current_station"
+          },
+          "total_routed": {
+            "type": "integer"
+          },
+          "current_success": {
+            "type": "integer"
+          },
+          "current_ovfd": {
+            "type": "integer"
+          },
+          "total_cod": {
+            "type": "integer"
+          },
+          "cod_pct": {
+            "type": "number"
+          },
+          "success_rate": {
+            "type": "number"
+          },
+          "completion_rate": {
+            "type": "number"
+          },
+          "station_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Same as current_station -- where this driver is routing today (may differ from home_station for a rescue driver)"
+          }
         },
-        "required": ["driver_name", "driver_type", "home_station", "current_station", "is_rescue", "total_routed", "current_success", "current_ovfd", "total_cod", "cod_pct", "success_rate", "completion_rate"]
+        "required": [
+          "driver_name",
+          "driver_type",
+          "home_station",
+          "current_station",
+          "is_rescue",
+          "total_routed",
+          "current_success",
+          "current_ovfd",
+          "total_cod",
+          "cod_pct",
+          "success_rate",
+          "completion_rate",
+          "station_name"
+        ]
       },
       "RoutedViewResponse": {
         "type": "object",
         "properties": {
-          "captured_at": {"type": "string", "nullable": true, "format": "date-time"},
-          "stations": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedStationRow"}},
-          "zones": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedGroupRow"}},
-          "regions": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedGroupRow"}},
-          "drivers": {"type": "array", "items": {"$ref": "#/components/schemas/RoutedDriverRow"}, "description": "Not persisted -- rebuilt in memory on every refresh, empty after a restart until the next refresh runs"}
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutedStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutedGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutedGroupRow"
+            }
+          },
+          "drivers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutedDriverRow"
+            },
+            "description": "Not persisted -- rebuilt in memory on every refresh, empty after a restart until the next refresh runs"
+          }
         },
-        "required": ["captured_at", "stations", "zones", "regions", "drivers"]
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions",
+          "drivers"
+        ]
       },
       "RefreshStatus": {
         "type": "object",
         "properties": {
-          "id": {"type": "integer"},
-          "started_at": {"type": "string"},
-          "finished_at": {"type": "string", "nullable": true},
-          "status": {"type": "string", "description": "running | ok | error"},
-          "stations_count": {"type": "integer", "nullable": true},
-          "error_message": {"type": "string", "nullable": true},
-          "triggered_by": {"type": "string", "nullable": true}
+          "id": {
+            "type": "integer"
+          },
+          "started_at": {
+            "type": "string"
+          },
+          "finished_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "running | ok | error"
+          },
+          "stations_count": {
+            "type": "integer",
+            "nullable": true
+          },
+          "error_message": {
+            "type": "string",
+            "nullable": true
+          },
+          "triggered_by": {
+            "type": "string",
+            "nullable": true
+          }
         },
-        "required": ["id", "started_at", "finished_at", "status", "stations_count", "error_message", "triggered_by"]
+        "required": [
+          "id",
+          "started_at",
+          "finished_at",
+          "status",
+          "stations_count",
+          "error_message",
+          "triggered_by"
+        ]
+      },
+      "ShipperFields": {
+        "type": "object",
+        "properties": {
+          "amway_zero_attempt": {
+            "type": "integer",
+            "description": "query 78, Amway shipper, status=Arrived at Sorting Hub and delivery_attempts=0"
+          },
+          "amway_aging": {
+            "type": "integer",
+            "description": "amway_zero_attempt subset where days_since_current_hub_first_sweep > 0"
+          },
+          "watson_zero_attempt": {
+            "type": "integer",
+            "description": "Same as amway_zero_attempt, for Watson"
+          },
+          "watson_aging": {
+            "type": "integer",
+            "description": "Same as amway_aging, for Watson"
+          },
+          "orca_ovfd": {
+            "type": "integer",
+            "description": "query 78, TN contains ORCA (unconfirmed pattern), status=On Vehicle for Delivery"
+          },
+          "orca_other": {
+            "type": "integer",
+            "description": "Same TNs, any other status"
+          },
+          "zalora_zero_attempt": {
+            "type": "integer",
+            "description": "Zalora NXD (query 1296), dest_hub_name=last_sweep_hub_name, delivery_attempts=0"
+          },
+          "zalora_ovfd": {
+            "type": "integer",
+            "description": "Zalora NXD, dest_hub_name=last_sweep_hub_name, status=On Vehicle for Delivery"
+          },
+          "zalora_other": {
+            "type": "integer",
+            "description": "Zalora NXD, dest_hub_name=last_sweep_hub_name, any other status"
+          },
+          "restock_bundles": {
+            "type": "integer",
+            "description": "Restock NXD (query 1585), distinct bundle_tracking_number count"
+          },
+          "restock_pieces": {
+            "type": "integer",
+            "description": "Restock NXD, summed piece_count per distinct bundle"
+          },
+          "restock_potential_breach": {
+            "type": "integer",
+            "description": "Restock NXD bundles whose days_group contains Potential"
+          },
+          "restock_breach": {
+            "type": "integer",
+            "description": "Restock NXD bundles whose days_group contains Breach (not Potential)"
+          }
+        },
+        "required": [
+          "amway_zero_attempt",
+          "amway_aging",
+          "watson_zero_attempt",
+          "watson_aging",
+          "orca_ovfd",
+          "orca_other",
+          "zalora_zero_attempt",
+          "zalora_ovfd",
+          "zalora_other",
+          "restock_bundles",
+          "restock_pieces",
+          "restock_potential_breach",
+          "restock_breach"
+        ]
+      },
+      "ShipperStationRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ShipperFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "station_code": {
+                "type": "string"
+              },
+              "station_name": {
+                "type": "string"
+              },
+              "zone": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "station_code",
+              "station_name",
+              "zone",
+              "region"
+            ]
+          }
+        ]
+      },
+      "ShipperGroupRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ShipperFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "station_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "key",
+              "region",
+              "station_count"
+            ]
+          }
+        ]
+      },
+      "ShipperWatchResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipperStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipperGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShipperGroupRow"
+            }
+          }
+        },
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions"
+        ]
+      },
+      "ShipperDrilldownResponse": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "tracking_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "as_of": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "metric",
+          "tracking_numbers"
+        ]
+      },
+      "AgingFields": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "age_0": {
+            "type": "integer"
+          },
+          "age_1": {
+            "type": "integer"
+          },
+          "age_2": {
+            "type": "integer"
+          },
+          "age_3": {
+            "type": "integer"
+          },
+          "age_4_6": {
+            "type": "integer",
+            "description": "days_since_current_hub_first_sweep 4-6"
+          },
+          "age_7_plus": {
+            "type": "integer",
+            "description": "days_since_current_hub_first_sweep >= 7"
+          }
+        },
+        "required": [
+          "total",
+          "age_0",
+          "age_1",
+          "age_2",
+          "age_3",
+          "age_4_6",
+          "age_7_plus"
+        ]
+      },
+      "AgingStationRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AgingFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "station_code": {
+                "type": "string"
+              },
+              "station_name": {
+                "type": "string"
+              },
+              "zone": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "station_code",
+              "station_name",
+              "zone",
+              "region"
+            ]
+          }
+        ]
+      },
+      "AgingGroupRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AgingFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "region": {
+                "type": "string"
+              },
+              "station_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "key",
+              "region",
+              "station_count"
+            ]
+          }
+        ]
+      },
+      "AgingDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Human-readable bucket labels: 0,1,2,3,4-6,7+"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingGroupRow"
+            }
+          }
+        },
+        "required": [
+          "captured_at",
+          "buckets",
+          "stations",
+          "zones",
+          "regions"
+        ]
+      },
+      "AgingDrilldownResponse": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "tracking_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "as_of": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "bucket",
+          "tracking_numbers"
+        ]
       }
     }
   }

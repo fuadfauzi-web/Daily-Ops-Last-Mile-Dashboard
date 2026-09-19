@@ -518,3 +518,235 @@ def rollup(station_rows: list[dict], group_key: str) -> list[dict]:
 
 def now_utc_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Shipper Watch tab (query 78 again for the hypercare shippers, Zalora NXD query
+# 1296, Restock NXD query 1585). Unlike everything above, this has NOT been
+# cross-checked against a live sheet/query snapshot -- it's built directly from
+# the Fleet Manager's field-by-field description, so treat the numbers as
+# provisional until confirmed against what's actually live.
+# ---------------------------------------------------------------------------
+
+# Mirrors the Fleet Manager's sheet formula for identifying a shipper from its
+# tracking number (first match wins, same order as the sheet's IFS()).
+_SHIPPER_TN_PATTERNS = (
+    (re.compile(r"-00"), "Restock"),
+    (re.compile(r"^WATSN", re.IGNORECASE), "Watson"),
+    (re.compile(r"MYNJV"), "TTMY"),
+    (re.compile(r"WNJMY|KNMY"), "TTDI"),
+    (re.compile(r"AMNV"), "Amway"),
+    (re.compile(r"SPE"), "Shopee"),
+    (re.compile(r"NLMYA"), "Lazada"),
+    (re.compile(r"ZNV|ZMP"), "Zalora"),
+    (re.compile(r"TNG"), "TNG"),
+)
+
+# Orca has no confirmed pattern in the Fleet Manager's shipper-type formula --
+# identified here by "ORCA" appearing in the tracking number, the same
+# unconfirmed assumption flagged when this was first scoped. Confirm/correct
+# once live numbers can be checked.
+_ORCA_PATTERN = re.compile(r"ORCA", re.IGNORECASE)
+
+
+def _classify_shipper(tn: str | None) -> str:
+    if not tn or not isinstance(tn, str) or not tn.strip():
+        return "Others"
+    t = tn.strip()
+    if "RESTOCK" in t.upper():
+        return "Restock"
+    for pattern, name in _SHIPPER_TN_PATTERNS:
+        if pattern.search(t):
+            return name
+    if t[:2].upper() == "MY":
+        return "Shopee DI"
+    return "Others"
+
+
+SHIPPER_WATCH_KEYS = (
+    "amway_zero_attempt", "amway_aging",
+    "watson_zero_attempt", "watson_aging",
+    "orca_ovfd", "orca_other",
+    "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
+    "restock_bundles", "restock_pieces", "restock_potential_breach", "restock_breach",
+)
+
+SHIPPER_DRILLDOWN_METRICS = (
+    "amway_zero_attempt", "amway_aging", "watson_zero_attempt", "watson_aging",
+    "orca_ovfd", "orca_other", "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
+)
+
+
+def _empty_shipper_row(hub_code: str) -> dict:
+    name, _full, zone, region = HUBS[hub_code]
+    row = {"station_code": hub_code, "station_name": name, "zone": zone, "region": region}
+    row.update({k: 0 for k in SHIPPER_WATCH_KEYS})
+    return row
+
+
+def build_shipper_watch(
+    health_v3_rows: list[dict], zalora_rows: list[dict], restock_rows: list[dict]
+) -> tuple[dict[str, dict], dict[str, dict]]:
+    """Returns ({hub_code: shipper_row}, {hub_code: {metric: [tracking_id, ...]}}).
+
+    Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so
+    0-Attempt-Today and Aging(>Day0) are what matters. Orca: OVFD vs everything
+    else. All three read query 78, grouped by last_scan_hub_name like the rest
+    of the app.
+    """
+    by_station = {hub: _empty_shipper_row(hub) for hub in HUBS}
+    tn_details = {hub: {k: [] for k in SHIPPER_DRILLDOWN_METRICS} for hub in HUBS}
+
+    for r in health_v3_rows:
+        tn = r.get("tracking_id")
+        hub = r.get("last_scan_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        is_orca = bool(_ORCA_PATTERN.search(tn or ""))
+        shipper = None if is_orca else _classify_shipper(tn)
+        if not is_orca and shipper not in ("Amway", "Watson"):
+            continue
+        status = r.get("granular_status")
+        attempts = r.get("delivery_attempts") or 0
+        age = r.get("days_since_current_hub_first_sweep") or 0
+
+        if is_orca:
+            if status == "On Vehicle for Delivery":
+                row["orca_ovfd"] += 1
+                tn_details[hub]["orca_ovfd"].append(tn)
+            else:
+                row["orca_other"] += 1
+                tn_details[hub]["orca_other"].append(tn)
+            continue
+
+        prefix = "amway" if shipper == "Amway" else "watson"
+        if status == "Arrived at Sorting Hub" and attempts == 0:
+            row[f"{prefix}_zero_attempt"] += 1
+            tn_details[hub][f"{prefix}_zero_attempt"].append(tn)
+            if age > 0:
+                row[f"{prefix}_aging"] += 1
+                tn_details[hub][f"{prefix}_aging"].append(tn)
+
+    # Zalora NXD: "dest_hub_name = last_sweep_hub_name means those parcels are at
+    # the correct hub and that hub needs to attempt them" -- read as: only a
+    # parcel's correct hub is on the hook for it, so exclude rows where it's
+    # elsewhere. ASSUMPTION -- confirm this reading is right once live.
+    for r in zalora_rows:
+        if r.get("dest_hub_name") != r.get("last_sweep_hub_name"):
+            continue
+        hub = r.get("last_sweep_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        tn = r.get("tracking_id")
+        if (r.get("delivery_attempts") or 0) == 0:
+            row["zalora_zero_attempt"] += 1
+            tn_details[hub]["zalora_zero_attempt"].append(tn)
+        if r.get("granular_status") == "On Vehicle for Delivery":
+            row["zalora_ovfd"] += 1
+            tn_details[hub]["zalora_ovfd"].append(tn)
+        else:
+            row["zalora_other"] += 1
+            tn_details[hub]["zalora_other"].append(tn)
+
+    # Restock NXD: counted by bundle, not by row -- a bundle_tracking_number
+    # repeats across rows (one per tracking_id inside it), and piece_count is
+    # the bundle's actual parcel count. Grouped by last_scan_hub (where it
+    # physically is), matching the rest of the app's convention.
+    seen_bundles: dict[str, set] = {hub: set() for hub in HUBS}
+    for r in restock_rows:
+        hub = r.get("last_scan_hub")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        bundle = r.get("bundle_tracking_number")
+        if not bundle or bundle in seen_bundles[hub]:
+            continue
+        seen_bundles[hub].add(bundle)
+        row["restock_bundles"] += 1
+        row["restock_pieces"] += r.get("piece_count") or 0
+        days_group = r.get("days_group") or ""
+        if "Potential" in days_group:
+            row["restock_potential_breach"] += 1
+        elif "Breach" in days_group:
+            row["restock_breach"] += 1
+
+    return by_station, tn_details
+
+
+def rollup_shipper_watch(station_rows: list[dict], group_key: str) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(
+            key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in SHIPPER_WATCH_KEYS}}
+        )
+        for k in SHIPPER_WATCH_KEYS:
+            g[k] += row[k]
+        g["station_count"] += 1
+    return list(groups.values())
+
+
+# ---------------------------------------------------------------------------
+# Aging Details tab (query 78 again): a station x age-bucket pivot. Grouped by
+# last_scan_hub_name like everything else, but -- unlike the main Age>3 metric --
+# INCLUDING On Hold / On Vehicle for Delivery statuses, so this is the full
+# picture of everything sitting in a hub by age, not just what's still awaiting
+# an attempt.
+# ---------------------------------------------------------------------------
+
+AGING_BUCKETS = ("0", "1", "2", "3", "4-6", "7+")
+# MySQL column names can't hold "-"/"+", so buckets map to SQL-safe keys; the
+# frontend gets the human labels back via AGING_BUCKET_LABELS.
+AGING_BUCKET_KEYS = {"0": "age_0", "1": "age_1", "2": "age_2", "3": "age_3", "4-6": "age_4_6", "7+": "age_7_plus"}
+AGING_BUCKET_LABELS = {v: k for k, v in AGING_BUCKET_KEYS.items()}
+AGING_KEYS = ("total",) + tuple(AGING_BUCKET_KEYS.values())
+
+
+def _age_bucket(age: int) -> str:
+    if age <= 3:
+        return str(age)
+    if age <= 6:
+        return "4-6"
+    return "7+"
+
+
+def _empty_aging_row(hub_code: str) -> dict:
+    name, _full, zone, region = HUBS[hub_code]
+    row = {"station_code": hub_code, "station_name": name, "zone": zone, "region": region}
+    row.update({k: 0 for k in AGING_KEYS})
+    return row
+
+
+def build_aging_details(health_v3_rows: list[dict]) -> tuple[dict[str, dict], dict[str, dict]]:
+    """Returns ({hub_code: aging_row}, {hub_code: {bucket_key: [tracking_id, ...]}})."""
+    by_station = {hub: _empty_aging_row(hub) for hub in HUBS}
+    tn_details = {hub: {k: [] for k in AGING_BUCKET_KEYS.values()} for hub in HUBS}
+
+    for r in health_v3_rows:
+        hub = r.get("last_scan_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        tn = r.get("tracking_id")
+        age = r.get("days_since_current_hub_first_sweep") or 0
+        bucket_key = AGING_BUCKET_KEYS[_age_bucket(age)]
+        row[bucket_key] += 1
+        row["total"] += 1
+        tn_details[hub][bucket_key].append(tn)
+
+    return by_station, tn_details
+
+
+def rollup_aging(station_rows: list[dict], group_key: str) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(
+            key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in AGING_KEYS}}
+        )
+        for k in AGING_KEYS:
+            g[k] += row[k]
+        g["station_count"] += 1
+    return list(groups.values())
