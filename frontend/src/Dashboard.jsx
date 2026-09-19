@@ -54,15 +54,15 @@ const CARD_STATS = [
 
 const TABS = [
   { key: "action", label: "Action Board" },
-  { key: "urgent", label: "Urgent TN" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
   { key: "routed", label: "Routed View" },
-  { key: "shipper", label: "Shipper Watch" },
-  { key: "restock", label: "Restock" },
-  { key: "recovery", label: "Recovery" },
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
+  { key: "recovery", label: "Recovery" },
+  { key: "shipper", label: "Shipper Watch" },
+  { key: "restock", label: "Restock" },
+  { key: "urgent", label: "Urgent TN" },
 ];
 
 function fmt(key, value) {
