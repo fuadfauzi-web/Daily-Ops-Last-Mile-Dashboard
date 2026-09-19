@@ -89,7 +89,13 @@ function SlaTargetsPanel({ regions }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
 
-  const load = () => api.thresholds.list().then(setRows).catch((e) => setError(e.message));
+  // Braces matter here: an expression-bodied arrow returns the promise chain,
+  // and useEffect treats whatever its callback returns as the cleanup
+  // function -- React would later try to call that leftover promise as a
+  // function on unmount ("n is not a function"), crashing on every tab switch.
+  const load = () => {
+    api.thresholds.list().then(setRows).catch((e) => setError(e.message));
+  };
   useEffect(load, []);
 
   useEffect(() => {
