@@ -502,6 +502,48 @@
           }
         }
       }
+    },
+    "/api/rpu": {
+      "get": {
+        "summary": "Return the latest RPU snapshot (query 1397) for one of 4 sub-stages, optionally filtered to one shipper_group, scoped to the caller.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "pending_pickup",
+              "description": "pending_pickup | ovfd | pending_inbound | aging_d5"
+            }
+          },
+          {
+            "name": "shipper_group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true,
+              "description": "Zalora | Cainiao -- for RPU Shipper Details"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest snapshot for that type/shipper, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RpuResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "type is not one of the 4 RPU sub-stages, or shipper_group is not Zalora/Cainiao"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1413,6 +1455,14 @@
             "type": "integer",
             "description": "Same TNs, any other status"
           },
+          "sodaxpress_ovfd": {
+            "type": "integer",
+            "description": "query 78, TN prefix SB2CX/SDEWM, status=On Vehicle for Delivery -- same special-flow watch as Orca"
+          },
+          "sodaxpress_other": {
+            "type": "integer",
+            "description": "Same TNs, any other status"
+          },
           "zalora_zero_attempt": {
             "type": "integer",
             "description": "Zalora NXD (query 1296), dest_hub_name=last_sweep_hub_name, delivery_attempts=0"
@@ -1449,6 +1499,8 @@
           "watson_aging",
           "orca_ovfd",
           "orca_other",
+          "sodaxpress_ovfd",
+          "sodaxpress_other",
           "zalora_zero_attempt",
           "zalora_ovfd",
           "zalora_other",
@@ -1957,6 +2009,167 @@
           "zones",
           "regions",
           "drivers",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
+        ]
+      },
+      "RpuStationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "total_tn"
+        ]
+      },
+      "RpuGroupRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "station_count": {
+            "type": "integer"
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "region",
+          "station_count",
+          "total_tn"
+        ]
+      },
+      "RpuRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "tracking_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "age": {
+            "type": "integer",
+            "description": "days_since_scheduled_date"
+          },
+          "failure_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "driver_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipper_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipper_group": {
+            "type": "string",
+            "nullable": true,
+            "description": "Zalora | Cainiao | Others"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "attempts",
+          "age"
+        ]
+      },
+      "RpuResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string",
+            "description": "pending_pickup | ovfd | pending_inbound | aging_d5"
+          },
+          "type_label": {
+            "type": "string"
+          },
+          "shipper_group": {
+            "type": "string",
+            "nullable": true
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RpuStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RpuGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RpuGroupRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RpuRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
+          "type",
+          "type_label",
+          "stations",
+          "zones",
+          "regions",
           "tn_rows",
           "tn_rows_total",
           "tn_rows_truncated"

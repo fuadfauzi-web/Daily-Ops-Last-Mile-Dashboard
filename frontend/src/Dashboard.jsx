@@ -4,7 +4,7 @@ import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
 import AgingDetailsTab from "./AgingDetailsTab";
-import OldRouteTab from "./OldRouteTab";
+import RpuTab from "./RpuTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -65,7 +65,7 @@ const TABS = [
   { key: "routed", label: "Routed View", enabled: true },
   { key: "shipper", label: "Shipper Watch", enabled: true },
   { key: "aging", label: "Aging Details", enabled: true },
-  { key: "oldroute", label: "Old Route", enabled: true },
+  { key: "rpu", label: "RPU", enabled: true },
 ];
 
 function fmt(key, value) {
@@ -243,8 +243,8 @@ function SummaryCard({ label, active, clickable, totals, onClick, emphasis }) {
       </div>
       <div className="grid grid-cols-5 gap-1">
         {CARD_STATS.map((s) => (
-          <div key={s.key} className={`rounded px-1 py-1 text-center ${emphasis ? "bg-brand" : "bg-slate-50"}`}>
-            <div className={`text-[8px] uppercase ${emphasis ? "text-red-100" : "text-slate-400"}`}>{s.label}</div>
+          <div key={s.key} className={`rounded px-1 py-1 text-center ${emphasis ? "bg-slate-800" : "bg-slate-50"}`}>
+            <div className={`text-[8px] uppercase ${emphasis ? "text-red-300" : "text-slate-400"}`}>{s.label}</div>
             <div className={`text-xs font-bold ${emphasis ? "text-white" : "text-slate-800"}`}>{fmt(s.key, totals[s.key])}</div>
           </div>
         ))}
@@ -522,7 +522,7 @@ export default function Dashboard({ me }) {
 
       {showTotalCard && (
         <SummaryCard
-          label="TOTAL MALAYSIA"
+          label="TOTAL LAST MILE"
           active={false}
           clickable={false}
           emphasis
@@ -768,8 +768,8 @@ export default function Dashboard({ me }) {
         />
       )}
 
-      {tab === "oldroute" && (
-        <OldRouteTab
+      {tab === "rpu" && (
+        <RpuTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
         />

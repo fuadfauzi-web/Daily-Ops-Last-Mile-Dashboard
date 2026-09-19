@@ -605,6 +605,10 @@ _SHIPPER_TN_PATTERNS = (
 # once live numbers can be checked.
 _ORCA_PATTERN = re.compile(r"ORCA", re.IGNORECASE)
 
+# Sodaxpress has its own special parcel flow needing the same hypercare
+# watch as Orca -- identified by TN prefix SB2CX or SDEWM.
+_SODAXPRESS_PATTERN = re.compile(r"^(SB2CX|SDEWM)", re.IGNORECASE)
+
 
 def _classify_shipper(tn: str | None) -> str:
     if not tn or not isinstance(tn, str) or not tn.strip():
@@ -624,13 +628,15 @@ SHIPPER_WATCH_KEYS = (
     "amway_zero_attempt", "amway_aging",
     "watson_zero_attempt", "watson_aging",
     "orca_ovfd", "orca_other",
+    "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_pieces", "restock_potential_breach", "restock_breach",
 )
 
 SHIPPER_DRILLDOWN_METRICS = (
     "amway_zero_attempt", "amway_aging", "watson_zero_attempt", "watson_aging",
-    "orca_ovfd", "orca_other", "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
+    "orca_ovfd", "orca_other", "sodaxpress_ovfd", "sodaxpress_other",
+    "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
 )
 
@@ -648,8 +654,9 @@ def build_shipper_watch(
     """Returns ({hub_code: shipper_row}, {hub_code: {metric: [tracking_id, ...]}}).
 
     Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so
-    0-Attempt-Today and Aging(>Day0) are what matters. Orca: OVFD vs everything
-    else. All three read query 78, grouped by last_scan_hub_name like the rest
+    0-Attempt-Today and Aging(>Day0) are what matters. Orca and Sodaxpress
+    (special parcel flow, TN prefix SB2CX/SDEWM) both watch OVFD vs everything
+    else. All four read query 78, grouped by last_scan_hub_name like the rest
     of the app.
     """
     by_station = {hub: _empty_shipper_row(hub) for hub in HUBS}
@@ -662,8 +669,9 @@ def build_shipper_watch(
         if row is None:
             continue
         is_orca = bool(_ORCA_PATTERN.search(tn or ""))
-        shipper = None if is_orca else _classify_shipper(tn)
-        if not is_orca and shipper not in ("Amway", "Watson"):
+        is_sodaxpress = bool(_SODAXPRESS_PATTERN.search(tn or ""))
+        shipper = None if (is_orca or is_sodaxpress) else _classify_shipper(tn)
+        if not is_orca and not is_sodaxpress and shipper not in ("Amway", "Watson"):
             continue
         status = r.get("granular_status")
         attempts = r.get("delivery_attempts") or 0
@@ -676,6 +684,15 @@ def build_shipper_watch(
             else:
                 row["orca_other"] += 1
                 tn_details[hub]["orca_other"].append(tn)
+            continue
+
+        if is_sodaxpress:
+            if status == "On Vehicle for Delivery":
+                row["sodaxpress_ovfd"] += 1
+                tn_details[hub]["sodaxpress_ovfd"].append(tn)
+            else:
+                row["sodaxpress_other"] += 1
+                tn_details[hub]["sodaxpress_other"].append(tn)
             continue
 
         prefix = "amway" if shipper == "Amway" else "watson"
@@ -703,10 +720,10 @@ def build_shipper_watch(
         if (r.get("delivery_attempts") or 0) == 0 and status not in _ZALORA_ZERO_ATTEMPT_EXCLUDED_STATUSES:
             row["zalora_zero_attempt"] += 1
             tn_details[hub]["zalora_zero_attempt"].append(tn)
-        if r.get("granular_status") == "On Vehicle for Delivery":
+        if status == "On Vehicle for Delivery":
             row["zalora_ovfd"] += 1
             tn_details[hub]["zalora_ovfd"].append(tn)
-        else:
+        elif status != "Arrived at Sorting Hub":
             row["zalora_other"] += 1
             tn_details[hub]["zalora_other"].append(tn)
 
@@ -896,9 +913,10 @@ def build_old_route(old_route_rows: list[dict]) -> tuple[dict[str, dict], list[d
         row["total_tn"] += 1
         age = r.get("days_since_driver_inbound") or 0
         driver_name = r.get("driver_name") or ""
+        route_id = r.get("route_id")
         tn_rows.append({
             "station_code": hub, "station_name": row["station_name"], "zone": row["zone"], "region": row["region"],
-            "tracking_number": r.get("tracking_id"), "route_id": r.get("route_id"),
+            "tracking_number": r.get("tracking_id"), "route_id": str(route_id) if route_id is not None else None,
             "route_date": r.get("route_date"), "age": age,
             "driver_name": driver_name, "shipper_name": r.get("shipper_name"),
         })
@@ -923,6 +941,95 @@ def build_old_route(old_route_rows: list[dict]) -> tuple[dict[str, dict], list[d
 
 
 def rollup_old_route(station_rows: list[dict], group_key: str) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(key, {group_key: key, "region": row["region"], "station_count": 0, "total_tn": 0})
+        g["total_tn"] += row["total_tn"]
+        g["station_count"] += 1
+    return list(groups.values())
+
+
+# ---------------------------------------------------------------------------
+# RPU tab (query 1397, "OPEX: LM RPU Monitoring") -- from the Fleet Manager's
+# "LM - RPU Tracker" sheet. Columns used: pickup_hub (a hub code, same as
+# elsewhere), tracking_id, granular_status, failed_pickup_attempts,
+# days_since_scheduled_date ("Age"), last_pickup_attempt_failure_reason,
+# pickup_driver_name, shipper_name, shipper_group (Zalora | Cainiao | Others --
+# used for the RPU Shipper Details sub-tabs).
+#
+# Sub-types (a row can land in "aging_d5" alongside its stage):
+#   pending_pickup  -- granular_status == "Pending Pickup"
+#   ovfd            -- granular_status == "Van en-route to pickup" (the sheet's
+#                      own "RPU OVFD" tab -- van already en route to pick up,
+#                      not related to delivery OVFD elsewhere in this app)
+#   pending_inbound -- granular_status == "En-route to Sorting Hub" (picked up,
+#                      not yet scanned in at the hub -- the sheet calls this
+#                      "RPU Success But Pending Inbound")
+#   aging_d5        -- days_since_scheduled_date >= 5 AND still at the pickup
+#                      stage (pending_pickup or ovfd) -- ASSUMPTION: the sheet's
+#                      "RPU Aging Pickup Up" tab only ever showed those two
+#                      statuses in its sample rows; confirm if pending_inbound
+#                      should count toward aging too.
+# ---------------------------------------------------------------------------
+
+RPU_TYPES = ("pending_pickup", "ovfd", "pending_inbound", "aging_d5")
+RPU_TYPE_LABELS = {
+    "pending_pickup": "Pending Pick Up",
+    "ovfd": "OVFD",
+    "pending_inbound": "Pending Inbound",
+    "aging_d5": "Aging D5+",
+}
+RPU_AGING_THRESHOLD = 5
+RPU_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route
+
+
+def _rpu_row_types(status: str | None, age: int) -> list[str]:
+    types = []
+    if status == "Pending Pickup":
+        types.append("pending_pickup")
+    elif status == "Van en-route to pickup":
+        types.append("ovfd")
+    elif status == "En-route to Sorting Hub":
+        types.append("pending_inbound")
+    if age >= RPU_AGING_THRESHOLD and status in ("Pending Pickup", "Van en-route to pickup"):
+        types.append("aging_d5")
+    return types
+
+
+def _empty_rpu_row(hub_code: str) -> dict:
+    name, _full, zone, region = HUBS[hub_code]
+    return {"station_code": hub_code, "station_name": name, "zone": zone, "region": region, "total_tn": 0}
+
+
+def build_rpu(rpu_rows: list[dict]) -> tuple[dict[str, dict[str, dict]], dict[str, list[dict]]]:
+    """Returns ({type: {hub_code: pivot_row}}, {type: [tn_row, ...]})."""
+    by_type_station = {t: {hub: _empty_rpu_row(hub) for hub in HUBS} for t in RPU_TYPES}
+    by_type_rows: dict[str, list[dict]] = {t: [] for t in RPU_TYPES}
+
+    for r in rpu_rows:
+        hub = r.get("pickup_hub")
+        if hub not in HUBS:
+            continue
+        status = r.get("granular_status")
+        age = int(r.get("days_since_scheduled_date") or 0)
+        detail = {
+            "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
+            "tracking_number": r.get("tracking_id"), "status": status,
+            "attempts": int(r.get("failed_pickup_attempts") or 0), "age": age,
+            "failure_reason": r.get("last_pickup_attempt_failure_reason"),
+            "driver_name": r.get("pickup_driver_name"), "shipper_name": r.get("shipper_name"),
+            "shipper_group": r.get("shipper_group"),
+        }
+        for t in _rpu_row_types(status, age):
+            row = by_type_station[t][hub]
+            row["total_tn"] += 1
+            by_type_rows[t].append(detail)
+
+    return by_type_station, by_type_rows
+
+
+def rollup_rpu(station_rows: list[dict], group_key: str) -> list[dict]:
     groups: dict[str, dict] = {}
     for row in station_rows:
         key = row[group_key]

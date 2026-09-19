@@ -21,6 +21,8 @@ const COLUMNS = [
   { key: "restock_breach", label: "Restock Breach", clickable: true },
   { key: "orca_ovfd", label: "Orca OVFD", clickable: true },
   { key: "orca_other", label: "Orca Other Status", clickable: true },
+  { key: "sodaxpress_ovfd", label: "Sodaxpress OVFD", clickable: true },
+  { key: "sodaxpress_other", label: "Sodaxpress Other Status", clickable: true },
 ];
 
 function formatTime(iso) {

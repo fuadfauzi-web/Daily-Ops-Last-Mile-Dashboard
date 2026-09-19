@@ -145,7 +145,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
+        <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
         <div className="flex items-center gap-2">
           {isDriverLevel && (
             <input

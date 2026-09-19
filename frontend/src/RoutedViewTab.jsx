@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import OldRouteTab from "./OldRouteTab";
 
 const LEVELS = [
   { key: "region", label: "Region" },
   { key: "zone", label: "Zone" },
   { key: "station", label: "Station" },
   { key: "driver", label: "Driver" },
+  { key: "oldroute", label: "Old Route" },
 ];
 
 // Station/Zone/Region-level columns that come AFTER Attendance and Total Routed
@@ -94,7 +96,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   }, []);
 
   const rows = useMemo(() => {
-    if (!data) return [];
+    if (!data || level === "oldroute") return [];
     let base;
     if (level === "region") base = data.regions.map((g) => ({ ...g, name: g.key }));
     else if (level === "zone") base = data.zones.map((g) => ({ ...g, name: g.key }));
@@ -194,6 +196,12 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
         </div>
       </div>
 
+      {level === "oldroute" ? (
+        <OldRouteTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia}
+        />
+      ) : (
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
         <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
@@ -300,6 +308,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
           home station for a rescue driver). Driver tenure needs the Metabase driver-tenure connection to be set up.
         </div>
       </div>
+      )}
     </div>
   );
 }
