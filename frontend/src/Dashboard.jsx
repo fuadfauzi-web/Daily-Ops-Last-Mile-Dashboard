@@ -3,11 +3,13 @@ import { api } from "./api";
 import { formatTime } from "./lib/format";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
 import { ALL_COLUMNS } from "./lib/metrics";
+import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
+import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
 import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
@@ -90,23 +92,25 @@ function localRollup(rows, groupKey) {
   }));
 }
 
-function exportCsv(rows) {
-  const header = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
-  const lines = [header.join(",")];
-  rows.forEach((r) => {
-    lines.push(
-      [r.region, r.zone, r.station_name, ...ALL_COLUMNS.map((c) => r[c.key])]
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-        .join(",")
-    );
-  });
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+function exportStationHealthCsv(rows) {
+  const headers = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
+  const values = rows.map((r) => [r.region, r.zone, r.station_name, ...ALL_COLUMNS.map((c) => r[c.key])]);
+  exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
+}
+
+// "Compare vs. yesterday": diff against the same station's snapshot from
+// ~24h ago. Reference metrics always render a neutral grey delta (more/less
+// isn't good/bad for those); scored metrics colour it by whether the change
+// moved the wrong way for that metric's own direction.
+function deltaFor(key, current, previous, direction, isReference) {
+  if (previous == null) return null;
+  const diff = current - previous;
+  const sign = diff > 0 ? "+" : diff < 0 ? "−" : "";
+  const magnitude = PERCENT_METRICS.has(key) ? `${Math.abs(diff).toFixed(1)}%` : Math.abs(diff).toLocaleString();
+  const text = diff === 0 ? "0" : `${sign}${magnitude}`;
+  if (isReference || diff === 0) return { text, className: "text-slate-400" };
+  const worse = direction === "lower-is-worse" ? diff < 0 : diff > 0;
+  return { text, className: worse ? "text-status-critical" : "text-status-good" };
 }
 
 export default function Dashboard({ me }) {
@@ -121,9 +125,28 @@ export default function Dashboard({ me }) {
   const [sortDir, setSortDir] = useState("desc");
   const [tab, setTab] = useState("health");
   const [modal, setModal] = useState(null);
+  const [detailRow, setDetailRow] = useState(null);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
   // toggle it out of every view. Defaults to included (today's behavior).
   const [includeEastMalaysia, setIncludeEastMalaysia] = useState(true);
+  const [compareYesterday, setCompareYesterday] = useState(() => {
+    try {
+      return localStorage.getItem("dashboard-compare-yesterday") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleCompareYesterday = () => {
+    setCompareYesterday((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("dashboard-compare-yesterday", next ? "1" : "0");
+      } catch {
+        /* private browsing / storage blocked -- choice just won't persist */
+      }
+      return next;
+    });
+  };
 
   const canPickRegion = me.scope_type === "all";
   const canPickZone = me.scope_type === "all" || me.scope_type === "region";
@@ -199,6 +222,12 @@ export default function Dashboard({ me }) {
 
   const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
   const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
+
+  const yesterdayByCode = useMemo(() => {
+    const m = new Map();
+    (data?.yesterday_stations || []).forEach((r) => m.set(r.station_code, r));
+    return m;
+  }, [data]);
 
   // Summary cards: one level below whatever's currently "effective" -- the filter
   // pick (for admins) or the user's own fixed scope. Region cards -> pick one ->
@@ -292,9 +321,19 @@ export default function Dashboard({ me }) {
         label: c.label,
         reference: isReference,
         render: (r) => {
-          if (isReference) return fmt(c.key, r[c.key]);
-          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key]);
-          return `${SEVERITY_MARK[sev]}${fmt(c.key, r[c.key])}`;
+          const sev = isReference ? "reference" : classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key]);
+          const base = `${SEVERITY_MARK[sev]}${fmt(c.key, r[c.key])}`;
+          if (!compareYesterday) return base;
+          const yRow = yesterdayByCode.get(r.station_code);
+          if (!yRow) return base;
+          const t = resolveThreshold(thresholdRows, c.key, r.region);
+          const d = deltaFor(c.key, r[c.key], yRow[c.key], t.direction, isReference);
+          if (!d) return base;
+          return (
+            <>
+              {base} <span className={`text-[11px] ${d.className}`}>{d.text}</span>
+            </>
+          );
         },
         className: (r) => {
           if (isReference) return SEVERITY_CLASS.reference;
@@ -306,15 +345,54 @@ export default function Dashboard({ me }) {
     }),
   ];
 
+  const detailRows = detailRow
+    ? ALL_COLUMNS.map((c) => {
+        const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
+        const t = resolveThreshold(thresholdRows, c.key, detailRow.region);
+        const sev = isReference ? "reference" : classify(t, detailRow[c.key]);
+        const yRow = yesterdayByCode.get(detailRow.station_code);
+        const d = compareYesterday && yRow ? deltaFor(c.key, detailRow[c.key], yRow[c.key], t.direction, isReference) : null;
+        const hasTarget = !isReference && !(t.warning_at === 0 && t.critical_at === 0);
+        return {
+          label: c.label,
+          value: `${SEVERITY_MARK[sev]}${fmt(c.key, detailRow[c.key])}`,
+          className: SEVERITY_CLASS[sev],
+          target: hasTarget ? `target ${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}` : null,
+          delta: d ? d.text : null,
+          deltaClassName: d ? d.className : null,
+        };
+      })
+    : [];
+
   return (
     <div className="space-y-4">
       <TnModal state={modal} onClose={() => setModal(null)} fetcher={api.drilldown} />
+      <DetailPanel
+        open={!!detailRow}
+        onClose={() => setDetailRow(null)}
+        title={detailRow?.station_name}
+        subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+        rows={detailRows}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
-        <div className="flex items-center gap-1.5 text-sm text-slate-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-          {filteredStations.length} stations in scope
+        <div className="flex items-center gap-3">
+          {tab === "health" && (
+            <button
+              onClick={toggleCompareYesterday}
+              title={data.yesterday_captured_at ? `vs. ${formatTime(data.yesterday_captured_at)}` : "No snapshot from ~24h ago yet"}
+              className={`rounded-lg border px-3 py-1.5 font-display text-xs font-semibold ${
+                compareYesterday ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-600"
+              }`}
+            >
+              Δ vs. yesterday
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 text-sm text-slate-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+            {filteredStations.length} stations in scope
+          </div>
         </div>
       </div>
 
@@ -372,7 +450,7 @@ export default function Dashboard({ me }) {
             disabled={!t.enabled}
             onClick={() => t.enabled && setTab(t.key)}
             title={t.enabled ? undefined : "Coming soon"}
-            className={`rounded px-3 py-1.5 font-display text-sm font-semibold ${
+            className={`min-h-[44px] rounded px-3 py-1.5 font-display text-sm font-semibold ${
               tab === t.key
                 ? "bg-brand text-white"
                 : t.enabled
@@ -394,12 +472,13 @@ export default function Dashboard({ me }) {
           <DataTable
             title={
               <>
-                Station Health <span className="font-normal text-slate-400">— click a number to see tracking IDs</span>
+                Station Health{" "}
+                <span className="font-normal text-slate-400">— click a number for tracking IDs, click a row for detail</span>
               </>
             }
             titleExtra={
               <button
-                onClick={() => exportCsv(filteredStations)}
+                onClick={() => exportStationHealthCsv(filteredStations)}
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
                 Export CSV
@@ -412,14 +491,17 @@ export default function Dashboard({ me }) {
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
             emptyMessage="No stations match."
             subHeader={isGroupSort ? `Sorted by ${sortKey}, then 0-Attempt (highest first) within each ${sortKey}` : null}
             footer={`${filteredStations.length} rows · first column pinned, header freezes while scrolling`}
           />
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored. Targets are set in Admin → SLA Targets. Total Fresh, Total Routed, Attendance and
-            COD % (Hub) aren't clickable — their source queries don't return individual tracking numbers.
+            SLA, never scored. Targets are set in Admin → SLA Targets.
+            {compareYesterday && " Small numbers next to each value are the change vs. ~24h ago."} Total Fresh,
+            Total Routed, Attendance and COD % (Hub) aren't clickable — their source queries don't return individual
+            tracking numbers.
           </p>
         </>
       )}

@@ -377,6 +377,8 @@ class DashboardResponse(BaseModel):
     regions: list[GroupRow]
     previous_captured_at: str | None = None
     previous_stations: list[StationRow] = []
+    yesterday_captured_at: str | None = None
+    yesterday_stations: list[StationRow] = []
 
 
 def _scope_filter_stations(rows: list[dict], user: CurrentUser) -> list[dict]:
@@ -431,6 +433,19 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
     if previous_captured_at is not None:
         previous_scoped = _scope_filter_stations(await _fetch_station_rows(previous_captured_at), user)
 
+    # "Compare vs. yesterday": the latest snapshot at or before this time
+    # yesterday -- close enough given a 30-minute refresh cadence. None until
+    # the app has been running for a day, which is fine: the frontend just
+    # shows no delta rather than a bogus one.
+    yesterday = await db.fetch_one(
+        "SELECT MAX(captured_at) FROM station_metrics WHERE captured_at <= DATE_SUB(%s, INTERVAL 1 DAY)",
+        (captured_at,),
+    )
+    yesterday_captured_at = yesterday[0] if yesterday else None
+    yesterday_scoped: list[dict] = []
+    if yesterday_captured_at is not None:
+        yesterday_scoped = _scope_filter_stations(await _fetch_station_rows(yesterday_captured_at), user)
+
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
         "stations": scoped,
@@ -440,6 +455,10 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
             previous_captured_at.isoformat() if hasattr(previous_captured_at, "isoformat") else previous_captured_at
         ),
         "previous_stations": previous_scoped,
+        "yesterday_captured_at": (
+            yesterday_captured_at.isoformat() if hasattr(yesterday_captured_at, "isoformat") else yesterday_captured_at
+        ),
+        "yesterday_stations": yesterday_scoped,
     }
 
 

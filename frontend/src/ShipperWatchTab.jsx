@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import TnModal from "./components/TnModal";
+import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
 
 // Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt
@@ -35,6 +38,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
   const [sortKey, setSortKey] = useState("zalora_zero_attempt");
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -93,8 +97,30 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
   return (
     <div className="space-y-3">
       <TnModal state={modal} onClose={() => setModal(null)} fetcher={api.shipperDrilldown} />
+      <DetailPanel
+        open={!!detailRow}
+        onClose={() => setDetailRow(null)}
+        title={detailRow?.station_name}
+        subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+        rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
+      />
       <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
       <DataTable
+        title="Shipper Watch"
+        titleExtra={
+          <button
+            onClick={() =>
+              exportCsv(
+                `daily-ops-shipper-watch-${new Date().toISOString().slice(0, 10)}.csv`,
+                ["Region", "Zone", "Station", ...COLUMNS.map((c) => c.label)],
+                filteredStations.map((r) => [r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key])])
+              )
+            }
+            className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Export CSV
+          </button>
+        }
         maxHeight="70vh"
         columns={columns}
         rows={filteredStations}
@@ -102,6 +128,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
         sortKey={sortKey}
         sortDir={sortDir}
         onSort={toggleSort}
+        onRowClick={(r) => setDetailRow(r)}
         emptyMessage="No stations match."
         footer={
           <>

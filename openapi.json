@@ -920,6 +920,18 @@
             "items": {
               "$ref": "#/components/schemas/StationRow"
             }
+          },
+          "yesterday_captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Timestamp of the snapshot closest to (at or before) 24h ago, for the Compare vs. yesterday toggle -- null until the app has been running a day"
+          },
+          "yesterday_stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationRow"
+            }
           }
         },
         "required": [

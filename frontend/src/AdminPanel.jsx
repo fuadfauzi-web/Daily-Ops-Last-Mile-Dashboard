@@ -400,7 +400,7 @@ export default function AdminPanel({ me }) {
             <button
               key={t.key}
               onClick={() => setAdminTab(t.key)}
-              className={`rounded-md px-3 py-1.5 font-display font-medium ${
+              className={`min-h-[44px] rounded-md px-3 py-1.5 font-display font-medium ${
                 adminTab === t.key ? "bg-white text-ink shadow-sm" : "text-slate-500"
               }`}
             >

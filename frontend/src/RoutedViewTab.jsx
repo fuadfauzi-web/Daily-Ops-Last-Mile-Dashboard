@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
+import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
 import OldRouteTab from "./OldRouteTab";
 
@@ -81,6 +84,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   // contain station names, so reusing it as a name filter always came back
   // empty. Driver name gets its own local search box below.
   const [driverSearch, setDriverSearch] = useState("");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -197,7 +201,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                   setSortKey("total_routed");
                   setSortDir("desc");
                 }}
-                className={`rounded-md px-3 py-1 text-sm font-medium ${
+                className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
                   level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                 }`}
               >
@@ -214,24 +218,49 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
           excludeEastMalaysia={excludeEastMalaysia}
         />
       ) : (
-        <DataTable
-          maxHeight="70vh"
-          columns={columns}
-          rows={rows}
-          rowKey={(r, i) => r.station_code || r.driver_name || r.name || i}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={toggleSort}
-          emptyMessage="No rows match."
-          footer={
-            <>
-              {rows.length} rows · Completion Rate = (Total Routed − Current OVFD) / Total Routed — 100% means nothing
-              is left on the vehicle. Attendance shows rescue drivers in parentheses when present; Hybrid/Independent
-              break down by HD/HR/ID/IR. Driver "Station" is where they're currently routing today (may differ from
-              home station for a rescue driver). Driver tenure needs the Metabase driver-tenure connection to be set up.
-            </>
-          }
-        />
+        <>
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.name}
+            subtitle={detailRow?.station_name ? `Station: ${detailRow.station_name}` : null}
+            rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
+          />
+          <DataTable
+            title={`Routed View — by ${identityLabel.toLowerCase()}`}
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-routed-view-${level}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    columns.map((c) => c.label),
+                    rows.map((r) => columns.map((c) => (c.render ? c.render(r) : r[c.key])))
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
+            maxHeight="70vh"
+            columns={columns}
+            rows={rows}
+            rowKey={(r, i) => r.station_code || r.driver_name || r.name || i}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
+            emptyMessage="No rows match."
+            footer={
+              <>
+                {rows.length} rows · Completion Rate = (Total Routed − Current OVFD) / Total Routed — 100% means nothing
+                is left on the vehicle. Attendance shows rescue drivers in parentheses when present; Hybrid/Independent
+                break down by HD/HR/ID/IR. Driver "Station" is where they're currently routing today (may differ from
+                home station for a rescue driver). Driver tenure needs the Metabase driver-tenure connection to be set up.
+              </>
+            }
+          />
+        </>
       )}
     </div>
   );

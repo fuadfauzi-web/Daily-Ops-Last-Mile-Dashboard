@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
+import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
 
 // Station x age-bucket pivot, grouped by last_scan_hub_name like the rest of the app
@@ -65,6 +68,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const [sortDir, setSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -158,7 +162,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             <button
               key={t.key}
               onClick={() => setAgingType(t.key)}
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
+              className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
                 agingType === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
               }`}
             >
@@ -189,8 +193,30 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS]}
           />
 
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.station_name}
+            subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+            rows={detailRow ? columnsToDetailRows(pivotColumns, detailRow) : []}
+          />
+
           <DataTable
             title={`${data.type_label} — pivot`}
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-aging-${agingType}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key])])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
             maxHeight="50vh"
             columns={pivotColumns}
             rows={filteredStations}
@@ -198,11 +224,26 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
             emptyMessage="No stations match."
           />
 
           <DataTable
             title={`${data.type_label} — tracking numbers`}
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-aging-${agingType}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Station", ...TN_COLUMNS.map((c) => c.label)],
+                    filteredTnRows.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
             maxHeight="60vh"
             columns={tnColumns}
             rows={filteredTnRows}

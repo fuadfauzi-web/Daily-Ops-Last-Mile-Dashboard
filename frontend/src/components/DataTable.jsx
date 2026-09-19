@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 // Shared shell for every sortable, sticky-header table in the app. Callers own
 // their data/sort state and hand over a fully resolved column list -- this
 // component only renders the chrome (header theme, sticky column, hover,
@@ -22,22 +24,32 @@ export default function DataTable({
   subHeader,
   emptyMessage = "No rows match.",
   footer,
+  onRowClick,
 }) {
+  const [scrolled, setScrolled] = useState(false);
   const dark = variant === "dark";
   const headBg = dark ? "bg-ink text-white" : "bg-slate-50 text-slate-500";
   const headHover = dark ? "hover:bg-brand" : "hover:bg-slate-200";
   const rowHover = dark ? "hover:bg-slate-50/60" : "";
   const stickyHeadBg = dark ? "bg-ink" : "bg-slate-50";
+  // The frozen first column needs a visible edge once the table is actually
+  // scrolled horizontally, or it reads as just another column instead of
+  // pinned in place -- easy to miss on a phone with no scrollbar to look at.
+  const stickyShadow = scrolled ? "shadow-[4px_0_6px_-2px_rgba(0,0,0,0.15)]" : "";
 
   return (
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-      {title && (
+      {(title || titleExtra) && (
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
           <div className="font-display text-sm font-medium text-slate-700">{title}</div>
           {titleExtra}
         </div>
       )}
-      <div className={maxHeight ? "overflow-auto" : "overflow-x-auto"} style={maxHeight ? { maxHeight } : undefined}>
+      <div
+        className={`overscroll-x-contain ${maxHeight ? "overflow-auto" : "overflow-x-auto"}`}
+        style={maxHeight ? { maxHeight } : undefined}
+        onScroll={(e) => setScrolled(e.currentTarget.scrollLeft > 0)}
+      >
         <table className="w-full text-sm">
           <thead className={`${dark ? "sticky top-0 z-20" : ""} text-left ${headBg}`}>
             <tr>
@@ -51,7 +63,7 @@ export default function DataTable({
                       "whitespace-nowrap px-4 py-2 font-display font-medium",
                       align === "center" ? "text-center" : "text-left",
                       sortable ? `cursor-pointer select-none ${headHover}` : "",
-                      c.sticky ? `sticky left-0 z-30 ${stickyHeadBg}` : "",
+                      c.sticky ? `sticky left-0 z-30 ${stickyHeadBg} ${stickyShadow}` : "",
                       // Reference (unscored) columns render muted even inside the
                       // otherwise-white dark header text, so "no SLA" reads at a glance.
                       c.reference ? "text-slate-400" : "",
@@ -73,7 +85,11 @@ export default function DataTable({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={rowKey(row, i)} className={`border-t border-slate-100 ${rowHover}`}>
+              <tr
+                key={rowKey(row, i)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={`border-t border-slate-100 ${rowHover} ${onRowClick ? "cursor-pointer" : ""}`}
+              >
                 {columns.map((c) => {
                   const align = c.align || (c.sticky ? "left" : "center");
                   const content = c.render ? c.render(row) : row[c.key];
@@ -88,13 +104,18 @@ export default function DataTable({
                       className={[
                         "px-4 py-2 whitespace-nowrap",
                         align === "center" ? "text-center tabular-nums" : "",
-                        c.sticky ? "sticky left-0 z-10 bg-white font-medium text-slate-800" : "",
+                        c.sticky ? `sticky left-0 z-10 bg-white font-medium text-slate-800 ${stickyShadow}` : "",
                         extraClass,
                       ].join(" ")}
                     >
                       {isClickable ? (
                         <button
-                          onClick={() => c.onClick(row)}
+                          onClick={(e) => {
+                            // The row itself may also open a detail panel on click --
+                            // a number's own drilldown must win, not both firing.
+                            e.stopPropagation();
+                            c.onClick(row);
+                          }}
                           className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
                         >
                           {content}

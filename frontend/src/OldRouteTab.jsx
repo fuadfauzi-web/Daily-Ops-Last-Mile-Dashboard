@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
+import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
 
 const TN_COLUMNS = [
@@ -24,6 +27,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
   const [copied, setCopied] = useState(false);
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -147,10 +151,31 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
 
   return (
     <div className="space-y-3">
+      <DetailPanel
+        open={!!detailRow}
+        onClose={() => setDetailRow(null)}
+        title={detailRow?.station_name || detailRow?.driver_name}
+        subtitle={detailRow?.region ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+        rows={detailRow ? columnsToDetailRows(detailRow.driver_name ? driverColumns : stationColumns, detailRow) : []}
+      />
       <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
 
       <DataTable
         title="By station"
+        titleExtra={
+          <button
+            onClick={() =>
+              exportCsv(
+                `daily-ops-old-route-stations-${new Date().toISOString().slice(0, 10)}.csv`,
+                ["Region", "Zone", "Station", "Total TN"],
+                filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total_tn])
+              )
+            }
+            className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Export CSV
+          </button>
+        }
         maxHeight="40vh"
         columns={stationColumns}
         rows={filteredStations}
@@ -158,18 +183,33 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
         sortKey={stationSortKey}
         sortDir={stationSortDir}
         onSort={toggleStationSort}
+        onRowClick={(r) => setDetailRow(r)}
         emptyMessage="No stations match."
       />
 
       <DataTable
         title="By driver"
         titleExtra={
-          <input
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-            placeholder="Search driver…"
-            value={driverSearch}
-            onChange={(e) => setDriverSearch(e.target.value)}
-          />
+          <div className="flex items-center gap-2">
+            <input
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              placeholder="Search driver…"
+              value={driverSearch}
+              onChange={(e) => setDriverSearch(e.target.value)}
+            />
+            <button
+              onClick={() =>
+                exportCsv(
+                  `daily-ops-old-route-drivers-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ["Driver", "Station", "Total TN"],
+                  filteredDrivers.map((r) => [r.driver_name, r.station_name, r.total_tn])
+                )
+              }
+              className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Export CSV
+            </button>
+          </div>
         }
         maxHeight="40vh"
         columns={driverColumns}
@@ -178,19 +218,34 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
         sortKey={driverSortKey}
         sortDir={driverSortDir}
         onSort={toggleDriverSort}
+        onRowClick={(r) => setDetailRow(r)}
         emptyMessage="No drivers match."
       />
 
       <DataTable
         title="Tracking numbers"
         titleExtra={
-          <button
-            onClick={copyTns}
-            disabled={!filteredTnRows.length}
-            className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
-          >
-            {copied ? "Copied!" : "Copy list"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                exportCsv(
+                  `daily-ops-old-route-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ["Station", ...TN_COLUMNS.map((c) => c.label)],
+                  filteredTnRows.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+                )
+              }
+              className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={copyTns}
+              disabled={!filteredTnRows.length}
+              className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {copied ? "Copied!" : "Copy list"}
+            </button>
+          </div>
         }
         maxHeight="55vh"
         columns={tnColumns}

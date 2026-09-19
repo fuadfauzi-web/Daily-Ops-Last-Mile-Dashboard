@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
+import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
 
 // From the Fleet Manager's "LM - RPU Tracker" sheet (query 1397). Merged into one
@@ -99,6 +102,20 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
   return (
     <DataTable
       title="Tracking numbers"
+      titleExtra={
+        <button
+          onClick={() =>
+            exportCsv(
+              `daily-ops-rpu-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+              ["Station", ...TN_COLUMNS.map((c) => c.label)],
+              sorted.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+            )
+          }
+          className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Export CSV
+        </button>
+      }
       maxHeight="50vh"
       columns={columns}
       rows={sorted}
@@ -129,6 +146,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total_tn");
   const [sortDir, setSortDir] = useState("desc");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -212,7 +230,28 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
 
       {data.captured_at && (
         <>
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.station_name}
+            subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+            rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
+          />
           <DataTable
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-rpu-status-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", ...STAGE_TN_COLUMNS.map((c) => c.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, ...STAGE_TN_COLUMNS.map((c) => r[c.key])])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
             maxHeight="40vh"
             columns={columns}
             rows={filteredStations}
@@ -220,6 +259,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
             emptyMessage="No stations match."
           />
 
@@ -237,6 +277,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total");
   const [sortDir, setSortDir] = useState("desc");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -304,7 +345,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
               <button
                 key={t.key}
                 onClick={() => setAgingType(t.key)}
-                className={`rounded-md px-3 py-1 text-sm font-medium ${
+                className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
                   agingType === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
                 }`}
               >
@@ -318,7 +359,28 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
 
       {data.captured_at && (
         <>
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.station_name}
+            subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+            rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
+          />
           <DataTable
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-rpu-aging-${agingType}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key])])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
             maxHeight="45vh"
             columns={columns}
             rows={filteredStations}
@@ -326,6 +388,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
             emptyMessage="No stations match."
           />
 
@@ -344,7 +407,7 @@ export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEa
       <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
         <button
           onClick={() => setView("status")}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${
+          className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
             view === "status" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
           }`}
         >
@@ -352,7 +415,7 @@ export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEa
         </button>
         <button
           onClick={() => setView("aging")}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${
+          className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
             view === "aging" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
           }`}
         >
