@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import { formatTime } from "./lib/format";
 import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
+import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
 import SegmentedControl from "./components/SegmentedControl";
@@ -17,6 +17,14 @@ const LEVELS = [
   { key: "oldroute", label: "Old Route" },
 ];
 
+// Only applies to region/zone/station/driver -- Old Route has no driver concept.
+const DRIVER_TYPES = [
+  { key: "", label: "All" },
+  { key: "hybrid", label: "Hybrid" },
+  { key: "independent", label: "Independent" },
+  { key: "other", label: "Other" },
+];
+
 // Station/Zone/Region-level columns that come AFTER Attendance and Total Routed
 // (Attendance sits right after the name column; Hybrid/Independent sit at the
 // very end, after Completion Rate).
@@ -26,6 +34,11 @@ const STATION_COLUMNS = [
   { key: "current_success", label: "Current Success" },
   { key: "cod_pct", label: "COD %", percent: true },
   { key: "success_rate", label: "Success Rate", percent: true, rate: "success" },
+  // Productivity = Total Success / Total Routed, same number as Success Rate --
+  // kept as its own column (rather than just relabelling Success Rate) since
+  // Admin -> SLA Targets scores "Productivity" separately, per driver type, at
+  // the driver view (see the driver-level column below).
+  { key: "productivity_pct", label: "Productivity %", percent: true, rate: "success", source: "success_rate" },
   { key: "completion_rate", label: "Completion Rate", percent: true, rate: "completion" },
   { key: "hybrid_total", label: "Hybrid", render: "hybrid" },
   { key: "independent_total", label: "Independent", render: "independent" },
@@ -37,6 +50,7 @@ const DRIVER_COLUMNS = [
   { key: "current_ovfd", label: "Current OVFD" },
   { key: "cod_pct", label: "COD %", percent: true },
   { key: "success_rate", label: "Success Rate", percent: true, rate: "success" },
+  { key: "productivity_pct", label: "Productivity %", percent: true, rate: "productivity", source: "success_rate" },
   { key: "completion_rate", label: "Completion Rate", percent: true, rate: "completion" },
   { key: "tenure", label: "Tenure", render: "tenure" },
 ];
@@ -70,14 +84,16 @@ function renderCell(col, r) {
   if (col.render === "hybrid") return `${r.attendance_hd}HD/${r.attendance_hr}HR`;
   if (col.render === "independent") return `${r.attendance_id}ID/${r.attendance_ir}IR`;
   if (col.render === "tenure") return "— (pending Metabase link)";
-  const value = r[col.key];
+  const value = r[col.source || col.key];
   return col.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
 }
 
 export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+  const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [level, setLevel] = useState("station");
+  const [driverType, setDriverType] = useState("");
   const [sortKey, setSortKey] = useState("total_routed");
   const [sortDir, setSortDir] = useState("desc");
   // The master "Search station..." box (shared with every other tab) filters the
@@ -92,10 +108,10 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
 
   useEffect(() => {
     api
-      .routedView()
+      .routedView(driverType || undefined)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [driverType]);
 
   const rows = useMemo(() => {
     if (!data || level === "oldroute") return [];
@@ -171,25 +187,41 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
     ...(isGroupLevel ? [{ key: "station_count", label: "Stations", className: () => "text-slate-500" }] : []),
     ...(showDriverStationCol ? [{ key: "station_name", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
     ...(!isDriverLevel
-      ? [{ key: "routed_pct", label: "Routed %", render: (r) => `${(r.routed_pct ?? 0).toFixed(1)}%`, className: () => "text-slate-700" }]
+      ? [{ key: "routed_pct", label: "Routed %", render: (r) => `${(r.routed_pct ?? 0).toFixed(2)}%`, className: () => "text-slate-700" }]
       : []),
     ...(!isDriverLevel ? [{ key: "attendance", label: "Attendance", render: (r) => renderCell({ render: "attendance" }, r) }] : []),
     { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
-    ...levelColumns.map((c) => ({
-      key: c.key,
-      label: c.label,
-      render: (r) => renderCell(c, r),
-      className: (r) => (c.rate ? rateClass(c, r[c.key]) : "text-slate-700"),
-    })),
+    ...levelColumns.map((c) => {
+      // Driver-level Productivity is admin-scored per driver type (HR/HD/ID/IR --
+      // see Admin -> SLA Targets), unlike every other rate column here which is
+      // just a fixed colour band -- so it needs the SLA threshold system instead
+      // of rateClass().
+      if (c.key === "productivity_pct" && isDriverLevel) {
+        return {
+          key: c.key,
+          label: c.label,
+          render: (r) => {
+            const t = resolveThreshold(thresholdRows, "productivity_pct", r.driver_type || null);
+            const sev = classify(t, r.success_rate);
+            return `${SEVERITY_MARK[sev]}${r.success_rate.toFixed(1)}%`;
+          },
+          className: (r) => {
+            const t = resolveThreshold(thresholdRows, "productivity_pct", r.driver_type || null);
+            return SEVERITY_CLASS[classify(t, r.success_rate)];
+          },
+        };
+      }
+      return {
+        key: c.key,
+        label: c.label,
+        render: (r) => renderCell(c, r),
+        className: (r) => (c.rate ? rateClass(c, r[c.source || c.key]) : "text-slate-700"),
+      };
+    }),
   ];
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1.5 text-sm text-slate-500">
-        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-        Data as of {formatTime(data.captured_at)}
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-2">
         {isDriverLevel && (
           <input
@@ -199,16 +231,27 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
             onChange={(e) => setDriverSearch(e.target.value)}
           />
         )}
-        <SegmentedControl
-          options={LEVELS}
-          value={level}
-          onChange={(key) => {
-            setLevel(key);
-            setSortKey("total_routed");
-            setSortDir("desc");
-          }}
-        />
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {level !== "oldroute" && (
+            <SegmentedControl options={DRIVER_TYPES} value={driverType} onChange={setDriverType} />
+          )}
+          <SegmentedControl
+            options={LEVELS}
+            value={level}
+            onChange={(key) => {
+              setLevel(key);
+              setSortKey("total_routed");
+              setSortDir("desc");
+            }}
+          />
+        </div>
       </div>
+      {driverType && level !== "oldroute" && (
+        <p className="text-xs text-slate-400">
+          Showing {DRIVER_TYPES.find((d) => d.key === driverType)?.label.toLowerCase()} drivers only -- Old Route and
+          Pending Yesterday Route are unaffected by this filter.
+        </p>
+      )}
 
       {level === "oldroute" ? (
         <OldRouteTab

@@ -56,8 +56,20 @@ const TABS = [
 ];
 
 function fmt(key, value) {
+  if (key === "routed_pct") return `${value.toFixed(2)}%`;
   if (PERCENT_METRICS.has(key)) return `${value.toFixed(1)}%`;
   return value.toLocaleString();
+}
+
+// Appends the computed percentage alongside the raw count for a metric scored
+// as "% of another field" (threshold.percent_of), e.g. "45 (23.5%)" for Age >3
+// scored as % of Total In Hub -- otherwise identical to fmt().
+function fmtWithPercentOf(key, value, row, threshold) {
+  const base = fmt(key, value);
+  if (!threshold.percent_of) return base;
+  const denom = row[threshold.percent_of];
+  const pct = denom ? (value / denom) * 100 : 0;
+  return `${base} (${pct.toFixed(1)}%)`;
 }
 
 function sumMetrics(rows) {
@@ -357,12 +369,12 @@ export default function Dashboard({ me, onCapturedAt }) {
         label: c.label,
         reference: isReference,
         render: (r) => {
-          const sev = isReference ? "reference" : classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key]);
-          const base = `${SEVERITY_MARK[sev]}${fmt(c.key, r[c.key])}`;
+          const t = resolveThreshold(thresholdRows, c.key, r.region);
+          const sev = isReference ? "reference" : classify(t, r[c.key], r);
+          const base = `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, r[c.key], r, t)}`;
           if (!compareYesterday) return base;
           const yRow = yesterdayByCode.get(r.station_code);
           if (!yRow) return base;
-          const t = resolveThreshold(thresholdRows, c.key, r.region);
           const d = deltaFor(c.key, r[c.key], yRow[c.key], t.direction, isReference);
           if (!d) return base;
           return (
@@ -373,7 +385,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         },
         className: (r) => {
           if (isReference) return SEVERITY_CLASS.reference;
-          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key]);
+          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key], r);
           return SEVERITY_CLASS[sev];
         },
         onClick: DRILLDOWN_METRICS.has(c.key) ? (r) => openDrilldown(r, c) : undefined,
@@ -385,15 +397,17 @@ export default function Dashboard({ me, onCapturedAt }) {
     ? ALL_COLUMNS.map((c) => {
         const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
         const t = resolveThreshold(thresholdRows, c.key, detailRow.region);
-        const sev = isReference ? "reference" : classify(t, detailRow[c.key]);
+        const sev = isReference ? "reference" : classify(t, detailRow[c.key], detailRow);
         const yRow = yesterdayByCode.get(detailRow.station_code);
         const d = compareYesterday && yRow ? deltaFor(c.key, detailRow[c.key], yRow[c.key], t.direction, isReference) : null;
         const hasTarget = !isReference && !(t.warning_at === 0 && t.critical_at === 0);
         return {
           label: c.label,
-          value: `${SEVERITY_MARK[sev]}${fmt(c.key, detailRow[c.key])}`,
+          value: `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, detailRow[c.key], detailRow, t)}`,
           className: SEVERITY_CLASS[sev],
-          target: hasTarget ? `target ${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}` : null,
+          target: hasTarget
+            ? `target ${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${t.percent_of ? "%" : ""}`
+            : null,
           delta: d ? d.text : null,
           deltaClassName: d ? d.className : null,
         };
@@ -411,10 +425,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         rows={detailRows}
       />
 
-      <div className="flex items-center gap-1.5 text-sm text-slate-500">
-        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-        Data as of {formatTime(data.captured_at)} · {filteredStations.length} stations in scope
-      </div>
+      <div className="text-sm text-slate-500">{filteredStations.length} stations in scope</div>
 
       {showTotalCard && (
         <SummaryCard label="TOTAL LAST MILE" active={false} clickable={false} emphasis stats={cardStats(sumMetrics(scopedStations))} />
@@ -469,7 +480,6 @@ export default function Dashboard({ me, onCapturedAt }) {
         <ActionBoard
           stations={filteredStations}
           yesterdayStations={filteredYesterdayStations}
-          capturedAt={data.captured_at}
           thresholdRows={thresholdRows}
           me={me}
           onFilterTo={(filterLevel, value, region) => {

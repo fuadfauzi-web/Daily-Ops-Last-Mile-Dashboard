@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import { ALL_COLUMNS } from "./lib/metrics";
+import { BOARD_COLUMNS } from "./lib/actionMetrics";
 import { resolveThreshold } from "./lib/thresholds";
 import TabBar from "./components/TabBar";
+
+// Routed View's Productivity % isn't a Station Health/Action Board metric (it's
+// not summable as a station-level count the way the rest of BOARD_COLUMNS are),
+// so it's kept out of BOARD_COLUMNS entirely and only added here for editing.
+const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Productivity % (Routed View)" }];
+
+// Productivity is scored per driver position rather than per region -- reuses
+// the exact same (metric_key, scope) mechanism as the region overrides below,
+// just with a driver position label as the scope string instead of a region name.
+const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
 const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "" };
 const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
@@ -102,7 +112,7 @@ function SlaTargetsPanel({ regions }) {
   useEffect(() => {
     if (!rows) return;
     const next = {};
-    ALL_COLUMNS.forEach((c) => {
+    ADMIN_METRICS.forEach((c) => {
       next[c.key] = { ...resolveThreshold(rows, c.key, scope === "nationwide" ? null : scope) };
     });
     setDraft(next);
@@ -120,13 +130,14 @@ function SlaTargetsPanel({ regions }) {
     setSaving(true);
     setError(null);
     try {
-      const payload = ALL_COLUMNS.map((c) => ({
+      const payload = ADMIN_METRICS.map((c) => ({
         metric_key: c.key,
         scope,
         scored: !!draft[c.key].scored,
         direction: draft[c.key].direction,
         warning_at: Number(draft[c.key].warning_at) || 0,
         critical_at: Number(draft[c.key].critical_at) || 0,
+        percent_of: draft[c.key].percent_of || null,
       }));
       await api.thresholds.save(payload);
       setSaved(true);
@@ -164,6 +175,20 @@ function SlaTargetsPanel({ regions }) {
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-400">Driver type (Productivity only):</span>
+          <div className="flex flex-wrap overflow-hidden rounded-lg border border-slate-300 text-xs font-medium">
+            {DRIVER_POSITION_SCOPES.map((p, i) => (
+              <button
+                key={p}
+                onClick={() => setScope(p)}
+                className={`px-3 py-1.5 ${i > 0 ? "border-l border-slate-300" : ""} ${scope === p ? "bg-ink text-white" : "bg-white text-slate-600"}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-slate-400">Applies at the next 30-minute refresh</span>
           <button
@@ -193,11 +218,12 @@ function SlaTargetsPanel({ regions }) {
                 <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Direction</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Warning at</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Critical at</th>
+                <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Score as % of</th>
                 <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Last changed</th>
               </tr>
             </thead>
             <tbody>
-              {ALL_COLUMNS.map((c, i) => {
+              {ADMIN_METRICS.map((c, i) => {
                 const d = draft[c.key];
                 if (!d) return null;
                 return (
@@ -240,6 +266,21 @@ function SlaTargetsPanel({ regions }) {
                         onChange={(e) => updateField(c.key, "critical_at", e.target.value)}
                       />
                     </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <select
+                        disabled={!d.scored}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                        value={d.percent_of || ""}
+                        onChange={(e) => updateField(c.key, "percent_of", e.target.value || null)}
+                      >
+                        <option value="">Raw count</option>
+                        {ADMIN_METRICS.filter((m) => m.key !== c.key).map((m) => (
+                          <option key={m.key} value={m.key}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">
                       {d.changed_by ? `${formatTime(d.changed_at)} · ${d.changed_by}` : "—"}
                     </td>
@@ -251,7 +292,9 @@ function SlaTargetsPanel({ regions }) {
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
           Turn Scored off and the metric becomes reference-only everywhere at once: grey column header, never
-          coloured. Direction/Warning/Critical are disabled while a metric is unscored.
+          coloured. Direction/Warning/Critical are disabled while a metric is unscored. "Score as % of" evaluates
+          Warning/Critical against this metric's value as a percentage of the chosen field on the same row (e.g. Age
+          &gt;3 as % of Total In Hub) instead of its raw count -- leave as Raw count for everything else.
         </div>
       </div>
     </div>

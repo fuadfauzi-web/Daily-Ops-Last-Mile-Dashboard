@@ -24,7 +24,9 @@ export const METRICS = {
   // ---- scored: TO BE SUPPLIED, placeholders below ----
   zero_attempt: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   zero_attempt_gt_d0: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
-  age_gt3: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
+  // Scored as a % of Total In Hub by default (2026-09-20 feedback), e.g.
+  // warning=20 means "no more than 20% of what's in hub should be Age >3".
+  age_gt3: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0, percentOf: "total_in_hub" },
   on_hold: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   reschedule: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   prior_d0: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },

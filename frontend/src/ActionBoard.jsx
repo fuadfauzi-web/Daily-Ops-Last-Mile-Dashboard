@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import { formatTime } from "./lib/format";
 import { resolveThreshold, classify, SEVERITY_MARK } from "./lib/thresholds";
-import { ALL_COLUMNS } from "./lib/metrics";
+import { EXTRA_METRICS, NO_DRILLDOWN_METRICS, BOARD_COLUMNS, findBoardColumn as findColumn } from "./lib/actionMetrics";
 import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
 import SegmentedControl from "./components/SegmentedControl";
@@ -27,13 +26,27 @@ function deltaText(current, previous) {
   return `${diff > 0 ? "+" : "−"}${Math.abs(diff).toLocaleString()}`;
 }
 
+// One column per metric, TNs listed underneath -- matches the Copy TNs text
+// layout so the CSV reads the same way once opened in a spreadsheet.
+function exportStationTnsCsv(stationName, breaches, tnsByMetric) {
+  const headers = breaches.map((b) => findColumn(b.metricKey).label);
+  const columns = breaches.map((b) => tnsByMetric[b.metricKey] || []);
+  const maxLen = Math.max(0, ...columns.map((c) => c.length));
+  const rows = Array.from({ length: maxLen }, (_, i) => columns.map((c) => c[i] || ""));
+  exportCsv(
+    `daily-ops-action-board-${stationName.replace(/\s+/g, "-").toLowerCase()}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+    headers,
+    rows
+  );
+}
+
 function pillClass(sev) {
   if (sev === "critical") return "bg-status-critical text-white";
   if (sev === "warning") return "bg-status-warning text-white";
   return "bg-status-good/10 text-status-good";
 }
 
-// Sums every ALL_COLUMNS metric across the stations in each unit at the
+// Sums every BOARD_COLUMNS metric across the stations in each unit at the
 // chosen level -- "station" is just the stations themselves, unaggregated.
 function groupStations(stations, level) {
   if (level === "station") {
@@ -43,7 +56,7 @@ function groupStations(stations, level) {
       region: s.region,
       zone: s.zone,
       stationCodes: [s.station_code],
-      ...Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, s[c.key] || 0])),
+      ...Object.fromEntries(BOARD_COLUMNS.map((c) => [c.key, s[c.key] || 0])),
     }));
   }
   const groupField = level === "region" ? "region" : "zone";
@@ -56,12 +69,12 @@ function groupStations(stations, level) {
         name: k,
         region: level === "region" ? k : s.region,
         stationCodes: [],
-        ...Object.fromEntries(ALL_COLUMNS.map((c) => [c.key, 0])),
+        ...Object.fromEntries(BOARD_COLUMNS.map((c) => [c.key, 0])),
       });
     }
     const g = groups.get(k);
     g.stationCodes.push(s.station_code);
-    ALL_COLUMNS.forEach((c) => {
+    BOARD_COLUMNS.forEach((c) => {
       g[c.key] += s[c.key] || 0;
     });
   });
@@ -73,7 +86,7 @@ function breachInfo(row, metricKeys, thresholdRows) {
   let worstRank = 0;
   metricKeys.forEach((m) => {
     const t = resolveThreshold(thresholdRows, m, row.region);
-    const sev = classify(t, row[m]);
+    const sev = classify(t, row[m], row);
     if (sev === "critical" || sev === "warning") {
       count += 1;
       worstRank = Math.max(worstRank, sev === "critical" ? 2 : 1);
@@ -96,7 +109,7 @@ function CopyTnsButton({ tnsByMetric, breaches }) {
     breaches
       .map((b) => {
         const tns = tnsByMetric[b.metricKey] || [];
-        const col = ALL_COLUMNS.find((c) => c.key === b.metricKey);
+        const col = findColumn(b.metricKey);
         return `${col.label} (${tns.length}):\n${tns.join("\n")}`;
       })
       .join("\n\n");
@@ -115,7 +128,7 @@ function CopyTnsButton({ tnsByMetric, breaches }) {
   );
 }
 
-export default function ActionBoard({ stations, yesterdayStations, capturedAt, thresholdRows, me, onFilterTo }) {
+export default function ActionBoard({ stations, yesterdayStations, thresholdRows, me, onFilterTo }) {
   const storageKey = `action-board-metrics-${me.email}`;
   const [selectedMetrics, setSelectedMetrics] = useState(() => {
     try {
@@ -131,8 +144,51 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
   const [modal, setModal] = useState(null);
   const [tnByStation, setTnByStation] = useState({});
 
+  // EXTRA_METRICS' own data -- fetched independently of the stations prop (which
+  // only carries Station Health), same pattern each of those tabs already uses.
+  const [oldRouteData, setOldRouteData] = useState(null);
+  const [shipperData, setShipperData] = useState(null);
+  const [routedData, setRoutedData] = useState(null);
+  useEffect(() => {
+    api.oldRoute().then(setOldRouteData).catch(() => {});
+    api.shipperWatch().then(setShipperData).catch(() => {});
+    api.routedView().then(setRoutedData).catch(() => {});
+  }, []);
+
+  const oldRouteByStation = useMemo(() => {
+    const m = new Map();
+    (oldRouteData?.stations || []).forEach((s) => m.set(s.station_code, s.total_tn));
+    return m;
+  }, [oldRouteData]);
+  const shipperByStation = useMemo(() => {
+    const m = new Map();
+    (shipperData?.stations || []).forEach((s) => m.set(s.station_code, s));
+    return m;
+  }, [shipperData]);
+  const routedByStation = useMemo(() => {
+    const m = new Map();
+    (routedData?.stations || []).forEach((s) => m.set(s.station_code, s));
+    return m;
+  }, [routedData]);
+
+  // stations, enriched with EXTRA_METRICS -- built by looking up each already
+  // role/filter-scoped station in the (unfiltered but same-role-scoped) extra
+  // datasets, so the Dashboard's region/zone/search/East-Malaysia filters still
+  // apply correctly without re-deriving them here.
+  const enrichedStations = useMemo(
+    () =>
+      stations.map((s) => ({
+        ...s,
+        old_route_tn: oldRouteByStation.get(s.station_code) || 0,
+        zalora_zero_attempt: shipperByStation.get(s.station_code)?.zalora_zero_attempt || 0,
+        zalora_ovfd: shipperByStation.get(s.station_code)?.zalora_ovfd || 0,
+        routed_current_ovfd: routedByStation.get(s.station_code)?.current_ovfd || 0,
+      })),
+    [stations, oldRouteByStation, shipperByStation, routedByStation]
+  );
+
   const scoredMetrics = useMemo(
-    () => ALL_COLUMNS.filter((c) => resolveThreshold(thresholdRows, c.key, null).scored),
+    () => BOARD_COLUMNS.filter((c) => resolveThreshold(thresholdRows, c.key, null).scored),
     [thresholdRows]
   );
 
@@ -156,7 +212,10 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
     [selectedMetrics, scoredMetrics]
   );
 
-  const todayGroups = useMemo(() => groupStations(stations, level), [stations, level]);
+  const todayGroups = useMemo(() => groupStations(enrichedStations, level), [enrichedStations, level]);
+  // yesterdayStations only ever carries Station Health fields -- EXTRA_METRICS
+  // have no "yesterday" snapshot, so their delta is suppressed below rather than
+  // comparing against a silent 0.
   const yesterdayGroups = useMemo(() => groupStations(yesterdayStations, level), [yesterdayStations, level]);
   const yesterdayByKey = useMemo(() => new Map(yesterdayGroups.map((g) => [g.key, g])), [yesterdayGroups]);
 
@@ -174,14 +233,21 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
   // "Act on these today" is always station-level -- that's the only
   // granularity a tracking-number list (and therefore Copy TNs) makes sense
   // at, regardless of what the heatmap above is currently grouped by.
-  const stationRows = useMemo(() => groupStations(stations, "station"), [stations]);
+  const stationRows = useMemo(() => groupStations(enrichedStations, "station"), [enrichedStations]);
+  // Routed View's metric has no TN list at all (see NO_DRILLDOWN_METRICS) so it
+  // never contributes to this list, even if it's one of the selected metrics --
+  // it still shows up in the heatmap above via activeMetrics.
+  const drilldownMetrics = useMemo(
+    () => activeMetrics.filter((m) => !NO_DRILLDOWN_METRICS.has(m)),
+    [activeMetrics]
+  );
   const actionRows = useMemo(() => {
     const rows = stationRows.map((r) => {
-      const breaches = activeMetrics
+      const breaches = drilldownMetrics
         .map((m) => {
           const t = resolveThreshold(thresholdRows, m, r.region);
-          const sev = classify(t, r[m]);
-          return { metricKey: m, sev, value: r[m], target: t.warning_at, direction: t.direction };
+          const sev = classify(t, r[m], r);
+          return { metricKey: m, sev, value: r[m], target: t.warning_at, direction: t.direction, percentOf: t.percent_of };
         })
         .filter((b) => b.sev === "critical" || b.sev === "warning");
       const worstRank = breaches.reduce((acc, b) => Math.max(acc, b.sev === "critical" ? 2 : 1), 0);
@@ -191,7 +257,24 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
       .filter((r) => r.breaches.length > 0)
       .sort((a, b) => b.breaches.length - a.breaches.length || b.worstRank - a.worstRank)
       .slice(0, ACT_LIST_CAP);
-  }, [stationRows, activeMetrics, thresholdRows]);
+  }, [stationRows, drilldownMetrics, thresholdRows]);
+
+  // Routes each metric to whichever endpoint actually holds its TN list --
+  // Station Health metrics via /api/drilldown, Zalora via Shipper Watch's own
+  // drilldown, Old Route by filtering the flat TN list it already fetched above
+  // (no separate per-metric endpoint exists since Old Route only has one metric).
+  const fetchTnsFor = (stationCode, metricKey) => {
+    if (metricKey === "old_route_tn") {
+      const list = (oldRouteData?.tn_rows || [])
+        .filter((row) => row.station_code === stationCode)
+        .map((row) => row.tracking_number);
+      return Promise.resolve({ tracking_numbers: list, as_of: oldRouteData?.captured_at });
+    }
+    if (metricKey === "zalora_zero_attempt" || metricKey === "zalora_ovfd") {
+      return api.shipperDrilldown(stationCode, metricKey);
+    }
+    return api.drilldown(stationCode, metricKey);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -204,8 +287,7 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
         actionRows.map(async (r) => {
           const perMetric = await Promise.all(
             r.breaches.map((b) =>
-              api
-                .drilldown(r.key, b.metricKey)
+              fetchTnsFor(r.key, b.metricKey)
                 .then((res) => [b.metricKey, res.tracking_numbers])
                 .catch(() => [b.metricKey, []])
             )
@@ -218,11 +300,12 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
     return () => {
       cancelled = true;
     };
-  }, [actionRows]);
+  }, [actionRows, oldRouteData]);
 
   const handleCellClick = (row, metricKey) => {
-    const col = ALL_COLUMNS.find((c) => c.key === metricKey);
     if (level === "station") {
+      if (NO_DRILLDOWN_METRICS.has(metricKey)) return; // heatmap-only, no TN list exists
+      const col = findColumn(metricKey);
       setModal({ stationCode: row.key, stationName: row.name, metricKey, metricLabel: col.label });
     } else {
       onFilterTo(level, row.key, row.region);
@@ -236,7 +319,8 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
     { key: "station_count", label: "Stations", className: () => "text-slate-500", render: (r) => r.stationCodes.length },
     { key: "breaches", label: "Breaches", className: () => "font-semibold text-slate-600", render: (r) => r.breachCount },
     ...activeMetrics.map((metricKey) => {
-      const col = ALL_COLUMNS.find((c) => c.key === metricKey);
+      const col = findColumn(metricKey);
+      const isExtra = EXTRA_METRICS.some((e) => e.key === metricKey);
       const natThreshold = resolveThreshold(thresholdRows, metricKey, null);
       return {
         key: metricKey,
@@ -245,22 +329,31 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
             {col.label}
             <div className="text-[10px] font-normal normal-case text-slate-300">
               {natThreshold.direction === "lower-is-worse" ? "≥" : "≤"} {natThreshold.warning_at}
+              {natThreshold.percent_of ? "%" : ""}
             </div>
           </>
         ),
         sortable: false,
         render: (r) => {
           const t = resolveThreshold(thresholdRows, metricKey, r.region);
-          const sev = classify(t, r[metricKey]);
-          const yRow = yesterdayByKey.get(r.key);
+          const sev = classify(t, r[metricKey], r);
+          const pctSuffix = t.percent_of && r[t.percent_of] ? ` (${((r[metricKey] / r[t.percent_of]) * 100).toFixed(1)}%)` : "";
+          // EXTRA_METRICS have no "yesterday" snapshot -- never show a delta for
+          // them rather than silently comparing against 0.
+          const yRow = !isExtra ? yesterdayByKey.get(r.key) : null;
           const delta = yRow ? deltaText(r[metricKey], yRow[metricKey]) : null;
+          const clickable = !(level === "station" && NO_DRILLDOWN_METRICS.has(metricKey));
           return (
             <button
-              onClick={() => handleCellClick(r, metricKey)}
-              className={`inline-flex min-w-[60px] items-center justify-center gap-1 whitespace-nowrap rounded px-2 py-1 font-semibold tabular-nums ${pillClass(sev)}`}
+              onClick={() => clickable && handleCellClick(r, metricKey)}
+              disabled={!clickable}
+              className={`inline-flex min-w-[60px] items-center justify-center gap-1 whitespace-nowrap rounded px-2 py-1 font-semibold tabular-nums ${pillClass(sev)} ${
+                clickable ? "" : "cursor-default"
+              }`}
             >
               {SEVERITY_MARK[sev]}
               {r[metricKey].toLocaleString()}
+              {pctSuffix && <span className="text-[10px] font-normal opacity-80">{pctSuffix}</span>}
               {delta && <span className="text-[10px] font-normal opacity-80">{delta}</span>}
             </button>
           );
@@ -271,14 +364,7 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
 
   return (
     <div className="space-y-4">
-      <TnModal state={modal} onClose={() => setModal(null)} fetcher={api.drilldown} />
-
-      {capturedAt && (
-        <div className="flex items-center gap-1.5 text-sm text-slate-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-          Data as of {formatTime(capturedAt)}
-        </div>
-      )}
+      <TnModal state={modal} onClose={() => setModal(null)} fetcher={fetchTnsFor} />
 
       <div className="space-y-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <div className="flex flex-wrap items-center gap-2">
@@ -325,7 +411,7 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
                 onClick={() =>
                   exportCsv(
                     `daily-ops-action-board-${level}-${new Date().toISOString().slice(0, 10)}.csv`,
-                    [identityLabel, "Stations", "Breaches", ...activeMetrics.map((m) => ALL_COLUMNS.find((c) => c.key === m).label)],
+                    [identityLabel, "Stations", "Breaches", ...activeMetrics.map((m) => findColumn(m).label)],
                     heatmapRows.map((r) => [r.name, r.stationCodes.length, r.breachCount, ...activeMetrics.map((m) => r[m])])
                   )
                 }
@@ -367,7 +453,7 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
                   </div>
                   <div className="flex flex-1 flex-wrap gap-1.5" style={{ flexBasis: "260px" }}>
                     {r.breaches.map((b) => {
-                      const col = ALL_COLUMNS.find((c) => c.key === b.metricKey);
+                      const col = findColumn(b.metricKey);
                       return (
                         <span
                           key={b.metricKey}
@@ -379,12 +465,22 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
                           <span className="opacity-70">
                             / {b.direction === "lower-is-worse" ? "≥" : "≤"}
                             {b.target}
+                            {b.percentOf ? "%" : ""}
                           </span>
                         </span>
                       );
                     })}
                   </div>
-                  <CopyTnsButton tnsByMetric={tnByStation[r.key]} breaches={r.breaches} />
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <CopyTnsButton tnsByMetric={tnByStation[r.key]} breaches={r.breaches} />
+                    <button
+                      onClick={() => exportStationTnsCsv(r.name, r.breaches, tnByStation[r.key])}
+                      disabled={!tnByStation[r.key]}
+                      className="min-h-[44px] shrink-0 whitespace-nowrap rounded-lg border border-slate-300 px-3 py-1.5 font-display text-xs font-medium text-slate-600 disabled:opacity-40"
+                    >
+                      CSV
+                    </button>
+                  </div>
                 </div>
               ))
             )}

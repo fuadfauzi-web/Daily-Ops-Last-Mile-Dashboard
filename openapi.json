@@ -349,7 +349,23 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "driver_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hybrid",
+                "independent",
+                "other"
+              ]
+            },
+            "description": "Restrict region/zone/station/driver rows to one driver-type bucket. Omit for all drivers."
+          }
+        ]
       }
     },
     "/api/admin/refresh": {
@@ -2499,6 +2515,11 @@
           },
           "critical_at": {
             "type": "number"
+          },
+          "percent_of": {
+            "type": "string",
+            "nullable": true,
+            "description": "Score as % of this other metric_key on the same row instead of raw count; null = raw count"
           },
           "changed_by": {
             "type": "string",

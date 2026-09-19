@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import { formatTime } from "./lib/format";
 import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
@@ -209,9 +208,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
 
   return (
     <div className="space-y-3">
-      <div className="text-sm text-slate-500">
-        {data.captured_at ? `RPU data as of ${formatTime(data.captured_at)}` : "No data yet."}
-      </div>
+      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
       <div className="flex flex-wrap items-center gap-2">
         <select
           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
@@ -334,9 +331,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
 
   return (
     <div className="space-y-3">
-      <div className="text-sm text-slate-500">
-        {data.captured_at ? `${data.type_label} data as of ${formatTime(data.captured_at)}` : "No data yet."}
-      </div>
+      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
         <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />

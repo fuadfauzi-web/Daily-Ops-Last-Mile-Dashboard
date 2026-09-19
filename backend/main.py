@@ -22,12 +22,13 @@ from pydantic import BaseModel
 
 import db
 from aggregate import (
-    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, METRIC_KEYS,
-    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS, SHIPMENT_DETAIL_KEYS,
-    SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
+    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_BUCKETS,
+    METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
+    SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     bucket_rpu_aging, build_aging_details, build_old_route, build_routed_view, build_rpu, build_shipment_details,
     build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging,
-    rollup_old_route, rollup_routed, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
+    rollup_old_route, rollup_routed, rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details,
+    rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
@@ -686,56 +687,97 @@ async def _fetch_routed_rows(captured_at) -> list[dict]:
 
 
 @app.get("/api/routed-view", response_model=RoutedViewResponse)
-async def routed_view(user: CurrentUser = Depends(get_current_user)):
+async def routed_view(driver_type: str | None = None, user: CurrentUser = Depends(get_current_user)):
+    if driver_type not in (None, "hybrid", "independent", "other"):
+        raise HTTPException(400, "driver_type must be hybrid, independent, or other")
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM routed_stations")
     captured_at = latest[0] if latest else None
     if captured_at is None:
         return {"captured_at": None, "stations": [], "zones": [], "regions": [], "drivers": []}
 
-    all_rows = await _fetch_routed_rows(captured_at)
-
-    # "Total 0 Attempt" -- merged in from the latest Station Health snapshot so it's
-    # visible alongside routed metrics without duplicating that computation here.
-    # total_fresh comes along too, purely to compute routed_pct here (Total Routed
-    # / Total Fresh) -- Station Health already stores its own copy of routed_pct,
-    # but Routed View reads a different table so it's recomputed the same way here.
+    # "Total 0 Attempt"/Total In Hub -- merged in from the latest Station Health
+    # snapshot so Routed % and Total 0 Attempt are visible alongside routed metrics
+    # without duplicating that computation here.
     health_latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
     zero_attempt_by_station: dict[str, int] = {}
-    total_fresh_by_station: dict[str, int] = {}
+    total_in_hub_by_station: dict[str, int] = {}
+    station_name_by_code: dict[str, str] = {}
     if health_latest and health_latest[0] is not None:
         for r in await db.fetch_all(
-            "SELECT station_code, zero_attempt, total_fresh FROM station_metrics WHERE captured_at = %s", (health_latest[0],)
+            "SELECT station_code, station_name, zero_attempt, total_in_hub FROM station_metrics WHERE captured_at = %s",
+            (health_latest[0],),
         ):
-            zero_attempt_by_station[r[0]] = r[1]
-            total_fresh_by_station[r[0]] = r[2]
-    for row in all_rows:
-        row["zero_attempt"] = zero_attempt_by_station.get(row["station_code"], 0)
-        row["total_fresh"] = total_fresh_by_station.get(row["station_code"], 0)
-        row["routed_pct"] = round(row["total_routed"] / row["total_fresh"] * 100, 1) if row["total_fresh"] else 0.0
-
-    scoped = _scope_filter_stations(all_rows, user)
-    extra_keys = ("zero_attempt", "total_fresh")
-
-    def to_group(rows, key):
-        out = []
-        for g in rows:
-            if g["station_count"] == 0:
-                continue
-            d = {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
-            d["routed_pct"] = round(d["total_routed"] / d["total_fresh"] * 100, 1) if d["total_fresh"] else 0.0
-            out.append(d)
-        return out
+            station_name_by_code[r[0]] = r[1]
+            zero_attempt_by_station[r[0]] = r[2]
+            total_in_hub_by_station[r[0]] = r[3]
 
     driver_rows = _scope_filter_stations(
         [{**d, "station_name": d["current_station"], "zone": d["zone"], "region": d["region"]} for d in _routed_drivers],
         user,
     )
 
+    if driver_type is None:
+        # Fast path: today's default view reads the persisted per-refresh snapshot,
+        # same as before the driver-type filter existed.
+        all_rows = await _fetch_routed_rows(captured_at)
+        for row in all_rows:
+            row["zero_attempt"] = zero_attempt_by_station.get(row["station_code"], 0)
+            row["total_in_hub"] = total_in_hub_by_station.get(row["station_code"], 0)
+            denom = row["total_routed"] + row["total_in_hub"]
+            row["routed_pct"] = round(row["total_routed"] / denom * 100, 2) if denom else 0.0
+
+        scoped = _scope_filter_stations(all_rows, user)
+        extra_keys = ("zero_attempt", "total_in_hub")
+
+        def to_group(rows, key):
+            out = []
+            for g in rows:
+                if g["station_count"] == 0:
+                    continue
+                d = {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+                d_denom = d["total_routed"] + d["total_in_hub"]
+                d["routed_pct"] = round(d["total_routed"] / d_denom * 100, 2) if d_denom else 0.0
+                out.append(d)
+            return out
+
+        stations_out = scoped
+        zones_out = to_group(rollup_routed(scoped, "zone", extra_keys), "zone")
+        regions_out = to_group(rollup_routed(scoped, "region", extra_keys), "region")
+    else:
+        # Filtered path: the persisted routed_stations snapshot has no per-type
+        # breakdown, so station/zone/region rollups are rebuilt fresh from the
+        # (already role-scoped) per-driver rows instead.
+        def build_level(group_key):
+            rows = rollup_routed_by_driver_type(driver_rows, group_key, driver_type)
+            out = []
+            for g in rows:
+                zero_attempt = sum(zero_attempt_by_station.get(c, 0) for c in g["station_codes"])
+                total_in_hub = sum(total_in_hub_by_station.get(c, 0) for c in g["station_codes"])
+                denom = g["total_routed"] + total_in_hub
+                row = {
+                    **{k: v for k, v in g.items() if k != "station_codes"},
+                    "zero_attempt": zero_attempt,
+                    "total_in_hub": total_in_hub,
+                    "routed_pct": round(g["total_routed"] / denom * 100, 2) if denom else 0.0,
+                }
+                if group_key == "station_code":
+                    row["station_code"] = g["station_code"]
+                    row["station_name"] = station_name_by_code.get(g["station_code"], g["station_code"])
+                else:
+                    row["key"] = g[group_key]
+                out.append(row)
+            return out
+
+        stations_out = build_level("station_code")
+        zones_out = build_level("zone")
+        regions_out = build_level("region")
+        driver_rows = [d for d in driver_rows if d["position"] in DRIVER_TYPE_BUCKETS.get(driver_type, set())]
+
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
-        "stations": scoped,
-        "zones": to_group(rollup_routed(scoped, "zone", extra_keys), "zone"),
-        "regions": to_group(rollup_routed(scoped, "region", extra_keys), "region"),
+        "stations": stations_out,
+        "zones": zones_out,
+        "regions": regions_out,
         "drivers": driver_rows,
     }
 
@@ -1499,21 +1541,29 @@ def _refresh_row_to_dict(row) -> dict:
 # fields (missing_open, cod_pct_routed) that never became a Station Health
 # column, so they have nothing to score.
 _SLA_METRIC_KEYS = (
-    "total_fresh", "total_routed", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
+    "total_fresh", "total_routed", "routed_pct", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
     "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
     "unsweep_document", "unsweep_parcel", "missing_hub", "missing_ship_in",
     "pending_ats_zero_attempt", "pending_ats_attempted",
+    # Action Board's own metrics (frontend/src/lib/actionMetrics.js's EXTRA_METRICS)
+    # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).
+    "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "productivity_pct",
 )
 _SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
+# Productivity is scored per driver position instead of per region -- these are
+# valid `scope` values alongside "nationwide" and a region name (see AdminPanel.jsx's
+# DRIVER_POSITION_SCOPES / RoutedViewTab.jsx's resolveThreshold(..., r.driver_type)).
+_SLA_DRIVER_POSITION_SCOPES = {"Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"}
 
 
 class ThresholdRow(BaseModel):
     metric_key: str
-    scope: str  # "nationwide" or a region name
+    scope: str  # "nationwide", a region name, or a driver position (Productivity only)
     scored: bool
     direction: str  # "higher-is-worse" | "lower-is-worse"
     warning_at: float
     critical_at: float
+    percent_of: str | None = None  # score as % of this other metric_key on the same row, if set
     changed_by: str | None = None
     changed_at: str | None = None
 
@@ -1525,14 +1575,14 @@ class ThresholdsIn(BaseModel):
 @app.get("/api/thresholds", response_model=list[ThresholdRow])
 async def get_thresholds(user: CurrentUser = Depends(get_current_user)):
     rows = await db.fetch_all(
-        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, changed_by, changed_at "
+        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at "
         "FROM sla_thresholds"
     )
     return [
         {
             "metric_key": r[0], "scope": r[1], "scored": bool(r[2]), "direction": r[3],
-            "warning_at": r[4], "critical_at": r[5], "changed_by": r[6],
-            "changed_at": str(r[7]) if r[7] else None,
+            "warning_at": r[4], "critical_at": r[5], "percent_of": r[6], "changed_by": r[7],
+            "changed_at": str(r[8]) if r[8] else None,
         }
         for r in rows
     ]
@@ -1554,13 +1604,18 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
     for row in payload.rows:
         if row.metric_key not in _SLA_METRIC_KEYS:
             raise HTTPException(status_code=422, detail=f"Unknown metric_key: {row.metric_key}")
-        if row.scope != "nationwide" and row.scope not in REGIONS:
-            raise HTTPException(status_code=422, detail=f"scope must be 'nationwide' or one of {REGIONS}")
+        if row.scope != "nationwide" and row.scope not in REGIONS and row.scope not in _SLA_DRIVER_POSITION_SCOPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"scope must be 'nationwide', one of {REGIONS}, or one of {sorted(_SLA_DRIVER_POSITION_SCOPES)}",
+            )
         if row.direction not in _SLA_DIRECTIONS:
             raise HTTPException(status_code=422, detail=f"direction must be one of {sorted(_SLA_DIRECTIONS)}")
+        if row.percent_of is not None and row.percent_of not in _SLA_METRIC_KEYS:
+            raise HTTPException(status_code=422, detail=f"Unknown percent_of metric_key: {row.percent_of}")
         params.append((
             row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
-            user.email, now,
+            row.percent_of, user.email, now,
         ))
     # ON DUPLICATE KEY UPDATE references VALUES(col) rather than its own %s
     # placeholders -- asyncmy's executemany bulk-rewrites a batch of INSERTs
@@ -1568,10 +1623,10 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
     # (...) tuple it repeats per row; extra %s in the trailing clause raised
     # "not all arguments converted during string formatting".
     await db.execute_many(
-        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, changed_by, changed_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON DUPLICATE KEY UPDATE scored=VALUES(scored), direction=VALUES(direction),
-             warning_at=VALUES(warning_at), critical_at=VALUES(critical_at),
+             warning_at=VALUES(warning_at), critical_at=VALUES(critical_at), percent_of=VALUES(percent_of),
              changed_by=VALUES(changed_by), changed_at=VALUES(changed_at)""",
         params,
     )
