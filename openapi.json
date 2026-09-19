@@ -505,32 +505,32 @@
     },
     "/api/rpu": {
       "get": {
-        "summary": "Return the latest RPU snapshot (query 1397) for one of 4 sub-stages, optionally filtered to one shipper_group, scoped to the caller.",
+        "summary": "Return the latest RPU snapshot (query 1397) across all 3 pickup stages, filterable by stage and/or shipper, scoped to the caller.",
         "parameters": [
           {
-            "name": "type",
+            "name": "stage",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
-              "default": "pending_pickup",
-              "description": "pending_pickup | ovfd | pending_inbound | aging_d5"
+              "default": "all",
+              "description": "all | pending_pickup | ovfd | pending_inbound"
             }
           },
           {
-            "name": "shipper_group",
+            "name": "shipper",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
               "nullable": true,
-              "description": "Zalora | Cainiao -- for RPU Shipper Details"
+              "description": "Any shipper_name value; omit for all shippers"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Latest snapshot for that type/shipper, scoped to the caller",
+            "description": "Latest snapshot for that stage/shipper, scoped to the caller",
             "content": {
               "application/json": {
                 "schema": {
@@ -540,7 +540,81 @@
             }
           },
           "422": {
-            "description": "type is not one of the 4 RPU sub-stages, or shipper_group is not Zalora/Cainiao"
+            "description": "stage is not 'all' or one of the 3 pickup stages"
+          }
+        }
+      }
+    },
+    "/api/admin/users/bulk": {
+      "post": {
+        "summary": "Add several teammates at once with the same role and access level (admin or manager).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUserIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Which emails were added vs already set up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkUserResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager access required"
+          },
+          "422": {
+            "description": "No emails given, or role/scope invalid"
+          }
+        }
+      }
+    },
+    "/api/rpu-aging": {
+      "get": {
+        "summary": "Return the latest RPU Aging snapshot (station x age-bucket pivot, same scheme as Aging Details) for Overall or 0-Attempt, optionally filtered to one shipper.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "overall",
+              "description": "overall | zero_attempt"
+            }
+          },
+          {
+            "name": "shipper",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest snapshot for that type/shipper, scoped to the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RpuAgingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "type is not overall or zero_attempt"
           }
         }
       }
@@ -851,7 +925,7 @@
           },
           "role": {
             "type": "string",
-            "description": "admin | manager | station"
+            "description": "station | region | manager | admin"
           },
           "scope_type": {
             "type": "string",
@@ -2077,9 +2151,14 @@
             "type": "string",
             "nullable": true
           },
+          "stage": {
+            "type": "string",
+            "description": "pending_pickup | ovfd | pending_inbound"
+          },
           "status": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Raw granular_status"
           },
           "attempts": {
             "type": "integer"
@@ -2099,16 +2178,12 @@
           "shipper_name": {
             "type": "string",
             "nullable": true
-          },
-          "shipper_group": {
-            "type": "string",
-            "nullable": true,
-            "description": "Zalora | Cainiao | Others"
           }
         },
         "required": [
           "station_code",
           "station_name",
+          "stage",
           "attempts",
           "age"
         ]
@@ -2121,16 +2196,20 @@
             "nullable": true,
             "format": "date-time"
           },
-          "type": {
+          "stage": {
             "type": "string",
-            "description": "pending_pickup | ovfd | pending_inbound | aging_d5"
+            "description": "all | pending_pickup | ovfd | pending_inbound"
           },
-          "type_label": {
-            "type": "string"
-          },
-          "shipper_group": {
+          "shipper": {
             "type": "string",
             "nullable": true
+          },
+          "shippers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every distinct shipper_name in scope, for the picker"
           },
           "stations": {
             "type": "array",
@@ -2165,8 +2244,135 @@
         },
         "required": [
           "captured_at",
+          "stage",
+          "shippers",
+          "stations",
+          "zones",
+          "regions",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
+        ]
+      },
+      "BulkUserIn": {
+        "type": "object",
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "role": {
+            "type": "string",
+            "description": "station | region | manager | admin"
+          },
+          "scope_type": {
+            "type": "string",
+            "description": "all | region | zone | station"
+          },
+          "scope_value": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "emails",
+          "role",
+          "scope_type"
+        ]
+      },
+      "BulkUserResult": {
+        "type": "object",
+        "properties": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Already set up, not re-added"
+          }
+        },
+        "required": [
+          "added",
+          "skipped"
+        ]
+      },
+      "RpuAgingResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string",
+            "description": "overall | zero_attempt"
+          },
+          "type_label": {
+            "type": "string"
+          },
+          "shipper": {
+            "type": "string",
+            "nullable": true
+          },
+          "shippers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "0,1,2,3,4-6,7+"
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingGroupRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RpuRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
           "type",
           "type_label",
+          "shippers",
+          "buckets",
           "stations",
           "zones",
           "regions",

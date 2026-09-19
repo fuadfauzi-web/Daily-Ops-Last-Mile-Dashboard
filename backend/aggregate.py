@@ -9,7 +9,9 @@ confirmation first.
 
 query 78 columns used: tracking_id, tag, granular_status, dest_hub,
 last_scan_datetime, last_scan_hub_name, days_since_current_hub_first_sweep
-("age"), delivery_attempts, cod ('Yes_cod' | 'NO_cod').
+("age"), delivery_attempts, cod ('Yes_cod' | 'NO_cod'), current_hub_first_sweep_datetime
+(the only place with a real time-of-day -- used for Shipment Details' Process Time,
+since query 1239's own 1st_sweep_at_WM_station turned out to be date-only).
 
 granular_status values seen: 'Arrived at Sorting Hub', 'En-route to Sorting Hub',
 'On Vehicle for Delivery', 'On Hold', 'Pending Reschedule', 'Arrived at Distribution
@@ -292,16 +294,23 @@ def _empty_shipment_row(hub_code: str) -> dict:
 
 
 def build_shipment_details(
-    total_shipments_rows: list[dict], tracker_rows: list[dict], lh_rows: list[dict]
+    total_shipments_rows: list[dict], tracker_rows: list[dict], lh_rows: list[dict],
+    health_v3_rows: list[dict] = (),
 ) -> tuple[dict[str, dict], dict[str, dict]]:
     """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}})."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
-    # "Process Time" = average time-of-day 1st_sweep_at_WM_station finished, today
-    # only (in Malaysia time) -- everything else is "0.00%"-style noise from other
-    # days sitting in the same query result.
+    # "Process Time" = average time-of-day the TN's first hub sweep finished, today
+    # only (Malaysia time). query 1239's own 1st_sweep_at_WM_station turned out to
+    # be date-only (no time-of-day), so the actual time comes from query 78's
+    # current_hub_first_sweep_datetime instead, matched by tracking_id.
     today_myt = datetime.now(_MYT).strftime("%Y-%m-%d")
     sweep_minutes: dict[str, list[float]] = {hub: [] for hub in HUBS}
+    health_sweep_time = {
+        r["tracking_id"]: r["current_hub_first_sweep_datetime"]
+        for r in health_v3_rows
+        if r.get("tracking_id") and r.get("current_hub_first_sweep_datetime")
+    }
 
     for r in total_shipments_rows:
         raw_name = (r.get("dest_hub_name") or "").strip().lower()
@@ -317,12 +326,11 @@ def build_shipment_details(
         tn = r.get("tracking_id")
         tag = (r.get("tag") or "").upper()
 
-        sweep_raw = r.get("1st_sweep_at_WM_station")
-        if not sweep_raw:
+        if not r.get("1st_sweep_at_WM_station"):
             row["fresh_unscan"] += 1
             tn_details[hub]["fresh_unscan"].append(tn)
         else:
-            sweep_dt = _parse_dt(sweep_raw)
+            sweep_dt = _parse_dt(health_sweep_time.get(tn))
             if sweep_dt is not None and sweep_dt.strftime("%Y-%m-%d") == today_myt:
                 sweep_minutes[hub].append(sweep_dt.hour * 60 + sweep_dt.minute + sweep_dt.second / 60)
 
@@ -955,46 +963,35 @@ def rollup_old_route(station_rows: list[dict], group_key: str) -> list[dict]:
 # "LM - RPU Tracker" sheet. Columns used: pickup_hub (a hub code, same as
 # elsewhere), tracking_id, granular_status, failed_pickup_attempts,
 # days_since_scheduled_date ("Age"), last_pickup_attempt_failure_reason,
-# pickup_driver_name, shipper_name, shipper_group (Zalora | Cainiao | Others --
-# used for the RPU Shipper Details sub-tabs).
+# pickup_driver_name, shipper_name (used directly for the shipper picker --
+# every distinct shipper, not just Zalora/Cainiao).
 #
-# Sub-types (a row can land in "aging_d5" alongside its stage):
+# Only 3 statuses are in scope (everything else, e.g. a completed pickup, is
+# excluded entirely) -- a row's "stage":
 #   pending_pickup  -- granular_status == "Pending Pickup"
 #   ovfd            -- granular_status == "Van en-route to pickup" (the sheet's
-#                      own "RPU OVFD" tab -- van already en route to pick up,
-#                      not related to delivery OVFD elsewhere in this app)
+#                      own name for this stage -- van already en route to pick
+#                      up, NOT related to delivery OVFD elsewhere in this app)
 #   pending_inbound -- granular_status == "En-route to Sorting Hub" (picked up,
-#                      not yet scanned in at the hub -- the sheet calls this
-#                      "RPU Success But Pending Inbound")
-#   aging_d5        -- days_since_scheduled_date >= 5 AND still at the pickup
-#                      stage (pending_pickup or ovfd) -- ASSUMPTION: the sheet's
-#                      "RPU Aging Pickup Up" tab only ever showed those two
-#                      statuses in its sample rows; confirm if pending_inbound
-#                      should count toward aging too.
+#                      not yet scanned in at the hub)
+# All three stages live in ONE flat row list (with a "stage"/"status" column
+# each row carries) so the main RPU view can show everything with a status
+# filter, and RPU Aging can bucket by age across all of them (or just one
+# shipper) the same way Aging Details does.
 # ---------------------------------------------------------------------------
 
-RPU_TYPES = ("pending_pickup", "ovfd", "pending_inbound", "aging_d5")
-RPU_TYPE_LABELS = {
-    "pending_pickup": "Pending Pick Up",
-    "ovfd": "OVFD",
-    "pending_inbound": "Pending Inbound",
-    "aging_d5": "Aging D5+",
+RPU_STAGE_STATUS = {
+    "pending_pickup": "Pending Pickup",
+    "ovfd": "Van en-route to pickup",
+    "pending_inbound": "En-route to Sorting Hub",
 }
-RPU_AGING_THRESHOLD = 5
+RPU_STATUS_TO_STAGE = {v: k for k, v in RPU_STAGE_STATUS.items()}
+RPU_STAGE_LABELS = {
+    "pending_pickup": "Pending Pick Up",
+    "ovfd": "En Route to Sorting Hub",
+    "pending_inbound": "Pending Inbound",
+}
 RPU_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route
-
-
-def _rpu_row_types(status: str | None, age: int) -> list[str]:
-    types = []
-    if status == "Pending Pickup":
-        types.append("pending_pickup")
-    elif status == "Van en-route to pickup":
-        types.append("ovfd")
-    elif status == "En-route to Sorting Hub":
-        types.append("pending_inbound")
-    if age >= RPU_AGING_THRESHOLD and status in ("Pending Pickup", "Van en-route to pickup"):
-        types.append("aging_d5")
-    return types
 
 
 def _empty_rpu_row(hub_code: str) -> dict:
@@ -1002,31 +999,35 @@ def _empty_rpu_row(hub_code: str) -> dict:
     return {"station_code": hub_code, "station_name": name, "zone": zone, "region": region, "total_tn": 0}
 
 
-def build_rpu(rpu_rows: list[dict]) -> tuple[dict[str, dict[str, dict]], dict[str, list[dict]]]:
-    """Returns ({type: {hub_code: pivot_row}}, {type: [tn_row, ...]})."""
-    by_type_station = {t: {hub: _empty_rpu_row(hub) for hub in HUBS} for t in RPU_TYPES}
-    by_type_rows: dict[str, list[dict]] = {t: [] for t in RPU_TYPES}
+def build_rpu(rpu_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
+    """Returns ({hub_code: pivot_row}, [row, ...]) -- the pivot is a simple
+    nationwide total (every stage, no filters) just so something is persisted
+    and visible right after a restart; the real filtering (by stage/shipper/
+    age-bucket) all happens at request time in main.py off the flat row list,
+    which is cheap enough given RPU's row counts."""
+    by_station = {hub: _empty_rpu_row(hub) for hub in HUBS}
+    rows_out: list[dict] = []
 
     for r in rpu_rows:
         hub = r.get("pickup_hub")
         if hub not in HUBS:
             continue
         status = r.get("granular_status")
-        age = int(r.get("days_since_scheduled_date") or 0)
-        detail = {
+        stage = RPU_STATUS_TO_STAGE.get(status)
+        if stage is None:
+            continue
+        by_station[hub]["total_tn"] += 1
+        rows_out.append({
             "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
-            "tracking_number": r.get("tracking_id"), "status": status,
-            "attempts": int(r.get("failed_pickup_attempts") or 0), "age": age,
+            "stage": stage, "status": status,
+            "tracking_number": r.get("tracking_id"),
+            "attempts": int(r.get("failed_pickup_attempts") or 0),
+            "age": int(r.get("days_since_scheduled_date") or 0),
             "failure_reason": r.get("last_pickup_attempt_failure_reason"),
             "driver_name": r.get("pickup_driver_name"), "shipper_name": r.get("shipper_name"),
-            "shipper_group": r.get("shipper_group"),
-        }
-        for t in _rpu_row_types(status, age):
-            row = by_type_station[t][hub]
-            row["total_tn"] += 1
-            by_type_rows[t].append(detail)
+        })
 
-    return by_type_station, by_type_rows
+    return by_station, rows_out
 
 
 def rollup_rpu(station_rows: list[dict], group_key: str) -> list[dict]:
@@ -1037,3 +1038,35 @@ def rollup_rpu(station_rows: list[dict], group_key: str) -> list[dict]:
         g["total_tn"] += row["total_tn"]
         g["station_count"] += 1
     return list(groups.values())
+
+
+def rpu_station_pivot(rows: list[dict]) -> list[dict]:
+    """Builds a station-level Total TN pivot from an already-filtered flat RPU
+    row list (stage/shipper filters applied by the caller before this)."""
+    pivot: dict[str, dict] = {}
+    for r in rows:
+        p = pivot.setdefault(
+            r["station_code"],
+            {"station_code": r["station_code"], "station_name": r["station_name"], "zone": r["zone"], "region": r["region"], "total_tn": 0},
+        )
+        p["total_tn"] += 1
+    return list(pivot.values())
+
+
+def bucket_rpu_aging(rows: list[dict], only_zero_attempt: bool) -> tuple[dict[str, dict], list[dict]]:
+    """Buckets an already-filtered flat RPU row list by age, same bucket scheme
+    as Aging Details (reuses AGING_BUCKET_KEYS/_empty_aging_row/_age_bucket).
+    Returns ({hub_code: pivot_row}, [row, ...]) -- pivot_row shape matches
+    AgingStationRow, so rollup_aging() works on it unchanged."""
+    by_station = {hub: _empty_aging_row(hub) for hub in HUBS}
+    rows_out = []
+    for r in rows:
+        if only_zero_attempt and r["attempts"] != 0:
+            continue
+        hub = r["station_code"]
+        bucket_key = AGING_BUCKET_KEYS[_age_bucket(r["age"])]
+        row = by_station[hub]
+        row[bucket_key] += 1
+        row["total"] += 1
+        rows_out.append(r)
+    return by_station, rows_out

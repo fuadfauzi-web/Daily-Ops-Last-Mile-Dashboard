@@ -232,20 +232,18 @@ function SummaryCard({ label, active, clickable, totals, onClick, emphasis }) {
   return (
     <Wrapper
       onClick={clickable ? onClick : undefined}
-      className={`rounded-lg border-t-4 p-3 text-left ring-1 ${
-        emphasis
-          ? "border-t-brand bg-black ring-black"
-          : `bg-white ring-slate-200 ${active ? "border-t-status-good bg-green-50/40" : "border-t-brand"}`
+      className={`rounded-lg bg-white p-3 text-left ring-1 ring-slate-200 ${
+        emphasis ? "border-t-[6px] border-t-brand" : `border-t-4 ${active ? "border-t-status-good bg-green-50/40" : "border-t-brand"}`
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between">
-        <span className={`text-xs font-bold ${emphasis ? "text-white" : "font-semibold text-slate-800"}`}>{label}</span>
+        <span className={`text-xs text-slate-800 ${emphasis ? "font-extrabold" : "font-semibold"}`}>{label}</span>
       </div>
       <div className="grid grid-cols-5 gap-1">
         {CARD_STATS.map((s) => (
-          <div key={s.key} className={`rounded px-1 py-1 text-center ${emphasis ? "bg-slate-800" : "bg-slate-50"}`}>
-            <div className={`text-[8px] uppercase ${emphasis ? "text-red-300" : "text-slate-400"}`}>{s.label}</div>
-            <div className={`text-xs font-bold ${emphasis ? "text-white" : "text-slate-800"}`}>{fmt(s.key, totals[s.key])}</div>
+          <div key={s.key} className="rounded bg-slate-50 px-1 py-1 text-center">
+            <div className="text-[8px] uppercase text-slate-400">{s.label}</div>
+            <div className={`text-xs text-slate-800 ${emphasis ? "font-extrabold" : "font-bold"}`}>{fmt(s.key, totals[s.key])}</div>
           </div>
         ))}
       </div>

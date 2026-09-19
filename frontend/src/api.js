@@ -40,13 +40,14 @@ export const api = {
     ),
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
   oldRoute: () => request("/api/old-route"),
-  rpu: (type, shipperGroup) =>
-    request(
-      `/api/rpu?type=${encodeURIComponent(type)}${shipperGroup ? `&shipper_group=${encodeURIComponent(shipperGroup)}` : ""}`
-    ),
+  rpu: (stage, shipper) =>
+    request(`/api/rpu?stage=${encodeURIComponent(stage)}${shipper ? `&shipper=${encodeURIComponent(shipper)}` : ""}`),
+  rpuAging: (type, shipper) =>
+    request(`/api/rpu-aging?type=${encodeURIComponent(type)}${shipper ? `&shipper=${encodeURIComponent(shipper)}` : ""}`),
   users: {
     list: () => request("/api/admin/users"),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),
+    bulkAdd: (payload) => request("/api/admin/users/bulk", { method: "POST", body: JSON.stringify(payload) }),
     update: (email, payload) =>
       request(`/api/admin/users/${encodeURIComponent(email)}`, {
         method: "PATCH",

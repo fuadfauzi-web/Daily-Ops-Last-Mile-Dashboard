@@ -13,12 +13,15 @@ description: >
   original Route ID/date), Shipper Watch (Zalora NXD, Amway/Watson/Orca/Sodaxpress
   hypercare SLAs, and Restock NXD monitoring), Aging Details (five sub-views --
   Overall/0 Attempt/Delivery/ATS/COD -- each a station x age-bucket pivot with full
-  TN-level detail), and RPU (Pending Pick Up/OVFD/Pending Inbound/Aging D5+ for
-  return pickups, plus a per-shipper breakdown for Zalora/Cainiao). Every
+  TN-level detail), and RPU for return pickups (Pending Pick Up/En Route to Sorting
+  Hub/Pending Inbound in one status-filterable view, plus RPU Aging with the same
+  age-bucket pivot as Aging Details -- both filterable to any shipper). Every
   parcel-level count can be clicked to see the underlying tracking numbers. Access
-  is role-based: admins see everything and manage who can see what, region managers
-  see one region, zone managers see one zone, station staff see only their station.
-  For Fleet Managers and their regional/station teams.
+  is role-based: admins and managers see everything and manage who can see what
+  (managers can also add/edit users and trigger refreshes), region staff see one
+  region, station staff see only their station. Refreshes every 30 minutes,
+  pulling whatever each Redash query last computed. For Fleet Managers and their
+  regional/station teams.
 
 database: oceanbase
 

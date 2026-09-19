@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-const LEVELS = [
-  { key: "region", label: "Region" },
-  { key: "zone", label: "Zone" },
-  { key: "station", label: "Station" },
-  { key: "driver", label: "Driver" },
-];
-
 const TN_COLUMNS = [
   { key: "tracking_number", label: "Tracking Number" },
   { key: "route_id", label: "Route ID" },
@@ -26,9 +19,10 @@ function formatTime(iso) {
 export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [level, setLevel] = useState("station");
-  const [sortKey, setSortKey] = useState("total_tn");
-  const [sortDir, setSortDir] = useState("desc");
+  const [stationSortKey, setStationSortKey] = useState("total_tn");
+  const [stationSortDir, setStationSortDir] = useState("desc");
+  const [driverSortKey, setDriverSortKey] = useState("total_tn");
+  const [driverSortDir, setDriverSortDir] = useState("desc");
   const [driverSearch, setDriverSearch] = useState("");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
@@ -36,6 +30,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const showDriverStationCol = me.scope_type !== "station";
 
   useEffect(() => {
     api
@@ -44,55 +39,48 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
       .catch((e) => setError(e.message));
   }, []);
 
-  const rows = useMemo(() => {
+  const filteredStations = useMemo(() => {
     if (!data) return [];
-    let base;
-    if (level === "region") base = data.regions.map((g) => ({ ...g, name: g.key }));
-    else if (level === "zone") base = data.zones.map((g) => ({ ...g, name: g.key }));
-    else if (level === "station") base = data.stations.map((s) => ({ ...s, name: s.station_name }));
-    else base = data.drivers.map((d) => ({ ...d, name: d.driver_name }));
-
-    if (excludeEastMalaysia && level !== "region") base = base.filter((r) => r.region !== "East Malaysia");
-    if (excludeEastMalaysia && level === "region") base = base.filter((r) => r.key !== "East Malaysia");
-
-    if (level === "zone" || level === "station" || level === "driver") {
-      if (regionFilter !== "all") base = base.filter((r) => r.region === regionFilter);
-    }
-    if (level === "station" || level === "driver") {
-      if (zoneFilter !== "all") base = base.filter((r) => r.zone === zoneFilter);
-    }
+    let rows = data.stations;
+    if (excludeEastMalaysia) rows = rows.filter((r) => r.region !== "East Malaysia");
+    if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
+    if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      base = level === "driver"
-        ? base.filter((r) => r.station_name?.toLowerCase().includes(q))
-        : base.filter((r) => r.name?.toLowerCase().includes(q));
+      rows = rows.filter((r) => r.station_name.toLowerCase().includes(q));
     }
-    if (level === "driver" && driverSearch.trim()) {
-      const q = driverSearch.trim().toLowerCase();
-      base = base.filter((r) => r.name?.toLowerCase().includes(q));
-    }
-
-    return [...base].sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (av === undefined || bv === undefined) return 0;
-      if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      return sortDir === "asc" ? av - bv : bv - av;
+    return [...rows].sort((a, b) => {
+      const av = a[stationSortKey];
+      const bv = b[stationSortKey];
+      if (typeof av === "string") return stationSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return stationSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, level, regionFilter, zoneFilter, search, driverSearch, sortKey, sortDir, excludeEastMalaysia]);
+  }, [data, regionFilter, zoneFilter, search, stationSortKey, stationSortDir, excludeEastMalaysia]);
 
-  const visibleStationCodes = useMemo(() => {
-    if (!data) return new Set();
-    let stations = data.stations;
-    if (excludeEastMalaysia) stations = stations.filter((r) => r.region !== "East Malaysia");
-    if (regionFilter !== "all") stations = stations.filter((r) => r.region === regionFilter);
-    if (zoneFilter !== "all") stations = stations.filter((r) => r.zone === zoneFilter);
+  const visibleStationCodes = useMemo(() => new Set(filteredStations.map((r) => r.station_code)), [filteredStations]);
+
+  const filteredDrivers = useMemo(() => {
+    if (!data) return [];
+    let rows = data.drivers;
+    if (excludeEastMalaysia) rows = rows.filter((r) => r.region !== "East Malaysia");
+    if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
+    if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      stations = stations.filter((r) => r.station_name.toLowerCase().includes(q));
+      rows = rows.filter((r) => r.station_name?.toLowerCase().includes(q));
     }
-    return new Set(stations.map((r) => r.station_code));
-  }, [data, regionFilter, zoneFilter, search, excludeEastMalaysia]);
+    if (driverSearch.trim()) {
+      const q = driverSearch.trim().toLowerCase();
+      rows = rows.filter((r) => r.driver_name?.toLowerCase().includes(q));
+    }
+    return [...rows].sort((a, b) => {
+      const av = a[driverSortKey];
+      const bv = b[driverSortKey];
+      if (av === undefined || bv === undefined) return 0;
+      if (typeof av === "string") return driverSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return driverSortDir === "asc" ? av - bv : bv - av;
+    });
+  }, [data, regionFilter, zoneFilter, search, driverSearch, driverSortKey, driverSortDir, excludeEastMalaysia]);
 
   const filteredTnRows = useMemo(() => {
     if (!data) return [];
@@ -106,11 +94,19 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
     });
   }, [data, visibleStationCodes, tnSortKey, tnSortDir]);
 
-  const toggleSort = (key) => {
-    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+  const toggleStationSort = (key) => {
+    if (key === stationSortKey) setStationSortDir(stationSortDir === "asc" ? "desc" : "asc");
     else {
-      setSortKey(key);
-      setSortDir("desc");
+      setStationSortKey(key);
+      setStationSortDir("desc");
+    }
+  };
+
+  const toggleDriverSort = (key) => {
+    if (key === driverSortKey) setDriverSortDir(driverSortDir === "asc" ? "desc" : "asc");
+    else {
+      setDriverSortKey(key);
+      setDriverSortDir("desc");
     }
   };
 
@@ -134,91 +130,111 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
   if (!data.captured_at)
     return <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>;
 
-  const isDriverLevel = level === "driver";
-  const isGroupLevel = level === "region" || level === "zone";
-  const showRegionCol = (level === "zone" || level === "station") && !hideRegionCol;
-  const showZoneCol = level === "station" && !hideZoneCol;
-  const showDriverStationCol = isDriverLevel && me.scope_type !== "station";
-  const leadingCols =
-    (showRegionCol ? 1 : 0) + (showZoneCol ? 1 : 0) + 1 + (isGroupLevel ? 1 : 0) + (showDriverStationCol ? 1 : 0);
+  const stationLeadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
+  const driverLeadingCols = 1 + (showDriverStationCol ? 1 : 0);
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
-        <div className="flex items-center gap-2">
-          {isDriverLevel && (
-            <input
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-              placeholder="Search driver…"
-              value={driverSearch}
-              onChange={(e) => setDriverSearch(e.target.value)}
-            />
-          )}
-          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-            {LEVELS.map((l) => (
-              <button
-                key={l.key}
-                onClick={() => {
-                  setLevel(l.key);
-                  setSortKey("total_tn");
-                  setSortDir("desc");
-                }}
-                className={`rounded-md px-3 py-1 text-sm font-medium ${
-                  level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
+      <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
+
+      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+        <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">By station</div>
+        <div className="max-h-[40vh] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
+              <tr>
+                {!hideRegionCol && (
+                  <th
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    onClick={() => toggleStationSort("region")}
+                  >
+                    Region {stationSortKey === "region" && (stationSortDir === "asc" ? "↑" : "↓")}
+                  </th>
+                )}
+                {!hideZoneCol && (
+                  <th
+                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                    onClick={() => toggleStationSort("zone")}
+                  >
+                    Zone {stationSortKey === "zone" && (stationSortDir === "asc" ? "↑" : "↓")}
+                  </th>
+                )}
+                <th
+                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
+                  onClick={() => toggleStationSort("station_name")}
+                >
+                  Station {stationSortKey === "station_name" && (stationSortDir === "asc" ? "↑" : "↓")}
+                </th>
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  onClick={() => toggleStationSort("total_tn")}
+                >
+                  Total TN {stationSortKey === "total_tn" && (stationSortDir === "asc" ? "↑" : "↓")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredStations.map((r) => (
+                <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
+                  {!hideRegionCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>}
+                  {!hideZoneCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>}
+                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
+                    {r.station_name}
+                  </td>
+                  <td className="px-4 py-2 text-center tabular-nums font-semibold text-status-critical">
+                    {r.total_tn.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              {filteredStations.length === 0 && (
+                <tr>
+                  <td colSpan={stationLeadingCols + 1} className="px-4 py-6 text-center text-slate-400">
+                    No stations match.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="max-h-[50vh] overflow-auto">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
+          <div className="text-sm font-medium text-slate-700">By driver</div>
+          <input
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            placeholder="Search driver…"
+            value={driverSearch}
+            onChange={(e) => setDriverSearch(e.target.value)}
+          />
+        </div>
+        <div className="max-h-[40vh] overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
               <tr>
-                {showRegionCol && <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Region</th>}
-                {showZoneCol && <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Zone</th>}
                 <th
                   className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                  onClick={() => toggleSort("name")}
+                  onClick={() => toggleDriverSort("driver_name")}
                 >
-                  {level === "driver" ? "Driver" : LEVELS.find((l) => l.key === level).label}{" "}
-                  {sortKey === "name" && (sortDir === "asc" ? "↑" : "↓")}
+                  Driver {driverSortKey === "driver_name" && (driverSortDir === "asc" ? "↑" : "↓")}
                 </th>
-                {isGroupLevel && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                    onClick={() => toggleSort("station_count")}
-                  >
-                    Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                )}
                 {showDriverStationCol && (
                   <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Station</th>
                 )}
                 <th
                   className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                  onClick={() => toggleSort("total_tn")}
+                  onClick={() => toggleDriverSort("total_tn")}
                 >
-                  Total TN {sortKey === "total_tn" && (sortDir === "asc" ? "↑" : "↓")}
+                  Total TN {driverSortKey === "total_tn" && (driverSortDir === "asc" ? "↑" : "↓")}
                 </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.station_code || r.driver_name || r.name || i} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  {showRegionCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>}
-                  {showZoneCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>}
+              {filteredDrivers.map((r, i) => (
+                <tr key={r.driver_name || i} className="border-t border-slate-100 hover:bg-slate-50/60">
                   <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                    {r.name}
+                    {r.driver_name}
                   </td>
-                  {isGroupLevel && (
-                    <td className="px-4 py-2 text-center tabular-nums text-slate-500">{r.station_count}</td>
-                  )}
                   {showDriverStationCol && (
                     <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.station_name}</td>
                   )}
@@ -227,10 +243,10 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && (
+              {filteredDrivers.length === 0 && (
                 <tr>
-                  <td colSpan={leadingCols + 1} className="px-4 py-6 text-center text-slate-400">
-                    No rows match.
+                  <td colSpan={driverLeadingCols + 1} className="px-4 py-6 text-center text-slate-400">
+                    No drivers match.
                   </td>
                 </tr>
               )}

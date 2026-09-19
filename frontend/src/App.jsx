@@ -62,7 +62,7 @@ export default function App() {
             <h1 className="text-base font-semibold tracking-tight text-white">Daily Ops Last Mile Dashboard</h1>
           </div>
           <div className="flex items-center gap-3">
-            {me.role === "admin" && (
+            {(me.role === "admin" || me.role === "manager") && (
               <nav className="flex gap-1 rounded-lg bg-slate-800 p-1 text-sm">
                 {["dashboard", "admin"].map((t) => (
                   <button

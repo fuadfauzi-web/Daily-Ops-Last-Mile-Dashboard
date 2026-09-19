@@ -23,11 +23,11 @@ from pydantic import BaseModel
 import db
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, METRIC_KEYS,
-    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_ROWS_CAP, RPU_TYPES, RPU_TYPE_LABELS, SHIPMENT_DETAIL_KEYS,
+    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS, SHIPMENT_DETAIL_KEYS,
     SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
-    build_aging_details, build_old_route, build_routed_view, build_rpu, build_shipment_details, build_shipper_watch,
-    build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging, rollup_old_route, rollup_routed,
-    rollup_rpu, rollup_shipment_details, rollup_shipper_watch,
+    bucket_rpu_aging, build_aging_details, build_old_route, build_routed_view, build_rpu, build_shipment_details,
+    build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging,
+    rollup_old_route, rollup_routed, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
@@ -40,7 +40,7 @@ from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
-REFRESH_INTERVAL_SECONDS = 60 * 60  # hourly, per the project brief
+REFRESH_INTERVAL_SECONDS = 30 * 60  # every 30 minutes
 _refresh_task: asyncio.Task | None = None
 
 _METRIC_COLUMNS = METRIC_KEYS
@@ -77,8 +77,9 @@ _old_route_rows: list[dict] = []
 _old_route_drivers: list[dict] = []
 _old_route_captured_at: str | None = None
 
-# RPU's TN-level rows, one flat list per sub-type, same in-memory pattern as Aging.
-_rpu_rows_cache: dict[str, list[dict]] = {t: [] for t in RPU_TYPES}
+# RPU's TN-level rows, one flat list covering all 3 stages -- stage/shipper/age
+# filtering all happens at request time (see /api/rpu, /api/rpu-aging).
+_rpu_rows_cache: list[dict] = []
 _rpu_rows_captured_at: str | None = None
 
 _SHIPMENT_COLUMNS = SHIPMENT_DETAIL_KEYS + ("fresh_attempt_pct", "process_time_minutes")
@@ -110,16 +111,16 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
         merge_routed_into_station_metrics(by_station, routed_by_station)
-        shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
+        shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
-        rpu_by_type_station, rpu_by_type_rows = build_rpu(rpu_raw_rows)
+        rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
         global _shipper_tn_cache_captured_at, _aging_rows_captured_at
-        global _old_route_rows, _old_route_drivers, _old_route_captured_at, _rpu_rows_captured_at
+        global _old_route_rows, _old_route_drivers, _old_route_captured_at, _rpu_rows_cache, _rpu_rows_captured_at
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -137,8 +138,7 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         _old_route_rows = old_route_tn_rows
         _old_route_drivers = old_route_driver_rows
         _old_route_captured_at = captured_at.isoformat()
-        _rpu_rows_cache.clear()
-        _rpu_rows_cache.update(rpu_by_type_rows)
+        _rpu_rows_cache = rpu_rows_flat
         _rpu_rows_captured_at = captured_at.isoformat()
 
         params = [
@@ -229,13 +229,12 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         )
 
         rpu_params = [
-            (captured_at, t, row["station_code"], row["station_name"], row["zone"], row["region"], row["total_tn"])
-            for t in RPU_TYPES
-            for row in rpu_by_type_station[t].values()
+            (captured_at, row["station_code"], row["station_name"], row["zone"], row["region"], row["total_tn"])
+            for row in rpu_by_station.values()
         ]
         await db.execute_many(
-            """INSERT INTO rpu_snapshot (captured_at, type, station_code, station_name, zone, region, total_tn)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            """INSERT INTO rpu_snapshot (captured_at, station_code, station_name, zone, region, total_tn)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
             rpu_params,
         )
 
@@ -1030,9 +1029,11 @@ async def old_route(user: CurrentUser = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# RPU (query 1397) -- Pending Pick Up / OVFD / Pending Inbound / Aging D5+,
-# with an optional shipper_group filter (Zalora | Cainiao) for RPU Shipper
-# Details.
+# RPU (query 1397) -- one merged view across all 3 pickup stages (status is a
+# filter, not a separate tab) plus RPU Aging (same bucket logic as Aging
+# Details, for Overall/0-Attempt). Both take an optional `shipper` filter
+# (any real shipper_name, not just Zalora/Cainiao) and return the full
+# shipper list for the picker.
 # ---------------------------------------------------------------------------
 
 class RpuStationRow(BaseModel):
@@ -1054,20 +1055,20 @@ class RpuRow(BaseModel):
     station_code: str
     station_name: str
     tracking_number: str | None
+    stage: str
     status: str | None
     attempts: int
     age: int
     failure_reason: str | None
     driver_name: str | None
     shipper_name: str | None
-    shipper_group: str | None
 
 
 class RpuResponse(BaseModel):
     captured_at: str | None
-    type: str
-    type_label: str
-    shipper_group: str | None
+    stage: str
+    shipper: str | None
+    shippers: list[str]
     stations: list[RpuStationRow]
     zones: list[RpuGroupRow]
     regions: list[RpuGroupRow]
@@ -1076,74 +1077,123 @@ class RpuResponse(BaseModel):
     tn_rows_truncated: bool
 
 
-async def _fetch_rpu_rows(captured_at, rpu_type: str) -> list[dict]:
-    db_rows = await db.fetch_all(
-        """SELECT station_code, station_name, zone, region, total_tn
-           FROM rpu_snapshot WHERE captured_at = %s AND type = %s""",
-        (captured_at, rpu_type),
-    )
-    return [
-        {"station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3], "total_tn": r[4]}
-        for r in db_rows
-    ]
+def _rpu_scoped_rows(user: CurrentUser) -> list[dict]:
+    return _scope_filter_stations(_rpu_rows_cache, user)
+
+
+def _rpu_shippers(rows: list[dict]) -> list[str]:
+    return sorted({r["shipper_name"] for r in rows if r.get("shipper_name")})
+
+
+def _rpu_empty_response(stage: str, shipper: str | None) -> dict:
+    return {
+        "captured_at": None, "stage": stage, "shipper": shipper, "shippers": [],
+        "stations": [], "zones": [], "regions": [], "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+    }
 
 
 @app.get("/api/rpu", response_model=RpuResponse)
-async def rpu(type: str = "pending_pickup", shipper_group: str | None = None, user: CurrentUser = Depends(get_current_user)):
-    if type not in RPU_TYPES:
-        raise HTTPException(status_code=422, detail=f"type must be one of {list(RPU_TYPES)}")
-    if shipper_group is not None and shipper_group not in ("Zalora", "Cainiao"):
-        raise HTTPException(status_code=422, detail="shipper_group must be Zalora or Cainiao")
+async def rpu(stage: str = "all", shipper: str | None = None, user: CurrentUser = Depends(get_current_user)):
+    if stage != "all" and stage not in RPU_STAGE_LABELS:
+        raise HTTPException(status_code=422, detail=f"stage must be 'all' or one of {list(RPU_STAGE_LABELS)}")
+    if _rpu_rows_captured_at is None:
+        return _rpu_empty_response(stage, shipper)
 
-    latest = await db.fetch_one("SELECT MAX(captured_at) FROM rpu_snapshot WHERE type = %s", (type,))
-    captured_at = latest[0] if latest else None
-    if captured_at is None:
-        return {
-            "captured_at": None, "type": type, "type_label": RPU_TYPE_LABELS[type], "shipper_group": shipper_group,
-            "stations": [], "zones": [], "regions": [], "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
-        }
+    all_scoped = _rpu_scoped_rows(user)
+    shippers = _rpu_shippers(all_scoped)
 
-    def to_group(rows, key):
+    rows = all_scoped
+    if stage != "all":
+        rows = [r for r in rows if r["stage"] == stage]
+    if shipper:
+        rows = [r for r in rows if r["shipper_name"] == shipper]
+
+    scoped_stations = rpu_station_pivot(rows)
+
+    def to_group(g_rows, key):
         return [
             {"key": g[key], "region": g["region"], "station_count": g["station_count"], "total_tn": g["total_tn"]}
-            for g in rows if g["station_count"] > 0
+            for g in g_rows if g["station_count"] > 0
         ]
 
-    if shipper_group is None:
-        # Unfiltered: the persisted pivot is available immediately after a
-        # restart even before the in-memory TN cache is rebuilt.
-        all_rows = await _fetch_rpu_rows(captured_at, type)
-        scoped = _scope_filter_stations(all_rows, user)
-        scoped_codes = {r["station_code"] for r in scoped}
-        tn_rows = [r for r in _rpu_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
-    else:
-        # Shipper-filtered: no persisted pivot for this slice, so both the
-        # pivot and the TN rows come from the in-memory cache (empty until the
-        # next refresh after a restart, same as every other TN-detail cache).
-        cached = [r for r in _rpu_rows_cache.get(type, []) if r["shipper_group"] == shipper_group]
-        tn_rows = _scope_filter_stations(cached, user)
-        pivot: dict[str, dict] = {}
-        for r in tn_rows:
-            p = pivot.setdefault(
-                r["station_code"],
-                {"station_code": r["station_code"], "station_name": r["station_name"], "zone": r["zone"], "region": r["region"], "total_tn": 0},
-            )
-            p["total_tn"] += 1
-        scoped = list(pivot.values())
-
-    tn_rows_total = len(tn_rows)
+    tn_rows_total = len(rows)
     tn_rows_truncated = tn_rows_total > RPU_ROWS_CAP
-    if tn_rows_truncated:
-        tn_rows = sorted(tn_rows, key=lambda r: r["age"], reverse=True)[:RPU_ROWS_CAP]
+    tn_rows = sorted(rows, key=lambda r: r["age"], reverse=True)[:RPU_ROWS_CAP] if tn_rows_truncated else rows
 
     return {
-        "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
+        "captured_at": _rpu_rows_captured_at,
+        "stage": stage,
+        "shipper": shipper,
+        "shippers": shippers,
+        "stations": scoped_stations,
+        "zones": to_group(rollup_rpu(scoped_stations, "zone"), "zone"),
+        "regions": to_group(rollup_rpu(scoped_stations, "region"), "region"),
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+RPU_AGING_TYPE_LABELS = {"overall": "RPU Aging Overall", "zero_attempt": "RPU Aging 0 Attempt"}
+
+
+class RpuAgingResponse(BaseModel):
+    captured_at: str | None
+    type: str
+    type_label: str
+    shipper: str | None
+    shippers: list[str]
+    buckets: list[str]
+    stations: list[AgingStationRow]
+    zones: list[AgingGroupRow]
+    regions: list[AgingGroupRow]
+    tn_rows: list[RpuRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/rpu-aging", response_model=RpuAgingResponse)
+async def rpu_aging(type: str = "overall", shipper: str | None = None, user: CurrentUser = Depends(get_current_user)):
+    if type not in RPU_AGING_TYPE_LABELS:
+        raise HTTPException(status_code=422, detail=f"type must be one of {list(RPU_AGING_TYPE_LABELS)}")
+    if _rpu_rows_captured_at is None:
+        return {
+            **_rpu_empty_response("all", shipper), "type": type, "type_label": RPU_AGING_TYPE_LABELS[type],
+            "buckets": list(AGING_BUCKET_LABELS.values()),
+        }
+
+    all_scoped = _rpu_scoped_rows(user)
+    shippers = _rpu_shippers(all_scoped)
+
+    rows = all_scoped
+    if shipper:
+        rows = [r for r in rows if r["shipper_name"] == shipper]
+
+    by_station, matched_rows = bucket_rpu_aging(rows, only_zero_attempt=(type == "zero_attempt"))
+    scoped_stations = _scope_filter_stations(list(by_station.values()), user)
+    scoped_codes = {r["station_code"] for r in scoped_stations}
+    tn_rows_all = [r for r in matched_rows if r["station_code"] in scoped_codes]
+
+    def to_group(g_rows, key):
+        return [
+            {**{k: g[k] for k in AGING_KEYS}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+            for g in g_rows if g["station_count"] > 0
+        ]
+
+    tn_rows_total = len(tn_rows_all)
+    tn_rows_truncated = tn_rows_total > RPU_ROWS_CAP
+    tn_rows = sorted(tn_rows_all, key=lambda r: r["age"], reverse=True)[:RPU_ROWS_CAP] if tn_rows_truncated else tn_rows_all
+
+    return {
+        "captured_at": _rpu_rows_captured_at,
         "type": type,
-        "type_label": RPU_TYPE_LABELS[type],
-        "shipper_group": shipper_group,
-        "stations": scoped,
-        "zones": to_group(rollup_rpu(scoped, "zone"), "zone"),
-        "regions": to_group(rollup_rpu(scoped, "region"), "region"),
+        "type_label": RPU_AGING_TYPE_LABELS[type],
+        "shipper": shipper,
+        "shippers": shippers,
+        "buckets": list(AGING_BUCKET_LABELS.values()),
+        "stations": scoped_stations,
+        "zones": to_group(rollup_aging(scoped_stations, "zone"), "zone"),
+        "regions": to_group(rollup_aging(scoped_stations, "region"), "region"),
         "tn_rows": tn_rows,
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,
@@ -1178,8 +1228,8 @@ class OkResult(BaseModel):
 
 
 def _require_admin(user: CurrentUser) -> None:
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
 
 
 @app.get("/api/admin/users", response_model=list[UserOut])
@@ -1197,7 +1247,7 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     ]
 
 
-_VALID_ROLES = {"admin", "manager", "station"}
+_VALID_ROLES = {"admin", "manager", "region", "station"}
 _VALID_SCOPE_TYPES = {"all", "region", "zone", "station"}
 
 
@@ -1230,6 +1280,41 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
          payload.display_name, user.email),
     )
     return {"ok": True}
+
+
+class BulkUserIn(BaseModel):
+    emails: list[str]
+    role: str
+    scope_type: str
+    scope_value: str | None = None
+
+
+class BulkUserResult(BaseModel):
+    added: list[str]
+    skipped: list[str]  # already set up
+
+
+@app.post("/api/admin/users/bulk", response_model=BulkUserResult)
+async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_current_user)):
+    _require_admin(user)
+    _validate_user_in(UserIn(email="placeholder@ninjavan.co", role=payload.role, scope_type=payload.scope_type, scope_value=payload.scope_value))
+    emails = [e.strip() for e in payload.emails if e.strip()]
+    if not emails:
+        raise HTTPException(status_code=422, detail="No emails given")
+
+    added, skipped = [], []
+    for email in emails:
+        existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (email,))
+        if existing:
+            skipped.append(email)
+            continue
+        await db.execute(
+            """INSERT INTO users (email, role, scope_type, scope_value, invited_by)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (email, payload.role, payload.scope_type, payload.scope_value, user.email),
+        )
+        added.append(email)
+    return {"added": added, "skipped": skipped}
 
 
 @app.patch("/api/admin/users/{email}", response_model=OkResult)
