@@ -1292,10 +1292,30 @@ def _validate_user_in(payload: UserIn) -> None:
             raise HTTPException(status_code=422, detail="scope_value must be a valid station name")
 
 
+def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
+    """Caps what a non-admin can hand out when adding someone -- admins have no
+    limit here. A Manager or Region staff member could otherwise create an
+    Admin (or a peer with their own level of access) through the add-user form,
+    which would be a privilege-escalation hole."""
+    if acting.role == "admin":
+        return
+    if acting.role == "manager":
+        if payload.role not in ("station", "region"):
+            raise HTTPException(status_code=403, detail="Managers can only grant the Station staff or Region staff role")
+        if payload.scope_type == "all":
+            raise HTTPException(status_code=403, detail="Managers can't grant 'sees everything' access")
+    elif acting.role == "region":
+        if payload.role != "station":
+            raise HTTPException(status_code=403, detail="Region staff can only grant the Station staff role")
+        if payload.scope_type != "station":
+            raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
+
+
 @app.post("/api/admin/users", response_model=OkResult)
 async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user)):
     _require_can_add_users(user)
     _validate_user_in(payload)
+    _validate_grant_limits(user, payload)
     existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (payload.email,))
     if existing:
         raise HTTPException(status_code=409, detail="That email is already set up")
@@ -1331,6 +1351,7 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             continue
         try:
             _validate_user_in(row)
+            _validate_grant_limits(user, row)
         except HTTPException as exc:
             errors.append(f"{email}: {exc.detail}")
             continue

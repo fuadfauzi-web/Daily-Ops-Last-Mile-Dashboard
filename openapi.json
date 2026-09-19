@@ -120,7 +120,7 @@
         }
       },
       "post": {
-        "summary": "Provision a new user with a role and access scope (all / region / zone / station). Admin only.",
+        "summary": "Provision a new user with a role and access scope (all / region / zone / station). Managers can only grant Station staff or Region staff roles (never Admin or \"sees everything\" scope); Region staff can only grant the Station staff role with station-level access.",
         "requestBody": {
           "required": true,
           "content": {
@@ -143,7 +143,7 @@
             }
           },
           "403": {
-            "description": "Admin, Manager, or Region staff access required"
+            "description": "Admin/Manager/Region staff access required, or this role/scope exceeds what the caller is allowed to grant"
           },
           "409": {
             "description": "That email is already set up"
@@ -547,7 +547,7 @@
     },
     "/api/admin/users/bulk": {
       "post": {
-        "summary": "Add several teammates at once, each with their own role and scope (Admin, Manager, or Region staff).",
+        "summary": "Add several teammates at once, each with their own role and scope (Admin, Manager, or Region staff). Managers can only grant Station staff or Region staff roles (never Admin or \"sees everything\" scope); Region staff can only grant the Station staff role with station-level access.",
         "requestBody": {
           "required": true,
           "content": {
