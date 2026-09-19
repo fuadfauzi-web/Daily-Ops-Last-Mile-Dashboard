@@ -263,6 +263,137 @@ def build_station_metrics(
     return by_station, tn_details
 
 
+# ---------------------------------------------------------------------------
+# Recovery tab's Missing Details sub-tab (query 1297 again, same classification
+# as missing_hub/missing_ship_in above, but kept as its own richer TN-level view
+# with cod_value/item_description/age for the Fleet Manager's recovery workflow).
+# ---------------------------------------------------------------------------
+
+_MISSING_TYPE_LABELS = {"hub": "Hub", "ship_in": "Ship In"}
+
+# 2026-09-20: "high COD value or high value item description (e.g. Smartphone)"
+# gets highlighted in the TN list. Starting guess, not confirmed against real
+# numbers yet -- adjust the threshold/keywords once the Fleet Manager reviews
+# what actually shows up highlighted on staging.
+_HIGH_COD_VALUE_THRESHOLD = 500
+_HIGH_VALUE_ITEM_KEYWORDS = (
+    "smartphone", "iphone", "samsung", "macbook", "laptop", "tablet", "ipad",
+    "camera", "drone", "watch", "playstation", "xbox", "console", "jewellery",
+    "jewelry", "gold",
+)
+
+
+def _is_high_value(cod_value, item_description) -> bool:
+    if cod_value and cod_value >= _HIGH_COD_VALUE_THRESHOLD:
+        return True
+    if item_description and any(kw in item_description.lower() for kw in _HIGH_VALUE_ITEM_KEYWORDS):
+        return True
+    return False
+
+
+def build_missing_details(missing_rows: list[dict], health_v3_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
+    """Returns ({hub_code: overview_row}, [tn_row, ...]) for the Recovery tab.
+
+    overview_row: hub_count/ship_in_count/other_count/total_count per station,
+    for the region/zone/station rollup. tn_row: one row per open missing ticket,
+    carrying cod_value/item_description/age plus the same Hub/Ship-in/Other
+    classification as build_station_metrics's missing_hub/missing_ship_in."""
+    health_tn_set = {r.get("tracking_id") for r in health_v3_rows if r.get("tracking_id")}
+    by_station = {
+        hub: {
+            "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
+            "hub_count": 0, "ship_in_count": 0, "other_count": 0, "total_count": 0,
+        }
+        for hub in HUBS
+    }
+    tn_rows = []
+    for r in missing_rows:
+        hub = r.get("dest_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        kind = _classify_missing(r, health_tn_set)
+        row["total_count"] += 1
+        if kind == "hub":
+            row["hub_count"] += 1
+        elif kind == "ship_in":
+            row["ship_in_count"] += 1
+        else:
+            row["other_count"] += 1
+        cod_value = r.get("cod_value")
+        item_description = r.get("item_description")
+        tn_rows.append({
+            "tracking_number": r.get("tracking_id"),
+            "station_code": hub,
+            "station_name": row["station_name"],
+            "zone": row["zone"],
+            "region": row["region"],
+            "hub_code": hub,
+            "age": r.get("ticket_age_in_days"),
+            "type": _MISSING_TYPE_LABELS.get(kind, "Other"),
+            "cod_value": cod_value,
+            "item_description": item_description,
+            "is_high_value": _is_high_value(cod_value, item_description),
+        })
+    return by_station, tn_rows
+
+
+def rollup_missing_details(station_rows: list[dict], group_key: str) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(key, {
+            group_key: key, "region": row["region"], "station_count": 0,
+            "hub_count": 0, "ship_in_count": 0, "other_count": 0, "total_count": 0,
+        })
+        g["station_count"] += 1
+        g["hub_count"] += row["hub_count"]
+        g["ship_in_count"] += row["ship_in_count"]
+        g["other_count"] += row["other_count"]
+        g["total_count"] += row["total_count"]
+    return list(groups.values())
+
+
+# ---------------------------------------------------------------------------
+# Routed View's "Pending in Yesterday Route" sub-tab (query 78 again). A snapshot
+# of everything still On Vehicle for Delivery captured once daily just after
+# 02:00 Malaysia time, held static for the rest of the day and replaced at the
+# next day's 02:00 capture -- see main.py's _maybe_capture_pending_yesterday_route,
+# which calls this with whatever health_v3_rows that refresh cycle already fetched.
+# ---------------------------------------------------------------------------
+
+
+def build_pending_yesterday_route(health_v3_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
+    """Returns ({hub_code: {..., total_tn}}, [tn_row, ...]), grouped by
+    last_scan_hub_name (where each parcel is physically dispatched from)."""
+    by_station = {
+        hub: {"station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3], "total_tn": 0}
+        for hub in HUBS
+    }
+    tn_rows = []
+    for r in health_v3_rows:
+        if r.get("granular_status") != "On Vehicle for Delivery":
+            continue
+        hub = r.get("last_scan_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        row["total_tn"] += 1
+        tn_rows.append({
+            "tracking_number": r.get("tracking_id"),
+            "station_code": hub,
+            "station_name": row["station_name"],
+            "zone": row["zone"],
+            "region": row["region"],
+            "dest_hub": r.get("dest_hub"),
+            "age": r.get("days_since_current_hub_first_sweep"),
+            "attempts": r.get("delivery_attempts"),
+        })
+    return by_station, tn_rows
+
+    return by_station, tn_details
+
+
 def merge_routed_into_station_metrics(by_station: dict[str, dict], routed_by_station: dict[str, dict]) -> None:
     """Copies total_routed/attendance/cod_pct_routed from build_routed_view()'s
     output into build_station_metrics()'s rows, in place. routed_pct (Total

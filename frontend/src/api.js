@@ -41,6 +41,10 @@ export const api = {
     ),
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
   oldRoute: () => request("/api/old-route"),
+  missingDetails: () => request("/api/recovery/missing-details"),
+  urgentTnLookup: (trackingNumbers) =>
+    request("/api/urgent-tn-lookup", { method: "POST", body: JSON.stringify({ tracking_numbers: trackingNumbers }) }),
+  pendingYesterdayRoute: () => request("/api/pending-yesterday-route"),
   rpu: (stage, shipper) =>
     request(`/api/rpu?stage=${encodeURIComponent(stage)}${shipper ? `&shipper=${encodeURIComponent(shipper)}` : ""}`),
   rpuAging: (type, shipper) =>

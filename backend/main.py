@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,10 +25,10 @@ from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_BUCKETS,
     METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
-    bucket_rpu_aging, build_aging_details, build_old_route, build_routed_view, build_rpu, build_shipment_details,
-    build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging,
-    rollup_old_route, rollup_routed, rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details,
-    rollup_shipper_watch, rpu_station_pivot,
+    bucket_rpu_aging, build_aging_details, build_missing_details, build_old_route, build_pending_yesterday_route,
+    build_routed_view, build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics,
+    merge_routed_into_station_metrics, rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed,
+    rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
@@ -37,6 +37,8 @@ from redash_client import (
     RedashError, fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
+
+_MYT = timezone(timedelta(hours=8))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
@@ -83,6 +85,23 @@ _old_route_captured_at: str | None = None
 _rpu_rows_cache: list[dict] = []
 _rpu_rows_captured_at: str | None = None
 
+# Recovery tab's Missing Details, same in-memory pattern as _old_route_rows.
+_missing_details_stations: list[dict] = []
+_missing_details_tn_rows: list[dict] = []
+_missing_details_captured_at: str | None = None
+
+# Urgent TN's per-tracking-number lookup, keyed by tracking_id -- built fresh from
+# the same query 78 rows already fetched for Station Health every 30 minutes, not
+# a live per-search Redash call.
+_health_v3_by_tn: dict[str, dict] = {}
+_health_v3_by_tn_captured_at: str | None = None
+
+# Routed View's "Pending in Yesterday Route" -- persisted (see
+# V18__pending_yesterday_route.sql) since it must survive a restart mid-day,
+# unlike every other cache on this page.
+MISSING_DETAILS_TN_CAP = 2000
+PENDING_YESTERDAY_TN_CAP = 2000
+
 _SHIPMENT_COLUMNS = SHIPMENT_DETAIL_KEYS + ("fresh_attempt_pct", "process_time_minutes")
 _ROUTED_COLUMNS = ROUTED_STATION_KEYS + ("cod_pct", "success_rate", "completion_rate")
 _SHIPPER_COLUMNS = SHIPPER_WATCH_KEYS
@@ -125,11 +144,14 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
+        missing_details_by_station, missing_details_tn_rows = build_missing_details(missing_rows, health_rows)
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
         global _shipper_tn_cache_captured_at, _aging_rows_captured_at
         global _old_route_rows, _old_route_drivers, _old_route_captured_at, _rpu_rows_cache, _rpu_rows_captured_at
+        global _missing_details_stations, _missing_details_tn_rows, _missing_details_captured_at
+        global _health_v3_by_tn, _health_v3_by_tn_captured_at
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -149,6 +171,27 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         _old_route_captured_at = captured_at.isoformat()
         _rpu_rows_cache = rpu_rows_flat
         _rpu_rows_captured_at = captured_at.isoformat()
+        _missing_details_stations = list(missing_details_by_station.values())
+        _missing_details_tn_rows = missing_details_tn_rows
+        _missing_details_captured_at = captured_at.isoformat()
+        _health_v3_by_tn = {
+            r["tracking_id"]: {
+                "dest_hub": r.get("dest_hub"),
+                "last_sweep_hub": r.get("last_scan_hub_name"),
+                "status": r.get("granular_status"),
+                "age": r.get("days_since_current_hub_first_sweep"),
+                "attempts": r.get("delivery_attempts"),
+                "cod": r.get("cod"),
+            }
+            for r in health_rows
+            if r.get("tracking_id")
+        }
+        _health_v3_by_tn_captured_at = captured_at.isoformat()
+
+        try:
+            await _maybe_capture_pending_yesterday_route(health_rows)
+        except Exception:  # noqa: BLE001 - isolated so a bug here can't fail the whole refresh
+            log.exception("Pending Yesterday Route capture failed")
 
         params = [
             (
@@ -263,6 +306,53 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
             (datetime.now(timezone.utc), str(exc)[:2000], log_id),
         )
         return {"ok": False, "error": str(exc)}
+
+
+async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> None:
+    """Captures Routed View's "Pending in Yesterday Route" snapshot once per
+    Malaysia calendar day, on the first refresh at or after 02:00 MYT -- a no-op
+    every other refresh that day (checked via the captured_for_date primary key).
+    Runs off whatever health_v3_rows this refresh cycle already fetched rather
+    than hitting Redash again."""
+    now_myt = datetime.now(_MYT)
+    if now_myt.hour < 2:
+        return
+    today_myt = now_myt.date()
+    already = await db.fetch_one(
+        "SELECT 1 FROM pending_yesterday_route WHERE captured_for_date = %s LIMIT 1", (today_myt,)
+    )
+    if already:
+        return
+
+    by_station, tn_rows = build_pending_yesterday_route(health_v3_rows)
+    captured_at = datetime.now(timezone.utc)
+
+    station_params = [
+        (captured_at, today_myt, row["station_code"], row["station_name"], row["zone"], row["region"], row["total_tn"])
+        for row in by_station.values()
+        if row["total_tn"] > 0
+    ]
+    if station_params:
+        await db.execute_many(
+            """INSERT IGNORE INTO pending_yesterday_route
+               (captured_at, captured_for_date, station_code, station_name, zone, region, total_tn)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            station_params,
+        )
+
+    tn_params = [
+        (today_myt, r["tracking_number"], r["station_code"], r["station_name"], r["zone"], r["region"],
+         r["dest_hub"], r["age"], r["attempts"])
+        for r in tn_rows
+    ]
+    if tn_params:
+        await db.execute_many(
+            """INSERT IGNORE INTO pending_yesterday_route_tns
+               (captured_for_date, tracking_number, station_code, station_name, zone, region, dest_hub, age, attempts)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            tn_params,
+        )
+    log.info("Pending Yesterday Route captured for %s: %d TNs", today_myt, len(tn_params))
 
 
 async def _hourly_refresh_loop() -> None:
@@ -1287,6 +1377,212 @@ async def rpu_aging(type: str = "overall", shipper: str | None = None, user: Cur
         "stations": scoped_stations,
         "zones": to_group(rollup_aging(scoped_stations, "zone"), "zone"),
         "regions": to_group(rollup_aging(scoped_stations, "region"), "region"),
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recovery: Missing Details
+# ---------------------------------------------------------------------------
+
+
+class MissingDetailsStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    hub_count: int
+    ship_in_count: int
+    other_count: int
+    total_count: int
+
+
+class MissingDetailsGroupRow(BaseModel):
+    key: str
+    region: str
+    station_count: int
+    hub_count: int
+    ship_in_count: int
+    other_count: int
+    total_count: int
+
+
+class MissingDetailsTnRow(BaseModel):
+    tracking_number: str
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    hub_code: str
+    age: float | None
+    type: str
+    cod_value: float | None
+    item_description: str | None
+    is_high_value: bool
+
+
+class MissingDetailsResponse(BaseModel):
+    captured_at: str | None
+    stations: list[MissingDetailsStationRow]
+    zones: list[MissingDetailsGroupRow]
+    regions: list[MissingDetailsGroupRow]
+    tn_rows: list[MissingDetailsTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/recovery/missing-details", response_model=MissingDetailsResponse)
+async def recovery_missing_details(user: CurrentUser = Depends(get_current_user)):
+    if _missing_details_captured_at is None:
+        return {
+            "captured_at": None, "stations": [], "zones": [], "regions": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    def to_group(rows, key):
+        return [{**g, "key": g[key]} for g in rows]
+
+    scoped_stations = _scope_filter_stations(_missing_details_stations, user)
+    scoped_codes = {r["station_code"] for r in scoped_stations}
+    tn_rows_all = [r for r in _missing_details_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows_all)
+    tn_rows_truncated = tn_rows_total > MISSING_DETAILS_TN_CAP
+    tn_rows = sorted(tn_rows_all, key=lambda r: r.get("age") or 0, reverse=True)[:MISSING_DETAILS_TN_CAP]
+
+    return {
+        "captured_at": _missing_details_captured_at,
+        "stations": scoped_stations,
+        "zones": to_group(rollup_missing_details(scoped_stations, "zone"), "zone"),
+        "regions": to_group(rollup_missing_details(scoped_stations, "region"), "region"),
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Urgent TN -- ad hoc tracking-number lookups, from query 78's own already-
+# fetched data (see _health_v3_by_tn above), not a live per-search Redash call.
+# ---------------------------------------------------------------------------
+
+
+class UrgentTnQuery(BaseModel):
+    tracking_numbers: list[str]
+
+
+class UrgentTnResult(BaseModel):
+    tracking_number: str
+    found: bool
+    dest_hub: str | None = None
+    last_sweep_hub: str | None = None
+    status: str | None = None
+    age: float | None = None
+    attempts: int | None = None
+    cod: str | None = None
+
+
+class UrgentTnResponse(BaseModel):
+    captured_at: str | None
+    results: list[UrgentTnResult]
+
+
+@app.post("/api/urgent-tn-lookup", response_model=UrgentTnResponse)
+async def urgent_tn_lookup(payload: UrgentTnQuery, user: CurrentUser = Depends(get_current_user)):
+    seen: set[str] = set()
+    results = []
+    for raw in payload.tracking_numbers:
+        tn = (raw or "").strip()
+        if not tn or tn in seen:
+            continue
+        seen.add(tn)
+        row = _health_v3_by_tn.get(tn)
+        if row is None:
+            results.append({"tracking_number": tn, "found": False})
+        else:
+            results.append({"tracking_number": tn, "found": True, **row})
+    return {"captured_at": _health_v3_by_tn_captured_at, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Routed View: Pending in Yesterday Route
+# ---------------------------------------------------------------------------
+
+
+class PendingYesterdayStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    total_tn: int
+
+
+class PendingYesterdayTnRow(BaseModel):
+    tracking_number: str
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    dest_hub: str | None
+    age: float | None
+    attempts: int | None
+
+
+class PendingYesterdayResponse(BaseModel):
+    captured_at: str | None
+    captured_for_date: str | None
+    stations: list[PendingYesterdayStationRow]
+    tn_rows: list[PendingYesterdayTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/pending-yesterday-route", response_model=PendingYesterdayResponse)
+async def pending_yesterday_route(user: CurrentUser = Depends(get_current_user)):
+    latest = await db.fetch_one("SELECT MAX(captured_for_date) FROM pending_yesterday_route")
+    for_date = latest[0] if latest else None
+    if for_date is None:
+        return {
+            "captured_at": None, "captured_for_date": None, "stations": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    captured_at_row = await db.fetch_one(
+        "SELECT MAX(captured_at) FROM pending_yesterday_route WHERE captured_for_date = %s", (for_date,)
+    )
+    captured_at = captured_at_row[0] if captured_at_row else None
+
+    station_rows = [
+        {"station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3], "total_tn": r[4]}
+        for r in await db.fetch_all(
+            "SELECT station_code, station_name, zone, region, total_tn FROM pending_yesterday_route WHERE captured_for_date = %s",
+            (for_date,),
+        )
+    ]
+    scoped_stations = _scope_filter_stations(station_rows, user)
+    scoped_codes = {r["station_code"] for r in scoped_stations}
+
+    all_tn_rows = [
+        {
+            "tracking_number": r[0], "station_code": r[1], "station_name": r[2], "zone": r[3], "region": r[4],
+            "dest_hub": r[5], "age": r[6], "attempts": r[7],
+        }
+        for r in await db.fetch_all(
+            """SELECT tracking_number, station_code, station_name, zone, region, dest_hub, age, attempts
+               FROM pending_yesterday_route_tns WHERE captured_for_date = %s""",
+            (for_date,),
+        )
+    ]
+    tn_rows_all = [r for r in all_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows_all)
+    tn_rows_truncated = tn_rows_total > PENDING_YESTERDAY_TN_CAP
+    tn_rows = sorted(tn_rows_all, key=lambda r: r.get("age") or 0, reverse=True)[:PENDING_YESTERDAY_TN_CAP]
+
+    return {
+        "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
+        "captured_for_date": str(for_date),
+        "stations": scoped_stations,
         "tn_rows": tn_rows,
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,

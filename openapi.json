@@ -685,6 +685,67 @@
           }
         }
       }
+    },
+    "/api/recovery/missing-details": {
+      "get": {
+        "summary": "Recovery tab's Missing Details: region/zone/station overview + TN list from query 1297, with high-value highlighting.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingDetailsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/urgent-tn-lookup": {
+      "post": {
+        "summary": "Looks up specific tracking numbers against the latest query 78 snapshot (not a live Redash search).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrgentTnQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UrgentTnResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pending-yesterday-route": {
+      "get": {
+        "summary": "Routed View's Pending in Yesterday Route: snapshot of On Vehicle for Delivery parcels captured once daily at ~02:00 Malaysia time.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingYesterdayResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2551,6 +2612,356 @@
         },
         "required": [
           "rows"
+        ]
+      },
+      "MissingDetailsStationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "hub_count": {
+            "type": "integer"
+          },
+          "ship_in_count": {
+            "type": "integer"
+          },
+          "other_count": {
+            "type": "integer"
+          },
+          "total_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "hub_count",
+          "ship_in_count",
+          "other_count",
+          "total_count"
+        ]
+      },
+      "MissingDetailsGroupRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "station_count": {
+            "type": "integer"
+          },
+          "hub_count": {
+            "type": "integer"
+          },
+          "ship_in_count": {
+            "type": "integer"
+          },
+          "other_count": {
+            "type": "integer"
+          },
+          "total_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "region",
+          "station_count",
+          "hub_count",
+          "ship_in_count",
+          "other_count",
+          "total_count"
+        ]
+      },
+      "MissingDetailsTnRow": {
+        "type": "object",
+        "properties": {
+          "tracking_number": {
+            "type": "string"
+          },
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "hub_code": {
+            "type": "string"
+          },
+          "age": {
+            "type": "number",
+            "nullable": true
+          },
+          "type": {
+            "type": "string"
+          },
+          "cod_value": {
+            "type": "number",
+            "nullable": true
+          },
+          "item_description": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_high_value": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tracking_number",
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "hub_code",
+          "type",
+          "is_high_value"
+        ]
+      },
+      "MissingDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsGroupRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsTnRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
+        ]
+      },
+      "UrgentTnQuery": {
+        "type": "object",
+        "properties": {
+          "tracking_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "tracking_numbers"
+        ]
+      },
+      "UrgentTnResult": {
+        "type": "object",
+        "properties": {
+          "tracking_number": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "dest_hub": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_sweep_hub": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "age": {
+            "type": "number",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer",
+            "nullable": true
+          },
+          "cod": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tracking_number",
+          "found"
+        ]
+      },
+      "UrgentTnResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UrgentTnResult"
+            }
+          }
+        },
+        "required": [
+          "captured_at",
+          "results"
+        ]
+      },
+      "PendingYesterdayStationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "total_tn"
+        ]
+      },
+      "PendingYesterdayTnRow": {
+        "type": "object",
+        "properties": {
+          "tracking_number": {
+            "type": "string"
+          },
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "dest_hub": {
+            "type": "string",
+            "nullable": true
+          },
+          "age": {
+            "type": "number",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tracking_number",
+          "station_code",
+          "station_name",
+          "zone",
+          "region"
+        ]
+      },
+      "PendingYesterdayResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "captured_for_date": {
+            "type": "string",
+            "nullable": true
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingYesterdayStationRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingYesterdayTnRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
+          "captured_for_date",
+          "stations",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
         ]
       }
     }

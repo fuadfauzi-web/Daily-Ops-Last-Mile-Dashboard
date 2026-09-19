@@ -322,6 +322,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
       const col = findColumn(metricKey);
       const isExtra = EXTRA_METRICS.some((e) => e.key === metricKey);
       const natThreshold = resolveThreshold(thresholdRows, metricKey, null);
+      const percentOfLabel = natThreshold.percent_of ? findColumn(natThreshold.percent_of)?.label : null;
       return {
         key: metricKey,
         label: (
@@ -329,7 +330,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
             {col.label}
             <div className="text-[10px] font-normal normal-case text-slate-300">
               {natThreshold.direction === "lower-is-worse" ? "≥" : "≤"} {natThreshold.warning_at}
-              {natThreshold.percent_of ? "%" : ""}
+              {percentOfLabel ? `% of ${percentOfLabel}` : ""}
             </div>
           </>
         ),
@@ -465,7 +466,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                           <span className="opacity-70">
                             / {b.direction === "lower-is-worse" ? "≥" : "≤"}
                             {b.target}
-                            {b.percentOf ? "%" : ""}
+                            {b.percentOf ? `% of ${findColumn(b.percentOf)?.label}` : ""}
                           </span>
                         </span>
                       );

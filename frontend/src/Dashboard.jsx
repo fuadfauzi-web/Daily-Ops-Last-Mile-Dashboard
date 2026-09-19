@@ -18,6 +18,9 @@ import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
 import AgingDetailsTab from "./AgingDetailsTab";
 import RpuTab from "./RpuTab";
+import RestockTab from "./RestockTab";
+import RecoveryTab from "./RecoveryTab";
+import UrgentTnTab from "./UrgentTnTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -33,8 +36,12 @@ const DRILLDOWN_METRICS = new Set([
 const PERCENT_METRICS = new Set(["cod_pct_hub", "routed_pct"]);
 
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
-// Numerator/denominator pairs behind each percentage, for correctly weighted rollups.
-const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub", routed_pct: "total_fresh" };
+// Numerator/denominator pairs behind each percentage, for correctly weighted
+// rollups. routed_pct isn't listed here -- unlike cod_pct_hub (whose numerator,
+// COD-in-hub, has no raw field of its own), routed_pct's two inputs
+// (total_routed, total_in_hub) are both already plain summed fields, so it's
+// recomputed directly from them in sumMetrics() below instead.
+const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub" };
 
 // The summary cards' fixed 5-stat set, per spec.
 const CARD_STATS = [
@@ -47,10 +54,13 @@ const CARD_STATS = [
 
 const TABS = [
   { key: "action", label: "Action Board" },
+  { key: "urgent", label: "Urgent TN" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
   { key: "routed", label: "Routed View" },
   { key: "shipper", label: "Shipper Watch" },
+  { key: "restock", label: "Restock" },
+  { key: "recovery", label: "Recovery" },
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
 ];
@@ -86,6 +96,8 @@ function sumMetrics(rows) {
     const numerator = rows.reduce((sum, r) => sum + ((r[pctKey] || 0) / 100) * (r[denomKey] || 0), 0);
     withPctNumerators[pctKey] = withPctNumerators[denomKey] ? Math.round((numerator / withPctNumerators[denomKey]) * 1000) / 10 : 0;
   });
+  const routedDenom = withPctNumerators.total_routed + withPctNumerators.total_in_hub;
+  withPctNumerators.routed_pct = routedDenom ? Math.round((withPctNumerators.total_routed / routedDenom) * 10000) / 100 : 0;
   return withPctNumerators;
 }
 
@@ -363,10 +375,22 @@ export default function Dashboard({ me, onCapturedAt }) {
     ...ALL_COLUMNS.map((c) => {
       // Header greying reflects the nationwide row -- whether a metric has an
       // SLA at all isn't something that should flip on/off per region.
-      const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
+      const natThreshold = resolveThreshold(thresholdRows, c.key, null);
+      const isReference = !natThreshold.scored;
+      // Metrics scored as "% of X" (Admin -> SLA Targets) get a small note under
+      // the header naming X, so it's clear what the shown percentage is relative
+      // to -- e.g. Age >3 is % of Total In Hub, not % of nationwide volume.
+      const percentOfCol = natThreshold.percent_of ? ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of) : null;
       return {
         key: c.key,
-        label: c.label,
+        label: percentOfCol ? (
+          <>
+            {c.label}
+            <div className="text-[10px] font-normal normal-case text-slate-300">% of {percentOfCol.label}</div>
+          </>
+        ) : (
+          c.label
+        ),
         reference: isReference,
         render: (r) => {
           const t = resolveThreshold(thresholdRows, c.key, r.region);
@@ -401,12 +425,15 @@ export default function Dashboard({ me, onCapturedAt }) {
         const yRow = yesterdayByCode.get(detailRow.station_code);
         const d = compareYesterday && yRow ? deltaFor(c.key, detailRow[c.key], yRow[c.key], t.direction, isReference) : null;
         const hasTarget = !isReference && !(t.warning_at === 0 && t.critical_at === 0);
+        const percentOfLabel = t.percent_of ? ALL_COLUMNS.find((col) => col.key === t.percent_of)?.label : null;
         return {
           label: c.label,
           value: `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, detailRow[c.key], detailRow, t)}`,
           className: SEVERITY_CLASS[sev],
           target: hasTarget
-            ? `target ${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${t.percent_of ? "%" : ""}`
+            ? `target ${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${
+                percentOfLabel ? `% of ${percentOfLabel}` : ""
+              }`
             : null,
           delta: d ? d.text : null,
           deltaClassName: d ? d.className : null,
@@ -569,6 +596,20 @@ export default function Dashboard({ me, onCapturedAt }) {
         />
       )}
 
+      {tab === "restock" && (
+        <RestockTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
+      )}
+
+      {tab === "recovery" && (
+        <RecoveryTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
+      )}
+
       {tab === "aging" && (
         <AgingDetailsTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
@@ -582,6 +623,8 @@ export default function Dashboard({ me, onCapturedAt }) {
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
         />
       )}
+
+      {tab === "urgent" && <UrgentTnTab me={me} />}
     </div>
   );
 }

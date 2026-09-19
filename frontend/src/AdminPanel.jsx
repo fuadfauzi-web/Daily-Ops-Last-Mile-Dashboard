@@ -7,7 +7,7 @@ import TabBar from "./components/TabBar";
 // Routed View's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
 // so it's kept out of BOARD_COLUMNS entirely and only added here for editing.
-const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Productivity % (Routed View)" }];
+const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Productivity (Routed View)" }];
 
 // Productivity is scored per driver position rather than per region -- reuses
 // the exact same (metric_key, scope) mechanism as the region overrides below,
