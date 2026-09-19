@@ -797,6 +797,10 @@
             "type": "integer",
             "description": "From query 512, matched by full station name"
           },
+          "routed_pct": {
+            "type": "number",
+            "description": "Total Routed / Total Fresh * 100"
+          },
           "attendance": {
             "type": "integer",
             "description": "Unique drivers with a route today, from query 512, excluding names containing OPS"
@@ -826,6 +830,7 @@
           "unsweep_parcel",
           "cod_pct_hub",
           "total_routed",
+          "routed_pct",
           "attendance",
           "cod_pct_routed"
         ]
@@ -1286,6 +1291,10 @@
           "total_routed": {
             "type": "integer"
           },
+          "routed_pct": {
+            "type": "number",
+            "description": "Total Routed / Total Fresh * 100"
+          },
           "zero_attempt": {
             "type": "integer",
             "description": "Merged in from the latest Station Health snapshot"
@@ -1337,6 +1346,7 @@
         },
         "required": [
           "total_routed",
+          "routed_pct",
           "zero_attempt",
           "attendance",
           "attendance_hd",

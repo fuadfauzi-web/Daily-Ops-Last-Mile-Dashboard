@@ -5,6 +5,7 @@
 export const ALL_COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
   { key: "total_routed", label: "Total Routed" },
+  { key: "routed_pct", label: "Routed %" },
   { key: "attendance", label: "Attendance" },
   { key: "zero_attempt", label: "0 Attempt" },
   { key: "zero_attempt_gt_d0", label: "0 Attempt >D0" },

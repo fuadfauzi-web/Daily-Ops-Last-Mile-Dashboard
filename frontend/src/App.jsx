@@ -4,12 +4,16 @@ import Dashboard from "./Dashboard";
 import AdminPanel from "./AdminPanel";
 import Logo from "./components/Logo";
 import { useDensity } from "./lib/density";
+import { formatTime } from "./lib/format";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
   const [tab, setTab] = useState("dashboard");
   const [density, setDensity] = useDensity();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Reported up by Dashboard once its data loads -- shown here so it's visible
+  // the instant the app opens, regardless of which tab/sub-tab is active.
+  const [freshness, setFreshness] = useState(null);
 
   useEffect(() => {
     api
@@ -69,8 +73,14 @@ export default function App() {
             <h1 className="hidden font-display text-sm font-semibold tracking-tight text-ink lg:block">Daily Ops Last Mile</h1>
           </div>
 
-          {/* Desktop chrome: density toggle, nav, user block all inline. */}
+          {/* Desktop chrome: freshness, density toggle, nav, user block all inline. */}
           <div className="hidden items-center gap-3 lg:flex">
+            {tab === "dashboard" && freshness && (
+              <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+                Data as of {formatTime(freshness)}
+              </div>
+            )}
             <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
               <button
                 onClick={() => setDensity("compact")}
@@ -134,6 +144,12 @@ export default function App() {
                 {me.scope_type !== "all" && ` · ${me.scope_value}`}
               </div>
             </div>
+            {tab === "dashboard" && freshness && (
+              <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+                Data as of {formatTime(freshness)}
+              </div>
+            )}
             {canSeeAdmin && (
               <nav className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
                 {["dashboard", "admin"].map((t) => (
@@ -170,7 +186,7 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" ? <Dashboard me={me} /> : <AdminPanel me={me} />}
+        {tab === "dashboard" ? <Dashboard me={me} onCapturedAt={setFreshness} /> : <AdminPanel me={me} />}
       </main>
     </div>
   );

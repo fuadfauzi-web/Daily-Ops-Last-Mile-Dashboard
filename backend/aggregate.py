@@ -36,7 +36,7 @@ METRIC_KEYS = (
     "missing_open", "missing_hub", "missing_ship_in",
     "total_fresh", "age_gt3", "reschedule", "still_ovfd",
     "prior_d0", "prior_gt_d0", "unsweep_document", "unsweep_parcel", "cod_pct_hub",
-    "total_routed", "attendance", "cod_pct_routed",
+    "total_routed", "routed_pct", "attendance", "cod_pct_routed",
 )
 
 # Metrics with an actual tracking-number list behind them (for the UI's click-to-see-TNs
@@ -261,7 +261,9 @@ def build_station_metrics(
 
 def merge_routed_into_station_metrics(by_station: dict[str, dict], routed_by_station: dict[str, dict]) -> None:
     """Copies total_routed/attendance/cod_pct_routed from build_routed_view()'s
-    output into build_station_metrics()'s rows, in place."""
+    output into build_station_metrics()'s rows, in place. routed_pct (Total
+    Routed / Total Fresh) is computed here since this is the first point both
+    numbers are in the same row."""
     for hub, row in by_station.items():
         r = routed_by_station.get(hub)
         if r is None:
@@ -269,6 +271,7 @@ def merge_routed_into_station_metrics(by_station: dict[str, dict], routed_by_sta
         row["total_routed"] = r["total_routed"]
         row["attendance"] = r["attendance"]
         row["cod_pct_routed"] = r["cod_pct"]
+        row["routed_pct"] = round(r["total_routed"] / row["total_fresh"] * 100, 1) if row["total_fresh"] else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -569,7 +572,7 @@ def rollup(station_rows: list[dict], group_key: str) -> list[dict]:
         cod_hub_num.setdefault(key, 0)
         cod_routed_num.setdefault(key, 0)
         for k in METRIC_KEYS:
-            if k in ("cod_pct_hub", "cod_pct_routed"):
+            if k in ("cod_pct_hub", "cod_pct_routed", "routed_pct"):
                 continue
             g[k] += row[k]
         cod_hub_num[key] += row["cod_pct_hub"] * row["total_in_hub"] / 100
@@ -578,6 +581,10 @@ def rollup(station_rows: list[dict], group_key: str) -> list[dict]:
     for key, g in groups.items():
         g["cod_pct_hub"] = round(cod_hub_num[key] / g["total_in_hub"] * 100, 1) if g["total_in_hub"] else 0.0
         g["cod_pct_routed"] = round(cod_routed_num[key] / g["total_routed"] * 100, 1) if g["total_routed"] else 0.0
+        # total_routed/total_fresh are both plain summed counts above, so the
+        # group's routed_pct is just their ratio -- no numerator reconstruction
+        # needed (unlike the two cod_pct_* fields, which only store a percentage).
+        g["routed_pct"] = round(g["total_routed"] / g["total_fresh"] * 100, 1) if g["total_fresh"] else 0.0
     return list(groups.values())
 
 
@@ -715,22 +722,35 @@ def build_shipper_watch(
     # the correct hub and that hub needs to attempt them" -- read as: only a
     # parcel's correct hub is on the hook for it, so exclude rows where it's
     # elsewhere. ASSUMPTION -- confirm this reading is right once live.
+    #
+    # 2026-09-20 feedback: OVFD is the exception to the hub-match rule above --
+    # a parcel already out for delivery is counted purely by granular_status,
+    # at whichever hub last swept it, regardless of dest_hub_name match. And
+    # 0-Attempt only counts once first_shipment_completion_date is populated --
+    # a blank date means it hasn't actually been added to a shipment yet.
     _ZALORA_ZERO_ATTEMPT_EXCLUDED_STATUSES = {"En-route to Sorting Hub", "On Vehicle for Delivery", "Pending Reschedule"}
     for r in zalora_rows:
-        if r.get("dest_hub_name") != r.get("last_sweep_hub_name"):
-            continue
         hub = r.get("last_sweep_hub_name")
         row = by_station.get(hub)
         if row is None:
             continue
         tn = r.get("tracking_id")
         status = r.get("granular_status")
-        if (r.get("delivery_attempts") or 0) == 0 and status not in _ZALORA_ZERO_ATTEMPT_EXCLUDED_STATUSES:
-            row["zalora_zero_attempt"] += 1
-            tn_details[hub]["zalora_zero_attempt"].append(tn)
+
         if status == "On Vehicle for Delivery":
             row["zalora_ovfd"] += 1
             tn_details[hub]["zalora_ovfd"].append(tn)
+            continue
+
+        if r.get("dest_hub_name") != r.get("last_sweep_hub_name"):
+            continue
+        if (
+            (r.get("delivery_attempts") or 0) == 0
+            and status not in _ZALORA_ZERO_ATTEMPT_EXCLUDED_STATUSES
+            and r.get("first_shipment_completion_date")
+        ):
+            row["zalora_zero_attempt"] += 1
+            tn_details[hub]["zalora_zero_attempt"].append(tn)
         elif status != "Arrived at Sorting Hub":
             row["zalora_other"] += 1
             tn_details[hub]["zalora_other"].append(tn)

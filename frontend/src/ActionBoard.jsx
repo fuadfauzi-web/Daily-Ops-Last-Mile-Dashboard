@@ -12,7 +12,7 @@ import TnModal from "./components/TnModal";
 // the same role-scoped, already-filtered station list Dashboard already
 // has, so a station clerk automatically sees only their station and a
 // region head only their region, same as everywhere else in the app.
-const DEFAULT_METRICS = ["zero_attempt_gt_d0", "age_gt3", "on_hold"];
+const DEFAULT_METRICS = ["zero_attempt", "unsweep_parcel", "missing_hub"];
 const LEVELS = [
   { key: "region", label: "Region" },
   { key: "zone", label: "Zone" },
@@ -82,22 +82,35 @@ function breachInfo(row, metricKeys, thresholdRows) {
   return { count, worstRank };
 }
 
-function CopyTnsButton({ tns }) {
+// tnsByMetric: { metricKey: [tracking_number, ...] } -- kept split by metric
+// (rather than merged into one flat list) so the copied text says which
+// metric each TN was flagged for; a TN breaching two metrics at once appears
+// under both headings on purpose.
+function CopyTnsButton({ tnsByMetric, breaches }) {
   const [copied, setCopied] = useState(false);
-  if (!tns) {
+  if (!tnsByMetric) {
     return <span className="whitespace-nowrap text-xs text-slate-400">Loading…</span>;
   }
+  const totalUnique = new Set(Object.values(tnsByMetric).flat()).size;
+  const buildText = () =>
+    breaches
+      .map((b) => {
+        const tns = tnsByMetric[b.metricKey] || [];
+        const col = ALL_COLUMNS.find((c) => c.key === b.metricKey);
+        return `${col.label} (${tns.length}):\n${tns.join("\n")}`;
+      })
+      .join("\n\n");
   return (
     <button
       onClick={() => {
-        if (!tns.length) return;
-        navigator.clipboard.writeText(tns.join("\n")).then(() => setCopied(true));
+        if (!totalUnique) return;
+        navigator.clipboard.writeText(buildText()).then(() => setCopied(true));
         setTimeout(() => setCopied(false), 2000);
       }}
-      disabled={!tns.length}
+      disabled={!totalUnique}
       className="min-h-[44px] shrink-0 whitespace-nowrap rounded-lg bg-ink px-3 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40"
     >
-      {copied ? "Copied!" : `Copy ${tns.length.toLocaleString()} TN${tns.length === 1 ? "" : "s"}`}
+      {copied ? "Copied!" : `Copy ${totalUnique.toLocaleString()} TN${totalUnique === 1 ? "" : "s"}`}
     </button>
   );
 }
@@ -189,15 +202,15 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
     (async () => {
       const results = await Promise.all(
         actionRows.map(async (r) => {
-          const lists = await Promise.all(
+          const perMetric = await Promise.all(
             r.breaches.map((b) =>
               api
                 .drilldown(r.key, b.metricKey)
-                .then((res) => res.tracking_numbers)
-                .catch(() => [])
+                .then((res) => [b.metricKey, res.tracking_numbers])
+                .catch(() => [b.metricKey, []])
             )
           );
-          return [r.key, Array.from(new Set(lists.flat()))];
+          return [r.key, Object.fromEntries(perMetric)];
         })
       );
       if (!cancelled) setTnByStation(Object.fromEntries(results));
@@ -371,7 +384,7 @@ export default function ActionBoard({ stations, yesterdayStations, capturedAt, t
                       );
                     })}
                   </div>
-                  <CopyTnsButton tns={tnByStation[r.key]} />
+                  <CopyTnsButton tnsByMetric={tnByStation[r.key]} breaches={r.breaches} />
                 </div>
               ))
             )}

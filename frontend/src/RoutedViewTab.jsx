@@ -170,6 +170,9 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
     { key: "name", label: identityLabel, sticky: true, align: "left" },
     ...(isGroupLevel ? [{ key: "station_count", label: "Stations", className: () => "text-slate-500" }] : []),
     ...(showDriverStationCol ? [{ key: "station_name", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
+    ...(!isDriverLevel
+      ? [{ key: "routed_pct", label: "Routed %", render: (r) => `${(r.routed_pct ?? 0).toFixed(1)}%`, className: () => "text-slate-700" }]
+      : []),
     ...(!isDriverLevel ? [{ key: "attendance", label: "Attendance", render: (r) => renderCell({ render: "attendance" }, r) }] : []),
     { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
     ...levelColumns.map((c) => ({

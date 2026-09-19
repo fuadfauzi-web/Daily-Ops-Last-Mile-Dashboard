@@ -354,6 +354,7 @@ class MetricFields(BaseModel):
     unsweep_parcel: int
     cod_pct_hub: float
     total_routed: int
+    routed_pct: float
     attendance: int
     cod_pct_routed: float
 
@@ -615,6 +616,7 @@ async def shipment_drilldown(station_code: str, metric: str, user: CurrentUser =
 class RoutedFields(BaseModel):
     total_routed: int
     zero_attempt: int
+    routed_pct: float
     attendance: int
     attendance_hd: int
     attendance_hr: int
@@ -694,24 +696,35 @@ async def routed_view(user: CurrentUser = Depends(get_current_user)):
 
     # "Total 0 Attempt" -- merged in from the latest Station Health snapshot so it's
     # visible alongside routed metrics without duplicating that computation here.
+    # total_fresh comes along too, purely to compute routed_pct here (Total Routed
+    # / Total Fresh) -- Station Health already stores its own copy of routed_pct,
+    # but Routed View reads a different table so it's recomputed the same way here.
     health_latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
     zero_attempt_by_station: dict[str, int] = {}
+    total_fresh_by_station: dict[str, int] = {}
     if health_latest and health_latest[0] is not None:
         for r in await db.fetch_all(
-            "SELECT station_code, zero_attempt FROM station_metrics WHERE captured_at = %s", (health_latest[0],)
+            "SELECT station_code, zero_attempt, total_fresh FROM station_metrics WHERE captured_at = %s", (health_latest[0],)
         ):
             zero_attempt_by_station[r[0]] = r[1]
+            total_fresh_by_station[r[0]] = r[2]
     for row in all_rows:
         row["zero_attempt"] = zero_attempt_by_station.get(row["station_code"], 0)
+        row["total_fresh"] = total_fresh_by_station.get(row["station_code"], 0)
+        row["routed_pct"] = round(row["total_routed"] / row["total_fresh"] * 100, 1) if row["total_fresh"] else 0.0
 
     scoped = _scope_filter_stations(all_rows, user)
-    extra_keys = ("zero_attempt",)
+    extra_keys = ("zero_attempt", "total_fresh")
 
     def to_group(rows, key):
-        return [
-            {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
-            for g in rows if g["station_count"] > 0
-        ]
+        out = []
+        for g in rows:
+            if g["station_count"] == 0:
+                continue
+            d = {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+            d["routed_pct"] = round(d["total_routed"] / d["total_fresh"] * 100, 1) if d["total_fresh"] else 0.0
+            out.append(d)
+        return out
 
     driver_rows = _scope_filter_stations(
         [{**d, "station_name": d["current_station"], "zone": d["zone"], "region": d["region"]} for d in _routed_drivers],

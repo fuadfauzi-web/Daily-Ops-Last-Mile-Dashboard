@@ -30,11 +30,11 @@ const DRILLDOWN_METRICS = new Set([
   "unsweep_document", "unsweep_parcel",
 ]);
 
-const PERCENT_METRICS = new Set(["cod_pct_hub"]);
+const PERCENT_METRICS = new Set(["cod_pct_hub", "routed_pct"]);
 
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
 // Numerator/denominator pairs behind each percentage, for correctly weighted rollups.
-const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub" };
+const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub", routed_pct: "total_fresh" };
 
 // The summary cards' fixed 5-stat set, per spec.
 const CARD_STATS = [
@@ -116,7 +116,7 @@ function deltaFor(key, current, previous, direction, isReference) {
   return { text, className: worse ? "text-status-critical" : "text-status-good" };
 }
 
-export default function Dashboard({ me }) {
+export default function Dashboard({ me, onCapturedAt }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -149,8 +149,8 @@ export default function Dashboard({ me }) {
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
-  // toggle it out of every view. Defaults to included (today's behavior).
-  const [includeEastMalaysia, setIncludeEastMalaysia] = useState(true);
+  // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
+  const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
   const [compareYesterday, setCompareYesterday] = useState(() => {
     try {
       return localStorage.getItem("dashboard-compare-yesterday") === "1";
@@ -205,6 +205,12 @@ export default function Dashboard({ me }) {
   useEffect(() => {
     api.regions().then(setRegions).catch(() => {});
   }, []);
+  // Surfaces the same freshness timestamp in the persistent header (see App.jsx) --
+  // every snapshot table is written from the same captured_at in one refresh, so
+  // this value is accurate for the whole app, not just Station Health/Action Board.
+  useEffect(() => {
+    if (data?.captured_at) onCapturedAt?.(data.captured_at);
+  }, [data?.captured_at]);
 
   const zoneOptions = useMemo(() => {
     const zonesInRegion =
