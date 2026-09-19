@@ -1529,12 +1529,18 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
         params.append((
             row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
             user.email, now,
-            int(row.scored), row.direction, row.warning_at, row.critical_at, user.email, now,
         ))
+    # ON DUPLICATE KEY UPDATE references VALUES(col) rather than its own %s
+    # placeholders -- asyncmy's executemany bulk-rewrites a batch of INSERTs
+    # into one multi-row statement and only fills placeholders in the VALUES
+    # (...) tuple it repeats per row; extra %s in the trailing clause raised
+    # "not all arguments converted during string formatting".
     await db.execute_many(
         """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, changed_by, changed_at)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-           ON DUPLICATE KEY UPDATE scored=%s, direction=%s, warning_at=%s, critical_at=%s, changed_by=%s, changed_at=%s""",
+           ON DUPLICATE KEY UPDATE scored=VALUES(scored), direction=VALUES(direction),
+             warning_at=VALUES(warning_at), critical_at=VALUES(critical_at),
+             changed_by=VALUES(changed_by), changed_at=VALUES(changed_at)""",
         params,
     )
     return {"ok": True}
