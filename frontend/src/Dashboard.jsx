@@ -10,6 +10,7 @@ import GroupTable from "./components/GroupTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
+import TabBar from "./components/TabBar";
 import Skeleton from "./components/Skeleton";
 import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
@@ -43,13 +44,15 @@ const CARD_STATS = [
   { key: "age_gt3", label: "Age>3" },
 ];
 
+// TODO(Phase 6): add an "action" Action Board tab and make it the default
+// landing tab for a first-ever visit instead of "health".
 const TABS = [
-  { key: "shipment", label: "Shipment Details", enabled: true },
-  { key: "health", label: "Station Health", enabled: true },
-  { key: "routed", label: "Routed View", enabled: true },
-  { key: "shipper", label: "Shipper Watch", enabled: true },
-  { key: "aging", label: "Aging Details", enabled: true },
-  { key: "rpu", label: "RPU", enabled: true },
+  { key: "shipment", label: "Shipment Details" },
+  { key: "health", label: "Station Health" },
+  { key: "routed", label: "Routed View" },
+  { key: "shipper", label: "Shipper Watch" },
+  { key: "aging", label: "Aging Details" },
+  { key: "rpu", label: "RPU" },
 ];
 
 function fmt(key, value) {
@@ -123,7 +126,27 @@ export default function Dashboard({ me }) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("on_hold");
   const [sortDir, setSortDir] = useState("desc");
-  const [tab, setTab] = useState("health");
+  // Remembers the last tab this user had open, per Phase 5 -- a first-ever
+  // visit (nothing saved yet) lands on Station Health until Phase 6 adds an
+  // Action Board to land on instead.
+  const tabStorageKey = `dashboard-tab-${me.email}`;
+  const [tab, setTabState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(tabStorageKey);
+      if (saved && TABS.some((t) => t.key === saved)) return saved;
+    } catch {
+      /* private browsing / storage blocked -- just use the default */
+    }
+    return "health";
+  });
+  const setTab = (key) => {
+    setTabState(key);
+    try {
+      localStorage.setItem(tabStorageKey, key);
+    } catch {
+      /* private browsing / storage blocked -- choice just won't persist */
+    }
+  };
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
@@ -375,27 +398,6 @@ export default function Dashboard({ me }) {
         rows={detailRows}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
-        <div className="flex items-center gap-3">
-          {tab === "health" && (
-            <button
-              onClick={toggleCompareYesterday}
-              title={data.yesterday_captured_at ? `vs. ${formatTime(data.yesterday_captured_at)}` : "No snapshot from ~24h ago yet"}
-              className={`rounded-lg border px-3 py-1.5 font-display text-xs font-semibold ${
-                compareYesterday ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-600"
-              }`}
-            >
-              Δ vs. yesterday
-            </button>
-          )}
-          <div className="flex items-center gap-1.5 text-sm text-slate-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-            {filteredStations.length} stations in scope
-          </div>
-        </div>
-      </div>
-
       {showTotalCard && (
         <SummaryCard label="TOTAL LAST MILE" active={false} clickable={false} emphasis stats={cardStats(sumMetrics(scopedStations))} />
       )}
@@ -443,26 +445,7 @@ export default function Dashboard({ me }) {
         />
       )}
 
-      <div className="flex flex-nowrap gap-1 overflow-x-auto rounded-t-lg bg-slate-200 p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            disabled={!t.enabled}
-            onClick={() => t.enabled && setTab(t.key)}
-            title={t.enabled ? undefined : "Coming soon"}
-            className={`min-h-[44px] shrink-0 whitespace-nowrap rounded px-3 py-1.5 font-display text-sm font-semibold ${
-              tab === t.key
-                ? "bg-brand text-white"
-                : t.enabled
-                  ? "text-slate-600 hover:bg-white"
-                  : "cursor-not-allowed text-slate-400"
-            }`}
-          >
-            {t.label}
-            {!t.enabled && <span className="ml-1.5 text-[11px] uppercase tracking-wide">soon</span>}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} activeKey={tab} onSelect={setTab} />
 
       {tab === "health" && (
         <>
@@ -477,12 +460,23 @@ export default function Dashboard({ me }) {
               </>
             }
             titleExtra={
-              <button
-                onClick={() => exportStationHealthCsv(filteredStations)}
-                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Export CSV
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleCompareYesterday}
+                  title={data.yesterday_captured_at ? `vs. ${formatTime(data.yesterday_captured_at)}` : "No snapshot from ~24h ago yet"}
+                  className={`rounded-lg border px-3 py-1 font-display text-xs font-semibold ${
+                    compareYesterday ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-600"
+                  }`}
+                >
+                  Δ vs. yesterday
+                </button>
+                <button
+                  onClick={() => exportStationHealthCsv(filteredStations)}
+                  className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Export CSV
+                </button>
+              </div>
             }
             maxHeight="70vh"
             columns={stationColumns}
@@ -540,6 +534,11 @@ export default function Dashboard({ me }) {
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
         />
       )}
+
+      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+        Data as of {formatTime(data.captured_at)} · {filteredStations.length} stations in scope
+      </div>
     </div>
   );
 }

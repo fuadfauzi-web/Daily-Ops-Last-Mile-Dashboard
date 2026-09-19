@@ -5,6 +5,7 @@ import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
+import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 import OldRouteTab from "./OldRouteTab";
 
@@ -182,34 +183,23 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
-        <div className="flex items-center gap-2">
-          {isDriverLevel && (
-            <input
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-              placeholder="Search driver…"
-              value={driverSearch}
-              onChange={(e) => setDriverSearch(e.target.value)}
-            />
-          )}
-          <div className="flex flex-nowrap gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1">
-            {LEVELS.map((l) => (
-              <button
-                key={l.key}
-                onClick={() => {
-                  setLevel(l.key);
-                  setSortKey("total_routed");
-                  setSortDir("desc");
-                }}
-                className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ${
-                  level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {isDriverLevel && (
+          <input
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            placeholder="Search driver…"
+            value={driverSearch}
+            onChange={(e) => setDriverSearch(e.target.value)}
+          />
+        )}
+        <SegmentedControl
+          options={LEVELS}
+          value={level}
+          onChange={(key) => {
+            setLevel(key);
+            setSortKey("total_routed");
+            setSortDir("desc");
+          }}
+        />
       </div>
 
       {level === "oldroute" ? (
@@ -260,6 +250,10 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
               </>
             }
           />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+            Data as of {formatTime(data.captured_at)}
+          </div>
         </>
       )}
     </div>

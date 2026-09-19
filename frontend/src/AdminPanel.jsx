@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { ALL_COLUMNS } from "./lib/metrics";
 import { resolveThreshold } from "./lib/thresholds";
+import TabBar from "./components/TabBar";
 
 const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "" };
 const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
@@ -394,21 +395,7 @@ export default function AdminPanel({ me }) {
         </div>
       )}
 
-      {visibleAdminTabs.length > 1 && (
-        <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-          {visibleAdminTabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setAdminTab(t.key)}
-              className={`min-h-[44px] rounded-md px-3 py-1.5 font-display font-medium ${
-                adminTab === t.key ? "bg-white text-ink shadow-sm" : "text-slate-500"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {visibleAdminTabs.length > 1 && <TabBar tabs={visibleAdminTabs} activeKey={adminTab} onSelect={setAdminTab} />}
 
       {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
 

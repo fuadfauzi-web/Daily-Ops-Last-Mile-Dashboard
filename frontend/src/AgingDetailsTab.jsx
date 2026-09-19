@@ -6,6 +6,7 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
 import DetailPanel from "./components/DetailPanel";
+import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 
 // Station x age-bucket pivot, grouped by last_scan_hub_name like the rest of the app
@@ -155,22 +156,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {data && <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>}
-        <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
-          {AGING_TYPES.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setAgingType(t.key)}
-              className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
-                agingType === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
 
       {!data && <Skeleton />}
 
@@ -264,6 +250,10 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
               </>
             }
           />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+            Data as of {formatTime(data.captured_at)}
+          </div>
         </>
       )}
     </div>

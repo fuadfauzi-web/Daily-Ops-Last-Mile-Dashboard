@@ -158,7 +158,6 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
         subtitle={detailRow?.region ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
         rows={detailRow ? columnsToDetailRows(detailRow.driver_name ? driverColumns : stationColumns, detailRow) : []}
       />
-      <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
 
       <DataTable
         title="By station"
@@ -267,6 +266,11 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
           </>
         }
       />
+
+      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+        Old Route data as of {formatTime(data.captured_at)}
+      </div>
     </div>
   );
 }

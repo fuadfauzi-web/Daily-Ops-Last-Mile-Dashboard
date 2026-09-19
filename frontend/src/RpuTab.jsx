@@ -5,6 +5,7 @@ import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
+import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 
 // From the Fleet Manager's "LM - RPU Tracker" sheet (query 1397). Merged into one
@@ -208,24 +209,20 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">
-          {data.captured_at ? `RPU data as of ${formatTime(data.captured_at)}` : "No data yet."}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-          >
-            {STAGES.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
-        </div>
+      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+          value={stage}
+          onChange={(e) => setStage(e.target.value)}
+        >
+          {STAGES.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
       </div>
 
       {data.captured_at && (
@@ -264,6 +261,10 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
           />
 
           <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+            RPU data as of {formatTime(data.captured_at)}
+          </div>
         </>
       )}
     </div>
@@ -335,26 +336,10 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
 
   return (
     <div className="space-y-3">
+      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">
-          {data.captured_at ? `${data.type_label} data as of ${formatTime(data.captured_at)}` : "No data yet."}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-            {AGING_TYPES.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setAgingType(t.key)}
-                className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
-                  agingType === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
-        </div>
+        <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
+        <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
       </div>
 
       {data.captured_at && (
@@ -393,35 +378,27 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
           />
 
           <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+            {data.type_label} data as of {formatTime(data.captured_at)}
+          </div>
         </>
       )}
     </div>
   );
 }
 
+const RPU_VIEWS = [
+  { key: "status", label: "RPU Status" },
+  { key: "aging", label: "RPU Aging" },
+];
+
 export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [view, setView] = useState("status");
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-        <button
-          onClick={() => setView("status")}
-          className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
-            view === "status" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-          }`}
-        >
-          RPU Status
-        </button>
-        <button
-          onClick={() => setView("aging")}
-          className={`min-h-[44px] rounded-md px-3 py-1 text-sm font-medium ${
-            view === "aging" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-          }`}
-        >
-          RPU Aging
-        </button>
-      </div>
+      <SegmentedControl options={RPU_VIEWS} value={view} onChange={setView} />
 
       {view === "status" ? (
         <RpuStatusView
