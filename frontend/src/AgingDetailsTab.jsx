@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
+import DataTable from "./components/DataTable";
+import GroupTable from "./components/GroupTable";
+import DetailPanel from "./components/DetailPanel";
+import SegmentedControl from "./components/SegmentedControl";
+import Skeleton from "./components/Skeleton";
 
 // Station x age-bucket pivot, grouped by last_scan_hub_name like the rest of the app
 // -- but unlike the main Age>3 metric, this INCLUDES On Hold / On Vehicle for Delivery
@@ -36,89 +43,21 @@ const TN_COLUMNS = [
   { key: "dest_hub", label: "Dest Hub" },
 ];
 
-function formatTime(iso) {
-  if (!iso) return "never";
-  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
-  return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
-}
+const AGE_BUCKET_COLUMNS = AGE_BUCKETS.map((b) => ({ key: b.key, label: b.label, render: (r) => r[b.key].toLocaleString() }));
 
-function GroupTable({ title, groupLabel, rows }) {
-  const [sortKey, setSortKey] = useState("key");
-  const [sortDir, setSortDir] = useState("asc");
-
-  if (rows.length <= 1) return null;
-
-  const toggleSort = (key) => {
-    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else {
-      setSortKey(key);
-      setSortDir(key === "key" ? "asc" : "desc");
+function localRollup(rows, groupKey) {
+  const groups = {};
+  rows.forEach((r) => {
+    const key = r[groupKey];
+    if (!groups[key]) {
+      groups[key] = { key, region: r.region, station_count: 0, total: 0 };
+      AGE_BUCKETS.forEach((b) => (groups[key][b.key] = 0));
     }
-  };
-
-  const sorted = [...rows].sort((a, b) => {
-    const av = a[sortKey];
-    const bv = b[sortKey];
-    if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-    return sortDir === "asc" ? av - bv : bv - av;
+    groups[key].station_count += 1;
+    groups[key].total += r.total;
+    AGE_BUCKETS.forEach((b) => (groups[key][b.key] += r[b.key]));
   });
-
-  return (
-    <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">{title}</div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th
-                className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-slate-50 px-4 py-2 font-medium hover:bg-slate-200"
-                onClick={() => toggleSort("key")}
-              >
-                {groupLabel} {sortKey === "key" && (sortDir === "asc" ? "↑" : "↓")}
-              </th>
-              <th
-                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
-                onClick={() => toggleSort("station_count")}
-              >
-                Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
-              </th>
-              <th
-                className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
-                onClick={() => toggleSort("total")}
-              >
-                Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
-              </th>
-              {AGE_BUCKETS.map((b) => (
-                <th
-                  key={b.key}
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-slate-200"
-                  onClick={() => toggleSort(b.key)}
-                >
-                  {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((g) => (
-              <tr key={g.key} className="border-t border-slate-100">
-                <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                  {g.key}
-                </td>
-                <td className="px-4 py-2 text-center tabular-nums text-slate-500">{g.station_count}</td>
-                <td className="px-4 py-2 text-center tabular-nums text-slate-700">{g.total.toLocaleString()}</td>
-                {AGE_BUCKETS.map((b) => (
-                  <td key={b.key} className="px-4 py-2 text-center tabular-nums text-slate-700">
-                    {g[b.key].toLocaleString()}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return Object.values(groups);
 }
 
 export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
@@ -129,6 +68,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const [sortDir, setSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -194,28 +134,30 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
 
-  const leadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
+  const pivotColumns = [
+    ...(!hideRegionCol ? [{ key: "region", label: "Region", className: () => "text-slate-500" }] : []),
+    ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    { key: "total", label: "Total", render: (r) => r.total.toLocaleString() },
+    ...AGE_BUCKET_COLUMNS,
+  ];
+
+  const tnColumns = [
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    ...TN_COLUMNS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      sortable: true,
+      className: () => "font-mono text-xs",
+      render: (r) => r[c.key] ?? "—",
+    })),
+  ];
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {data && <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>}
-        <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
-          {AGING_TYPES.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setAgingType(t.key)}
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
-                agingType === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
 
-      {!data && <div className="text-slate-500">Loading…</div>}
+      {!data && <Skeleton />}
 
       {data && !data.captured_at && (
         <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>
@@ -223,163 +165,92 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
       {data && data.captured_at && (
         <>
-          <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={regionGroups} />
-          <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={zoneGroups} />
+          <GroupTable
+            title="By region (follows filters below)"
+            groupLabel="Region"
+            rows={regionGroups}
+            columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS]}
+          />
+          <GroupTable
+            title="By zone (follows filters below)"
+            groupLabel="Zone"
+            rows={zoneGroups}
+            columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS]}
+          />
 
-          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-            <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
-              {data.type_label} — pivot
-            </div>
-            <div className="max-h-[50vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
-                  <tr>
-                    {!hideRegionCol && (
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort("region")}
-                      >
-                        Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    )}
-                    {!hideZoneCol && (
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort("zone")}
-                      >
-                        Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    )}
-                    <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                      onClick={() => toggleSort("station_name")}
-                    >
-                      Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                      onClick={() => toggleSort("total")}
-                    >
-                      Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    {AGE_BUCKETS.map((b) => (
-                      <th
-                        key={b.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort(b.key)}
-                      >
-                        {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStations.map((r) => (
-                    <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
-                      {!hideRegionCol && (
-                        <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>
-                      )}
-                      {!hideZoneCol && (
-                        <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>
-                      )}
-                      <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                        {r.station_name}
-                      </td>
-                      <td className="px-4 py-2 text-center tabular-nums text-slate-700">{r.total.toLocaleString()}</td>
-                      {AGE_BUCKETS.map((b) => (
-                        <td key={b.key} className="px-4 py-2 text-center tabular-nums text-slate-700">
-                          {r[b.key].toLocaleString()}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {filteredStations.length === 0 && (
-                    <tr>
-                      <td colSpan={leadingCols + 1 + AGE_BUCKETS.length} className="px-4 py-6 text-center text-slate-400">
-                        No stations match.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.station_name}
+            subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+            rows={detailRow ? columnsToDetailRows(pivotColumns, detailRow) : []}
+          />
 
-          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-            <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">
-              {data.type_label} — tracking numbers
-            </div>
-            <div className="max-h-[60vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
-                  <tr>
-                    <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                      onClick={() => toggleTnSort("station_name")}
-                    >
-                      Station {tnSortKey === "station_name" && (tnSortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    {TN_COLUMNS.map((c) => (
-                      <th
-                        key={c.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleTnSort(c.key)}
-                      >
-                        {c.label} {tnSortKey === c.key && (tnSortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTnRows.map((r, i) => (
-                    <tr key={`${r.tracking_number}-${i}`} className="border-t border-slate-100 hover:bg-slate-50/60">
-                      <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                        {r.station_name}
-                      </td>
-                      {TN_COLUMNS.map((c) => (
-                        <td key={c.key} className="whitespace-nowrap px-4 py-2 text-center font-mono text-xs text-slate-700">
-                          {r[c.key] ?? "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {filteredTnRows.length === 0 && (
-                    <tr>
-                      <td colSpan={1 + TN_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
-                        No tracking numbers match.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-              {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by last_scan_hub_name, not dest_hub
-              {data.tn_rows_truncated && (
-                <span className="ml-1 font-medium text-status-critical">
-                  · showing the oldest {AGING_TN_ROWS_CAP.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
-                  nationwide — filter by region/zone/station to see the rest
-                </span>
-              )}
-            </div>
-          </div>
+          <DataTable
+            title={`${data.type_label} — pivot`}
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-aging-${agingType}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key])])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
+            maxHeight="50vh"
+            columns={pivotColumns}
+            rows={filteredStations}
+            rowKey={(r) => r.station_code}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
+            emptyMessage="No stations match."
+          />
+
+          <DataTable
+            title={`${data.type_label} — tracking numbers`}
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-aging-${agingType}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Station", ...TN_COLUMNS.map((c) => c.label)],
+                    filteredTnRows.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
+            maxHeight="60vh"
+            columns={tnColumns}
+            rows={filteredTnRows}
+            rowKey={(r, i) => `${r.tracking_number}-${i}`}
+            sortKey={tnSortKey}
+            sortDir={tnSortDir}
+            onSort={toggleTnSort}
+            emptyMessage="No tracking numbers match."
+            footer={
+              <>
+                {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by last_scan_hub_name, not dest_hub
+                {data.tn_rows_truncated && (
+                  <span className="ml-1 font-medium text-status-critical">
+                    · showing the oldest {AGING_TN_ROWS_CAP.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
+                    nationwide — filter by region/zone/station to see the rest
+                  </span>
+                )}
+              </>
+            }
+          />
         </>
       )}
     </div>
   );
-}
-
-function localRollup(rows, groupKey) {
-  const groups = {};
-  rows.forEach((r) => {
-    const key = r[groupKey];
-    if (!groups[key]) {
-      groups[key] = { key, region: r.region, station_count: 0, total: 0 };
-      AGE_BUCKETS.forEach((b) => (groups[key][b.key] = 0));
-    }
-    groups[key].station_count += 1;
-    groups[key].total += r.total;
-    AGE_BUCKETS.forEach((b) => (groups[key][b.key] += r[b.key]));
-  });
-  return Object.values(groups);
 }

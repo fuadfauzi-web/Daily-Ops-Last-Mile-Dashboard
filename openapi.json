@@ -349,7 +349,23 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "driver_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hybrid",
+                "independent",
+                "other"
+              ]
+            },
+            "description": "Restrict region/zone/station/driver rows to one driver-type bucket. Omit for all drivers."
+          }
+        ]
       }
     },
     "/api/admin/refresh": {
@@ -618,6 +634,118 @@
           }
         }
       }
+    },
+    "/api/thresholds": {
+      "get": {
+        "summary": "Return every SLA threshold row (nationwide defaults plus any region overrides) behind Station Health's severity colouring.",
+        "responses": {
+          "200": {
+            "description": "All threshold rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ThresholdRow"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Upsert a batch of SLA threshold rows (one scope's worth at a time). Admin or Manager only; logs who changed it and when.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThresholdsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin or Manager access required"
+          },
+          "422": {
+            "description": "Unknown metric_key, invalid scope, or invalid direction"
+          }
+        }
+      }
+    },
+    "/api/recovery/missing-details": {
+      "get": {
+        "summary": "Recovery tab's Missing Details: region/zone/station overview + TN list from query 1297, with high-value highlighting.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingDetailsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/urgent-tn-lookup": {
+      "post": {
+        "summary": "Looks up specific tracking numbers against the latest query 78 snapshot (not a live Redash search).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UrgentTnQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UrgentTnResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pending-yesterday-route": {
+      "get": {
+        "summary": "Routed View's Pending in Yesterday Route: snapshot of On Vehicle for Delivery parcels captured once daily at ~02:00 Malaysia time.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingYesterdayResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -746,6 +874,10 @@
             "type": "integer",
             "description": "From query 512, matched by full station name"
           },
+          "routed_pct": {
+            "type": "number",
+            "description": "Total Routed / Total Fresh * 100"
+          },
           "attendance": {
             "type": "integer",
             "description": "Unique drivers with a route today, from query 512, excluding names containing OPS"
@@ -775,6 +907,7 @@
           "unsweep_parcel",
           "cod_pct_hub",
           "total_routed",
+          "routed_pct",
           "attendance",
           "cod_pct_routed"
         ]
@@ -865,6 +998,18 @@
             "description": "Timestamp of the second-most-recent snapshot, for trend deltas"
           },
           "previous_stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StationRow"
+            }
+          },
+          "yesterday_captured_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "Timestamp of the snapshot closest to (at or before) 24h ago, for the Compare vs. yesterday toggle -- null until the app has been running a day"
+          },
+          "yesterday_stations": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/StationRow"
@@ -1223,6 +1368,10 @@
           "total_routed": {
             "type": "integer"
           },
+          "routed_pct": {
+            "type": "number",
+            "description": "Total Routed / Total Fresh * 100"
+          },
           "zero_attempt": {
             "type": "integer",
             "description": "Merged in from the latest Station Health snapshot"
@@ -1274,6 +1423,7 @@
         },
         "required": [
           "total_routed",
+          "routed_pct",
           "zero_attempt",
           "attendance",
           "attendance_hd",
@@ -2396,6 +2546,419 @@
           "stations",
           "zones",
           "regions",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
+        ]
+      },
+      "ThresholdRow": {
+        "type": "object",
+        "properties": {
+          "metric_key": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "description": "'nationwide' or a region name"
+          },
+          "scored": {
+            "type": "boolean"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "higher-is-worse",
+              "lower-is-worse"
+            ]
+          },
+          "warning_at": {
+            "type": "number"
+          },
+          "critical_at": {
+            "type": "number"
+          },
+          "percent_of": {
+            "type": "string",
+            "nullable": true,
+            "description": "Score as % of this other metric_key on the same row instead of raw count; null = raw count"
+          },
+          "changed_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "changed_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "metric_key",
+          "scope",
+          "scored",
+          "direction",
+          "warning_at",
+          "critical_at"
+        ]
+      },
+      "ThresholdsIn": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThresholdRow"
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
+      "MissingDetailsStationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "hub_count": {
+            "type": "integer"
+          },
+          "ship_in_count": {
+            "type": "integer"
+          },
+          "other_count": {
+            "type": "integer"
+          },
+          "total_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "hub_count",
+          "ship_in_count",
+          "other_count",
+          "total_count"
+        ]
+      },
+      "MissingDetailsGroupRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "station_count": {
+            "type": "integer"
+          },
+          "hub_count": {
+            "type": "integer"
+          },
+          "ship_in_count": {
+            "type": "integer"
+          },
+          "other_count": {
+            "type": "integer"
+          },
+          "total_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "region",
+          "station_count",
+          "hub_count",
+          "ship_in_count",
+          "other_count",
+          "total_count"
+        ]
+      },
+      "MissingDetailsTnRow": {
+        "type": "object",
+        "properties": {
+          "tracking_number": {
+            "type": "string"
+          },
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "hub_code": {
+            "type": "string"
+          },
+          "age": {
+            "type": "number",
+            "nullable": true
+          },
+          "type": {
+            "type": "string"
+          },
+          "cod_value": {
+            "type": "number",
+            "nullable": true
+          },
+          "item_description": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_high_value": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tracking_number",
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "hub_code",
+          "type",
+          "is_high_value"
+        ]
+      },
+      "MissingDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsStationRow"
+            }
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsGroupRow"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsGroupRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingDetailsTnRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated"
+        ]
+      },
+      "UrgentTnQuery": {
+        "type": "object",
+        "properties": {
+          "tracking_numbers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "tracking_numbers"
+        ]
+      },
+      "UrgentTnResult": {
+        "type": "object",
+        "properties": {
+          "tracking_number": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "dest_hub": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_sweep_hub": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "age": {
+            "type": "number",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer",
+            "nullable": true
+          },
+          "cod": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tracking_number",
+          "found"
+        ]
+      },
+      "UrgentTnResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UrgentTnResult"
+            }
+          }
+        },
+        "required": [
+          "captured_at",
+          "results"
+        ]
+      },
+      "PendingYesterdayStationRow": {
+        "type": "object",
+        "properties": {
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "total_tn": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "total_tn"
+        ]
+      },
+      "PendingYesterdayTnRow": {
+        "type": "object",
+        "properties": {
+          "tracking_number": {
+            "type": "string"
+          },
+          "station_code": {
+            "type": "string"
+          },
+          "station_name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "dest_hub": {
+            "type": "string",
+            "nullable": true
+          },
+          "age": {
+            "type": "number",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer",
+            "nullable": true
+          }
+        },
+        "required": [
+          "tracking_number",
+          "station_code",
+          "station_name",
+          "zone",
+          "region"
+        ]
+      },
+      "PendingYesterdayResponse": {
+        "type": "object",
+        "properties": {
+          "captured_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "captured_for_date": {
+            "type": "string",
+            "nullable": true
+          },
+          "stations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingYesterdayStationRow"
+            }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingYesterdayTnRow"
+            }
+          },
+          "tn_rows_total": {
+            "type": "integer"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "captured_at",
+          "captured_for_date",
+          "stations",
           "tn_rows",
           "tn_rows_total",
           "tn_rows_truncated"

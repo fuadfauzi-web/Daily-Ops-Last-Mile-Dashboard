@@ -32,7 +32,8 @@ export const api = {
     request(
       `/api/shipment-drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`
     ),
-  routedView: () => request("/api/routed-view"),
+  routedView: (driverType) =>
+    request(`/api/routed-view${driverType ? `?driver_type=${encodeURIComponent(driverType)}` : ""}`),
   shipperWatch: () => request("/api/shipper-watch"),
   shipperDrilldown: (stationCode, metric) =>
     request(
@@ -40,6 +41,10 @@ export const api = {
     ),
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
   oldRoute: () => request("/api/old-route"),
+  missingDetails: () => request("/api/recovery/missing-details"),
+  urgentTnLookup: (trackingNumbers) =>
+    request("/api/urgent-tn-lookup", { method: "POST", body: JSON.stringify({ tracking_numbers: trackingNumbers }) }),
+  pendingYesterdayRoute: () => request("/api/pending-yesterday-route"),
   rpu: (stage, shipper) =>
     request(`/api/rpu?stage=${encodeURIComponent(stage)}${shipper ? `&shipper=${encodeURIComponent(shipper)}` : ""}`),
   rpuAging: (type, shipper) =>
@@ -59,5 +64,9 @@ export const api = {
   refresh: {
     trigger: () => request("/api/admin/refresh", { method: "POST" }),
     status: () => request("/api/admin/refresh-status"),
+  },
+  thresholds: {
+    list: () => request("/api/thresholds"),
+    save: (rows) => request("/api/thresholds", { method: "PUT", body: JSON.stringify({ rows }) }),
   },
 };

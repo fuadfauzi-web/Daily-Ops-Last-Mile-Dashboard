@@ -12,4 +12,10 @@ export default defineConfig({
       "/api": "http://localhost:8000",
     },
   },
+  // Source maps on the production build too -- an internal ops tool, not a
+  // public product, so shipping them costs nothing and means a crash's
+  // browser console shows the real file/line instead of minified names.
+  build: {
+    sourcemap: true,
+  },
 });

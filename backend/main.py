@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,12 +22,13 @@ from pydantic import BaseModel
 
 import db
 from aggregate import (
-    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, METRIC_KEYS,
-    OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS, SHIPMENT_DETAIL_KEYS,
-    SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
-    bucket_rpu_aging, build_aging_details, build_old_route, build_routed_view, build_rpu, build_shipment_details,
-    build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup, rollup_aging,
-    rollup_old_route, rollup_routed, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
+    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_BUCKETS,
+    METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
+    SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
+    bucket_rpu_aging, build_aging_details, build_missing_details, build_old_route, build_pending_yesterday_route,
+    build_routed_view, build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics,
+    merge_routed_into_station_metrics, rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed,
+    rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
@@ -36,6 +37,8 @@ from redash_client import (
     RedashError, fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
+
+_MYT = timezone(timedelta(hours=8))
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
@@ -82,6 +85,23 @@ _old_route_captured_at: str | None = None
 _rpu_rows_cache: list[dict] = []
 _rpu_rows_captured_at: str | None = None
 
+# Recovery tab's Missing Details, same in-memory pattern as _old_route_rows.
+_missing_details_stations: list[dict] = []
+_missing_details_tn_rows: list[dict] = []
+_missing_details_captured_at: str | None = None
+
+# Urgent TN's per-tracking-number lookup, keyed by tracking_id -- built fresh from
+# the same query 78 rows already fetched for Station Health every 30 minutes, not
+# a live per-search Redash call.
+_health_v3_by_tn: dict[str, dict] = {}
+_health_v3_by_tn_captured_at: str | None = None
+
+# Routed View's "Pending in Yesterday Route" -- persisted (see
+# V18__pending_yesterday_route.sql) since it must survive a restart mid-day,
+# unlike every other cache on this page.
+MISSING_DETAILS_TN_CAP = 2000
+PENDING_YESTERDAY_TN_CAP = 2000
+
 _SHIPMENT_COLUMNS = SHIPMENT_DETAIL_KEYS + ("fresh_attempt_pct", "process_time_minutes")
 _ROUTED_COLUMNS = ROUTED_STATION_KEYS + ("cod_pct", "success_rate", "completion_rate")
 _SHIPPER_COLUMNS = SHIPPER_WATCH_KEYS
@@ -124,11 +144,14 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
+        missing_details_by_station, missing_details_tn_rows = build_missing_details(missing_rows, health_rows)
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
         global _shipper_tn_cache_captured_at, _aging_rows_captured_at
         global _old_route_rows, _old_route_drivers, _old_route_captured_at, _rpu_rows_cache, _rpu_rows_captured_at
+        global _missing_details_stations, _missing_details_tn_rows, _missing_details_captured_at
+        global _health_v3_by_tn, _health_v3_by_tn_captured_at
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -148,6 +171,27 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         _old_route_captured_at = captured_at.isoformat()
         _rpu_rows_cache = rpu_rows_flat
         _rpu_rows_captured_at = captured_at.isoformat()
+        _missing_details_stations = list(missing_details_by_station.values())
+        _missing_details_tn_rows = missing_details_tn_rows
+        _missing_details_captured_at = captured_at.isoformat()
+        _health_v3_by_tn = {
+            r["tracking_id"]: {
+                "dest_hub": r.get("dest_hub"),
+                "last_sweep_hub": r.get("last_scan_hub_name"),
+                "status": r.get("granular_status"),
+                "age": r.get("days_since_current_hub_first_sweep"),
+                "attempts": r.get("delivery_attempts"),
+                "cod": r.get("cod"),
+            }
+            for r in health_rows
+            if r.get("tracking_id")
+        }
+        _health_v3_by_tn_captured_at = captured_at.isoformat()
+
+        try:
+            await _maybe_capture_pending_yesterday_route(health_rows)
+        except Exception:  # noqa: BLE001 - isolated so a bug here can't fail the whole refresh
+            log.exception("Pending Yesterday Route capture failed")
 
         params = [
             (
@@ -264,6 +308,53 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> None:
+    """Captures Routed View's "Pending in Yesterday Route" snapshot once per
+    Malaysia calendar day, on the first refresh at or after 02:00 MYT -- a no-op
+    every other refresh that day (checked via the captured_for_date primary key).
+    Runs off whatever health_v3_rows this refresh cycle already fetched rather
+    than hitting Redash again."""
+    now_myt = datetime.now(_MYT)
+    if now_myt.hour < 2:
+        return
+    today_myt = now_myt.date()
+    already = await db.fetch_one(
+        "SELECT 1 FROM pending_yesterday_route WHERE captured_for_date = %s LIMIT 1", (today_myt,)
+    )
+    if already:
+        return
+
+    by_station, tn_rows = build_pending_yesterday_route(health_v3_rows)
+    captured_at = datetime.now(timezone.utc)
+
+    station_params = [
+        (captured_at, today_myt, row["station_code"], row["station_name"], row["zone"], row["region"], row["total_tn"])
+        for row in by_station.values()
+        if row["total_tn"] > 0
+    ]
+    if station_params:
+        await db.execute_many(
+            """INSERT IGNORE INTO pending_yesterday_route
+               (captured_at, captured_for_date, station_code, station_name, zone, region, total_tn)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            station_params,
+        )
+
+    tn_params = [
+        (today_myt, r["tracking_number"], r["station_code"], r["station_name"], r["zone"], r["region"],
+         r["dest_hub"], r["age"], r["attempts"])
+        for r in tn_rows
+    ]
+    if tn_params:
+        await db.execute_many(
+            """INSERT IGNORE INTO pending_yesterday_route_tns
+               (captured_for_date, tracking_number, station_code, station_name, zone, region, dest_hub, age, attempts)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            tn_params,
+        )
+    log.info("Pending Yesterday Route captured for %s: %d TNs", today_myt, len(tn_params))
+
+
 async def _hourly_refresh_loop() -> None:
     while True:
         try:
@@ -354,6 +445,7 @@ class MetricFields(BaseModel):
     unsweep_parcel: int
     cod_pct_hub: float
     total_routed: int
+    routed_pct: float
     attendance: int
     cod_pct_routed: float
 
@@ -377,6 +469,8 @@ class DashboardResponse(BaseModel):
     regions: list[GroupRow]
     previous_captured_at: str | None = None
     previous_stations: list[StationRow] = []
+    yesterday_captured_at: str | None = None
+    yesterday_stations: list[StationRow] = []
 
 
 def _scope_filter_stations(rows: list[dict], user: CurrentUser) -> list[dict]:
@@ -431,6 +525,19 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
     if previous_captured_at is not None:
         previous_scoped = _scope_filter_stations(await _fetch_station_rows(previous_captured_at), user)
 
+    # "Compare vs. yesterday": the latest snapshot at or before this time
+    # yesterday -- close enough given a 30-minute refresh cadence. None until
+    # the app has been running for a day, which is fine: the frontend just
+    # shows no delta rather than a bogus one.
+    yesterday = await db.fetch_one(
+        "SELECT MAX(captured_at) FROM station_metrics WHERE captured_at <= DATE_SUB(%s, INTERVAL 1 DAY)",
+        (captured_at,),
+    )
+    yesterday_captured_at = yesterday[0] if yesterday else None
+    yesterday_scoped: list[dict] = []
+    if yesterday_captured_at is not None:
+        yesterday_scoped = _scope_filter_stations(await _fetch_station_rows(yesterday_captured_at), user)
+
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
         "stations": scoped,
@@ -440,6 +547,10 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
             previous_captured_at.isoformat() if hasattr(previous_captured_at, "isoformat") else previous_captured_at
         ),
         "previous_stations": previous_scoped,
+        "yesterday_captured_at": (
+            yesterday_captured_at.isoformat() if hasattr(yesterday_captured_at, "isoformat") else yesterday_captured_at
+        ),
+        "yesterday_stations": yesterday_scoped,
     }
 
 
@@ -596,6 +707,7 @@ async def shipment_drilldown(station_code: str, metric: str, user: CurrentUser =
 class RoutedFields(BaseModel):
     total_routed: int
     zero_attempt: int
+    routed_pct: float
     attendance: int
     attendance_hd: int
     attendance_hr: int
@@ -665,45 +777,97 @@ async def _fetch_routed_rows(captured_at) -> list[dict]:
 
 
 @app.get("/api/routed-view", response_model=RoutedViewResponse)
-async def routed_view(user: CurrentUser = Depends(get_current_user)):
+async def routed_view(driver_type: str | None = None, user: CurrentUser = Depends(get_current_user)):
+    if driver_type not in (None, "hybrid", "independent", "other"):
+        raise HTTPException(400, "driver_type must be hybrid, independent, or other")
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM routed_stations")
     captured_at = latest[0] if latest else None
     if captured_at is None:
         return {"captured_at": None, "stations": [], "zones": [], "regions": [], "drivers": []}
 
-    all_rows = await _fetch_routed_rows(captured_at)
-
-    # "Total 0 Attempt" -- merged in from the latest Station Health snapshot so it's
-    # visible alongside routed metrics without duplicating that computation here.
+    # "Total 0 Attempt"/Total In Hub -- merged in from the latest Station Health
+    # snapshot so Routed % and Total 0 Attempt are visible alongside routed metrics
+    # without duplicating that computation here.
     health_latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
     zero_attempt_by_station: dict[str, int] = {}
+    total_in_hub_by_station: dict[str, int] = {}
+    station_name_by_code: dict[str, str] = {}
     if health_latest and health_latest[0] is not None:
         for r in await db.fetch_all(
-            "SELECT station_code, zero_attempt FROM station_metrics WHERE captured_at = %s", (health_latest[0],)
+            "SELECT station_code, station_name, zero_attempt, total_in_hub FROM station_metrics WHERE captured_at = %s",
+            (health_latest[0],),
         ):
-            zero_attempt_by_station[r[0]] = r[1]
-    for row in all_rows:
-        row["zero_attempt"] = zero_attempt_by_station.get(row["station_code"], 0)
-
-    scoped = _scope_filter_stations(all_rows, user)
-    extra_keys = ("zero_attempt",)
-
-    def to_group(rows, key):
-        return [
-            {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
-            for g in rows if g["station_count"] > 0
-        ]
+            station_name_by_code[r[0]] = r[1]
+            zero_attempt_by_station[r[0]] = r[2]
+            total_in_hub_by_station[r[0]] = r[3]
 
     driver_rows = _scope_filter_stations(
         [{**d, "station_name": d["current_station"], "zone": d["zone"], "region": d["region"]} for d in _routed_drivers],
         user,
     )
 
+    if driver_type is None:
+        # Fast path: today's default view reads the persisted per-refresh snapshot,
+        # same as before the driver-type filter existed.
+        all_rows = await _fetch_routed_rows(captured_at)
+        for row in all_rows:
+            row["zero_attempt"] = zero_attempt_by_station.get(row["station_code"], 0)
+            row["total_in_hub"] = total_in_hub_by_station.get(row["station_code"], 0)
+            denom = row["total_routed"] + row["total_in_hub"]
+            row["routed_pct"] = round(row["total_routed"] / denom * 100, 2) if denom else 0.0
+
+        scoped = _scope_filter_stations(all_rows, user)
+        extra_keys = ("zero_attempt", "total_in_hub")
+
+        def to_group(rows, key):
+            out = []
+            for g in rows:
+                if g["station_count"] == 0:
+                    continue
+                d = {**{k: g[k] for k in _ROUTED_COLUMNS + extra_keys}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+                d_denom = d["total_routed"] + d["total_in_hub"]
+                d["routed_pct"] = round(d["total_routed"] / d_denom * 100, 2) if d_denom else 0.0
+                out.append(d)
+            return out
+
+        stations_out = scoped
+        zones_out = to_group(rollup_routed(scoped, "zone", extra_keys), "zone")
+        regions_out = to_group(rollup_routed(scoped, "region", extra_keys), "region")
+    else:
+        # Filtered path: the persisted routed_stations snapshot has no per-type
+        # breakdown, so station/zone/region rollups are rebuilt fresh from the
+        # (already role-scoped) per-driver rows instead.
+        def build_level(group_key):
+            rows = rollup_routed_by_driver_type(driver_rows, group_key, driver_type)
+            out = []
+            for g in rows:
+                zero_attempt = sum(zero_attempt_by_station.get(c, 0) for c in g["station_codes"])
+                total_in_hub = sum(total_in_hub_by_station.get(c, 0) for c in g["station_codes"])
+                denom = g["total_routed"] + total_in_hub
+                row = {
+                    **{k: v for k, v in g.items() if k != "station_codes"},
+                    "zero_attempt": zero_attempt,
+                    "total_in_hub": total_in_hub,
+                    "routed_pct": round(g["total_routed"] / denom * 100, 2) if denom else 0.0,
+                }
+                if group_key == "station_code":
+                    row["station_code"] = g["station_code"]
+                    row["station_name"] = station_name_by_code.get(g["station_code"], g["station_code"])
+                else:
+                    row["key"] = g[group_key]
+                out.append(row)
+            return out
+
+        stations_out = build_level("station_code")
+        zones_out = build_level("zone")
+        regions_out = build_level("region")
+        driver_rows = [d for d in driver_rows if d["position"] in DRIVER_TYPE_BUCKETS.get(driver_type, set())]
+
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
-        "stations": scoped,
-        "zones": to_group(rollup_routed(scoped, "zone", extra_keys), "zone"),
-        "regions": to_group(rollup_routed(scoped, "region", extra_keys), "region"),
+        "stations": stations_out,
+        "zones": zones_out,
+        "regions": regions_out,
         "drivers": driver_rows,
     }
 
@@ -1220,6 +1384,212 @@ async def rpu_aging(type: str = "overall", shipper: str | None = None, user: Cur
 
 
 # ---------------------------------------------------------------------------
+# Recovery: Missing Details
+# ---------------------------------------------------------------------------
+
+
+class MissingDetailsStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    hub_count: int
+    ship_in_count: int
+    other_count: int
+    total_count: int
+
+
+class MissingDetailsGroupRow(BaseModel):
+    key: str
+    region: str
+    station_count: int
+    hub_count: int
+    ship_in_count: int
+    other_count: int
+    total_count: int
+
+
+class MissingDetailsTnRow(BaseModel):
+    tracking_number: str
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    hub_code: str
+    age: float | None
+    type: str
+    cod_value: float | None
+    item_description: str | None
+    is_high_value: bool
+
+
+class MissingDetailsResponse(BaseModel):
+    captured_at: str | None
+    stations: list[MissingDetailsStationRow]
+    zones: list[MissingDetailsGroupRow]
+    regions: list[MissingDetailsGroupRow]
+    tn_rows: list[MissingDetailsTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/recovery/missing-details", response_model=MissingDetailsResponse)
+async def recovery_missing_details(user: CurrentUser = Depends(get_current_user)):
+    if _missing_details_captured_at is None:
+        return {
+            "captured_at": None, "stations": [], "zones": [], "regions": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    def to_group(rows, key):
+        return [{**g, "key": g[key]} for g in rows]
+
+    scoped_stations = _scope_filter_stations(_missing_details_stations, user)
+    scoped_codes = {r["station_code"] for r in scoped_stations}
+    tn_rows_all = [r for r in _missing_details_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows_all)
+    tn_rows_truncated = tn_rows_total > MISSING_DETAILS_TN_CAP
+    tn_rows = sorted(tn_rows_all, key=lambda r: r.get("age") or 0, reverse=True)[:MISSING_DETAILS_TN_CAP]
+
+    return {
+        "captured_at": _missing_details_captured_at,
+        "stations": scoped_stations,
+        "zones": to_group(rollup_missing_details(scoped_stations, "zone"), "zone"),
+        "regions": to_group(rollup_missing_details(scoped_stations, "region"), "region"),
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Urgent TN -- ad hoc tracking-number lookups, from query 78's own already-
+# fetched data (see _health_v3_by_tn above), not a live per-search Redash call.
+# ---------------------------------------------------------------------------
+
+
+class UrgentTnQuery(BaseModel):
+    tracking_numbers: list[str]
+
+
+class UrgentTnResult(BaseModel):
+    tracking_number: str
+    found: bool
+    dest_hub: str | None = None
+    last_sweep_hub: str | None = None
+    status: str | None = None
+    age: float | None = None
+    attempts: int | None = None
+    cod: str | None = None
+
+
+class UrgentTnResponse(BaseModel):
+    captured_at: str | None
+    results: list[UrgentTnResult]
+
+
+@app.post("/api/urgent-tn-lookup", response_model=UrgentTnResponse)
+async def urgent_tn_lookup(payload: UrgentTnQuery, user: CurrentUser = Depends(get_current_user)):
+    seen: set[str] = set()
+    results = []
+    for raw in payload.tracking_numbers:
+        tn = (raw or "").strip()
+        if not tn or tn in seen:
+            continue
+        seen.add(tn)
+        row = _health_v3_by_tn.get(tn)
+        if row is None:
+            results.append({"tracking_number": tn, "found": False})
+        else:
+            results.append({"tracking_number": tn, "found": True, **row})
+    return {"captured_at": _health_v3_by_tn_captured_at, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Routed View: Pending in Yesterday Route
+# ---------------------------------------------------------------------------
+
+
+class PendingYesterdayStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    total_tn: int
+
+
+class PendingYesterdayTnRow(BaseModel):
+    tracking_number: str
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    dest_hub: str | None
+    age: float | None
+    attempts: int | None
+
+
+class PendingYesterdayResponse(BaseModel):
+    captured_at: str | None
+    captured_for_date: str | None
+    stations: list[PendingYesterdayStationRow]
+    tn_rows: list[PendingYesterdayTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/pending-yesterday-route", response_model=PendingYesterdayResponse)
+async def pending_yesterday_route(user: CurrentUser = Depends(get_current_user)):
+    latest = await db.fetch_one("SELECT MAX(captured_for_date) FROM pending_yesterday_route")
+    for_date = latest[0] if latest else None
+    if for_date is None:
+        return {
+            "captured_at": None, "captured_for_date": None, "stations": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    captured_at_row = await db.fetch_one(
+        "SELECT MAX(captured_at) FROM pending_yesterday_route WHERE captured_for_date = %s", (for_date,)
+    )
+    captured_at = captured_at_row[0] if captured_at_row else None
+
+    station_rows = [
+        {"station_code": r[0], "station_name": r[1], "zone": r[2], "region": r[3], "total_tn": r[4]}
+        for r in await db.fetch_all(
+            "SELECT station_code, station_name, zone, region, total_tn FROM pending_yesterday_route WHERE captured_for_date = %s",
+            (for_date,),
+        )
+    ]
+    scoped_stations = _scope_filter_stations(station_rows, user)
+    scoped_codes = {r["station_code"] for r in scoped_stations}
+
+    all_tn_rows = [
+        {
+            "tracking_number": r[0], "station_code": r[1], "station_name": r[2], "zone": r[3], "region": r[4],
+            "dest_hub": r[5], "age": r[6], "attempts": r[7],
+        }
+        for r in await db.fetch_all(
+            """SELECT tracking_number, station_code, station_name, zone, region, dest_hub, age, attempts
+               FROM pending_yesterday_route_tns WHERE captured_for_date = %s""",
+            (for_date,),
+        )
+    ]
+    tn_rows_all = [r for r in all_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows_all)
+    tn_rows_truncated = tn_rows_total > PENDING_YESTERDAY_TN_CAP
+    tn_rows = sorted(tn_rows_all, key=lambda r: r.get("age") or 0, reverse=True)[:PENDING_YESTERDAY_TN_CAP]
+
+    return {
+        "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
+        "captured_for_date": str(for_date),
+        "stations": scoped_stations,
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Admin: users
 # ---------------------------------------------------------------------------
 
@@ -1454,3 +1824,106 @@ def _refresh_row_to_dict(row) -> dict:
         "id": row[0], "started_at": str(row[1]), "finished_at": str(row[2]) if row[2] else None,
         "status": row[3], "stations_count": row[4], "error_message": row[5], "triggered_by": row[6],
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin: SLA thresholds (Station Health severity, editable in-app instead of
+# hardcoded rank-based coloring -- see backend/resources/db/migration/V13)
+# ---------------------------------------------------------------------------
+
+# Mirrors frontend/src/thresholds.js's METRICS keys exactly -- these are the
+# only metric_key values a threshold row may target. Deliberately a subset of
+# aggregate.METRIC_KEYS: that tuple also carries a couple of internal-only
+# fields (missing_open, cod_pct_routed) that never became a Station Health
+# column, so they have nothing to score.
+_SLA_METRIC_KEYS = (
+    "total_fresh", "total_routed", "routed_pct", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
+    "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
+    "unsweep_document", "unsweep_parcel", "missing_hub", "missing_ship_in",
+    "pending_ats_zero_attempt", "pending_ats_attempted",
+    # Action Board's own metrics (frontend/src/lib/actionMetrics.js's EXTRA_METRICS)
+    # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).
+    "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "productivity_pct",
+)
+_SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
+# Productivity is scored per driver position instead of per region -- these are
+# valid `scope` values alongside "nationwide" and a region name (see AdminPanel.jsx's
+# DRIVER_POSITION_SCOPES / RoutedViewTab.jsx's resolveThreshold(..., r.driver_type)).
+_SLA_DRIVER_POSITION_SCOPES = {"Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"}
+
+
+class ThresholdRow(BaseModel):
+    metric_key: str
+    scope: str  # "nationwide", a region name, or a driver position (Productivity only)
+    scored: bool
+    direction: str  # "higher-is-worse" | "lower-is-worse"
+    warning_at: float
+    critical_at: float
+    percent_of: str | None = None  # score as % of this other metric_key on the same row, if set
+    changed_by: str | None = None
+    changed_at: str | None = None
+
+
+class ThresholdsIn(BaseModel):
+    rows: list[ThresholdRow]
+
+
+@app.get("/api/thresholds", response_model=list[ThresholdRow])
+async def get_thresholds(user: CurrentUser = Depends(get_current_user)):
+    rows = await db.fetch_all(
+        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at "
+        "FROM sla_thresholds"
+    )
+    return [
+        {
+            "metric_key": r[0], "scope": r[1], "scored": bool(r[2]), "direction": r[3],
+            "warning_at": r[4], "critical_at": r[5], "percent_of": r[6], "changed_by": r[7],
+            "changed_at": str(r[8]) if r[8] else None,
+        }
+        for r in rows
+    ]
+
+
+def _require_can_edit_thresholds(user: CurrentUser) -> None:
+    if user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin or Manager access required")
+
+
+@app.put("/api/thresholds", response_model=OkResult)
+async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_current_user)):
+    _require_can_edit_thresholds(user)
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="No rows given")
+
+    now = datetime.now(timezone.utc)
+    params = []
+    for row in payload.rows:
+        if row.metric_key not in _SLA_METRIC_KEYS:
+            raise HTTPException(status_code=422, detail=f"Unknown metric_key: {row.metric_key}")
+        if row.scope != "nationwide" and row.scope not in REGIONS and row.scope not in _SLA_DRIVER_POSITION_SCOPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"scope must be 'nationwide', one of {REGIONS}, or one of {sorted(_SLA_DRIVER_POSITION_SCOPES)}",
+            )
+        if row.direction not in _SLA_DIRECTIONS:
+            raise HTTPException(status_code=422, detail=f"direction must be one of {sorted(_SLA_DIRECTIONS)}")
+        if row.percent_of is not None and row.percent_of not in _SLA_METRIC_KEYS:
+            raise HTTPException(status_code=422, detail=f"Unknown percent_of metric_key: {row.percent_of}")
+        params.append((
+            row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
+            row.percent_of, user.email, now,
+        ))
+    # ON DUPLICATE KEY UPDATE references VALUES(col) rather than its own %s
+    # placeholders -- asyncmy's executemany bulk-rewrites a batch of INSERTs
+    # into one multi-row statement and only fills placeholders in the VALUES
+    # (...) tuple it repeats per row; extra %s in the trailing clause raised
+    # "not all arguments converted during string formatting".
+    await db.execute_many(
+        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+           ON DUPLICATE KEY UPDATE scored=VALUES(scored), direction=VALUES(direction),
+             warning_at=VALUES(warning_at), critical_at=VALUES(critical_at), percent_of=VALUES(percent_of),
+             changed_by=VALUES(changed_by), changed_at=VALUES(changed_at)""",
+        params,
+    )
+    return {"ok": True}

@@ -2,10 +2,18 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import Dashboard from "./Dashboard";
 import AdminPanel from "./AdminPanel";
+import Logo from "./components/Logo";
+import { useDensity } from "./lib/density";
+import { formatTime } from "./lib/format";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
   const [tab, setTab] = useState("dashboard");
+  const [density, setDensity] = useDensity();
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Reported up by Dashboard once its data loads -- shown here so it's visible
+  // the instant the app opens, regardless of which tab/sub-tab is active.
+  const [freshness, setFreshness] = useState(null);
 
   useEffect(() => {
     api
@@ -53,23 +61,48 @@ export default function App() {
     .map((s) => s[0].toUpperCase())
     .join("");
 
+  const canSeeAdmin = me.role === "admin" || me.role === "manager" || me.role === "region";
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b-[3px] border-brand bg-slate-900">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="h-6 w-6 shrink-0 rounded-sm bg-brand" />
-            <h1 className="text-base font-semibold tracking-tight text-white">Daily Ops Last Mile Dashboard</h1>
+      <header className="border-b-[3px] border-brand bg-white">
+        <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-4">
+            <Logo />
+            <div className="hidden h-6 w-px bg-slate-200 lg:block" />
+            <h1 className="hidden font-display text-sm font-semibold tracking-tight text-ink lg:block">Daily Ops Last Mile</h1>
           </div>
-          <div className="flex items-center gap-3">
-            {(me.role === "admin" || me.role === "manager" || me.role === "region") && (
-              <nav className="flex gap-1 rounded-lg bg-slate-800 p-1 text-sm">
+
+          {/* Desktop chrome: freshness, density toggle, nav, user block all inline. */}
+          <div className="hidden items-center gap-3 lg:flex">
+            {tab === "dashboard" && freshness && (
+              <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+                Data as of {formatTime(freshness)}
+              </div>
+            )}
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
+              <button
+                onClick={() => setDensity("compact")}
+                className={`px-3 py-1 ${density === "compact" ? "bg-ink text-white" : "text-slate-500"}`}
+              >
+                Compact
+              </button>
+              <button
+                onClick={() => setDensity("comfortable")}
+                className={`px-3 py-1 ${density === "comfortable" ? "bg-ink text-white" : "text-slate-500"}`}
+              >
+                Comfortable
+              </button>
+            </div>
+            {canSeeAdmin && (
+              <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
                 {["dashboard", "admin"].map((t) => (
                   <button
                     key={t}
                     onClick={() => setTab(t)}
-                    className={`rounded-md px-3 py-1.5 capitalize ${
-                      tab === t ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-300"
+                    className={`rounded-md px-3 py-1.5 font-display capitalize ${
+                      tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
                     }`}
                   >
                     {t}
@@ -77,12 +110,12 @@ export default function App() {
                 ))}
               </nav>
             )}
-            <div className="flex items-center gap-2 border-l border-slate-700 pl-3">
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                 {initials}
               </div>
               <div className="leading-tight">
-                <div className="text-sm font-medium text-white">{me.display_name || me.email}</div>
+                <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   {me.role}
                   {me.scope_type !== "all" && ` · ${me.scope_value}`}
@@ -90,10 +123,70 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Mobile chrome: just the logo (above) plus this one menu button --
+              density toggle and nav move into the dropdown below. */}
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Menu"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white lg:hidden"
+          >
+            {initials}
+          </button>
         </div>
+
+        {menuOpen && (
+          <div className="border-t border-slate-100 bg-white px-4 py-3 lg:hidden">
+            <div className="mb-3">
+              <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
+              <div className="text-xs uppercase tracking-wide text-slate-400">
+                {me.role}
+                {me.scope_type !== "all" && ` · ${me.scope_value}`}
+              </div>
+            </div>
+            {tab === "dashboard" && freshness && (
+              <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+                Data as of {formatTime(freshness)}
+              </div>
+            )}
+            {canSeeAdmin && (
+              <nav className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+                {["dashboard", "admin"].map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setTab(t);
+                      setMenuOpen(false);
+                    }}
+                    className={`min-h-[44px] flex-1 rounded-md px-3 py-1.5 font-display capitalize ${
+                      tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </nav>
+            )}
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
+              <button
+                onClick={() => setDensity("compact")}
+                className={`min-h-[44px] flex-1 px-3 py-1 ${density === "compact" ? "bg-ink text-white" : "text-slate-500"}`}
+              >
+                Compact
+              </button>
+              <button
+                onClick={() => setDensity("comfortable")}
+                className={`min-h-[44px] flex-1 px-3 py-1 ${density === "comfortable" ? "bg-ink text-white" : "text-slate-500"}`}
+              >
+                Comfortable
+              </button>
+            </div>
+          </div>
+        )}
       </header>
-      <main className="mx-auto max-w-[1400px] px-6 py-6">
-        {tab === "dashboard" ? <Dashboard me={me} /> : <AdminPanel me={me} />}
+      <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
+        {tab === "dashboard" ? <Dashboard me={me} onCapturedAt={setFreshness} /> : <AdminPanel me={me} />}
       </main>
     </div>
   );

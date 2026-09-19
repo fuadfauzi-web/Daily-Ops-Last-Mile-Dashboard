@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { exportCsv } from "./lib/csv";
+import { columnsToDetailRows } from "./lib/detailRows";
+import DataTable from "./components/DataTable";
+import DetailPanel from "./components/DetailPanel";
+import SegmentedControl from "./components/SegmentedControl";
+import Skeleton from "./components/Skeleton";
 
 // From the Fleet Manager's "LM - RPU Tracker" sheet (query 1397). Merged into one
 // status-filterable view instead of 3 separate tabs:
@@ -49,12 +55,6 @@ const TN_COLUMNS = [
   { key: "shipper_name", label: "Shipper" },
 ];
 
-function formatTime(iso) {
-  if (!iso) return "never";
-  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
-  return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
-}
-
 function ShipperSelect({ shipper, setShipper, shippers }) {
   return (
     <select
@@ -94,63 +94,48 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
     }
   };
 
+  const columns = [
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    ...TN_COLUMNS.map((c) => ({ key: c.key, label: c.label, className: () => "font-mono text-xs", render: (r) => r[c.key] ?? "—" })),
+  ];
+
   return (
-    <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-      <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">Tracking numbers</div>
-      <div className="max-h-[50vh] overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
-            <tr>
-              <th
-                className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                onClick={() => toggleTnSort("station_name")}
-              >
-                Station {tnSortKey === "station_name" && (tnSortDir === "asc" ? "↑" : "↓")}
-              </th>
-              {TN_COLUMNS.map((c) => (
-                <th
-                  key={c.key}
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                  onClick={() => toggleTnSort(c.key)}
-                >
-                  {c.label} {tnSortKey === c.key && (tnSortDir === "asc" ? "↑" : "↓")}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r, i) => (
-              <tr key={`${r.tracking_number}-${i}`} className="border-t border-slate-100 hover:bg-slate-50/60">
-                <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                  {r.station_name}
-                </td>
-                {TN_COLUMNS.map((c) => (
-                  <td key={c.key} className="whitespace-nowrap px-4 py-2 text-center font-mono text-xs text-slate-700">
-                    {r[c.key] ?? "—"}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {sorted.length === 0 && (
-              <tr>
-                <td colSpan={1 + TN_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
-                  No tracking numbers match.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-        {sorted.length.toLocaleString()} tracking numbers
-        {tnRowsTruncated && (
-          <span className="ml-1 font-medium text-status-critical">
-            · showing the oldest {sorted.length.toLocaleString()} of {tnRowsTotal.toLocaleString()} — filter by
-            region/zone/station to see the rest
-          </span>
-        )}
-      </div>
-    </div>
+    <DataTable
+      title="Tracking numbers"
+      titleExtra={
+        <button
+          onClick={() =>
+            exportCsv(
+              `daily-ops-rpu-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+              ["Station", ...TN_COLUMNS.map((c) => c.label)],
+              sorted.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+            )
+          }
+          className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Export CSV
+        </button>
+      }
+      maxHeight="50vh"
+      columns={columns}
+      rows={sorted}
+      rowKey={(r, i) => `${r.tracking_number}-${i}`}
+      sortKey={tnSortKey}
+      sortDir={tnSortDir}
+      onSort={toggleTnSort}
+      emptyMessage="No tracking numbers match."
+      footer={
+        <>
+          {sorted.length.toLocaleString()} tracking numbers
+          {tnRowsTruncated && (
+            <span className="ml-1 font-medium text-status-critical">
+              · showing the oldest {sorted.length.toLocaleString()} of {tnRowsTotal.toLocaleString()} — filter by
+              region/zone/station to see the rest
+            </span>
+          )}
+        </>
+      }
+    />
   );
 }
 
@@ -161,6 +146,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total_tn");
   const [sortDir, setSortDir] = useState("desc");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -206,103 +192,72 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
   };
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
-  if (!data) return <div className="text-slate-500">Loading…</div>;
+  if (!data) return <Skeleton />;
 
-  const leadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
+  const columns = [
+    ...(!hideRegionCol ? [{ key: "region", label: "Region", className: () => "text-slate-500" }] : []),
+    ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    ...STAGE_TN_COLUMNS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      render: (r) => r[c.key].toLocaleString(),
+      className: c.key === "total_tn" ? () => "font-semibold text-status-critical" : () => "text-slate-700",
+    })),
+  ];
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">
-          {data.captured_at ? `RPU data as of ${formatTime(data.captured_at)}` : "No data yet."}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-          >
-            {STAGES.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
-        </div>
+      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+          value={stage}
+          onChange={(e) => setStage(e.target.value)}
+        >
+          {STAGES.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
       </div>
 
       {data.captured_at && (
         <>
-          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-            <div className="max-h-[40vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
-                  <tr>
-                    {!hideRegionCol && (
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort("region")}
-                      >
-                        Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    )}
-                    {!hideZoneCol && (
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort("zone")}
-                      >
-                        Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    )}
-                    <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                      onClick={() => toggleSort("station_name")}
-                    >
-                      Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    {STAGE_TN_COLUMNS.map((c) => (
-                      <th
-                        key={c.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort(c.key)}
-                      >
-                        {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStations.map((r) => (
-                    <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
-                      {!hideRegionCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>}
-                      {!hideZoneCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>}
-                      <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                        {r.station_name}
-                      </td>
-                      {STAGE_TN_COLUMNS.map((c) => (
-                        <td
-                          key={c.key}
-                          className={`px-4 py-2 text-center tabular-nums ${
-                            c.key === "total_tn" ? "font-semibold text-status-critical" : "text-slate-700"
-                          }`}
-                        >
-                          {r[c.key].toLocaleString()}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {filteredStations.length === 0 && (
-                    <tr>
-                      <td colSpan={leadingCols + STAGE_TN_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
-                        No stations match.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.station_name}
+            subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+            rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
+          />
+          <DataTable
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-rpu-status-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", ...STAGE_TN_COLUMNS.map((c) => c.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, ...STAGE_TN_COLUMNS.map((c) => r[c.key])])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
+            maxHeight="40vh"
+            columns={columns}
+            rows={filteredStations}
+            rowKey={(r) => r.station_code}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
+            emptyMessage="No stations match."
+          />
 
           <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
         </>
@@ -318,6 +273,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total");
   const [sortDir, setSortDir] = useState("desc");
+  const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -363,107 +319,58 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
   };
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
-  if (!data) return <div className="text-slate-500">Loading…</div>;
+  if (!data) return <Skeleton />;
 
-  const leadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
+  const columns = [
+    ...(!hideRegionCol ? [{ key: "region", label: "Region", className: () => "text-slate-500" }] : []),
+    ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    { key: "total", label: "Total", render: (r) => r.total.toLocaleString() },
+    ...AGE_BUCKETS.map((b) => ({ key: b.key, label: b.label, render: (r) => r[b.key].toLocaleString() })),
+  ];
 
   return (
     <div className="space-y-3">
+      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm text-slate-500">
-          {data.captured_at ? `${data.type_label} data as of ${formatTime(data.captured_at)}` : "No data yet."}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-            {AGING_TYPES.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setAgingType(t.key)}
-                className={`rounded-md px-3 py-1 text-sm font-medium ${
-                  agingType === t.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
-        </div>
+        <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
+        <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
       </div>
 
       {data.captured_at && (
         <>
-          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-            <div className="max-h-[45vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-900 text-left text-white">
-                  <tr>
-                    {!hideRegionCol && (
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort("region")}
-                      >
-                        Region {sortKey === "region" && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    )}
-                    {!hideZoneCol && (
-                      <th
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort("zone")}
-                      >
-                        Zone {sortKey === "zone" && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    )}
-                    <th
-                      className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-slate-900 px-4 py-2 font-medium"
-                      onClick={() => toggleSort("station_name")}
-                    >
-                      Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th
-                      className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                      onClick={() => toggleSort("total")}
-                    >
-                      Total {sortKey === "total" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    {AGE_BUCKETS.map((b) => (
-                      <th
-                        key={b.key}
-                        className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
-                        onClick={() => toggleSort(b.key)}
-                      >
-                        {b.label} {sortKey === b.key && (sortDir === "asc" ? "↑" : "↓")}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStations.map((r) => (
-                    <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
-                      {!hideRegionCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>}
-                      {!hideZoneCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>}
-                      <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                        {r.station_name}
-                      </td>
-                      <td className="px-4 py-2 text-center tabular-nums text-slate-700">{r.total.toLocaleString()}</td>
-                      {AGE_BUCKETS.map((b) => (
-                        <td key={b.key} className="px-4 py-2 text-center tabular-nums text-slate-700">
-                          {r[b.key].toLocaleString()}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                  {filteredStations.length === 0 && (
-                    <tr>
-                      <td colSpan={leadingCols + 1 + AGE_BUCKETS.length} className="px-4 py-6 text-center text-slate-400">
-                        No stations match.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DetailPanel
+            open={!!detailRow}
+            onClose={() => setDetailRow(null)}
+            title={detailRow?.station_name}
+            subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+            rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
+          />
+          <DataTable
+            titleExtra={
+              <button
+                onClick={() =>
+                  exportCsv(
+                    `daily-ops-rpu-aging-${agingType}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key])])
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
+            }
+            maxHeight="45vh"
+            columns={columns}
+            rows={filteredStations}
+            rowKey={(r) => r.station_code}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleSort}
+            onRowClick={(r) => setDetailRow(r)}
+            emptyMessage="No stations match."
+          />
 
           <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
         </>
@@ -472,29 +379,17 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
   );
 }
 
+const RPU_VIEWS = [
+  { key: "status", label: "RPU Status" },
+  { key: "aging", label: "RPU Aging" },
+];
+
 export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [view, setView] = useState("status");
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-        <button
-          onClick={() => setView("status")}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${
-            view === "status" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-          }`}
-        >
-          RPU Status
-        </button>
-        <button
-          onClick={() => setView("aging")}
-          className={`rounded-md px-3 py-1 text-sm font-medium ${
-            view === "aging" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-          }`}
-        >
-          RPU Aging
-        </button>
-      </div>
+      <SegmentedControl options={RPU_VIEWS} value={view} onChange={setView} />
 
       {view === "status" ? (
         <RpuStatusView

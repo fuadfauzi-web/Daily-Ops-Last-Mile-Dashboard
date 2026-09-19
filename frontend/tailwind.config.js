@@ -4,17 +4,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        status: {
-          good: "#0ca30c",
-          warning: "#fab219",
-          serious: "#ec835a",
-          critical: "#d03b3b",
-        },
-        series1: "#2a78d6",
         brand: {
-          DEFAULT: "#D22630",
+          DEFAULT: "#D22630", // Ninja Red -- chrome only: header, logo, active nav, primary buttons. Never a data signal.
           dark: "#A81E27",
+          legacy: "#C2002F", // Legacy Ninja Red, per brand guidelines
         },
+        ink: {
+          DEFAULT: "#231F20", // Ninja Black -- body text, table header bar, app header bar
+        },
+        status: {
+          // Deliberately distinct from brand red so "critical" never reads as "on-brand".
+          critical: "#8C1D18",
+          warning: "#B45309",
+          good: "#166534",
+          neutral: "#475569",
+        },
+      },
+      fontFamily: {
+        display: ["Montserrat", "ui-sans-serif", "-apple-system", "Segoe UI", "Arial", "sans-serif"],
+        sans: ["IBM Plex Sans", "ui-sans-serif", "-apple-system", "Segoe UI", "Arial", "sans-serif"],
       },
     },
   },

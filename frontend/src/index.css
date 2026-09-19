@@ -1,3 +1,26 @@
+/* Montserrat -- UI chrome: header, nav, tab strips, card labels, table column headers. */
+@import "@fontsource/montserrat/400.css";
+@import "@fontsource/montserrat/600.css";
+@import "@fontsource/montserrat/700.css";
+
+/* IBM Plex Sans -- body text and numeric cells. True tabular figures scan better
+   down a column of numbers than Montserrat's; brand guidelines allow substituting
+   a data face "when online legibility is an issue", which this dashboard is. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Comfortable density: ~25% bigger rows/type for every shared table, applied
+   globally so components don't need a density prop threaded through them. */
+:root[data-density="comfortable"] table {
+  font-size: 0.9375rem;
+}
+:root[data-density="comfortable"] table td,
+:root[data-density="comfortable"] table th {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}

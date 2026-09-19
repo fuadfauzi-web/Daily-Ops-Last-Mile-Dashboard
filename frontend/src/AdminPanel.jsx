@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { BOARD_COLUMNS } from "./lib/actionMetrics";
+import { resolveThreshold } from "./lib/thresholds";
+import TabBar from "./components/TabBar";
+
+// Routed View's Productivity % isn't a Station Health/Action Board metric (it's
+// not summable as a station-level count the way the rest of BOARD_COLUMNS are),
+// so it's kept out of BOARD_COLUMNS entirely and only added here for editing.
+const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Productivity (Routed View)" }];
+
+// Productivity is scored per driver position rather than per region -- reuses
+// the exact same (metric_key, scope) mechanism as the region overrides below,
+// just with a driver position label as the scope string instead of a region name.
+const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
 const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "" };
 const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
@@ -73,10 +86,233 @@ function parseBulkRows(text) {
   });
 }
 
+const DIRECTION_LABELS = { "higher-is-worse": "Higher is worse", "lower-is-worse": "Lower is worse" };
+
+// Admin -> SLA Targets: the thresholds behind Station Health's severity
+// colouring, editable in the app instead of hardcoded (see lib/thresholds.js
+// and backend V13__sla_thresholds.sql). One scope at a time -- Nationwide
+// default, or a region override -- edited as a local draft and saved explicitly.
+function SlaTargetsPanel({ regions }) {
+  const [rows, setRows] = useState(null);
+  const [scope, setScope] = useState("nationwide");
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Braces matter here: an expression-bodied arrow returns the promise chain,
+  // and useEffect treats whatever its callback returns as the cleanup
+  // function -- React would later try to call that leftover promise as a
+  // function on unmount ("n is not a function"), crashing on every tab switch.
+  const load = () => {
+    api.thresholds.list().then(setRows).catch((e) => setError(e.message));
+  };
+  useEffect(load, []);
+
+  useEffect(() => {
+    if (!rows) return;
+    const next = {};
+    ADMIN_METRICS.forEach((c) => {
+      next[c.key] = { ...resolveThreshold(rows, c.key, scope === "nationwide" ? null : scope) };
+    });
+    setDraft(next);
+    setSaved(false);
+  }, [rows, scope]);
+
+  if (!rows) return <div className="text-slate-500">Loading…</div>;
+
+  const updateField = (key, field, value) => {
+    setDraft((d) => ({ ...d, [key]: { ...d[key], [field]: value } }));
+    setSaved(false);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = ADMIN_METRICS.map((c) => ({
+        metric_key: c.key,
+        scope,
+        scored: !!draft[c.key].scored,
+        direction: draft[c.key].direction,
+        warning_at: Number(draft[c.key].warning_at) || 0,
+        critical_at: Number(draft[c.key].critical_at) || 0,
+        percent_of: draft[c.key].percent_of || null,
+      }));
+      await api.thresholds.save(payload);
+      setSaved(true);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {error && (
+        <div className="rounded-lg bg-status-critical/5 px-4 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">
+          {error}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap overflow-hidden rounded-lg border border-slate-300 text-xs font-medium">
+          <button
+            onClick={() => setScope("nationwide")}
+            className={`px-3 py-1.5 ${scope === "nationwide" ? "bg-ink text-white" : "bg-white text-slate-600"}`}
+          >
+            Nationwide default
+          </button>
+          {regions.map((r) => (
+            <button
+              key={r.region}
+              onClick={() => setScope(r.region)}
+              className={`border-l border-slate-300 px-3 py-1.5 ${scope === r.region ? "bg-ink text-white" : "bg-white text-slate-600"}`}
+            >
+              {r.region}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-400">Driver type (Productivity only):</span>
+          <div className="flex flex-wrap overflow-hidden rounded-lg border border-slate-300 text-xs font-medium">
+            {DRIVER_POSITION_SCOPES.map((p, i) => (
+              <button
+                key={p}
+                onClick={() => setScope(p)}
+                className={`px-3 py-1.5 ${i > 0 ? "border-l border-slate-300" : ""} ${scope === p ? "bg-ink text-white" : "bg-white text-slate-600"}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-slate-400">Applies at the next 30-minute refresh</span>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : saved ? "Saved" : "Save targets"}
+          </button>
+        </div>
+      </div>
+
+      {scope !== "nationwide" && (
+        <p className="text-xs text-slate-400">
+          Rows here fall back to the Nationwide default until you change a value and save — that only overrides{" "}
+          {scope}.
+        </p>
+      )}
+
+      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-ink text-left text-white">
+              <tr>
+                <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Metric</th>
+                <th className="whitespace-nowrap px-4 py-2 text-center font-display font-medium">Scored</th>
+                <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Direction</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Warning at</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Critical at</th>
+                <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Score as % of</th>
+                <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Last changed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ADMIN_METRICS.map((c, i) => {
+                const d = draft[c.key];
+                if (!d) return null;
+                return (
+                  <tr key={c.key} className={`border-t border-slate-100 ${i % 2 ? "bg-slate-50/50" : ""}`}>
+                    <td className={`whitespace-nowrap px-4 py-2 font-medium ${d.scored ? "text-ink" : "text-slate-400"}`}>
+                      {c.label}
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <input type="checkbox" checked={!!d.scored} onChange={(e) => updateField(c.key, "scored", e.target.checked)} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <select
+                        disabled={!d.scored}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                        value={d.direction}
+                        onChange={(e) => updateField(c.key, "direction", e.target.value)}
+                      >
+                        {Object.entries(DIRECTION_LABELS).map(([v, label]) => (
+                          <option key={v} value={v}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input
+                        type="number"
+                        disabled={!d.scored}
+                        className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
+                        value={d.warning_at}
+                        onChange={(e) => updateField(c.key, "warning_at", e.target.value)}
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <input
+                        type="number"
+                        disabled={!d.scored}
+                        className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
+                        value={d.critical_at}
+                        onChange={(e) => updateField(c.key, "critical_at", e.target.value)}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <select
+                        disabled={!d.scored}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
+                        value={d.percent_of || ""}
+                        onChange={(e) => updateField(c.key, "percent_of", e.target.value || null)}
+                      >
+                        <option value="">Raw count</option>
+                        {ADMIN_METRICS.filter((m) => m.key !== c.key).map((m) => (
+                          <option key={m.key} value={m.key}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">
+                      {d.changed_by ? `${formatTime(d.changed_at)} · ${d.changed_by}` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
+          Turn Scored off and the metric becomes reference-only everywhere at once: grey column header, never
+          coloured. Direction/Warning/Critical are disabled while a metric is unscored. "Score as % of" evaluates
+          Warning/Critical against this metric's value as a percentage of the chosen field on the same row (e.g. Age
+          &gt;3 as % of Total In Hub) instead of its raw count -- leave as Raw count for everything else.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ADMIN_TABS = [
+  { key: "users", label: "Users", visible: () => true },
+  { key: "sla", label: "SLA Targets", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "refresh", label: "Data Refresh", visible: (me) => me.role === "admin" },
+];
+
 export default function AdminPanel({ me }) {
   const isFullAdmin = me.role === "admin";
   const myAllowedRoles = useMemo(() => allowedRoles(me.role), [me.role]);
   const myAllowedScopeTypes = useMemo(() => allowedScopeTypes(me.role), [me.role]);
+  const visibleAdminTabs = useMemo(() => ADMIN_TABS.filter((t) => t.visible(me)), [me]);
+  const [adminTab, setAdminTab] = useState("users");
 
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
@@ -197,19 +433,16 @@ export default function AdminPanel({ me }) {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-status-critical ring-1 ring-red-200">
+        <div className="rounded-lg bg-status-critical/5 px-4 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">
           {error}
         </div>
       )}
 
-      {!isFullAdmin && (
-        <div className="rounded-lg bg-slate-50 px-4 py-2 text-sm text-slate-600 ring-1 ring-slate-200">
-          You can add teammates here. Viewing/editing the full team list and triggering a data refresh are
-          admin-only.
-        </div>
-      )}
+      {visibleAdminTabs.length > 1 && <TabBar tabs={visibleAdminTabs} activeKey={adminTab} onSelect={setAdminTab} />}
 
-      {isFullAdmin && (
+      {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
+
+      {adminTab === "refresh" && isFullAdmin && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -229,7 +462,7 @@ export default function AdminPanel({ me }) {
             <button
               onClick={doRefresh}
               disabled={refreshing}
-              className="rounded-lg bg-series1 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {refreshing ? "Refreshing…" : "Refresh now"}
             </button>
@@ -241,6 +474,15 @@ export default function AdminPanel({ me }) {
         </div>
       )}
 
+      {adminTab === "users" && !isFullAdmin && (
+        <div className="rounded-lg bg-slate-50 px-4 py-2 text-sm text-slate-600 ring-1 ring-slate-200">
+          You can add teammates here. Viewing/editing the full team list and triggering a data refresh are
+          admin-only.
+        </div>
+      )}
+
+      {adminTab === "users" && (
+      <>
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <div className="flex items-center justify-between">
           <div className="font-medium text-slate-800">{editingEmail ? `Edit access — ${editingEmail}` : "Add teammate"}</div>
@@ -346,7 +588,7 @@ export default function AdminPanel({ me }) {
             )}
             <button
               type="submit"
-              className="rounded-lg bg-series1 px-4 py-1.5 text-sm font-medium text-white sm:col-span-2 lg:col-span-1"
+              className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white sm:col-span-2 lg:col-span-1"
             >
               {editingEmail ? "Save changes" : "Add"}
             </button>
@@ -363,7 +605,7 @@ export default function AdminPanel({ me }) {
               >
                 Download template (.csv)
               </button>
-              <label className="rounded-lg bg-series1 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 cursor-pointer">
+              <label className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 cursor-pointer">
                 Upload filled-in CSV
                 <input type="file" accept=".csv" onChange={bulkFileChange} className="hidden" />
               </label>
@@ -384,7 +626,7 @@ export default function AdminPanel({ me }) {
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
                 />
-                <button type="submit" className="rounded-lg bg-series1 px-4 py-1.5 text-sm font-medium text-white">
+                <button type="submit" className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white">
                   Add all
                 </button>
               </form>
@@ -436,7 +678,7 @@ export default function AdminPanel({ me }) {
                   </td>
                   <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                   <td className="px-4 py-2 text-right">
-                    <button onClick={() => startEdit(u)} className="mr-3 text-xs text-series1 hover:underline">
+                    <button onClick={() => startEdit(u)} className="mr-3 text-xs text-brand hover:underline">
                       Edit
                     </button>
                     <button onClick={() => remove(u.email)} className="text-xs text-status-critical hover:underline">
@@ -448,6 +690,8 @@ export default function AdminPanel({ me }) {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </div>
   );
