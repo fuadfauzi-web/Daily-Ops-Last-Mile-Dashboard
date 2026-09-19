@@ -104,6 +104,10 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
         subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
         rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
       />
+      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+        Data as of {formatTime(data.captured_at)}
+      </div>
       <DataTable
         title="Shipper Watch"
         titleExtra={
@@ -138,10 +142,6 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
           </>
         }
       />
-      <div className="flex items-center gap-1.5 text-xs text-slate-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-        Data as of {formatTime(data.captured_at)}
-      </div>
     </div>
   );
 }

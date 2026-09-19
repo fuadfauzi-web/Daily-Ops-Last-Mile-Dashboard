@@ -182,6 +182,11 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+        Data as of {formatTime(data.captured_at)}
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         {isDriverLevel && (
           <input
@@ -250,10 +255,6 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
               </>
             }
           />
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-            Data as of {formatTime(data.captured_at)}
-          </div>
         </>
       )}
     </div>

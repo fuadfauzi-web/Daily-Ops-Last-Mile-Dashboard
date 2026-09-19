@@ -209,7 +209,9 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
 
   return (
     <div className="space-y-3">
-      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
+      <div className="text-sm text-slate-500">
+        {data.captured_at ? `RPU data as of ${formatTime(data.captured_at)}` : "No data yet."}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <select
           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
@@ -261,10 +263,6 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
           />
 
           <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-            RPU data as of {formatTime(data.captured_at)}
-          </div>
         </>
       )}
     </div>
@@ -336,7 +334,9 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
 
   return (
     <div className="space-y-3">
-      {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
+      <div className="text-sm text-slate-500">
+        {data.captured_at ? `${data.type_label} data as of ${formatTime(data.captured_at)}` : "No data yet."}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
         <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
@@ -378,10 +378,6 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
           />
 
           <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-            {data.type_label} data as of {formatTime(data.captured_at)}
-          </div>
         </>
       )}
     </div>

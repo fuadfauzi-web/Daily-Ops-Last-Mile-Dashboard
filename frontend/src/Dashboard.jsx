@@ -398,6 +398,11 @@ export default function Dashboard({ me }) {
         rows={detailRows}
       />
 
+      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+        Data as of {formatTime(data.captured_at)} · {filteredStations.length} stations in scope
+      </div>
+
       {showTotalCard && (
         <SummaryCard label="TOTAL LAST MILE" active={false} clickable={false} emphasis stats={cardStats(sumMetrics(scopedStations))} />
       )}
@@ -534,11 +539,6 @@ export default function Dashboard({ me }) {
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
         />
       )}
-
-      <div className="flex items-center gap-1.5 text-xs text-slate-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-        Data as of {formatTime(data.captured_at)} · {filteredStations.length} stations in scope
-      </div>
     </div>
   );
 }

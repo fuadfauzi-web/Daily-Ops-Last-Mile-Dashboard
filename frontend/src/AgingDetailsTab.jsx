@@ -156,6 +156,12 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
   return (
     <div className="space-y-3">
+      {data && (
+        <div className="flex items-center gap-1.5 text-sm text-slate-500">
+          <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
+          Data as of {formatTime(data.captured_at)}
+        </div>
+      )}
       <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
 
       {!data && <Skeleton />}
@@ -250,10 +256,6 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
               </>
             }
           />
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-            Data as of {formatTime(data.captured_at)}
-          </div>
         </>
       )}
     </div>
