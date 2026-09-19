@@ -23,7 +23,7 @@ import db
 from aggregate import (
     DRILLDOWN_METRICS, METRIC_KEYS, ROUTED_STATION_KEYS, SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS,
     build_routed_view, build_shipment_details, build_station_metrics, merge_routed_into_station_metrics,
-    rollup, rollup_routed,
+    rollup, rollup_routed, rollup_shipment_details,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
