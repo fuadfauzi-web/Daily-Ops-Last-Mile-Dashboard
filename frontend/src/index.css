@@ -13,3 +13,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Comfortable density: ~25% bigger rows/type for every shared table, applied
+   globally so components don't need a density prop threaded through them. */
+:root[data-density="comfortable"] table {
+  font-size: 0.9375rem;
+}
+:root[data-density="comfortable"] table td,
+:root[data-density="comfortable"] table th {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}

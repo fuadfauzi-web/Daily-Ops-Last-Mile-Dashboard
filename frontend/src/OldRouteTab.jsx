@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { formatTime } from "./lib/format";
+import DataTable from "./components/DataTable";
+import Skeleton from "./components/Skeleton";
 
 const TN_COLUMNS = [
   { key: "tracking_number", label: "Tracking Number" },
@@ -9,12 +12,6 @@ const TN_COLUMNS = [
   { key: "driver_name", label: "Driver" },
   { key: "shipper_name", label: "Shipper" },
 ];
-
-function formatTime(iso) {
-  if (!iso) return "never";
-  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
-  return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
-}
 
 export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
@@ -126,138 +123,67 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
   };
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
-  if (!data) return <div className="text-slate-500">Loading…</div>;
+  if (!data) return <Skeleton />;
   if (!data.captured_at)
     return <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>;
 
-  const stationLeadingCols = 1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1);
-  const driverLeadingCols = 1 + (showDriverStationCol ? 1 : 0);
+  const stationColumns = [
+    ...(!hideRegionCol ? [{ key: "region", label: "Region", className: () => "text-slate-500" }] : []),
+    ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    { key: "total_tn", label: "Total TN", className: () => "font-semibold text-status-critical", render: (r) => r.total_tn.toLocaleString() },
+  ];
+
+  const driverColumns = [
+    { key: "driver_name", label: "Driver", sticky: true, align: "left" },
+    ...(showDriverStationCol ? [{ key: "station_name", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
+    { key: "total_tn", label: "Total TN", className: () => "font-semibold text-status-critical", render: (r) => r.total_tn.toLocaleString() },
+  ];
+
+  const tnColumns = [
+    { key: "station_name", label: "Station", sticky: true, align: "left" },
+    ...TN_COLUMNS.map((c) => ({ key: c.key, label: c.label, className: () => "font-mono text-xs", render: (r) => r[c.key] ?? "—" })),
+  ];
 
   return (
     <div className="space-y-3">
       <div className="text-sm text-slate-500">Old Route data as of {formatTime(data.captured_at)}</div>
 
-      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-700">By station</div>
-        <div className="max-h-[40vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
-              <tr>
-                {!hideRegionCol && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleStationSort("region")}
-                  >
-                    Region {stationSortKey === "region" && (stationSortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                )}
-                {!hideZoneCol && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleStationSort("zone")}
-                  >
-                    Zone {stationSortKey === "zone" && (stationSortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                )}
-                <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
-                  onClick={() => toggleStationSort("station_name")}
-                >
-                  Station {stationSortKey === "station_name" && (stationSortDir === "asc" ? "↑" : "↓")}
-                </th>
-                <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                  onClick={() => toggleStationSort("total_tn")}
-                >
-                  Total TN {stationSortKey === "total_tn" && (stationSortDir === "asc" ? "↑" : "↓")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStations.map((r) => (
-                <tr key={r.station_code} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  {!hideRegionCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>}
-                  {!hideZoneCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>}
-                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                    {r.station_name}
-                  </td>
-                  <td className="px-4 py-2 text-center tabular-nums font-semibold text-status-critical">
-                    {r.total_tn.toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-              {filteredStations.length === 0 && (
-                <tr>
-                  <td colSpan={stationLeadingCols + 1} className="px-4 py-6 text-center text-slate-400">
-                    No stations match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        title="By station"
+        maxHeight="40vh"
+        columns={stationColumns}
+        rows={filteredStations}
+        rowKey={(r) => r.station_code}
+        sortKey={stationSortKey}
+        sortDir={stationSortDir}
+        onSort={toggleStationSort}
+        emptyMessage="No stations match."
+      />
 
-      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-          <div className="text-sm font-medium text-slate-700">By driver</div>
+      <DataTable
+        title="By driver"
+        titleExtra={
           <input
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
             placeholder="Search driver…"
             value={driverSearch}
             onChange={(e) => setDriverSearch(e.target.value)}
           />
-        </div>
-        <div className="max-h-[40vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
-              <tr>
-                <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
-                  onClick={() => toggleDriverSort("driver_name")}
-                >
-                  Driver {driverSortKey === "driver_name" && (driverSortDir === "asc" ? "↑" : "↓")}
-                </th>
-                {showDriverStationCol && (
-                  <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Station</th>
-                )}
-                <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                  onClick={() => toggleDriverSort("total_tn")}
-                >
-                  Total TN {driverSortKey === "total_tn" && (driverSortDir === "asc" ? "↑" : "↓")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDrivers.map((r, i) => (
-                <tr key={r.driver_name || i} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                    {r.driver_name}
-                  </td>
-                  {showDriverStationCol && (
-                    <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.station_name}</td>
-                  )}
-                  <td className="px-4 py-2 text-center tabular-nums font-semibold text-status-critical">
-                    {r.total_tn.toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-              {filteredDrivers.length === 0 && (
-                <tr>
-                  <td colSpan={driverLeadingCols + 1} className="px-4 py-6 text-center text-slate-400">
-                    No drivers match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        }
+        maxHeight="40vh"
+        columns={driverColumns}
+        rows={filteredDrivers}
+        rowKey={(r, i) => r.driver_name || i}
+        sortKey={driverSortKey}
+        sortDir={driverSortDir}
+        onSort={toggleDriverSort}
+        emptyMessage="No drivers match."
+      />
 
-      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-          <div className="text-sm font-medium text-slate-700">Tracking numbers</div>
+      <DataTable
+        title="Tracking numbers"
+        titleExtra={
           <button
             onClick={copyTns}
             disabled={!filteredTnRows.length}
@@ -265,61 +191,27 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
           >
             {copied ? "Copied!" : "Copy list"}
           </button>
-        </div>
-        <div className="max-h-[55vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
-              <tr>
-                <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
-                  onClick={() => toggleTnSort("station_name")}
-                >
-                  Station {tnSortKey === "station_name" && (tnSortDir === "asc" ? "↑" : "↓")}
-                </th>
-                {TN_COLUMNS.map((c) => (
-                  <th
-                    key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleTnSort(c.key)}
-                  >
-                    {c.label} {tnSortKey === c.key && (tnSortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTnRows.map((r, i) => (
-                <tr key={`${r.tracking_number}-${i}`} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                    {r.station_name}
-                  </td>
-                  {TN_COLUMNS.map((c) => (
-                    <td key={c.key} className="whitespace-nowrap px-4 py-2 text-center font-mono text-xs text-slate-700">
-                      {r[c.key] ?? "—"}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {filteredTnRows.length === 0 && (
-                <tr>
-                  <td colSpan={1 + TN_COLUMNS.length} className="px-4 py-6 text-center text-slate-400">
-                    No tracking numbers match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {filteredTnRows.length.toLocaleString()} tracking numbers
-          {data.tn_rows_truncated && (
-            <span className="ml-1 font-medium text-status-critical">
-              · showing the oldest {filteredTnRows.length.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
-              nationwide — filter by region/zone/station to see the rest
-            </span>
-          )}
-        </div>
-      </div>
+        }
+        maxHeight="55vh"
+        columns={tnColumns}
+        rows={filteredTnRows}
+        rowKey={(r, i) => `${r.tracking_number}-${i}`}
+        sortKey={tnSortKey}
+        sortDir={tnSortDir}
+        onSort={toggleTnSort}
+        emptyMessage="No tracking numbers match."
+        footer={
+          <>
+            {filteredTnRows.length.toLocaleString()} tracking numbers
+            {data.tn_rows_truncated && (
+              <span className="ml-1 font-medium text-status-critical">
+                · showing the oldest {filteredTnRows.length.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
+                nationwide — filter by region/zone/station to see the rest
+              </span>
+            )}
+          </>
+        }
+      />
     </div>
   );
 }

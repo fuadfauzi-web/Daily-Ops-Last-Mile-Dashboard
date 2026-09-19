@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { formatTime } from "./lib/format";
+import DataTable from "./components/DataTable";
+import Skeleton from "./components/Skeleton";
 import OldRouteTab from "./OldRouteTab";
 
 const LEVELS = [
@@ -33,12 +36,6 @@ const DRIVER_COLUMNS = [
   { key: "completion_rate", label: "Completion Rate", percent: true, rate: "completion" },
   { key: "tenure", label: "Tenure", render: "tenure" },
 ];
-
-function formatTime(iso) {
-  if (!iso) return "never";
-  const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z");
-  return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
-}
 
 function successRateClass(rate) {
   if (rate < 70) return "text-status-critical font-semibold";
@@ -150,18 +147,33 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   };
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
-  if (!data) return <div className="text-slate-500">Loading…</div>;
+  if (!data) return <Skeleton />;
   if (!data.captured_at)
     return <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>;
 
   const isDriverLevel = level === "driver";
   const isGroupLevel = level === "region" || level === "zone";
-  const columns = isDriverLevel ? DRIVER_COLUMNS : STATION_COLUMNS;
+  const levelColumns = isDriverLevel ? DRIVER_COLUMNS : STATION_COLUMNS;
   const showRegionCol = (level === "zone" || level === "station") && !hideRegionCol;
   const showZoneCol = level === "station" && !hideZoneCol;
   const showDriverStationCol = isDriverLevel && me.scope_type !== "station";
-  const leadingCols =
-    (showRegionCol ? 1 : 0) + (showZoneCol ? 1 : 0) + 1 + (isGroupLevel ? 1 : 0) + (showDriverStationCol ? 1 : 0);
+  const identityLabel = level === "driver" ? "Driver" : LEVELS.find((l) => l.key === level).label;
+
+  const columns = [
+    ...(showRegionCol ? [{ key: "region", label: "Region", sortable: false, className: () => "text-slate-500" }] : []),
+    ...(showZoneCol ? [{ key: "zone", label: "Zone", sortable: false, className: () => "text-slate-500" }] : []),
+    { key: "name", label: identityLabel, sticky: true, align: "left" },
+    ...(isGroupLevel ? [{ key: "station_count", label: "Stations", className: () => "text-slate-500" }] : []),
+    ...(showDriverStationCol ? [{ key: "station_name", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
+    ...(!isDriverLevel ? [{ key: "attendance", label: "Attendance", render: (r) => renderCell({ render: "attendance" }, r) }] : []),
+    { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
+    ...levelColumns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      render: (r) => renderCell(c, r),
+      className: (r) => (c.rate ? rateClass(c, r[c.key]) : "text-slate-700"),
+    })),
+  ];
 
   return (
     <div className="space-y-3">
@@ -202,112 +214,24 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
           excludeEastMalaysia={excludeEastMalaysia}
         />
       ) : (
-      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-ink text-left text-white">
-              <tr>
-                {showRegionCol && (
-                  <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Region</th>
-                )}
-                {showZoneCol && <th className="whitespace-nowrap px-4 py-2 text-center font-medium">Zone</th>}
-                <th
-                  className="sticky left-0 z-30 cursor-pointer select-none whitespace-nowrap bg-ink px-4 py-2 font-display font-medium"
-                  onClick={() => toggleSort("name")}
-                >
-                  {level === "driver" ? "Driver" : LEVELS.find((l) => l.key === level).label}{" "}
-                  {sortKey === "name" && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-                {isGroupLevel && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleSort("station_count")}
-                  >
-                    Stations {sortKey === "station_count" && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                )}
-                {showDriverStationCol && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleSort("station_name")}
-                  >
-                    Station {sortKey === "station_name" && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                )}
-                {!isDriverLevel && (
-                  <th
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleSort("attendance")}
-                  >
-                    Attendance {sortKey === "attendance" && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                )}
-                <th
-                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                  onClick={() => toggleSort("total_routed")}
-                >
-                  Total Routed {sortKey === "total_routed" && (sortDir === "asc" ? "↑" : "↓")}
-                </th>
-                {columns.map((c) => (
-                  <th
-                    key={c.key}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-display font-medium hover:bg-brand"
-                    onClick={() => toggleSort(c.key)}
-                  >
-                    {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.station_code || r.driver_name || r.name || i} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  {showRegionCol && (
-                    <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.region}</td>
-                  )}
-                  {showZoneCol && <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.zone}</td>}
-                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 font-medium text-slate-800">
-                    {r.name}
-                  </td>
-                  {isGroupLevel && (
-                    <td className="px-4 py-2 text-center tabular-nums text-slate-500">{r.station_count}</td>
-                  )}
-                  {showDriverStationCol && (
-                    <td className="whitespace-nowrap px-4 py-2 text-center text-slate-500">{r.station_name}</td>
-                  )}
-                  {!isDriverLevel && (
-                    <td className="px-4 py-2 text-center tabular-nums text-slate-700">
-                      {renderCell({ render: "attendance" }, r)}
-                    </td>
-                  )}
-                  <td className="px-4 py-2 text-center tabular-nums text-slate-700">{r.total_routed.toLocaleString()}</td>
-                  {columns.map((c) => (
-                    <td key={c.key} className={`px-4 py-2 text-center tabular-nums ${c.rate ? rateClass(c, r[c.key]) : "text-slate-700"}`}>
-                      {renderCell(c, r)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={leadingCols + (isDriverLevel ? 0 : 1) + 1 + columns.length}
-                    className="px-4 py-6 text-center text-slate-400"
-                  >
-                    No rows match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {rows.length} rows · Completion Rate = (Total Routed − Current OVFD) / Total Routed — 100% means nothing
-          is left on the vehicle. Attendance shows rescue drivers in parentheses when present; Hybrid/Independent
-          break down by HD/HR/ID/IR. Driver "Station" is where they're currently routing today (may differ from
-          home station for a rescue driver). Driver tenure needs the Metabase driver-tenure connection to be set up.
-        </div>
-      </div>
+        <DataTable
+          maxHeight="70vh"
+          columns={columns}
+          rows={rows}
+          rowKey={(r, i) => r.station_code || r.driver_name || r.name || i}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          emptyMessage="No rows match."
+          footer={
+            <>
+              {rows.length} rows · Completion Rate = (Total Routed − Current OVFD) / Total Routed — 100% means nothing
+              is left on the vehicle. Attendance shows rescue drivers in parentheses when present; Hybrid/Independent
+              break down by HD/HR/ID/IR. Driver "Station" is where they're currently routing today (may differ from
+              home station for a rescue driver). Driver tenure needs the Metabase driver-tenure connection to be set up.
+            </>
+          }
+        />
       )}
     </div>
   );

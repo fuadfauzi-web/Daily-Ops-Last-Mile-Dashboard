@@ -3,10 +3,12 @@ import { api } from "./api";
 import Dashboard from "./Dashboard";
 import AdminPanel from "./AdminPanel";
 import Logo from "./components/Logo";
+import { useDensity } from "./lib/density";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
   const [tab, setTab] = useState("dashboard");
+  const [density, setDensity] = useDensity();
 
   useEffect(() => {
     api
@@ -64,6 +66,20 @@ export default function App() {
             <h1 className="font-display text-sm font-semibold tracking-tight text-ink">Daily Ops Last Mile</h1>
           </div>
           <div className="flex items-center gap-3">
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
+              <button
+                onClick={() => setDensity("compact")}
+                className={`px-3 py-1 ${density === "compact" ? "bg-ink text-white" : "text-slate-500"}`}
+              >
+                Compact
+              </button>
+              <button
+                onClick={() => setDensity("comfortable")}
+                className={`px-3 py-1 ${density === "comfortable" ? "bg-ink text-white" : "text-slate-500"}`}
+              >
+                Comfortable
+              </button>
+            </div>
             {(me.role === "admin" || me.role === "manager" || me.role === "region") && (
               <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
                 {["dashboard", "admin"].map((t) => (
