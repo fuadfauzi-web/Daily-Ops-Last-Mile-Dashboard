@@ -71,12 +71,17 @@ function renderCell(col, r) {
   return col.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
 }
 
-export default function RoutedViewTab({ regionFilter, zoneFilter, search, me }) {
+export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [level, setLevel] = useState("station");
   const [sortKey, setSortKey] = useState("total_routed");
   const [sortDir, setSortDir] = useState("desc");
+  // The master "Search station..." box (shared with every other tab) filters the
+  // Driver table by current station instead of by name -- driver names don't
+  // contain station names, so reusing it as a name filter always came back
+  // empty. Driver name gets its own local search box below.
+  const [driverSearch, setDriverSearch] = useState("");
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
@@ -104,6 +109,9 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me }) 
       }));
     }
 
+    if (excludeEastMalaysia && level !== "region") base = base.filter((r) => r.region !== "East Malaysia");
+    if (excludeEastMalaysia && level === "region") base = base.filter((r) => r.key !== "East Malaysia");
+
     if (level === "zone" || level === "station" || level === "driver") {
       if (regionFilter !== "all") base = base.filter((r) => r.region === regionFilter);
     }
@@ -112,6 +120,12 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me }) 
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
+      base = level === "driver"
+        ? base.filter((r) => r.station_name?.toLowerCase().includes(q))
+        : base.filter((r) => r.name?.toLowerCase().includes(q));
+    }
+    if (level === "driver" && driverSearch.trim()) {
+      const q = driverSearch.trim().toLowerCase();
       base = base.filter((r) => r.name?.toLowerCase().includes(q));
     }
 
@@ -123,7 +137,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me }) 
       if (typeof av === "boolean") return sortDir === "asc" ? Number(av) - Number(bv) : Number(bv) - Number(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, level, regionFilter, zoneFilter, search, sortKey, sortDir]);
+  }, [data, level, regionFilter, zoneFilter, search, driverSearch, sortKey, sortDir, excludeEastMalaysia]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -151,22 +165,32 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me }) 
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-slate-500">Data as of {formatTime(data.captured_at)}</div>
-        <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-          {LEVELS.map((l) => (
-            <button
-              key={l.key}
-              onClick={() => {
-                setLevel(l.key);
-                setSortKey("total_routed");
-                setSortDir("desc");
-              }}
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
-                level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {isDriverLevel && (
+            <input
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              placeholder="Search driver…"
+              value={driverSearch}
+              onChange={(e) => setDriverSearch(e.target.value)}
+            />
+          )}
+          <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+            {LEVELS.map((l) => (
+              <button
+                key={l.key}
+                onClick={() => {
+                  setLevel(l.key);
+                  setSortKey("total_routed");
+                  setSortDir("desc");
+                }}
+                className={`rounded-md px-3 py-1 text-sm font-medium ${
+                  level === l.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

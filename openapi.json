@@ -456,10 +456,22 @@
     },
     "/api/aging-details": {
       "get": {
-        "summary": "Return the latest Aging Details snapshot (station x age-bucket pivot), scoped to the caller.",
+        "summary": "Return the latest Aging Details snapshot (station x age-bucket pivot, plus TN-level rows) for one of 5 sub-views, scoped to the caller.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "overall",
+              "description": "overall | zero_attempt | delivery | ats | cod"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Latest snapshot, scoped to the caller",
+            "description": "Latest snapshot for that type, scoped to the caller",
             "content": {
               "application/json": {
                 "schema": {
@@ -467,51 +479,9 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/api/aging-drilldown": {
-      "get": {
-        "summary": "Return the tracking numbers behind one station's parcel count in one age bucket.",
-        "parameters": [
-          {
-            "name": "station_code",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "bucket",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "age_0 | age_1 | age_2 | age_3 | age_4_6 | age_7_plus"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Tracking numbers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgingDrilldownResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "That station isn't in the caller's scope"
-          },
-          "404": {
-            "description": "Unknown station"
           },
           "422": {
-            "description": "bucket is not one of the six age buckets"
+            "description": "type is not one of the 5 aging sub-views"
           }
         }
       }
@@ -627,6 +597,14 @@
             "type": "integer",
             "description": "total_in_hub, status Arrived at Sorting Hub, PRIOR tag, aged >0 days"
           },
+          "unsweep_document": {
+            "type": "integer",
+            "description": "query 58 (Unsweep), grouped by last_scan_hub_name, TN matches the document pattern (-DO/-MYPSO/MYRDO*/contains GRN)"
+          },
+          "unsweep_parcel": {
+            "type": "integer",
+            "description": "query 58 (Unsweep), grouped by last_scan_hub_name, everything not matching the document pattern"
+          },
           "cod_pct_hub": {
             "type": "number",
             "description": "% of total_in_hub that is COD"
@@ -660,6 +638,8 @@
           "still_ovfd",
           "prior_d0",
           "prior_gt_d0",
+          "unsweep_document",
+          "unsweep_parcel",
           "cod_pct_hub",
           "total_routed",
           "attendance",
@@ -962,6 +942,11 @@
           "fresh_attempt_pct": {
             "type": "number",
             "description": "fresh_attempt_count / total_fresh * 100; target 96%"
+          },
+          "process_time_minutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Average minute-of-day (0-1439) 1st_sweep_at_WM_station finished, today only (Malaysia time); null if no sweeps recorded today"
           }
         },
         "required": [
@@ -970,7 +955,8 @@
           "fresh_unscan",
           "latlong",
           "fresh_attempt_count",
-          "fresh_attempt_pct"
+          "fresh_attempt_pct",
+          "process_time_minutes"
         ]
       },
       "ShipmentStationRow": {
@@ -1235,7 +1221,7 @@
           },
           "driver_type": {
             "type": "string",
-            "description": "Hybrid Driver | Hybrid Rider | Independent Driver | Independent Rider | Unknown"
+            "description": "Hybrid Driver | Hybrid Rider | Independent Driver | Independent Rider | OPS | Unknown -- only HD/HR/ID/IR count toward Attendance, everything else (OPS, Unknown) still appears here and in every other total"
           },
           "home_station": {
             "type": "string",
@@ -1677,6 +1663,14 @@
             "nullable": true,
             "format": "date-time"
           },
+          "type": {
+            "type": "string",
+            "description": "overall | zero_attempt | delivery | ats | cod"
+          },
+          "type_label": {
+            "type": "string",
+            "description": "e.g. 'Aging Overall'"
+          },
           "buckets": {
             "type": "array",
             "items": {
@@ -1701,17 +1695,27 @@
             "items": {
               "$ref": "#/components/schemas/AgingGroupRow"
             }
+          },
+          "tn_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgingRow"
+            },
+            "description": "Full TN-level detail for this type, scoped to the caller"
           }
         },
         "required": [
           "captured_at",
+          "type",
+          "type_label",
           "buckets",
           "stations",
           "zones",
-          "regions"
+          "regions",
+          "tn_rows"
         ]
       },
-      "AgingDrilldownResponse": {
+      "AgingRow": {
         "type": "object",
         "properties": {
           "station_code": {
@@ -1720,26 +1724,39 @@
           "station_name": {
             "type": "string"
           },
-          "bucket": {
-            "type": "string"
-          },
-          "tracking_numbers": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "as_of": {
+          "tracking_number": {
             "type": "string",
-            "nullable": true,
-            "format": "date-time"
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "age": {
+            "type": "integer",
+            "description": "days_since_current_hub_first_sweep"
+          },
+          "tag": {
+            "type": "string",
+            "nullable": true
+          },
+          "cod": {
+            "type": "string",
+            "nullable": true
+          },
+          "dest_hub": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
           "station_code",
           "station_name",
-          "bucket",
-          "tracking_numbers"
+          "attempts",
+          "age"
         ]
       }
     }

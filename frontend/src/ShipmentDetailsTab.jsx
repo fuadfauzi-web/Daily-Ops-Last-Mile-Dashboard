@@ -29,6 +29,18 @@ function tripLabel(isoTime) {
   return d.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
+// process_time_minutes is the average minute-of-day (0-1439) the day's sweeps
+// finished, today only -- render it the same way a clock would.
+function formatProcessTime(minutes) {
+  if (minutes == null) return <span className="text-slate-300">—</span>;
+  const total = Math.round(minutes);
+  const h24 = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  const ampm = h24 >= 12 ? "pm" : "am";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
+}
+
 function TripBadge({ trip }) {
   if (!trip) return <span className="text-slate-300">—</span>;
   return (
@@ -108,7 +120,7 @@ function ShipmentTnModal({ state, onClose }) {
   );
 }
 
-export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me }) {
+export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("fresh_unscan");
@@ -128,6 +140,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
   const filteredStations = useMemo(() => {
     if (!data) return [];
     let rows = data.stations;
+    if (excludeEastMalaysia) rows = rows.filter((r) => r.region !== "East Malaysia");
     if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
     if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
     if (search.trim()) {
@@ -140,7 +153,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
+  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -196,6 +209,12 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                   </th>
                 ))}
                 <th className="whitespace-nowrap px-4 py-2 text-left font-medium">LH Timing (1st / 2nd trip)</th>
+                <th
+                  className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-center font-medium hover:bg-brand"
+                  onClick={() => toggleSort("process_time_minutes")}
+                >
+                  Process Time {sortKey === "process_time_minutes" && (sortDir === "asc" ? "↑" : "↓")}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -243,12 +262,15 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                       <TripBadge trip={r.lh_trips[1]} />
                     </div>
                   </td>
+                  <td className="px-4 py-2 text-center tabular-nums text-slate-700">
+                    {formatProcessTime(r.process_time_minutes)}
+                  </td>
                 </tr>
               ))}
               {filteredStations.length === 0 && (
                 <tr>
                   <td
-                    colSpan={1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1) + COLUMNS.length + 1}
+                    colSpan={1 + (hideRegionCol ? 0 : 1) + (hideZoneCol ? 0 : 1) + COLUMNS.length + 2}
                     className="px-4 py-6 text-center text-slate-400"
                   >
                     No stations match.
@@ -259,7 +281,8 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
           </table>
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-          {filteredStations.length} rows · LH Timing: green &lt;10am, blue 10–11am, amber 11am–12pm, red after 12pm
+          {filteredStations.length} rows · LH Timing: green &lt;10am, blue 10–11am, amber 11am–12pm, red after 12pm.
+          Process Time is today's average 1st-sweep finish time.
         </div>
       </div>
     </div>

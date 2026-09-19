@@ -14,13 +14,13 @@ const COLUMNS = [
   { key: "watson_aging", label: "Watson Aging >D0", clickable: true },
   { key: "orca_ovfd", label: "Orca OVFD", clickable: true },
   { key: "orca_other", label: "Orca Other Status", clickable: true },
-  { key: "zalora_zero_attempt", label: "Zalora 0 Attempt", clickable: true },
-  { key: "zalora_ovfd", label: "Zalora OVFD", clickable: true },
-  { key: "zalora_other", label: "Zalora Other Status", clickable: true },
-  { key: "restock_bundles", label: "Restock Bundles" },
-  { key: "restock_pieces", label: "Restock Pieces" },
-  { key: "restock_potential_breach", label: "Restock Potential Breach" },
-  { key: "restock_breach", label: "Restock Breach" },
+  { key: "zalora_zero_attempt", label: "Zalora NXD 0 Attempt", clickable: true },
+  { key: "zalora_ovfd", label: "Zalora NXD OVFD", clickable: true },
+  { key: "zalora_other", label: "Zalora NXD Other Status", clickable: true },
+  { key: "restock_bundles", label: "Restock Bundles", clickable: true },
+  { key: "restock_pieces", label: "Restock Pieces", clickable: true },
+  { key: "restock_potential_breach", label: "Restock Potential Breach", clickable: true },
+  { key: "restock_breach", label: "Restock Breach", clickable: true },
 ];
 
 function formatTime(iso) {
@@ -99,7 +99,7 @@ function TnModal({ state, onClose }) {
   );
 }
 
-export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me }) {
+export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("amway_zero_attempt");
@@ -119,6 +119,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me }
   const filteredStations = useMemo(() => {
     if (!data) return [];
     let rows = data.stations;
+    if (excludeEastMalaysia) rows = rows.filter((r) => r.region !== "East Malaysia");
     if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
     if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
     if (search.trim()) {
@@ -131,7 +132,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me }
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
+  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");

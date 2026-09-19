@@ -22,7 +22,7 @@ destination yet, so it lands in `pending_ats` at the hub it's currently sitting 
 not counted in total_in_hub/zero_attempt/etc there.
 """
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from stations import ABBR_TO_HUB, HUBS, REGIONS, ZONES, FULL_NAME_TO_HUB
 
@@ -33,7 +33,7 @@ METRIC_KEYS = (
     "pending_ats_zero_attempt", "pending_ats_attempted",
     "missing_open", "missing_hub", "missing_ship_in",
     "total_fresh", "age_gt3", "reschedule", "still_ovfd",
-    "prior_d0", "prior_gt_d0", "cod_pct_hub",
+    "prior_d0", "prior_gt_d0", "unsweep_document", "unsweep_parcel", "cod_pct_hub",
     "total_routed", "attendance", "cod_pct_routed",
 )
 
@@ -46,6 +46,7 @@ DRILLDOWN_METRICS = (
     "pending_ats_zero_attempt", "pending_ats_attempted",
     "missing_open", "missing_hub", "missing_ship_in",
     "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
+    "unsweep_document", "unsweep_parcel",
 )
 
 # Item 4: shipment_dest_hub_name values that mean "this parcel is routed OUT of the
@@ -57,6 +58,19 @@ _SHIP_OUT_CODES = {
     "STW1-STW1", "TIN1-TIN1", "TMH1-TMH1", "TPG1-TPG1",
 }
 _B2B_TN_PATTERN = re.compile(r"MYPSO|MYRDO|-DO")
+
+# Unsweep (query 58) split: TN ending in -DO/-MYPSO, starting with MYRDO, or
+# containing GRN anywhere -> "document"; everything else -> "parcel".
+# ASSUMPTION -- query 58's hub field is guessed as last_scan_hub_name (query 78's
+# spelling); confirm once live, the count may come back all-zero if the real
+# column is spelled differently.
+_UNSWEEP_DOC_PATTERN = re.compile(r"-DO$|-MYPSO$|^MYRDO|GRN", re.IGNORECASE)
+
+
+def _classify_unsweep(tn: str | None) -> str:
+    if tn and _UNSWEEP_DOC_PATTERN.search(tn):
+        return "document"
+    return "parcel"
 
 
 def _empty_station_row(hub_code: str) -> dict:
@@ -128,6 +142,7 @@ def build_station_metrics(
     health_v3_rows: list[dict],
     missing_rows: list[dict],
     total_shipments_rows: list[dict],
+    unsweep_rows: list[dict] = (),
 ) -> tuple[dict[str, dict], dict[str, dict]]:
     """Returns ({hub_code: metrics_row}, {hub_code: {metric: [tracking_id, ...]}}).
 
@@ -229,6 +244,16 @@ def build_station_metrics(
         if hub in by_station:
             by_station[hub]["total_fresh"] = r.get("total_orders") or 0
 
+    for r in unsweep_rows:
+        hub = r.get("last_scan_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        tn = r.get("tracking_id")
+        kind = f"unsweep_{_classify_unsweep(tn)}"
+        row[kind] += 1
+        tn_details[hub][kind].append(tn)
+
     return by_station, tn_details
 
 
@@ -253,11 +278,15 @@ SHIPMENT_DETAIL_KEYS = ("total_fresh", "total_shipment", "fresh_unscan", "latlon
 SHIPMENT_DRILLDOWN_METRICS = ("fresh_unscan", "latlong")
 
 _RTS_TAG = "RTS"
+_MYT = timezone(timedelta(hours=8))
 
 
 def _empty_shipment_row(hub_code: str) -> dict:
     name, _full, zone, region = HUBS[hub_code]
-    row = {"station_code": hub_code, "station_name": name, "zone": zone, "region": region, "lh_trips": []}
+    row = {
+        "station_code": hub_code, "station_name": name, "zone": zone, "region": region,
+        "lh_trips": [], "process_time_minutes": None,
+    }
     row.update({k: 0 for k in SHIPMENT_DETAIL_KEYS})
     return row
 
@@ -268,6 +297,11 @@ def build_shipment_details(
     """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}})."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
+    # "Process Time" = average time-of-day 1st_sweep_at_WM_station finished, today
+    # only (in Malaysia time) -- everything else is "0.00%"-style noise from other
+    # days sitting in the same query result.
+    today_myt = datetime.now(_MYT).strftime("%Y-%m-%d")
+    sweep_minutes: dict[str, list[float]] = {hub: [] for hub in HUBS}
 
     for r in total_shipments_rows:
         raw_name = (r.get("dest_hub_name") or "").strip().lower()
@@ -283,9 +317,14 @@ def build_shipment_details(
         tn = r.get("tracking_id")
         tag = (r.get("tag") or "").upper()
 
-        if not r.get("1st_sweep_at_WM_station"):
+        sweep_raw = r.get("1st_sweep_at_WM_station")
+        if not sweep_raw:
             row["fresh_unscan"] += 1
             tn_details[hub]["fresh_unscan"].append(tn)
+        else:
+            sweep_dt = _parse_dt(sweep_raw)
+            if sweep_dt is not None and sweep_dt.strftime("%Y-%m-%d") == today_myt:
+                sweep_minutes[hub].append(sweep_dt.hour * 60 + sweep_dt.minute + sweep_dt.second / 60)
 
         if r.get("shp_dest_hub_name") != r.get("latest_dest_hub_name") and _RTS_TAG not in tag:
             row["latlong"] += 1
@@ -293,6 +332,10 @@ def build_shipment_details(
 
         if r.get("first_attempt_date"):
             row["fresh_attempt_count"] += 1
+
+    for hub, mins in sweep_minutes.items():
+        if mins:
+            by_station[hub]["process_time_minutes"] = round(sum(mins) / len(mins), 1)
 
     for r in lh_rows:
         hub = r.get("dest_hub_name")
@@ -352,18 +395,23 @@ _DRIVER_POSITION_LABELS = {
 }
 
 
-def _parse_driver(driver_name: str) -> dict | None:
-    """Returns None for OPS routes (hub routes, no real driver -- excluded from
-    attendance/driver-level view entirely, though their volume still counts in
-    Total Routed/Success/OVFD/COD at the station level)."""
-    if "OPS" in (driver_name or "").upper():
-        return None
-    parts = [p.strip() for p in (driver_name or "").split("-")]
+_ATTENDANCE_POSITIONS = {"HD", "HR", "ID", "IR"}
+
+
+def _parse_driver(driver_name: str) -> dict:
+    """Always returns a row -- OPS routes (hub routes, no real driver) and anything
+    unparseable still get a driver_row (station totals and the driver table include
+    everyone), they just never count toward Attendance/HD/HR/ID/IR headcount, which
+    is the only place position matters. See build_routed_view."""
+    name = driver_name or ""
+    if "OPS" in name.upper():
+        return {"name": name, "home_hub": None, "position": "OPS", "label": "OPS"}
+    parts = [p.strip() for p in name.split("-")]
     if len(parts) < 3:
-        return {"name": driver_name, "home_hub": None, "position": None, "label": "Unknown"}
+        return {"name": name, "home_hub": None, "position": None, "label": "Unknown"}
     abbr, position = parts[0].upper(), parts[1].upper()
     return {
-        "name": driver_name,
+        "name": name,
         "home_hub": ABBR_TO_HUB.get(abbr),
         "position": position,
         "label": _DRIVER_POSITION_LABELS.get(position, "Unknown"),
@@ -396,10 +444,13 @@ def _with_rates(row: dict) -> dict:
 def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
     """Returns ({hub_code: station_row}, [driver_row, ...]).
 
-    Attendance counts unique non-OPS drivers with a route today at that station,
-    split into staff (HD/HR) vs independent (ID/IR), plus a "rescue" sub-count for
-    drivers whose name-prefix home station differs from the station they're
-    currently routing at (still counted in attendance, just flagged).
+    Attendance counts unique drivers whose position is HD/HR/ID/IR (Hybrid/
+    Independent) with a route today at that station -- OPS and anything
+    unparseable is excluded from Attendance/HD/HR/ID/IR headcount ONLY, but still
+    appears as its own row in the driver table and counts everywhere else
+    (Total Routed/Success/OVFD/COD), same as any other route. "Rescue" flags a
+    driver whose name-prefix home station differs from where they're currently
+    routing (still counted in attendance, just flagged).
     """
     by_station = {hub: _empty_routed_row(hub) for hub in HUBS}
     seen_drivers: dict[str, set[str]] = {hub: set() for hub in HUBS}
@@ -418,9 +469,10 @@ def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[di
         row["total_cod"] += r.get("Total COD") or 0
 
         parsed = _parse_driver(r.get("Driver") or "")
-        if parsed is None:
-            continue  # OPS route -- volume already counted above, no driver headcount
-        if parsed["name"] not in seen_drivers[hub]:
+        # Attendance/HD/HR/ID/IR headcount is the ONLY place a driver's position
+        # matters -- OPS and unparseable names still get a driver_row below, and
+        # still count in every other total (already added above regardless).
+        if parsed["position"] in _ATTENDANCE_POSITIONS and parsed["name"] not in seen_drivers[hub]:
             seen_drivers[hub].add(parsed["name"])
             row["attendance"] += 1
             position_key = {"HD": "attendance_hd", "HR": "attendance_hr", "ID": "attendance_id", "IR": "attendance_ir"}.get(parsed["position"])
@@ -574,6 +626,7 @@ SHIPPER_WATCH_KEYS = (
 SHIPPER_DRILLDOWN_METRICS = (
     "amway_zero_attempt", "amway_aging", "watson_zero_attempt", "watson_aging",
     "orca_ovfd", "orca_other", "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
+    "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
 )
 
 
@@ -653,24 +706,34 @@ def build_shipper_watch(
     # Restock NXD: counted by bundle, not by row -- a bundle_tracking_number
     # repeats across rows (one per tracking_id inside it), and piece_count is
     # the bundle's actual parcel count. Grouped by last_scan_hub (where it
-    # physically is), matching the rest of the app's convention.
+    # physically is), matching the rest of the app's convention. Clicking
+    # Bundles/Potential Breach/Breach lists bundle_tracking_numbers; clicking
+    # Pieces lists the individual tracking_id rows seen under those bundles
+    # (may not exactly equal the summed piece_count, which is the bundle's own
+    # declared figure, not a row count).
     seen_bundles: dict[str, set] = {hub: set() for hub in HUBS}
     for r in restock_rows:
         hub = r.get("last_scan_hub")
         row = by_station.get(hub)
         if row is None:
             continue
+        piece_tn = r.get("tracking_id")
+        if piece_tn:
+            tn_details[hub]["restock_pieces"].append(piece_tn)
         bundle = r.get("bundle_tracking_number")
         if not bundle or bundle in seen_bundles[hub]:
             continue
         seen_bundles[hub].add(bundle)
         row["restock_bundles"] += 1
         row["restock_pieces"] += r.get("piece_count") or 0
+        tn_details[hub]["restock_bundles"].append(bundle)
         days_group = r.get("days_group") or ""
         if "Potential" in days_group:
             row["restock_potential_breach"] += 1
+            tn_details[hub]["restock_potential_breach"].append(bundle)
         elif "Breach" in days_group:
             row["restock_breach"] += 1
+            tn_details[hub]["restock_breach"].append(bundle)
 
     return by_station, tn_details
 
@@ -689,11 +752,16 @@ def rollup_shipper_watch(station_rows: list[dict], group_key: str) -> list[dict]
 
 
 # ---------------------------------------------------------------------------
-# Aging Details tab (query 78 again): a station x age-bucket pivot. Grouped by
-# last_scan_hub_name like everything else, but -- unlike the main Age>3 metric --
-# INCLUDING On Hold / On Vehicle for Delivery statuses, so this is the full
-# picture of everything sitting in a hub by age, not just what's still awaiting
-# an attempt.
+# Aging Details tab (query 78 again): five sub-views sharing one age-bucket pivot
+# shape, each also with a full TN-level row list. All grouped by
+# last_scan_hub_name, not dest_hub.
+#   overall      -- every tracking number, no filter
+#   zero_attempt -- delivery_attempts=0, status=Arrived at Sorting Hub, hub match
+#   delivery     -- status=Arrived at Sorting Hub, hub match (any attempt count)
+#   ats          -- hub doesn't match dest_hub, age > 0
+#   cod          -- cod = Yes_cod
+# "hub match" = last_scan_hub_name == dest_hub. A row can land in several types
+# at once (e.g. overall + delivery + zero_attempt + cod).
 # ---------------------------------------------------------------------------
 
 AGING_BUCKETS = ("0", "1", "2", "3", "4-6", "7+")
@@ -702,6 +770,15 @@ AGING_BUCKETS = ("0", "1", "2", "3", "4-6", "7+")
 AGING_BUCKET_KEYS = {"0": "age_0", "1": "age_1", "2": "age_2", "3": "age_3", "4-6": "age_4_6", "7+": "age_7_plus"}
 AGING_BUCKET_LABELS = {v: k for k, v in AGING_BUCKET_KEYS.items()}
 AGING_KEYS = ("total",) + tuple(AGING_BUCKET_KEYS.values())
+
+AGING_TYPES = ("overall", "zero_attempt", "delivery", "ats", "cod")
+AGING_TYPE_LABELS = {
+    "overall": "Aging Overall",
+    "zero_attempt": "Aging 0 Attempt",
+    "delivery": "Aging Delivery",
+    "ats": "Aging ATS",
+    "cod": "Aging COD",
+}
 
 
 def _age_bucket(age: int) -> str:
@@ -719,24 +796,52 @@ def _empty_aging_row(hub_code: str) -> dict:
     return row
 
 
-def build_aging_details(health_v3_rows: list[dict]) -> tuple[dict[str, dict], dict[str, dict]]:
-    """Returns ({hub_code: aging_row}, {hub_code: {bucket_key: [tracking_id, ...]}})."""
-    by_station = {hub: _empty_aging_row(hub) for hub in HUBS}
-    tn_details = {hub: {k: [] for k in AGING_BUCKET_KEYS.values()} for hub in HUBS}
+def _aging_row_types(status: str | None, hub_match: bool, attempts: int, age: int, cod: str | None) -> list[str]:
+    types = ["overall"]
+    if status == "Arrived at Sorting Hub" and hub_match:
+        types.append("delivery")
+        if attempts == 0:
+            types.append("zero_attempt")
+    if not hub_match and age > 0:
+        types.append("ats")
+    if cod == "Yes_cod":
+        types.append("cod")
+    return types
+
+
+def build_aging_details(health_v3_rows: list[dict]) -> tuple[dict[str, dict[str, dict]], dict[str, list[dict]]]:
+    """Returns ({type: {hub_code: pivot_row}}, {type: [tn_row, ...]}).
+
+    tn_row carries zone/region too (for scope filtering) even though the API
+    schema only exposes the columns the Fleet Manager asked for."""
+    by_type_station = {t: {hub: _empty_aging_row(hub) for hub in HUBS} for t in AGING_TYPES}
+    by_type_rows: dict[str, list[dict]] = {t: [] for t in AGING_TYPES}
 
     for r in health_v3_rows:
         hub = r.get("last_scan_hub_name")
-        row = by_station.get(hub)
-        if row is None:
+        if hub not in HUBS:
             continue
-        tn = r.get("tracking_id")
+        name, _full, zone, region = HUBS[hub]
+        dest_hub = r.get("dest_hub")
+        status = r.get("granular_status")
+        attempts = r.get("delivery_attempts") or 0
         age = r.get("days_since_current_hub_first_sweep") or 0
+        cod = r.get("cod")
         bucket_key = AGING_BUCKET_KEYS[_age_bucket(age)]
-        row[bucket_key] += 1
-        row["total"] += 1
-        tn_details[hub][bucket_key].append(tn)
 
-    return by_station, tn_details
+        detail = {
+            "station_code": hub, "station_name": name, "zone": zone, "region": region,
+            "tracking_number": r.get("tracking_id"), "status": status, "attempts": attempts,
+            "age": age, "tag": r.get("tag"), "cod": cod, "dest_hub": dest_hub,
+        }
+
+        for t in _aging_row_types(status, hub == dest_hub, attempts, age, cod):
+            row = by_type_station[t][hub]
+            row[bucket_key] += 1
+            row["total"] += 1
+            by_type_rows[t].append(detail)
+
+    return by_type_station, by_type_rows
 
 
 def rollup_aging(station_rows: list[dict], group_key: str) -> list[dict]:

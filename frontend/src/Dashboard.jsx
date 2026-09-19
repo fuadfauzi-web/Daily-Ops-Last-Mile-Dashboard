@@ -13,6 +13,7 @@ const DRILLDOWN_METRICS = new Set([
   "pending_ats_zero_attempt", "pending_ats_attempted",
   "missing_open", "missing_hub", "missing_ship_in",
   "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
+  "unsweep_document", "unsweep_parcel",
 ]);
 
 // Volume/context metrics: shown plainly, no severity coloring (more isn't "bad").
@@ -36,11 +37,13 @@ const ALL_COLUMNS = [
   { key: "cod_pct_hub", label: "COD % (Hub)" },
   { key: "prior_d0", label: "Prior D0" },
   { key: "prior_gt_d0", label: "Prior >D0" },
-  { key: "pending_ats_zero_attempt", label: "Pending ATS (0 Attempt)" },
-  { key: "pending_ats_attempted", label: "Pending ATS (Attempted)" },
+  { key: "unsweep_document", label: "Unsweep Document" },
+  { key: "unsweep_parcel", label: "Unsweep Parcel" },
   { key: "missing_open", label: "Missing (Total)" },
   { key: "missing_hub", label: "Missing (Hub)" },
   { key: "missing_ship_in", label: "Missing (Ship-in)" },
+  { key: "pending_ats_zero_attempt", label: "Pending ATS (0 Attempt)" },
+  { key: "pending_ats_attempted", label: "Pending ATS (Attempted)" },
 ];
 
 const METRIC_KEYS = ALL_COLUMNS.map((c) => c.key);
@@ -223,23 +226,25 @@ function TnModal({ state, onClose }) {
   );
 }
 
-function SummaryCard({ label, active, clickable, totals, onClick }) {
+function SummaryCard({ label, active, clickable, totals, onClick, emphasis }) {
   const Wrapper = clickable ? "button" : "div";
   return (
     <Wrapper
       onClick={clickable ? onClick : undefined}
-      className={`rounded-lg border-t-4 bg-white p-3 text-left ring-1 ring-slate-200 ${
-        active ? "border-t-status-good bg-green-50/40" : "border-t-brand"
+      className={`rounded-lg border-t-4 p-3 text-left ring-1 ${
+        emphasis
+          ? "border-t-amber-400 bg-slate-900 ring-slate-900"
+          : `bg-white ring-slate-200 ${active ? "border-t-status-good bg-green-50/40" : "border-t-brand"}`
       }`}
     >
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-800">{label}</span>
+        <span className={`text-xs font-bold ${emphasis ? "text-white" : "font-semibold text-slate-800"}`}>{label}</span>
       </div>
       <div className="grid grid-cols-5 gap-1">
         {CARD_STATS.map((s) => (
-          <div key={s.key} className="rounded bg-slate-50 px-1 py-1 text-center">
-            <div className="text-[8px] uppercase text-slate-400">{s.label}</div>
-            <div className="text-xs font-bold text-slate-800">{fmt(s.key, totals[s.key])}</div>
+          <div key={s.key} className={`rounded px-1 py-1 text-center ${emphasis ? "bg-slate-800" : "bg-slate-50"}`}>
+            <div className={`text-[8px] uppercase ${emphasis ? "text-amber-300" : "text-slate-400"}`}>{s.label}</div>
+            <div className={`text-xs font-bold ${emphasis ? "text-white" : "text-slate-800"}`}>{fmt(s.key, totals[s.key])}</div>
           </div>
         ))}
       </div>
@@ -349,10 +354,26 @@ export default function Dashboard({ me }) {
   const [sortDir, setSortDir] = useState("desc");
   const [tab, setTab] = useState("health");
   const [modal, setModal] = useState(null);
+  // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
+  // toggle it out of every view. Defaults to included (today's behavior).
+  const [includeEastMalaysia, setIncludeEastMalaysia] = useState(true);
 
   const canPickRegion = me.scope_type === "all";
   const canPickZone = me.scope_type === "all" || me.scope_type === "region";
   const showFilterBar = me.scope_type !== "station";
+  const canToggleEastMalaysia = me.scope_type === "all";
+
+  const scopedStations = useMemo(() => {
+    if (!data) return [];
+    return canToggleEastMalaysia && !includeEastMalaysia
+      ? data.stations.filter((s) => s.region !== "East Malaysia")
+      : data.stations;
+  }, [data, includeEastMalaysia, canToggleEastMalaysia]);
+
+  const visibleRegions = useMemo(() => {
+    if (canToggleEastMalaysia && !includeEastMalaysia) return regions.filter((r) => r.region !== "East Malaysia");
+    return regions;
+  }, [regions, includeEastMalaysia, canToggleEastMalaysia]);
 
   // Region/Zone columns are redundant once they can only ever hold one value --
   // either an admin has filtered down to one, or the viewer's own access is
@@ -375,11 +396,10 @@ export default function Dashboard({ me }) {
   }, []);
 
   const zoneOptions = useMemo(() => {
-    if (!data) return [];
     const zonesInRegion =
-      regionFilter === "all" ? data.stations : data.stations.filter((s) => s.region === regionFilter);
+      regionFilter === "all" ? scopedStations : scopedStations.filter((s) => s.region === regionFilter);
     return [...new Set(zonesInRegion.map((s) => s.zone))].sort();
-  }, [data, regionFilter]);
+  }, [scopedStations, regionFilter]);
 
   const applyFilters = (rows) => {
     let out = rows;
@@ -397,8 +417,7 @@ export default function Dashboard({ me }) {
   const isGroupSort = sortKey === "region" || sortKey === "zone";
 
   const filteredStations = useMemo(() => {
-    if (!data) return [];
-    const rows = applyFilters(data.stations);
+    const rows = applyFilters(scopedStations);
     return [...rows].sort((a, b) => {
       if (isGroupSort) {
         const cmp = sortDir === "asc" ? a[sortKey].localeCompare(b[sortKey]) : b[sortKey].localeCompare(a[sortKey]);
@@ -410,7 +429,7 @@ export default function Dashboard({ me }) {
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir]);
+  }, [scopedStations, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
   const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
   const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
@@ -429,12 +448,12 @@ export default function Dashboard({ me }) {
   const cards = useMemo(() => {
     if (!data || cardMode === "none") return [];
     if (cardMode === "regions") {
-      return regions.map((r) => ({
+      return visibleRegions.map((r) => ({
         key: r.region,
         label: r.region,
         active: false,
         clickable: true,
-        totals: sumMetrics(data.stations.filter((s) => s.region === r.region)),
+        totals: sumMetrics(scopedStations.filter((s) => s.region === r.region)),
         onClick: () => {
           setRegionFilter(r.region);
           setZoneFilter("all");
@@ -448,21 +467,21 @@ export default function Dashboard({ me }) {
           label: me.scope_value,
           active: false,
           clickable: false,
-          totals: sumMetrics(data.stations.filter((s) => s.zone === me.scope_value)),
+          totals: sumMetrics(scopedStations.filter((s) => s.zone === me.scope_value)),
         },
       ];
     }
     // zones within effectiveRegion
-    const zones = [...new Set(data.stations.filter((s) => s.region === effectiveRegion).map((s) => s.zone))].sort();
+    const zones = [...new Set(scopedStations.filter((s) => s.region === effectiveRegion).map((s) => s.zone))].sort();
     return zones.map((z) => ({
       key: z,
       label: z,
       active: zoneFilter === z,
       clickable: true,
-      totals: sumMetrics(data.stations.filter((s) => s.zone === z)),
+      totals: sumMetrics(scopedStations.filter((s) => s.zone === z)),
       onClick: () => setZoneFilter(zoneFilter === z ? "all" : z),
     }));
-  }, [data, regions, cardMode, effectiveRegion, zoneFilter, me.scope_value]);
+  }, [data, visibleRegions, scopedStations, cardMode, effectiveRegion, zoneFilter, me.scope_value]);
 
   const severityRank = useSeverityRanks(filteredStations);
 
@@ -501,7 +520,13 @@ export default function Dashboard({ me }) {
       </div>
 
       {showTotalCard && (
-        <SummaryCard label="Total Malaysia" active={false} clickable={false} totals={sumMetrics(data.stations)} />
+        <SummaryCard
+          label="TOTAL MALAYSIA"
+          active={false}
+          clickable={false}
+          emphasis
+          totals={sumMetrics(scopedStations)}
+        />
       )}
 
       {cards.length > 0 && (
@@ -525,12 +550,26 @@ export default function Dashboard({ me }) {
               }}
             >
               <option value="all">All regions</option>
-              {regions.map((r) => (
+              {visibleRegions.map((r) => (
                 <option key={r.region} value={r.region}>
                   {r.region}
                 </option>
               ))}
             </select>
+          )}
+          {canToggleEastMalaysia && (
+            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={includeEastMalaysia}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIncludeEastMalaysia(checked);
+                  if (!checked && regionFilter === "East Malaysia") setRegionFilter("all");
+                }}
+              />
+              Include East Malaysia
+            </label>
           )}
           {canPickZone && (
             <select
@@ -701,18 +740,32 @@ export default function Dashboard({ me }) {
       )}
 
       {tab === "shipment" && (
-        <ShipmentDetailsTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />
+        <ShipmentDetailsTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
       )}
 
       {tab === "routed" && (
-        <RoutedViewTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />
+        <RoutedViewTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
       )}
 
       {tab === "shipper" && (
-        <ShipperWatchTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />
+        <ShipperWatchTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
       )}
 
-      {tab === "aging" && <AgingDetailsTab regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} />}
+      {tab === "aging" && (
+        <AgingDetailsTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+        />
+      )}
     </div>
   );
 }

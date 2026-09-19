@@ -21,8 +21,9 @@ from pydantic import BaseModel
 
 import db
 from aggregate import (
-    AGING_BUCKET_LABELS, AGING_KEYS, DRILLDOWN_METRICS, METRIC_KEYS, ROUTED_STATION_KEYS, SHIPMENT_DETAIL_KEYS,
-    SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
+    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, METRIC_KEYS,
+    ROUTED_STATION_KEYS, SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS,
+    SHIPPER_WATCH_KEYS,
     build_aging_details, build_routed_view, build_shipment_details, build_shipper_watch, build_station_metrics,
     merge_routed_into_station_metrics, rollup, rollup_aging, rollup_routed, rollup_shipment_details,
     rollup_shipper_watch,
@@ -30,7 +31,7 @@ from aggregate import (
 from auth import CurrentUser, get_current_user
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_RESTOCK_NXD,
-    QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_ZALORA_NXD, RedashError, fetch_query_results,
+    QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP, QUERY_ZALORA_NXD, RedashError, fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
@@ -59,13 +60,17 @@ _shipment_tn_cache_captured_at: str | None = None
 _routed_drivers: list[dict] = []
 _routed_drivers_captured_at: str | None = None
 
-# Shipper Watch / Aging Details drilldown, same in-memory pattern as _tn_cache.
+# Shipper Watch drilldown, same in-memory pattern as _tn_cache.
 _shipper_tn_cache: dict[str, dict[str, list]] = {}
 _shipper_tn_cache_captured_at: str | None = None
-_aging_tn_cache: dict[str, dict[str, list]] = {}
-_aging_tn_cache_captured_at: str | None = None
 
-_SHIPMENT_COLUMNS = SHIPMENT_DETAIL_KEYS + ("fresh_attempt_pct",)
+# Aging Details' TN-level rows, one flat list per type (region/zone/station scoping
+# happens at request time, same as _routed_drivers). Not persisted -- only the
+# pivot counts go to the DB.
+_aging_rows_cache: dict[str, list[dict]] = {t: [] for t in AGING_TYPES}
+_aging_rows_captured_at: str | None = None
+
+_SHIPMENT_COLUMNS = SHIPMENT_DETAIL_KEYS + ("fresh_attempt_pct", "process_time_minutes")
 _ROUTED_COLUMNS = ROUTED_STATION_KEYS + ("cod_pct", "success_rate", "completion_rate")
 _SHIPPER_COLUMNS = SHIPPER_WATCH_KEYS
 _AGING_COLUMNS = AGING_KEYS
@@ -87,17 +92,18 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         lh_rows = await fetch_query_results(QUERY_LH_TIMING)
         zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
         restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
+        unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
 
-        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows)
+        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
         merge_routed_into_station_metrics(by_station, routed_by_station)
         shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
-        aging_by_station, aging_tn_details = build_aging_details(health_rows)
+        aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
-        global _shipper_tn_cache_captured_at, _aging_tn_cache_captured_at
+        global _shipper_tn_cache_captured_at, _aging_rows_captured_at
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -109,9 +115,9 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         _shipper_tn_cache.clear()
         _shipper_tn_cache.update(shipper_tn_details)
         _shipper_tn_cache_captured_at = captured_at.isoformat()
-        _aging_tn_cache.clear()
-        _aging_tn_cache.update(aging_tn_details)
-        _aging_tn_cache_captured_at = captured_at.isoformat()
+        _aging_rows_cache.clear()
+        _aging_rows_cache.update(aging_by_type_rows)
+        _aging_rows_captured_at = captured_at.isoformat()
 
         params = [
             (
@@ -177,15 +183,16 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
 
         aging_params = [
             (
-                captured_at, row["station_code"], row["station_name"], row["zone"], row["region"],
+                captured_at, t, row["station_code"], row["station_name"], row["zone"], row["region"],
                 *[row[c] for c in _AGING_COLUMNS],
             )
-            for row in aging_by_station.values()
+            for t in AGING_TYPES
+            for row in aging_by_type_station[t].values()
         ]
         await db.execute_many(
             f"""INSERT INTO aging_details
-               (captured_at, station_code, station_name, zone, region, {", ".join(_AGING_COLUMNS)})
-               VALUES ({", ".join(["%s"] * (5 + len(_AGING_COLUMNS)))})""",
+               (captured_at, type, station_code, station_name, zone, region, {", ".join(_AGING_COLUMNS)})
+               VALUES ({", ".join(["%s"] * (6 + len(_AGING_COLUMNS)))})""",
             aging_params,
         )
 
@@ -290,6 +297,8 @@ class MetricFields(BaseModel):
     still_ovfd: int
     prior_d0: int
     prior_gt_d0: int
+    unsweep_document: int
+    unsweep_parcel: int
     cod_pct_hub: float
     total_routed: int
     attendance: int
@@ -428,6 +437,7 @@ class ShipmentDetailFields(BaseModel):
     latlong: int
     fresh_attempt_count: int
     fresh_attempt_pct: float
+    process_time_minutes: float | None
 
 
 class ShipmentStationRow(ShipmentDetailFields):
@@ -753,7 +763,8 @@ async def shipper_drilldown(station_code: str, metric: str, user: CurrentUser = 
 
 
 # ---------------------------------------------------------------------------
-# Aging Details
+# Aging Details -- 5 sub-views (see AGING_TYPES/AGING_TYPE_LABELS in aggregate.py),
+# each with a station x age-bucket pivot plus a full TN-level row list.
 # ---------------------------------------------------------------------------
 
 class AgingFields(BaseModel):
@@ -779,19 +790,34 @@ class AgingGroupRow(AgingFields):
     station_count: int
 
 
+class AgingRow(BaseModel):
+    station_code: str
+    station_name: str
+    tracking_number: str | None
+    status: str | None
+    attempts: int
+    age: int
+    tag: str | None
+    cod: str | None
+    dest_hub: str | None
+
+
 class AgingDetailsResponse(BaseModel):
     captured_at: str | None
+    type: str
+    type_label: str
     buckets: list[str]
     stations: list[AgingStationRow]
     zones: list[AgingGroupRow]
     regions: list[AgingGroupRow]
+    tn_rows: list[AgingRow]
 
 
-async def _fetch_aging_rows(captured_at) -> list[dict]:
+async def _fetch_aging_rows(captured_at, aging_type: str) -> list[dict]:
     db_rows = await db.fetch_all(
         f"""SELECT station_code, station_name, zone, region, {", ".join(_AGING_COLUMNS)}
-           FROM aging_details WHERE captured_at = %s""",
-        (captured_at,),
+           FROM aging_details WHERE captured_at = %s AND type = %s""",
+        (captured_at, aging_type),
     )
     return [
         {
@@ -803,14 +829,21 @@ async def _fetch_aging_rows(captured_at) -> list[dict]:
 
 
 @app.get("/api/aging-details", response_model=AgingDetailsResponse)
-async def aging_details(user: CurrentUser = Depends(get_current_user)):
-    latest = await db.fetch_one("SELECT MAX(captured_at) FROM aging_details")
+async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_current_user)):
+    if type not in AGING_TYPES:
+        raise HTTPException(status_code=422, detail=f"type must be one of {list(AGING_TYPES)}")
+
+    latest = await db.fetch_one("SELECT MAX(captured_at) FROM aging_details WHERE type = %s", (type,))
     captured_at = latest[0] if latest else None
     if captured_at is None:
-        return {"captured_at": None, "buckets": list(AGING_BUCKET_LABELS.values()), "stations": [], "zones": [], "regions": []}
+        return {
+            "captured_at": None, "type": type, "type_label": AGING_TYPE_LABELS[type],
+            "buckets": list(AGING_BUCKET_LABELS.values()), "stations": [], "zones": [], "regions": [], "tn_rows": [],
+        }
 
-    all_rows = await _fetch_aging_rows(captured_at)
+    all_rows = await _fetch_aging_rows(captured_at, type)
     scoped = _scope_filter_stations(all_rows, user)
+    scoped_codes = {r["station_code"] for r in scoped}
 
     def to_group(rows, key):
         return [
@@ -818,40 +851,17 @@ async def aging_details(user: CurrentUser = Depends(get_current_user)):
             for g in rows if g["station_count"] > 0
         ]
 
+    tn_rows = [r for r in _aging_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
+
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
+        "type": type,
+        "type_label": AGING_TYPE_LABELS[type],
         "buckets": list(AGING_BUCKET_LABELS.values()),
         "stations": scoped,
         "zones": to_group(rollup_aging(scoped, "zone"), "zone"),
         "regions": to_group(rollup_aging(scoped, "region"), "region"),
-    }
-
-
-class AgingDrilldownResponse(BaseModel):
-    station_code: str
-    station_name: str
-    bucket: str
-    tracking_numbers: list[str]
-    as_of: str | None
-
-
-@app.get("/api/aging-drilldown", response_model=AgingDrilldownResponse)
-async def aging_drilldown(station_code: str, bucket: str, user: CurrentUser = Depends(get_current_user)):
-    if bucket not in AGING_BUCKET_LABELS:
-        raise HTTPException(status_code=422, detail=f"bucket must be one of {list(AGING_BUCKET_LABELS)}")
-    hub = HUBS.get(station_code)
-    if hub is None:
-        raise HTTPException(status_code=404, detail="Unknown station")
-    name, _full_name, zone, region = hub
-    in_scope = _scope_filter_stations(
-        [{"station_code": station_code, "station_name": name, "zone": zone, "region": region}], user
-    )
-    if not in_scope:
-        raise HTTPException(status_code=403, detail="That station isn't in your scope")
-    tracking_numbers = [t for t in _aging_tn_cache.get(station_code, {}).get(bucket, []) if t]
-    return {
-        "station_code": station_code, "station_name": name, "bucket": AGING_BUCKET_LABELS[bucket],
-        "tracking_numbers": tracking_numbers, "as_of": _aging_tn_cache_captured_at,
+        "tn_rows": tn_rows,
     }
 
 

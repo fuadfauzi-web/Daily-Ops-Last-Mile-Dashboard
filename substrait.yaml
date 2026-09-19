@@ -1,18 +1,22 @@
 description: >
   Live nationwide operations dashboard for Ninja Van's last-mile fleet (143 stations
-  across Southern, Northern, Klang Valley, East Coast, and East Malaysia). Pulls
+  across Southern, Northern, Klang Valley, East Coast, and East Malaysia -- East
+  Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls
   parcel- and route-level data hourly from Redash across five views: Station Health
-  (in-hub, zero-attempt, on-hold, pending-ATS, aging, prior-tag, COD%, Missing
-  Hub-vs-Ship-in -- grouped by where each parcel physically is, not just its intended
-  destination), Shipment Details (fresh unscan, latlong, fresh-attempt %, line-haul
-  trip timing), Routed View (Total Routed/Attendance/OVFD/Success/COD%/Success
-  Rate/Completion Rate at region/zone/station/driver level, with hybrid-vs-independent
-  and rescue-route driver breakdowns), Shipper Watch (hypercare-SLA shippers Amway/
-  Watson/Orca, plus Zalora and Restock NXD monitoring), and Aging Details (a station x
-  age-bucket pivot). Every parcel-level count can be clicked to see the underlying
-  tracking numbers. Access is role-based: admins see everything and manage who can see
-  what, region managers see one region, zone managers see one zone, station staff see
-  only their station. For Fleet Managers and their regional/station teams.
+  (in-hub, zero-attempt, on-hold, pending-ATS, aging, prior-tag, COD%, Unsweep
+  Document/Parcel, Missing Hub-vs-Ship-in -- grouped by where each parcel physically
+  is, not just its intended destination), Shipment Details (fresh unscan, latlong,
+  fresh-attempt %, line-haul trip timing, average sweep Process Time), Routed View
+  (Total Routed/Attendance/OVFD/Success/COD%/Success Rate/Completion Rate at
+  region/zone/station/driver level, with hybrid-vs-independent and rescue-route
+  driver breakdowns; the driver table includes every route, including hub/OPS runs),
+  Shipper Watch (hypercare-SLA shippers Amway/Watson/Orca, plus Zalora NXD and
+  Restock NXD monitoring), and Aging Details (five sub-views -- Overall/0
+  Attempt/Delivery/ATS/COD -- each a station x age-bucket pivot with full TN-level
+  detail). Every parcel-level count can be clicked to see the underlying tracking
+  numbers. Access is role-based: admins see everything and manage who can see what,
+  region managers see one region, zone managers see one zone, station staff see only
+  their station. For Fleet Managers and their regional/station teams.
 
 database: oceanbase
 
