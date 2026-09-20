@@ -8,6 +8,7 @@ import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
+import SegmentedControl from "./components/SegmentedControl";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
@@ -120,6 +121,27 @@ function localRollup(rows, groupKey) {
   }));
 }
 
+// Experimental (2026-09-20, staging only): flattens region -> zone -> station
+// into one row list for Station Health's "combined table" styles.
+// mode: "combined-expanded" shows every level always; "combined-click" only
+// expands a region/zone once its key is in the matching Set.
+function buildCombinedRows(stations, mode, expandedRegions, expandedZones) {
+  const rows = [];
+  localRollup(stations, "region").forEach((r) => {
+    rows.push({ ...r, type: "region", id: `region:${r.key}`, displayName: r.key });
+    if (mode !== "combined-expanded" && !expandedRegions.has(r.key)) return;
+    const stationsInRegion = stations.filter((s) => s.region === r.key);
+    localRollup(stationsInRegion, "zone").forEach((z) => {
+      rows.push({ ...z, type: "zone", id: `zone:${z.key}`, displayName: z.key });
+      if (mode !== "combined-expanded" && !expandedZones.has(z.key)) return;
+      stationsInRegion
+        .filter((s) => s.zone === z.key)
+        .forEach((s) => rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name }));
+    });
+  });
+  return rows;
+}
+
 function exportStationHealthCsv(rows) {
   const headers = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
   const values = rows.map((r) => [r.region, r.zone, r.station_name, ...ALL_COLUMNS.map((c) => r[c.key])]);
@@ -194,6 +216,20 @@ export default function Dashboard({ me, onCapturedAt }) {
       return next;
     });
   };
+
+  // Experimental (2026-09-20, staging only): Station Health as one combined
+  // region -> zone -> station table instead of three separate ones. Not
+  // persisted -- this is here to try, not to commit to yet.
+  const [stationHealthView, setStationHealthView] = useState("separate");
+  const [expandedRegions, setExpandedRegions] = useState(() => new Set());
+  const [expandedZones, setExpandedZones] = useState(() => new Set());
+  const toggleInSet = (setter, key) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const canPickRegion = me.scope_type === "all";
   const canPickZone = me.scope_type === "all" || me.scope_type === "region";
@@ -441,6 +477,93 @@ export default function Dashboard({ me, onCapturedAt }) {
   const regionGroupColumns = buildGroupColumns(regionRangeByMetric);
   const zoneGroupColumns = buildGroupColumns(zoneRangeByMetric);
 
+  // Experimental combined table: one column set that works for a region row,
+  // a zone row, or a station row alike -- reference metrics pick the range
+  // matching that row's own level; scored metrics scale their target by
+  // station_count the same way buildGroupColumns does (station rows use
+  // station_count 1, i.e. unscaled).
+  const referenceRangeFor = (row, key) => {
+    if (row.type === "region") return regionRangeByMetric[key];
+    if (row.type === "zone") return zoneRangeByMetric[key];
+    return stationRangeByMetricAndZone[key]?.[row.zone];
+  };
+  const combinedColumns = [
+    {
+      key: "name",
+      label: "Region / Zone / Station",
+      sticky: true,
+      align: "left",
+      render: (row) => {
+        const clickable = stationHealthView === "combined-click" && row.type !== "station";
+        const caret = clickable ? (
+          <span className="text-slate-400">
+            {(row.type === "region" ? expandedRegions : expandedZones).has(row.key) ? "▾" : "▸"}
+          </span>
+        ) : null;
+        if (row.type === "region") {
+          return (
+            <span className="flex items-center gap-1.5 font-display font-semibold text-ink">
+              {caret}
+              {row.displayName} <span className="text-xs font-normal text-slate-400">({row.station_count})</span>
+            </span>
+          );
+        }
+        if (row.type === "zone") {
+          return (
+            <span className="flex items-center gap-1.5 pl-5 font-display font-medium text-slate-700">
+              {caret}
+              {row.displayName} <span className="text-xs font-normal text-slate-400">({row.station_count})</span>
+            </span>
+          );
+        }
+        return <span className="pl-10 text-slate-700">{row.displayName}</span>;
+      },
+    },
+    ...ALL_COLUMNS.map((c) => {
+      const natThreshold = resolveThreshold(thresholdRows, c.key, null);
+      const isReference = !natThreshold.scored;
+      if (isReference) {
+        return {
+          key: c.key,
+          label: c.label,
+          render: (row) => fmt(c.key, row[c.key]),
+          className: (row) => colorScaleClass(row[c.key], referenceRangeFor(row, c.key)),
+        };
+      }
+      const isPercentBased = PERCENT_METRICS.has(c.key) || !!natThreshold.percent_of;
+      const scaledThreshold = (row) => {
+        const t = resolveThreshold(thresholdRows, c.key, row.region);
+        if (isPercentBased || row.type === "station") return t;
+        return { ...t, warning_at: t.warning_at * row.station_count, critical_at: t.critical_at * row.station_count };
+      };
+      return {
+        key: c.key,
+        label: c.label,
+        render: (row) => {
+          const t = scaledThreshold(row);
+          const sev = classify(t, row[c.key], row);
+          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, row[c.key], row, t)}`;
+        },
+        className: (row) => {
+          const t = scaledThreshold(row);
+          const sev = classify(t, row[c.key], row);
+          return SEVERITY_CLASS[sev];
+        },
+      };
+    }),
+  ];
+  const combinedRows =
+    stationHealthView === "separate"
+      ? []
+      : buildCombinedRows(filteredStations, stationHealthView, expandedRegions, expandedZones);
+  const handleCombinedRowClick = (row) => {
+    if (row.type === "station") {
+      setDetailRow(row);
+    } else if (stationHealthView === "combined-click") {
+      toggleInSet(row.type === "region" ? setExpandedRegions : setExpandedZones, row.key);
+    }
+  };
+
   const stationColumns = [
     ...(!hideRegionCol ? [{ key: "region", label: "Region", render: (r) => r.region, className: () => "text-slate-500" }] : []),
     ...(!hideZoneCol ? [{ key: "zone", label: "Zone", render: (r) => r.zone, className: () => "text-slate-500" }] : []),
@@ -597,6 +720,64 @@ export default function Dashboard({ me, onCapturedAt }) {
 
       {tab === "health" && (
         <>
+          {/* Experimental (2026-09-20, staging only) -- not applicable to a
+              station-scoped user, who only ever has one station to show anyway. */}
+          {me.scope_type !== "station" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-xs font-semibold text-slate-700">Table style (trying out):</span>
+              <SegmentedControl
+                options={[
+                  { key: "separate", label: "Separate tables" },
+                  { key: "combined-click", label: "Combined — click to expand" },
+                  { key: "combined-expanded", label: "Combined — always expanded" },
+                ]}
+                value={stationHealthView}
+                onChange={setStationHealthView}
+              />
+            </div>
+          )}
+
+          {stationHealthView !== "separate" && me.scope_type !== "station" ? (
+            <>
+              <DataTable
+                title={
+                  <>
+                    Station Health — combined{" "}
+                    <span className="font-normal text-slate-400">
+                      —{" "}
+                      {stationHealthView === "combined-click"
+                        ? "click a region/zone row to expand it, click a station row for detail"
+                        : "click a station row for detail"}
+                    </span>
+                  </>
+                }
+                titleExtra={
+                  <button
+                    onClick={() =>
+                      exportStationHealthCsv(combinedRows.filter((r) => r.type === "station"))
+                    }
+                    className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Export CSV
+                  </button>
+                }
+                maxHeight="75vh"
+                columns={combinedColumns}
+                rows={combinedRows}
+                rowKey={(r) => r.id}
+                onRowClick={handleCombinedRowClick}
+                emptyMessage="No stations match."
+                footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
+              />
+              <p className="text-xs text-slate-400">
+                Experimental view -- doesn't yet support Compare vs. yesterday or click-a-number-for-tracking-IDs; use
+                Separate tables for those. ▲ critical · ■ warning; grey/shaded = reference metric (no SLA), shaded
+                darkest-to-lightest by relative rank within that row's own level (region row vs. all regions, zone row
+                vs. all zones, station row vs. other stations in its own zone).
+              </p>
+            </>
+          ) : (
+            <>
           <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} columns={regionGroupColumns} />
           <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} columns={zoneGroupColumns} />
 
@@ -650,6 +831,8 @@ export default function Dashboard({ me, onCapturedAt }) {
             Total Routed, Attendance and COD % (Hub) aren't clickable — their source queries don't return individual
             tracking numbers.
           </p>
+            </>
+          )}
         </>
       )}
 
