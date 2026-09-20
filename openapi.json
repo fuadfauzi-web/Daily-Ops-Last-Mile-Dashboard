@@ -788,6 +788,51 @@
           }
         }
       }
+    },
+    "/api/feedback": {
+      "post": {
+        "summary": "Submits app feedback/complaints from any signed-in user to the admin team.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Lists all submitted app feedback. Admin only.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FeedbackRow"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3041,6 +3086,52 @@
         "required": [
           "high_cod_value_threshold",
           "high_value_item_keywords"
+        ]
+      },
+      "FeedbackIn": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "FeedbackRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "scope_type": {
+            "type": "string"
+          },
+          "scope_value": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "scope_type",
+          "message",
+          "created_at"
         ]
       }
     }

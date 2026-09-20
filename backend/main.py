@@ -1658,6 +1658,56 @@ async def pending_yesterday_route(user: CurrentUser = Depends(get_current_user))
 
 
 # ---------------------------------------------------------------------------
+# Admin: Feedback -- any signed-in user can send a complaint/suggestion about
+# the app itself; only admins can read the list back.
+# ---------------------------------------------------------------------------
+
+
+class FeedbackIn(BaseModel):
+    message: str
+
+
+class FeedbackRow(BaseModel):
+    id: int
+    email: str
+    role: str
+    scope_type: str
+    scope_value: str | None
+    message: str
+    created_at: str
+
+
+@app.post("/api/feedback", response_model=OkResult)
+async def submit_feedback(payload: FeedbackIn, user: CurrentUser = Depends(get_current_user)):
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Feedback message can't be empty")
+    if len(message) > 4000:
+        raise HTTPException(status_code=422, detail="Feedback message is too long (max 4000 characters)")
+    await db.execute(
+        """INSERT INTO app_feedback (email, role, scope_type, scope_value, message, created_at)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (user.email, user.role, user.scope_type, user.scope_value, message, datetime.now(timezone.utc)),
+    )
+    return {"ok": True}
+
+
+@app.get("/api/feedback", response_model=list[FeedbackRow])
+async def list_feedback(user: CurrentUser = Depends(get_current_user)):
+    _require_admin(user)
+    rows = await db.fetch_all(
+        "SELECT id, email, role, scope_type, scope_value, message, created_at FROM app_feedback ORDER BY created_at DESC"
+    )
+    return [
+        {
+            "id": r[0], "email": r[1], "role": r[2], "scope_type": r[3], "scope_value": r[4],
+            "message": r[5], "created_at": str(r[6]),
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Admin: users
 # ---------------------------------------------------------------------------
 

@@ -231,6 +231,15 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
+        <SegmentedControl
+          options={LEVELS}
+          value={level}
+          onChange={(key) => {
+            setLevel(key);
+            setSortKey("total_routed");
+            setSortDir("desc");
+          }}
+        />
         <div className="flex flex-wrap items-center gap-2">
           {isDriverLevel && (
             <input
@@ -258,15 +267,6 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
             </select>
           )}
         </div>
-        <SegmentedControl
-          options={LEVELS}
-          value={level}
-          onChange={(key) => {
-            setLevel(key);
-            setSortKey("total_routed");
-            setSortDir("desc");
-          }}
-        />
       </div>
       {driverType && !NO_DRIVER_TYPE_LEVELS.has(level) && (
         <p className="text-xs text-slate-400">
