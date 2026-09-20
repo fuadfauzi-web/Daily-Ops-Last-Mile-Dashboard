@@ -10,28 +10,66 @@ import Skeleton from "./components/Skeleton";
 // Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt
 // and Aging(>Day0) are what matters. Orca: OVFD vs everything else (no confirmed TN
 // pattern for Orca -- see backend/aggregate.py). Zalora: 0-Attempt + OVFD/Other split,
-// only for parcels sitting at their correct hub. Restock: bundle/piece counts plus its
-// two breach buckets. None of this has been cross-checked against live data yet --
-// numbers are provisional until confirmed.
-const COLUMNS = [
-  { key: "zalora_zero_attempt", label: "Zalora NXD 0 Attempt", clickable: true },
-  { key: "zalora_ovfd", label: "Zalora NXD OVFD", clickable: true },
-  { key: "zalora_other", label: "Zalora NXD Other Status", clickable: true },
-  { key: "amway_zero_attempt", label: "Amway 0 Attempt", clickable: true },
-  { key: "amway_aging", label: "Amway Aging >D0", clickable: true },
-  { key: "watson_zero_attempt", label: "Watson 0 Attempt", clickable: true },
-  { key: "watson_aging", label: "Watson Aging >D0", clickable: true },
-  { key: "restock_bundles", label: "Restock Bundles", clickable: true },
-  { key: "restock_pieces", label: "Restock Pieces", clickable: true },
-  { key: "restock_potential_breach", label: "Restock Potential Breach", clickable: true },
-  { key: "restock_breach", label: "Restock Breach", clickable: true },
-  { key: "orca_ovfd", label: "Orca OVFD", clickable: true },
-  { key: "orca_other", label: "Orca Other Status", clickable: true },
-  { key: "sodaxpress_ovfd", label: "Sodaxpress OVFD", clickable: true },
-  { key: "sodaxpress_other", label: "Sodaxpress Other Status", clickable: true },
+// only for parcels sitting at their correct hub. None of this has been cross-checked
+// against live data yet -- numbers are provisional until confirmed.
+//
+// Restock moved to its own Restock tab (2026-09-20) -- not shown here anymore.
+const SHIPPERS = [
+  {
+    key: "zalora",
+    label: "Zalora",
+    columns: [
+      { key: "zalora_zero_attempt", label: "Zalora NXD 0 Attempt" },
+      { key: "zalora_ovfd", label: "Zalora NXD OVFD" },
+      { key: "zalora_other", label: "Zalora NXD Other Status" },
+    ],
+  },
+  {
+    key: "amway",
+    label: "Amway",
+    columns: [
+      { key: "amway_zero_attempt", label: "Amway 0 Attempt" },
+      { key: "amway_aging", label: "Amway Aging >D0" },
+    ],
+  },
+  {
+    key: "watson",
+    label: "Watson",
+    columns: [
+      { key: "watson_zero_attempt", label: "Watson 0 Attempt" },
+      { key: "watson_aging", label: "Watson Aging >D0" },
+    ],
+  },
+  {
+    key: "orca",
+    label: "Orca",
+    columns: [
+      { key: "orca_ovfd", label: "Orca OVFD" },
+      { key: "orca_other", label: "Orca Other Status" },
+    ],
+  },
+  {
+    key: "sodaxpress",
+    label: "Sodaxpress",
+    columns: [
+      { key: "sodaxpress_ovfd", label: "Sodaxpress OVFD" },
+      { key: "sodaxpress_other", label: "Sodaxpress Other Status" },
+    ],
+  },
 ];
+const ALL_SHIPPER_KEYS = SHIPPERS.map((s) => s.key);
 
 export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+  const storageKey = `shipper-watch-shippers-${me.email}`;
+  const [selectedShippers, setSelectedShippers] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch {
+      /* private browsing / storage blocked / bad JSON -- default to everything */
+    }
+    return ALL_SHIPPER_KEYS;
+  });
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("zalora_zero_attempt");
@@ -41,6 +79,23 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
   const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+
+  const toggleShipper = (key) => {
+    setSelectedShippers((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        /* private browsing / storage blocked -- selection just won't persist */
+      }
+      return next;
+    });
+  };
+
+  const activeColumns = useMemo(
+    () => SHIPPERS.filter((s) => selectedShippers.includes(s.key)).flatMap((s) => s.columns),
+    [selectedShippers]
+  );
 
   useEffect(() => {
     api
@@ -84,7 +139,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
     ...(!hideRegionCol ? [{ key: "region", label: "Region", className: () => "text-slate-500" }] : []),
     ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
     { key: "station_name", label: "Station", sticky: true, align: "left" },
-    ...COLUMNS.map((c) => ({
+    ...activeColumns.map((c) => ({
       key: c.key,
       label: c.label,
       render: (r) => r[c.key].toLocaleString(),
@@ -103,40 +158,64 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
         subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
         rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
       />
-      <DataTable
-        title="Shipper Watch"
-        titleExtra={
-          <button
-            onClick={() =>
-              exportCsv(
-                `daily-ops-shipper-watch-${new Date().toISOString().slice(0, 10)}.csv`,
-                ["Region", "Zone", "Station", ...COLUMNS.map((c) => c.label)],
-                filteredStations.map((r) => [r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key])])
-              )
-            }
-            className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            Export CSV
-          </button>
-        }
-        maxHeight="70vh"
-        columns={columns}
-        rows={filteredStations}
-        rowKey={(r) => r.station_code}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        onSort={toggleSort}
-        onRowClick={(r) => setDetailRow(r)}
-        emptyMessage="No stations match."
-        footer={
-          <>
-            {filteredStations.length} rows · Amway/Watson SLA: attempt day 0, succeed before day 3. Zalora only
-            counts parcels at their correct hub (dest hub = last sweep hub). Restock is counted by bundle, not by
-            individual parcel — "Pieces" is the actual parcel count. These formulas haven't been checked against
-            live data yet — flag anything that looks off.
-          </>
-        }
-      />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+        <span className="font-display text-xs font-semibold text-slate-700">Shippers:</span>
+        {SHIPPERS.map((s) => {
+          const on = selectedShippers.includes(s.key);
+          return (
+            <button
+              key={s.key}
+              onClick={() => toggleShipper(s.key)}
+              className={`min-h-[44px] rounded-full border px-3 py-1 font-display text-xs font-semibold ${
+                on ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-600"
+              }`}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeColumns.length === 0 ? (
+        <div className="rounded-xl bg-white p-6 text-center text-sm text-slate-500 ring-1 ring-slate-200">
+          Pick at least one shipper above to see its columns.
+        </div>
+      ) : (
+        <DataTable
+          title="Shipper Watch"
+          titleExtra={
+            <button
+              onClick={() =>
+                exportCsv(
+                  `daily-ops-shipper-watch-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ["Region", "Zone", "Station", ...activeColumns.map((c) => c.label)],
+                  filteredStations.map((r) => [r.region, r.zone, r.station_name, ...activeColumns.map((c) => r[c.key])])
+                )
+              }
+              className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Export CSV
+            </button>
+          }
+          maxHeight="70vh"
+          columns={columns}
+          rows={filteredStations}
+          rowKey={(r) => r.station_code}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          onRowClick={(r) => setDetailRow(r)}
+          emptyMessage="No stations match."
+          footer={
+            <>
+              {filteredStations.length} rows · Amway/Watson SLA: attempt day 0, succeed before day 3. Zalora only
+              counts parcels at their correct hub (dest hub = last sweep hub). These formulas haven't been checked
+              against live data yet — flag anything that looks off.
+            </>
+          }
+        />
+      )}
     </div>
   );
 }

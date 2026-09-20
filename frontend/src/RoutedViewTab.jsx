@@ -241,7 +241,21 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {!NO_DRIVER_TYPE_LEVELS.has(level) && (
-            <SegmentedControl options={DRIVER_TYPES} value={driverType} onChange={setDriverType} />
+            // Deliberately a plain select, not a SegmentedControl like the Level
+            // switcher next to it -- a filter that silently narrows every number
+            // on the page shouldn't look like just another view-level tab a user
+            // might click into by accident.
+            <select
+              className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600"
+              value={driverType}
+              onChange={(e) => setDriverType(e.target.value)}
+            >
+              {DRIVER_TYPES.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.key ? `Driver type: ${d.label}` : "All driver types"}
+                </option>
+              ))}
+            </select>
           )}
           <SegmentedControl
             options={LEVELS}

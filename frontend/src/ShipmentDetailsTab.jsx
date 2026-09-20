@@ -132,7 +132,12 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
     }),
     {
       key: "lh_timing",
-      label: "LH Timing (1st / 2nd trip)",
+      label: (
+        <>
+          LH Timing (1st / 2nd trip)
+          <div className="text-[10px] font-normal normal-case text-slate-300">arrival time · parcels on that trip</div>
+        </>
+      ),
       sortable: false,
       align: "left",
       render: (r) => (
@@ -144,7 +149,12 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
     },
     {
       key: "process_time_minutes",
-      label: "Process Time",
+      label: (
+        <>
+          Process Time
+          <div className="text-[10px] font-normal normal-case text-slate-300">beta — not yet confirmed accurate</div>
+        </>
+      ),
       className: () => "text-slate-700",
       render: (r) => formatProcessTime(r.process_time_minutes),
     },
@@ -187,8 +197,14 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
         emptyMessage="No stations match."
         footer={
           <>
-            {filteredStations.length} rows · LH Timing: green &lt;10am, blue 10–11am, amber 11am–12pm, red after 12pm.
-            Process Time is today's average 1st-sweep finish time.
+            {filteredStations.length} rows · LH Timing shows each trip's arrival time followed by the parcel count on
+            that trip (e.g. "10:32am · 45" = 45 parcels on that trip); colour bands green &lt;10am, blue 10–11am,
+            amber 11am–12pm, red after 12pm.{" "}
+            <span className="font-medium text-status-warning">
+              Process Time is a beta figure, not yet confirmed accurate
+            </span>{" "}
+            — it's the average time-of-day all of today's fresh parcels were first scanned/swept in, not a per-parcel
+            measurement.
           </>
         }
       />
