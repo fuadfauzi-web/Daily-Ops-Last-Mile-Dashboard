@@ -271,27 +271,33 @@ def build_station_metrics(
 
 _MISSING_TYPE_LABELS = {"hub": "Hub", "ship_in": "Ship In"}
 
-# 2026-09-20: "high COD value or high value item description (e.g. Smartphone)"
-# gets highlighted in the TN list. Starting guess, not confirmed against real
-# numbers yet -- adjust the threshold/keywords once the Fleet Manager reviews
-# what actually shows up highlighted on staging.
-_HIGH_COD_VALUE_THRESHOLD = 500
-_HIGH_VALUE_ITEM_KEYWORDS = (
+# "High COD value or high value item description (e.g. Smartphone)" gets
+# highlighted in the TN list -- these are just the defaults for a fresh DB;
+# the live values are admin-editable via Admin -> Recovery Settings (see
+# main.py's recovery_settings table/GET+PUT /api/recovery/settings) and passed
+# into build_missing_details below at refresh time.
+DEFAULT_HIGH_COD_VALUE_THRESHOLD = 100
+DEFAULT_HIGH_VALUE_ITEM_KEYWORDS = (
     "smartphone", "iphone", "samsung", "macbook", "laptop", "tablet", "ipad",
     "camera", "drone", "watch", "playstation", "xbox", "console", "jewellery",
     "jewelry", "gold",
 )
 
 
-def _is_high_value(cod_value, item_description) -> bool:
-    if cod_value and cod_value >= _HIGH_COD_VALUE_THRESHOLD:
+def _is_high_value(cod_value, item_description, cod_threshold, keywords) -> bool:
+    if cod_value and cod_value >= cod_threshold:
         return True
-    if item_description and any(kw in item_description.lower() for kw in _HIGH_VALUE_ITEM_KEYWORDS):
+    if item_description and any(kw in item_description.lower() for kw in keywords):
         return True
     return False
 
 
-def build_missing_details(missing_rows: list[dict], health_v3_rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
+def build_missing_details(
+    missing_rows: list[dict],
+    health_v3_rows: list[dict],
+    cod_threshold: float = DEFAULT_HIGH_COD_VALUE_THRESHOLD,
+    keywords: tuple[str, ...] = DEFAULT_HIGH_VALUE_ITEM_KEYWORDS,
+) -> tuple[dict[str, dict], list[dict]]:
     """Returns ({hub_code: overview_row}, [tn_row, ...]) for the Recovery tab.
 
     overview_row: hub_count/ship_in_count/other_count/total_count per station,
@@ -333,7 +339,7 @@ def build_missing_details(missing_rows: list[dict], health_v3_rows: list[dict]) 
             "type": _MISSING_TYPE_LABELS.get(kind, "Other"),
             "cod_value": cod_value,
             "item_description": item_description,
-            "is_high_value": _is_high_value(cod_value, item_description),
+            "is_high_value": _is_high_value(cod_value, item_description, cod_threshold, keywords),
         })
     return by_station, tn_rows
 

@@ -301,9 +301,111 @@ function SlaTargetsPanel({ regions }) {
   );
 }
 
+// Admin -> Recovery Settings: the "high value" highlighting rule behind
+// Recovery -> Missing Details' TN list (see backend V19__recovery_settings.sql
+// and aggregate.py's build_missing_details). A single nationwide row, no
+// per-region override -- much simpler than SlaTargetsPanel above.
+function RecoverySettingsPanel() {
+  const [settings, setSettings] = useState(null);
+  const [threshold, setThreshold] = useState("");
+  const [keywordsText, setKeywordsText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = () => {
+    api.recoverySettings
+      .get()
+      .then((s) => {
+        setSettings(s);
+        setThreshold(String(s.high_cod_value_threshold));
+        setKeywordsText(s.high_value_item_keywords.join(", "));
+      })
+      .catch((e) => setError(e.message));
+  };
+  useEffect(load, []);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const keywords = keywordsText
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean);
+      await api.recoverySettings.save({ high_cod_value_threshold: Number(threshold) || 0, high_value_item_keywords: keywords });
+      setSaved(true);
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!settings) return <div className="text-slate-500">Loading…</div>;
+
+  return (
+    <div className="space-y-3">
+      {error && (
+        <div className="rounded-lg bg-status-critical/5 px-4 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">
+          {error}
+        </div>
+      )}
+      <div className="space-y-4 rounded-xl bg-white p-4 ring-1 ring-slate-200">
+        <div>
+          <div className="font-display text-sm font-semibold text-slate-700">High COD value threshold</div>
+          <p className="mb-2 text-xs text-slate-400">
+            A missing tracking number is highlighted when its COD value is at or above this amount.
+          </p>
+          <input
+            type="number"
+            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
+            value={threshold}
+            onChange={(e) => {
+              setThreshold(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </div>
+        <div>
+          <div className="font-display text-sm font-semibold text-slate-700">High-value item keywords</div>
+          <p className="mb-2 text-xs text-slate-400">
+            Comma-separated. A missing tracking number is also highlighted when its item description contains any of
+            these (case-insensitive) -- e.g. "smartphone, laptop, gold".
+          </p>
+          <textarea
+            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+            rows={3}
+            value={keywordsText}
+            onChange={(e) => {
+              setKeywordsText(e.target.value);
+              setSaved(false);
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400">
+            {settings.changed_by ? `Last changed ${formatTime(settings.changed_at)} · ${settings.changed_by}` : "Never changed"}
+            {" · applies at the next 30-minute refresh"}
+          </span>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : saved ? "Saved" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const ADMIN_TABS = [
   { key: "users", label: "Users", visible: () => true },
   { key: "sla", label: "SLA Targets", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "recovery", label: "Recovery Settings", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "refresh", label: "Data Refresh", visible: (me) => me.role === "admin" },
 ];
 
@@ -441,6 +543,8 @@ export default function AdminPanel({ me }) {
       {visibleAdminTabs.length > 1 && <TabBar tabs={visibleAdminTabs} activeKey={adminTab} onSelect={setAdminTab} />}
 
       {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
+
+      {adminTab === "recovery" && <RecoverySettingsPanel />}
 
       {adminTab === "refresh" && isFullAdmin && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">

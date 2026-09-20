@@ -53,6 +53,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   const [sortDir, setSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
+  const [tnStationSearch, setTnStationSearch] = useState("");
   const [highValueOnly, setHighValueOnly] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
 
@@ -90,6 +91,13 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
     if (!data) return [];
     let rows = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
     if (highValueOnly) rows = rows.filter((r) => r.is_high_value);
+    // A second, table-local station filter -- independent of the shared search
+    // box above -- so a Manager/Region user can narrow just this TN list to one
+    // station without touching the overview tables' own filtering.
+    if (tnStationSearch.trim()) {
+      const q = tnStationSearch.trim().toLowerCase();
+      rows = rows.filter((r) => r.station_name.toLowerCase().includes(q));
+    }
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -97,7 +105,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, visibleStationCodes, tnSortKey, tnSortDir, highValueOnly]);
+  }, [data, visibleStationCodes, tnSortKey, tnSortDir, highValueOnly, tnStationSearch]);
 
   const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
   const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
@@ -192,7 +200,13 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
       <DataTable
         title="Tracking numbers"
         titleExtra={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              placeholder="Search station (this table only)…"
+              value={tnStationSearch}
+              onChange={(e) => setTnStationSearch(e.target.value)}
+            />
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
               <input type="checkbox" checked={highValueOnly} onChange={(e) => setHighValueOnly(e.target.checked)} />
               High value only
@@ -222,9 +236,9 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
         footer={
           <>
             {filteredTnRows.length.toLocaleString()} tracking numbers · rows in{" "}
-            <span className="font-semibold text-status-critical">red</span> have a high COD value or a high-value
-            item description (e.g. Smartphone) -- thresholds are a starting guess, not yet confirmed against real
-            numbers.
+            <span className="font-semibold text-status-critical">red</span> have a COD value ≥{" "}
+            {data.high_cod_value_threshold.toLocaleString()} or an item description matching a high-value keyword
+            (editable in Admin → Recovery Settings).
             {data.tn_rows_truncated && (
               <span className="ml-1 font-medium text-status-critical">
                 · showing the oldest {filteredTnRows.length.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}

@@ -746,6 +746,48 @@
           }
         }
       }
+    },
+    "/api/recovery/settings": {
+      "get": {
+        "summary": "Reads the Recovery -> Missing Details high-value highlighting rule (COD threshold + item keywords).",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoverySettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Updates the Recovery -> Missing Details high-value highlighting rule. Admin/Manager only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverySettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoverySettings"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2775,6 +2817,15 @@
           },
           "tn_rows_truncated": {
             "type": "boolean"
+          },
+          "high_cod_value_threshold": {
+            "type": "number"
+          },
+          "high_value_item_keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -2784,7 +2835,9 @@
           "regions",
           "tn_rows",
           "tn_rows_total",
-          "tn_rows_truncated"
+          "tn_rows_truncated",
+          "high_cod_value_threshold",
+          "high_value_item_keywords"
         ]
       },
       "UrgentTnQuery": {
@@ -2962,6 +3015,32 @@
           "tn_rows",
           "tn_rows_total",
           "tn_rows_truncated"
+        ]
+      },
+      "RecoverySettings": {
+        "type": "object",
+        "properties": {
+          "high_cod_value_threshold": {
+            "type": "number"
+          },
+          "high_value_item_keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changed_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "changed_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "high_cod_value_threshold",
+          "high_value_item_keywords"
         ]
       }
     }

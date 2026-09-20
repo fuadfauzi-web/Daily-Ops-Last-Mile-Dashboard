@@ -25,10 +25,11 @@ from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_BUCKETS,
     METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
-    bucket_rpu_aging, build_aging_details, build_missing_details, build_old_route, build_pending_yesterday_route,
-    build_routed_view, build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics,
-    merge_routed_into_station_metrics, rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed,
-    rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
+    DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
+    build_missing_details, build_old_route, build_pending_yesterday_route, build_routed_view, build_rpu,
+    build_shipment_details, build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup,
+    rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed, rollup_routed_by_driver_type, rollup_rpu,
+    rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
@@ -89,6 +90,10 @@ _rpu_rows_captured_at: str | None = None
 _missing_details_stations: list[dict] = []
 _missing_details_tn_rows: list[dict] = []
 _missing_details_captured_at: str | None = None
+# The cod_threshold/item_keywords actually used to compute is_high_value above,
+# for display -- kept alongside rather than re-read from the DB per request.
+_missing_details_cod_threshold: float = DEFAULT_HIGH_COD_VALUE_THRESHOLD
+_missing_details_item_keywords: list[str] = list(DEFAULT_HIGH_VALUE_ITEM_KEYWORDS)
 
 # Urgent TN's per-tracking-number lookup, keyed by tracking_id -- built fresh from
 # the same query 78 rows already fetched for Station Health every 30 minutes, not
@@ -144,13 +149,26 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
-        missing_details_by_station, missing_details_tn_rows = build_missing_details(missing_rows, health_rows)
+
+        recovery_settings_row = await db.fetch_one(
+            "SELECT high_cod_value_threshold, high_value_item_keywords FROM recovery_settings WHERE id = 1"
+        )
+        if recovery_settings_row:
+            cod_threshold = recovery_settings_row[0]
+            item_keywords = tuple(k.strip().lower() for k in recovery_settings_row[1].split(",") if k.strip())
+        else:
+            cod_threshold = DEFAULT_HIGH_COD_VALUE_THRESHOLD
+            item_keywords = DEFAULT_HIGH_VALUE_ITEM_KEYWORDS
+        missing_details_by_station, missing_details_tn_rows = build_missing_details(
+            missing_rows, health_rows, cod_threshold, item_keywords
+        )
 
         captured_at = datetime.now(timezone.utc)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
         global _shipper_tn_cache_captured_at, _aging_rows_captured_at
         global _old_route_rows, _old_route_drivers, _old_route_captured_at, _rpu_rows_cache, _rpu_rows_captured_at
         global _missing_details_stations, _missing_details_tn_rows, _missing_details_captured_at
+        global _missing_details_cod_threshold, _missing_details_item_keywords
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
         _tn_cache.clear()
         _tn_cache.update(tn_details)
@@ -173,6 +191,8 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         _rpu_rows_captured_at = captured_at.isoformat()
         _missing_details_stations = list(missing_details_by_station.values())
         _missing_details_tn_rows = missing_details_tn_rows
+        _missing_details_cod_threshold = cod_threshold
+        _missing_details_item_keywords = list(item_keywords)
         _missing_details_captured_at = captured_at.isoformat()
         _health_v3_by_tn = {
             r["tracking_id"]: {
@@ -1431,6 +1451,8 @@ class MissingDetailsResponse(BaseModel):
     tn_rows: list[MissingDetailsTnRow]
     tn_rows_total: int
     tn_rows_truncated: bool
+    high_cod_value_threshold: float
+    high_value_item_keywords: list[str]
 
 
 @app.get("/api/recovery/missing-details", response_model=MissingDetailsResponse)
@@ -1439,6 +1461,8 @@ async def recovery_missing_details(user: CurrentUser = Depends(get_current_user)
         return {
             "captured_at": None, "stations": [], "zones": [], "regions": [],
             "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+            "high_cod_value_threshold": _missing_details_cod_threshold,
+            "high_value_item_keywords": _missing_details_item_keywords,
         }
 
     def to_group(rows, key):
@@ -1457,8 +1481,52 @@ async def recovery_missing_details(user: CurrentUser = Depends(get_current_user)
         "zones": to_group(rollup_missing_details(scoped_stations, "zone"), "zone"),
         "regions": to_group(rollup_missing_details(scoped_stations, "region"), "region"),
         "tn_rows": tn_rows,
+        "high_cod_value_threshold": _missing_details_cod_threshold,
+        "high_value_item_keywords": _missing_details_item_keywords,
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+class RecoverySettings(BaseModel):
+    high_cod_value_threshold: float
+    high_value_item_keywords: list[str]
+    changed_by: str | None = None
+    changed_at: str | None = None
+
+
+@app.get("/api/recovery/settings", response_model=RecoverySettings)
+async def get_recovery_settings(user: CurrentUser = Depends(get_current_user)):
+    row = await db.fetch_one(
+        "SELECT high_cod_value_threshold, high_value_item_keywords, changed_by, changed_at FROM recovery_settings WHERE id = 1"
+    )
+    if not row:
+        return {
+            "high_cod_value_threshold": DEFAULT_HIGH_COD_VALUE_THRESHOLD,
+            "high_value_item_keywords": list(DEFAULT_HIGH_VALUE_ITEM_KEYWORDS),
+        }
+    keywords = [k.strip() for k in row[1].split(",") if k.strip()]
+    return {
+        "high_cod_value_threshold": row[0], "high_value_item_keywords": keywords,
+        "changed_by": row[2], "changed_at": str(row[3]) if row[3] else None,
+    }
+
+
+@app.put("/api/recovery/settings", response_model=RecoverySettings)
+async def put_recovery_settings(payload: RecoverySettings, user: CurrentUser = Depends(get_current_user)):
+    _require_can_edit_thresholds(user)
+    if payload.high_cod_value_threshold < 0:
+        raise HTTPException(status_code=422, detail="high_cod_value_threshold must be >= 0")
+    keywords = [k.strip().lower() for k in payload.high_value_item_keywords if k.strip()]
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        """UPDATE recovery_settings SET high_cod_value_threshold=%s, high_value_item_keywords=%s,
+           changed_by=%s, changed_at=%s WHERE id = 1""",
+        (payload.high_cod_value_threshold, ",".join(keywords), user.email, now),
+    )
+    return {
+        "high_cod_value_threshold": payload.high_cod_value_threshold, "high_value_item_keywords": keywords,
+        "changed_by": user.email, "changed_at": now.isoformat(),
     }
 
 
