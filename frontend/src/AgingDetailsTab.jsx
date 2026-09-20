@@ -68,6 +68,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const [sortDir, setSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
+  const [tnStationSearch, setTnStationSearch] = useState("");
   const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
@@ -103,7 +104,11 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
   const filteredTnRows = useMemo(() => {
     if (!data) return [];
-    const rows = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
+    let rows = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
+    if (tnStationSearch.trim()) {
+      const q = tnStationSearch.trim().toLowerCase();
+      rows = rows.filter((r) => r.station_name?.toLowerCase().includes(q));
+    }
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -111,7 +116,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, visibleStationCodes, tnSortKey, tnSortDir]);
+  }, [data, visibleStationCodes, tnSortKey, tnSortDir, tnStationSearch]);
 
   const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
   const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
@@ -216,7 +221,14 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
           <DataTable
             title={`${data.type_label} — tracking numbers`}
             titleExtra={
-              <button
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+                  placeholder="Search station (this table only)…"
+                  value={tnStationSearch}
+                  onChange={(e) => setTnStationSearch(e.target.value)}
+                />
+                <button
                 onClick={() =>
                   exportCsv(
                     `daily-ops-aging-${agingType}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -225,9 +237,10 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                   )
                 }
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Export CSV
-              </button>
+                >
+                  Export CSV
+                </button>
+              </div>
             }
             maxHeight="60vh"
             columns={tnColumns}
