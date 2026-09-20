@@ -401,12 +401,41 @@ export default function Dashboard({ me, onCapturedAt }) {
   // a reference metric depends on which row set it's being ranked against.
   const buildGroupColumns = (rangeByMetric) =>
     ALL_COLUMNS.map((c) => {
-      const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
+      const natThreshold = resolveThreshold(thresholdRows, c.key, null);
+      const isReference = !natThreshold.scored;
+      if (isReference) {
+        return {
+          key: c.key,
+          label: c.label,
+          render: (g) => fmt(c.key, g[c.key]),
+          className: (g) => colorScaleClass(g[c.key], rangeByMetric[c.key]),
+        };
+      }
+      // Scored metrics: a region/zone row sums every one of its stations' raw
+      // counts, so a raw-count target has to scale the same way (SLA of 100 per
+      // station * 5 stations in South 1 = 500 for South 1) -- per 2026-09-20
+      // feedback. A percentage target (or a metric already scored as "% of"
+      // another field) never scales -- both its numerator and denominator
+      // already sum proportionally, so the same threshold applies as-is.
+      const isPercentBased = PERCENT_METRICS.has(c.key) || !!natThreshold.percent_of;
+      const scaledThreshold = (g) => {
+        const t = resolveThreshold(thresholdRows, c.key, g.region);
+        if (isPercentBased) return t;
+        return { ...t, warning_at: t.warning_at * g.station_count, critical_at: t.critical_at * g.station_count };
+      };
       return {
         key: c.key,
         label: c.label,
-        render: (g) => fmt(c.key, g[c.key]),
-        className: isReference ? (g) => colorScaleClass(g[c.key], rangeByMetric[c.key]) : undefined,
+        render: (g) => {
+          const t = scaledThreshold(g);
+          const sev = classify(t, g[c.key], g);
+          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, g[c.key], g, t)}`;
+        },
+        className: (g) => {
+          const t = scaledThreshold(g);
+          const sev = classify(t, g[c.key], g);
+          return SEVERITY_CLASS[sev];
+        },
       };
     });
   const regionGroupColumns = buildGroupColumns(regionRangeByMetric);
@@ -611,10 +640,12 @@ export default function Dashboard({ me, onCapturedAt }) {
           />
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored. Targets are set in Admin → SLA Targets. Reference metrics (e.g. Total Fresh) instead
-            shade darkest-to-lightest by relative rank — By region/By zone rank against every region/zone shown; this
-            table ranks each station only against other stations in its own zone. That shading is a ranking, not a
-            pass/fail judgement.
+            SLA, never scored. Targets are set in Admin → SLA Targets. By region/By zone, a raw-count target scales
+            up by how many stations are in that region/zone (e.g. a target of 100 becomes 500 for a 5-station
+            region) — a percentage target (or a metric scored as "% of" another field) never scales, the same number
+            applies at every level. Reference metrics (e.g. Total Fresh) instead shade darkest-to-lightest by
+            relative rank — By region/By zone rank against every region/zone shown; this table ranks each station
+            only against other stations in its own zone. That shading is a ranking, not a pass/fail judgement.
             {compareYesterday && " Small numbers next to each value are the change vs. ~24h ago."} Total Fresh,
             Total Routed, Attendance and COD % (Hub) aren't clickable — their source queries don't return individual
             tracking numbers.
