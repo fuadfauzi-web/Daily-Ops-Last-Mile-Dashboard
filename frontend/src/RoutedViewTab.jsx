@@ -231,22 +231,22 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {isDriverLevel && (
-          <input
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-            placeholder="Search driver…"
-            value={driverSearch}
-            onChange={(e) => setDriverSearch(e.target.value)}
-          />
-        )}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {isDriverLevel && (
+            <input
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              placeholder="Search driver…"
+              value={driverSearch}
+              onChange={(e) => setDriverSearch(e.target.value)}
+            />
+          )}
           {!NO_DRIVER_TYPE_LEVELS.has(level) && (
             // Deliberately a plain select, not a SegmentedControl like the Level
             // switcher next to it -- a filter that silently narrows every number
             // on the page shouldn't look like just another view-level tab a user
             // might click into by accident.
             <select
-              className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
               value={driverType}
               onChange={(e) => setDriverType(e.target.value)}
             >
@@ -257,16 +257,16 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
               ))}
             </select>
           )}
-          <SegmentedControl
-            options={LEVELS}
-            value={level}
-            onChange={(key) => {
-              setLevel(key);
-              setSortKey("total_routed");
-              setSortDir("desc");
-            }}
-          />
         </div>
+        <SegmentedControl
+          options={LEVELS}
+          value={level}
+          onChange={(key) => {
+            setLevel(key);
+            setSortKey("total_routed");
+            setSortDir("desc");
+          }}
+        />
       </div>
       {driverType && !NO_DRIVER_TYPE_LEVELS.has(level) && (
         <p className="text-xs text-slate-400">

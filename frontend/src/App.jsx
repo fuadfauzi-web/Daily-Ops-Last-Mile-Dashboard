@@ -61,7 +61,10 @@ export default function App() {
     .map((s) => s[0].toUpperCase())
     .join("");
 
-  const canSeeAdmin = me.role === "admin" || me.role === "manager" || me.role === "region";
+  // Every role can reach Admin now -- the Guide tab inside it is visible to
+  // everyone regardless of role/scope; AdminPanel's own per-tab `visible`
+  // checks still gate Users/SLA Targets/Recovery Settings/Data Refresh.
+  const canSeeAdmin = true;
 
   return (
     <div className="min-h-screen bg-slate-50">
