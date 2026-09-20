@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import Dashboard from "./Dashboard";
+import SettingsPanel from "./SettingsPanel";
 import AdminPanel from "./AdminPanel";
 import Logo from "./components/Logo";
 import { useDensity } from "./lib/density";
@@ -61,10 +62,14 @@ export default function App() {
     .map((s) => s[0].toUpperCase())
     .join("");
 
-  // Every role can reach Admin now -- the Guide tab inside it is visible to
-  // everyone regardless of role/scope; AdminPanel's own per-tab `visible`
-  // checks still gate Users/SLA Targets/Recovery Settings/Data Refresh.
-  const canSeeAdmin = true;
+  // Settings (Users/SLA Targets/Recovery Settings/Data Refresh) is nationwide
+  // configuration -- same admin/manager/region gate the combined Admin page
+  // used to have. Admin (Feedback/Guide, and later Attendance and more) is
+  // day-to-day tooling everyone should be able to reach, regardless of role/
+  // scope -- its own per-tab `visible` checks (see AdminPanel.jsx) don't need
+  // a page-level gate at all.
+  const canSeeSettings = me.role === "admin" || me.role === "manager" || me.role === "region";
+  const navTabs = ["dashboard", ...(canSeeSettings ? ["settings"] : []), "admin"];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -98,21 +103,19 @@ export default function App() {
                 Comfortable
               </button>
             </div>
-            {canSeeAdmin && (
-              <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-                {["dashboard", "admin"].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className={`rounded-md px-3 py-1.5 font-display capitalize ${
-                      tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </nav>
-            )}
+            <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+              {navTabs.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`rounded-md px-3 py-1.5 font-display capitalize ${
+                    tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </nav>
             <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                 {initials}
@@ -153,24 +156,22 @@ export default function App() {
                 Data as of {formatTime(freshness)}
               </div>
             )}
-            {canSeeAdmin && (
-              <nav className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-                {["dashboard", "admin"].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => {
-                      setTab(t);
-                      setMenuOpen(false);
-                    }}
-                    className={`min-h-[44px] flex-1 rounded-md px-3 py-1.5 font-display capitalize ${
-                      tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </nav>
-            )}
+            <nav className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+              {navTabs.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    setTab(t);
+                    setMenuOpen(false);
+                  }}
+                  className={`min-h-[44px] flex-1 rounded-md px-3 py-1.5 font-display capitalize ${
+                    tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </nav>
             <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
               <button
                 onClick={() => setDensity("compact")}
@@ -189,7 +190,9 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" ? <Dashboard me={me} onCapturedAt={setFreshness} /> : <AdminPanel me={me} />}
+        {tab === "dashboard" && <Dashboard me={me} onCapturedAt={setFreshness} />}
+        {tab === "settings" && canSeeSettings && <SettingsPanel me={me} />}
+        {tab === "admin" && <AdminPanel me={me} />}
       </main>
     </div>
   );

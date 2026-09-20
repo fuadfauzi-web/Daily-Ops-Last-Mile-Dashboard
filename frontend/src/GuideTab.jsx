@@ -3,8 +3,7 @@ import { useState } from "react";
 // In-app onboarding reference -- explains roles/scope, the header controls,
 // and every tab's purpose + the logic behind its less-obvious columns. Kept as
 // one accordion (not a wall of text) so a new user can jump straight to the
-// tab they're confused about. Staging-only for now (2026-09-20) -- not linked
-// from the production tab order yet.
+// tab they're confused about. Lives in Admin -> Guide, reachable by everyone.
 const SECTIONS = [
   {
     id: "roles",
@@ -14,7 +13,7 @@ const SECTIONS = [
         <p>
           Two independent things control what you can do and see: your <strong>role</strong> (what actions you're
           allowed) and your <strong>scope</strong> (which stations' data you see). An admin sets both when adding you
-          in Admin → Users.
+          in Settings → Users.
         </p>
         <table className="w-full text-left text-xs">
           <thead className="text-slate-400">
@@ -26,11 +25,11 @@ const SECTIONS = [
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="py-1 pr-3 font-medium">Station staff</td>
-              <td className="py-1">View the dashboard for their own scope only. No Admin access.</td>
+              <td className="py-1">View the dashboard for their own scope only, plus Admin → Feedback/Guide. No Settings access.</td>
             </tr>
             <tr>
               <td className="py-1 pr-3 font-medium">Region staff</td>
-              <td className="py-1">View the dashboard, plus add Station-staff teammates in Admin → Users.</td>
+              <td className="py-1">View the dashboard, plus add Station-staff teammates in Settings → Users.</td>
             </tr>
             <tr>
               <td className="py-1 pr-3 font-medium">Manager</td>
@@ -40,7 +39,7 @@ const SECTIONS = [
             </tr>
             <tr>
               <td className="py-1 pr-3 font-medium">Admin</td>
-              <td className="py-1">Everything: full user management, both settings screens, and manual data refresh.</td>
+              <td className="py-1">Everything: full user management, both Settings screens, and manual data refresh.</td>
             </tr>
           </tbody>
         </table>
@@ -61,7 +60,7 @@ const SECTIONS = [
         <li>
           <strong>Data as of X</strong> (top right) is when the numbers on every tab were last pulled from Redash --
           the whole app refreshes together every 30 minutes, so this one timestamp covers everything except Urgent TN
-          (see below) and Pending in Yesterday Route (captured once daily at ~2am, see Routed View).
+          (see below) and Pending in Yesterday Route (captured once daily at ~12:30am, see Routed View).
         </li>
         <li>
           <strong>Compact / Comfortable</strong> toggles row height/density -- personal preference, doesn't change any
@@ -97,7 +96,7 @@ const SECTIONS = [
         </p>
         <p>
           The heatmap groups by Region/Zone/Station and colours each cell by whether it's breaching the Warning/
-          Critical target set in Admin → SLA Targets. "Act on these today" lists the worst individual stations,
+          Critical target set in Settings → SLA Targets. "Act on these today" lists the worst individual stations,
           worst first, each with a <strong>Copy TNs</strong> and <strong>Export CSV</strong> button that group the
           tracking numbers by which metric flagged them.
         </p>
@@ -134,7 +133,7 @@ const SECTIONS = [
           <li><strong>Missing (Hub)</strong> / <strong>(Ship-in)</strong>: open missing-parcel tickets, split by whether the station itself or an inbound shipment is on the hook for it.</li>
           <li><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub) -- how much of what could be routed already has been.</li>
           <li>
-            Coloured cells (▲ critical / ■ warning / plain = good) are metrics with an SLA target, set in Admin → SLA
+            Coloured cells (▲ critical / ■ warning / plain = good) are metrics with an SLA target, set in Settings → SLA
             Targets. Grey/shaded cells have no SLA -- they're shaded on a relative scale instead: darkest = highest
             value. By region/By zone shade against every region/zone shown; this table shades each station only
             against other stations in its own zone. That shading is a ranking, never a pass/fail judgement.
@@ -150,11 +149,11 @@ const SECTIONS = [
       <div className="space-y-2 text-sm text-slate-700">
         <p>Switch between Region / Zone / Station / Driver / Old Route / Pending in Yesterday Route with the level switcher.</p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li><strong>Productivity</strong>: Total Success ÷ Total Routed, shown as a plain number (not a %) -- at the driver level it's scored against a target set per driver position (Hybrid Driver/Rider, Independent Driver/Rider) in Admin → SLA Targets.</li>
+          <li><strong>Productivity</strong>: Total Success ÷ Total Routed, shown as a plain number (not a %) -- at the driver level it's scored against a target set per driver position (Hybrid Driver/Rider, Independent Driver/Rider) in Settings → SLA Targets.</li>
           <li><strong>Completion Rate</strong>: (Total Routed − Current OVFD) ÷ Total Routed -- 100% means nothing is left on the vehicle.</li>
           <li>The <strong>driver-type dropdown</strong> (deliberately a plain select, not a tab-style button) filters Region/Zone/Station/Driver views to Hybrid, Independent or Other drivers only. It never affects Old Route or Pending in Yesterday Route -- neither has a driver concept.</li>
           <li><strong>Old Route</strong>: tracking numbers still stuck on an old Route ID/date.</li>
-          <li><strong>Pending in Yesterday Route</strong>: a frozen snapshot of everything still On Vehicle for Delivery at ~2am Malaysia time -- stays fixed all day, replaced at the next 2am capture.</li>
+          <li><strong>Pending in Yesterday Route</strong>: a frozen snapshot of everything still On Vehicle for Delivery at ~12:30am Malaysia time -- stays fixed all day, replaced at the next 12:30am capture.</li>
         </ul>
       </div>
     ),
@@ -191,7 +190,7 @@ const SECTIONS = [
         </p>
         <p>
           Rows shaded red have a COD value at or above the threshold, or an item description matching a keyword --
-          both are editable in <strong>Admin → Recovery Settings</strong>. The TN list has its own station search box,
+          both are editable in <strong>Settings → Recovery Settings</strong>. The TN list has its own station search box,
           separate from the shared one above, so you can narrow just that table to one station without touching the
           overview tables.
         </p>
@@ -233,20 +232,42 @@ const SECTIONS = [
     ),
   },
   {
+    id: "settings",
+    title: "Settings",
+    body: (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          Nationwide configuration -- only reachable by Admin, Manager and Region-staff roles (station-scoped users
+          don't see this nav item at all).
+        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li><strong>Users</strong>: add/edit teammates. You can only grant a role/scope at or below your own.</li>
+          <li>
+            <strong>SLA Targets</strong>: set Warning/Critical numbers per metric, at a Nationwide default or a region
+            override (Productivity uses driver-position overrides instead). Turning "Scored" off makes a metric
+            reference-only everywhere at once. "Score as % of" evaluates a metric as a percentage of another field on
+            the same row instead of its raw count.
+          </li>
+          <li><strong>Recovery Settings</strong>: the COD-value threshold and item keywords behind Recovery's high-value highlighting.</li>
+          <li><strong>Data Refresh</strong> (admin only): trigger an immediate refresh and see when the last one ran.</li>
+        </ul>
+      </div>
+    ),
+  },
+  {
     id: "admin",
     title: "Admin",
     body: (
-      <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-700">
-        <li><strong>Users</strong>: add/edit teammates. You can only grant a role/scope at or below your own.</li>
-        <li>
-          <strong>SLA Targets</strong>: set Warning/Critical numbers per metric, at a Nationwide default or a region
-          override (Productivity uses driver-position overrides instead). Turning "Scored" off makes a metric
-          reference-only everywhere at once. "Score as % of" evaluates a metric as a percentage of another field on
-          the same row instead of its raw count.
-        </li>
-        <li><strong>Recovery Settings</strong>: the COD-value threshold and item keywords behind Recovery's high-value highlighting.</li>
-        <li><strong>Data Refresh</strong> (admin only): trigger an immediate refresh and see when the last one ran.</li>
-      </ul>
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          Day-to-day tools, open to every role regardless of scope -- this is where you're reading this Guide right
+          now. Feedback and Guide are here for now; more will be added over time (attendance is planned next).
+        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li><strong>Feedback</strong>: send a complaint, bug report, or idea straight to the admin team. Only a full admin can read what's been submitted.</li>
+          <li><strong>Guide</strong>: this page.</li>
+        </ul>
+      </div>
     ),
   },
 ];
