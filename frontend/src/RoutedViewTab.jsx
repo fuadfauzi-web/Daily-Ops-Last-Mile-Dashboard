@@ -90,7 +90,7 @@ function renderCell(col, r) {
   }
   if (col.render === "hybrid") return `${r.attendance_hd}HD/${r.attendance_hr}HR`;
   if (col.render === "independent") return `${r.attendance_id}ID/${r.attendance_ir}IR`;
-  if (col.render === "tenure") return "— (pending Metabase link)";
+  if (col.render === "tenure") return r.tenure || "—";
   const value = r[col.source || col.key];
   if (col.key === "productivity_pct") return value.toFixed(2);
   return col.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
@@ -324,7 +324,8 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
                 {rows.length} rows · Completion Rate = (Total Routed − Current OVFD) / Total Routed — 100% means nothing
                 is left on the vehicle. Attendance shows rescue drivers in parentheses when present; Hybrid/Independent
                 break down by HD/HR/ID/IR. Driver "Station" is where they're currently routing today (may differ from
-                home station for a rescue driver). Driver tenure needs the Metabase driver-tenure connection to be set up.
+                home station for a rescue driver). Driver tenure comes from the driver/rider details file uploaded in
+                Settings → Documents — "—" means that driver isn't in the uploaded file.
               </>
             }
           />

@@ -23,8 +23,9 @@ last_scan_hub_name != dest_hub hasn't been added to a shipment to its real
 destination yet, so it lands in `pending_ats` at the hub it's currently sitting in,
 not counted in total_in_hub/zero_attempt/etc there.
 """
+import calendar
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from stations import ABBR_TO_HUB, HUBS, REGIONS, ZONES, FULL_NAME_TO_HUB
 
@@ -574,6 +575,28 @@ def _parse_driver(driver_name: str) -> dict:
         "position": position,
         "label": _DRIVER_POSITION_LABELS.get(position, "Unknown"),
     }
+
+
+def compute_tenure(start: date | None, today: date) -> str | None:
+    """2026-09-20: driver tenure, sourced from a manually-uploaded driver/rider
+    details CSV (Settings -> Documents), joined onto Routed View's driver rows
+    by exact driver_name == "Display Name" match -- see main.py's
+    upload_driver_details and routed_view. today - start, calendar-aware
+    (not just days // 365)."""
+    if start is None or start > today:
+        return None
+    years = today.year - start.year
+    months = today.month - start.month
+    days = today.day - start.day
+    if days < 0:
+        months -= 1
+        prev_month = today.month - 1 or 12
+        prev_year = today.year if today.month > 1 else today.year - 1
+        days += calendar.monthrange(prev_year, prev_month)[1]
+    if months < 0:
+        years -= 1
+        months += 12
+    return f"{years}y {months}m {days}d"
 
 
 ROUTED_STATION_KEYS = (
