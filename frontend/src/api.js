@@ -73,4 +73,8 @@ export const api = {
     list: () => request("/api/thresholds"),
     save: (rows) => request("/api/thresholds", { method: "PUT", body: JSON.stringify({ rows }) }),
   },
+  feedback: {
+    submit: (message) => request("/api/feedback", { method: "POST", body: JSON.stringify({ message }) }),
+    list: () => request("/api/feedback"),
+  },
 };
