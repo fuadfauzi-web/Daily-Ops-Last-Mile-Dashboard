@@ -160,7 +160,10 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
     return [...base].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
-      if (av === undefined || bv === undefined) return 0;
+      // == null (not undefined) matters since Tenure comes back null for any
+      // driver not in the uploaded driver-details CSV -- comparing against
+      // that with .localeCompare would crash the whole tab.
+      if (av == null || bv == null) return 0;
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       if (typeof av === "boolean") return sortDir === "asc" ? Number(av) - Number(bv) : Number(bv) - Number(av);
       return sortDir === "asc" ? av - bv : bv - av;
