@@ -121,22 +121,41 @@ function localRollup(rows, groupKey) {
   }));
 }
 
+// Sorts one level's siblings by sortKey without touching the tree structure --
+// "name" isn't a real field on the raw region/zone/station rows (they have
+// key/station_name respectively), so it's mapped to whichever field actually
+// holds that level's display name.
+function sortSiblings(rows, sortKey, sortDir, nameField) {
+  if (!sortKey) return rows;
+  const key = sortKey === "name" ? nameField : sortKey;
+  return [...rows].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av === undefined || bv === undefined) return 0;
+    if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+}
+
 // Experimental (2026-09-20, staging only): flattens region -> zone -> station
-// into one row list for Station Health's "combined table" styles.
-// mode: "combined-expanded" shows every level always; "combined-click" only
-// expands a region/zone once its key is in the matching Set.
-function buildCombinedRows(stations, mode, expandedRegions, expandedZones) {
+// into one row list for Station Health's "combined -- click to expand" style.
+// A region/zone only expands once its key is in the matching Set. sortKey/
+// sortDir (if given) sort each level's siblings independently -- clicking a
+// column header re-sorts region rows against each other, zone rows within
+// their own region against each other, and so on, without breaking the
+// region -> zone -> station nesting itself.
+function buildCombinedRows(stations, expandedRegions, expandedZones, sortKey, sortDir) {
   const rows = [];
-  localRollup(stations, "region").forEach((r) => {
+  sortSiblings(localRollup(stations, "region"), sortKey, sortDir, "key").forEach((r) => {
     rows.push({ ...r, type: "region", id: `region:${r.key}`, displayName: r.key });
-    if (mode !== "combined-expanded" && !expandedRegions.has(r.key)) return;
+    if (!expandedRegions.has(r.key)) return;
     const stationsInRegion = stations.filter((s) => s.region === r.key);
-    localRollup(stationsInRegion, "zone").forEach((z) => {
+    sortSiblings(localRollup(stationsInRegion, "zone"), sortKey, sortDir, "key").forEach((z) => {
       rows.push({ ...z, type: "zone", id: `zone:${z.key}`, displayName: z.key });
-      if (mode !== "combined-expanded" && !expandedZones.has(z.key)) return;
-      stationsInRegion
-        .filter((s) => s.zone === z.key)
-        .forEach((s) => rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name }));
+      if (!expandedZones.has(z.key)) return;
+      sortSiblings(stationsInRegion.filter((s) => s.zone === z.key), sortKey, sortDir, "station_name").forEach((s) =>
+        rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name })
+      );
     });
   });
   return rows;
@@ -223,6 +242,15 @@ export default function Dashboard({ me, onCapturedAt }) {
   const [stationHealthView, setStationHealthView] = useState("separate");
   const [expandedRegions, setExpandedRegions] = useState(() => new Set());
   const [expandedZones, setExpandedZones] = useState(() => new Set());
+  const [combinedSortKey, setCombinedSortKey] = useState(null);
+  const [combinedSortDir, setCombinedSortDir] = useState("asc");
+  const toggleCombinedSort = (key) => {
+    if (key === combinedSortKey) setCombinedSortDir(combinedSortDir === "asc" ? "desc" : "asc");
+    else {
+      setCombinedSortKey(key);
+      setCombinedSortDir("asc");
+    }
+  };
   const toggleInSet = (setter, key) =>
     setter((prev) => {
       const next = new Set(prev);
@@ -487,6 +515,14 @@ export default function Dashboard({ me, onCapturedAt }) {
     if (row.type === "zone") return zoneRangeByMetric[key];
     return stationRangeByMetricAndZone[key]?.[row.zone];
   };
+  // Distinct banding per level (region darkest, zone lighter, station plain
+  // white) so the three row types are unmistakable at a glance, not just from
+  // the name column's own indentation/weight -- per 2026-09-20 feedback.
+  const combinedRowClassName = (row) => {
+    if (row.type === "region") return "bg-slate-100";
+    if (row.type === "zone") return "bg-slate-50";
+    return "";
+  };
   const combinedColumns = [
     {
       key: "name",
@@ -494,23 +530,22 @@ export default function Dashboard({ me, onCapturedAt }) {
       sticky: true,
       align: "left",
       render: (row) => {
-        const clickable = stationHealthView === "combined-click" && row.type !== "station";
-        const caret = clickable ? (
+        const caret = row.type !== "station" ? (
           <span className="text-slate-400">
             {(row.type === "region" ? expandedRegions : expandedZones).has(row.key) ? "▾" : "▸"}
           </span>
         ) : null;
         if (row.type === "region") {
           return (
-            <span className="flex items-center gap-1.5 font-display font-semibold text-ink">
+            <span className="flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-wide text-ink">
               {caret}
-              {row.displayName} <span className="text-xs font-normal text-slate-400">({row.station_count})</span>
+              {row.displayName} <span className="text-xs font-normal normal-case text-slate-400">({row.station_count})</span>
             </span>
           );
         }
         if (row.type === "zone") {
           return (
-            <span className="flex items-center gap-1.5 pl-5 font-display font-medium text-slate-700">
+            <span className="flex items-center gap-1.5 pl-5 font-display font-semibold text-slate-700">
               {caret}
               {row.displayName} <span className="text-xs font-normal text-slate-400">({row.station_count})</span>
             </span>
@@ -555,11 +590,11 @@ export default function Dashboard({ me, onCapturedAt }) {
   const combinedRows =
     stationHealthView === "separate"
       ? []
-      : buildCombinedRows(filteredStations, stationHealthView, expandedRegions, expandedZones);
+      : buildCombinedRows(filteredStations, expandedRegions, expandedZones, combinedSortKey, combinedSortDir);
   const handleCombinedRowClick = (row) => {
     if (row.type === "station") {
       setDetailRow(row);
-    } else if (stationHealthView === "combined-click") {
+    } else {
       toggleInSet(row.type === "region" ? setExpandedRegions : setExpandedZones, row.key);
     }
   };
@@ -728,8 +763,7 @@ export default function Dashboard({ me, onCapturedAt }) {
               <SegmentedControl
                 options={[
                   { key: "separate", label: "Separate tables" },
-                  { key: "combined-click", label: "Combined — click to expand" },
-                  { key: "combined-expanded", label: "Combined — always expanded" },
+                  { key: "combined", label: "Combined — click to expand" },
                 ]}
                 value={stationHealthView}
                 onChange={setStationHealthView}
@@ -744,10 +778,8 @@ export default function Dashboard({ me, onCapturedAt }) {
                   <>
                     Station Health — combined{" "}
                     <span className="font-normal text-slate-400">
-                      —{" "}
-                      {stationHealthView === "combined-click"
-                        ? "click a region/zone row to expand it, click a station row for detail"
-                        : "click a station row for detail"}
+                      — click a region/zone row to expand it, click a station row for detail, click a column header to
+                      sort (sorts what's currently shown within its own region/zone, doesn't change what's expanded)
                     </span>
                   </>
                 }
@@ -765,7 +797,11 @@ export default function Dashboard({ me, onCapturedAt }) {
                 columns={combinedColumns}
                 rows={combinedRows}
                 rowKey={(r) => r.id}
+                rowClassName={combinedRowClassName}
                 onRowClick={handleCombinedRowClick}
+                sortKey={combinedSortKey}
+                sortDir={combinedSortDir}
+                onSort={toggleCombinedSort}
                 emptyMessage="No stations match."
                 footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
               />
