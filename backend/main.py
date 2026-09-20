@@ -1677,6 +1677,11 @@ class FeedbackRow(BaseModel):
     created_at: str
 
 
+class OkResult(BaseModel):
+    ok: bool
+    detail: str | None = None
+
+
 @app.post("/api/feedback", response_model=OkResult)
 async def submit_feedback(payload: FeedbackIn, user: CurrentUser = Depends(get_current_user)):
     message = payload.message.strip()
@@ -1727,11 +1732,6 @@ class UserIn(BaseModel):
     scope_type: str  # 'all' | 'region' | 'zone' | 'station'
     scope_value: str | None = None
     display_name: str | None = None
-
-
-class OkResult(BaseModel):
-    ok: bool
-    detail: str | None = None
 
 
 def _require_admin(user: CurrentUser) -> None:
