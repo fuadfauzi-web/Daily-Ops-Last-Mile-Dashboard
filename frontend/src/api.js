@@ -77,4 +77,25 @@ export const api = {
     submit: (message) => request("/api/feedback", { method: "POST", body: JSON.stringify({ message }) }),
     list: () => request("/api/feedback"),
   },
+  driverDetails: {
+    status: () => request("/api/admin/driver-details/status"),
+    upload: async (file) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      // No Content-Type header -- the browser sets the multipart boundary itself.
+      const res = await fetch("/api/admin/driver-details/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          detail = (await res.json()).detail || detail;
+        } catch {
+          /* ignore */
+        }
+        const err = new Error(detail);
+        err.status = res.status;
+        throw err;
+      }
+      return res.json();
+    },
+  },
 };

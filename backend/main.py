@@ -11,12 +11,14 @@ Runtime contract: port 8000, GET /health, everything else under /api. See
 CLAUDE.md's "Substrait deployment" block for the platform's deploy rules.
 """
 import asyncio
+import csv
+import io
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -27,9 +29,9 @@ from aggregate import (
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
     build_missing_details, build_old_route, build_pending_yesterday_route, build_routed_view, build_rpu,
-    build_shipment_details, build_shipper_watch, build_station_metrics, merge_routed_into_station_metrics, rollup,
-    rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed, rollup_routed_by_driver_type, rollup_rpu,
-    rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
+    build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure, merge_routed_into_station_metrics,
+    rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed, rollup_routed_by_driver_type,
+    rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user
 from redash_client import (
@@ -771,6 +773,7 @@ class RoutedDriverRow(BaseModel):
     cod_pct: float
     success_rate: float
     completion_rate: float
+    tenure: str | None = None
 
 
 class RoutedViewResponse(BaseModel):
@@ -825,6 +828,21 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
         [{**d, "station_name": d["current_station"], "zone": d["zone"], "region": d["region"]} for d in _routed_drivers],
         user,
     )
+
+    # Tenure: joined from the manually-uploaded driver/rider details CSV (Settings ->
+    # Documents), matched by exact driver_name == "Display Name" -- see
+    # upload_driver_details below and aggregate.compute_tenure.
+    tenure_start_by_name: dict[str, date] = {
+        r[0]: r[1]
+        for r in await db.fetch_all(
+            "SELECT display_name, employment_start_date FROM driver_details WHERE employment_start_date IS NOT NULL"
+        )
+    }
+    if tenure_start_by_name:
+        today_myt = datetime.now(_MYT).date()
+        for row in driver_rows:
+            start = tenure_start_by_name.get(row["driver_name"])
+            row["tenure"] = compute_tenure(start, today_myt) if start else None
 
     if driver_type is None:
         # Fast path: today's default view reads the persisted per-refresh snapshot,
@@ -1710,6 +1728,92 @@ async def list_feedback(user: CurrentUser = Depends(get_current_user)):
         }
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Settings: Documents -- driver/rider list details upload (admin/manager/region,
+# same access as "add teammate", see _require_can_add_users). Currently the only
+# document type: a CSV with one row per driver/rider, used solely to compute
+# Routed View's driver Tenure column (join by exact "Display Name" ==
+# driver_name match -- see routed_view() and aggregate.compute_tenure). The
+# whole table is replaced on each upload, not merged/diffed.
+# ---------------------------------------------------------------------------
+
+
+class DriverDetailsStatus(BaseModel):
+    uploaded_by: str | None
+    filename: str | None
+    row_count: int | None
+    uploaded_at: str | None
+
+
+def _parse_employment_date(value: str | None) -> date | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%B %d, %Y").date()
+    except ValueError:
+        return None
+
+
+@app.get("/api/admin/driver-details/status", response_model=DriverDetailsStatus)
+async def driver_details_status(user: CurrentUser = Depends(get_current_user)):
+    _require_can_add_users(user)
+    row = await db.fetch_one(
+        "SELECT uploaded_by, filename, row_count, uploaded_at FROM driver_details_upload_log ORDER BY uploaded_at DESC LIMIT 1"
+    )
+    if not row:
+        return {"uploaded_by": None, "filename": None, "row_count": None, "uploaded_at": None}
+    return {"uploaded_by": row[0], "filename": row[1], "row_count": row[2], "uploaded_at": str(row[3])}
+
+
+@app.post("/api/admin/driver-details/upload", response_model=OkResult)
+async def upload_driver_details(file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
+    _require_can_add_users(user)
+    if not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="Only .csv files are supported")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="Could not read the file as UTF-8 CSV")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames or "Display Name" not in reader.fieldnames:
+        raise HTTPException(status_code=422, detail="CSV must include a 'Display Name' column")
+
+    rows = []
+    for r in reader:
+        display_name = (r.get("Display Name") or "").strip()
+        if not display_name:
+            continue
+        rows.append((
+            (r.get("ID") or "").strip() or None,
+            display_name,
+            (r.get("Hub Name") or "").strip() or None,
+            (r.get("Hub Region") or "").strip() or None,
+            (r.get("Zone") or "").strip() or None,
+            (r.get("Driver Type") or "").strip() or None,
+            _parse_employment_date(r.get("Employment Start Date")),
+            _parse_employment_date(r.get("Employment End Date")),
+        ))
+    if not rows:
+        raise HTTPException(status_code=422, detail="No usable rows found (need at least a 'Display Name' per row)")
+
+    await db.execute("DELETE FROM driver_details")
+    await db.execute_many(
+        """INSERT INTO driver_details
+           (driver_id, display_name, hub_name, hub_region, zone, driver_type, employment_start_date, employment_end_date)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        rows,
+    )
+    await db.execute(
+        "INSERT INTO driver_details_upload_log (uploaded_by, filename, row_count, uploaded_at) VALUES (%s, %s, %s, %s)",
+        (user.email, file.filename, len(rows), datetime.now(timezone.utc)),
+    )
+    return {"ok": True, "detail": f"Uploaded {len(rows)} driver records"}
 
 
 # ---------------------------------------------------------------------------

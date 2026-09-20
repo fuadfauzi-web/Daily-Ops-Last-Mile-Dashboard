@@ -402,10 +402,93 @@ function RecoverySettingsPanel() {
   );
 }
 
+// Settings -> Documents: upload the driver/rider list details CSV that Routed
+// View's Tenure column is joined from (see backend/main.py's
+// upload_driver_details -- "Display Name" must match the driver_name
+// convention, e.g. "KEP - ID - NOR IKHWAN"). Only one document type for now;
+// the whole table is replaced on each upload, so re-upload whenever there's a
+// new export rather than trying to patch it in the app.
+function DocumentsPanel() {
+  const [status, setStatus] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [fileName, setFileName] = useState(null);
+
+  const load = () => api.driverDetails.status().then(setStatus).catch((e) => setError(e.message));
+  useEffect(load, []);
+
+  const onFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setError(null);
+    setResult(null);
+    if (!/\.csv$/i.test(file.name)) {
+      setError("Please upload a .csv file.");
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await api.driverDetails.upload(file);
+      setResult(res.detail || "Upload complete");
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {error && (
+        <div className="rounded-lg bg-status-critical/5 px-4 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">
+          {error}
+        </div>
+      )}
+      <div className="space-y-4 rounded-xl bg-white p-4 ring-1 ring-slate-200">
+        <div>
+          <div className="font-display text-sm font-semibold text-slate-700">Driver / rider list details</div>
+          <p className="mb-3 text-xs text-slate-400">
+            Powers Routed View's driver Tenure column. Upload the driver/rider details export as-is (columns: ID,
+            Display Name, Hub Name, Hub Region, Zone, Driver Type, Employment Start Date, Employment End Date) — Display
+            Name must match the driver name format used elsewhere in the app (e.g. "KEP - ID - NOR IKHWAN"). Upload
+            daily or whenever there's a new export; each upload fully replaces the previous one.
+          </p>
+          <label className="inline-block cursor-pointer rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
+            {uploading ? "Uploading…" : "Upload CSV"}
+            <input type="file" accept=".csv" onChange={onFileChange} disabled={uploading} className="hidden" />
+          </label>
+          {fileName && <span className="ml-2 text-xs text-slate-500">{fileName}</span>}
+        </div>
+
+        {result && (
+          <div className="rounded-lg bg-status-good/10 px-3 py-2 text-xs font-medium text-status-good">{result}</div>
+        )}
+
+        <div className="border-t border-slate-100 pt-3 text-xs text-slate-500">
+          {status?.uploaded_at ? (
+            <>
+              Last uploaded: <span className="font-medium text-slate-700">{formatTime(status.uploaded_at)}</span> by{" "}
+              {status.uploaded_by} · {status.filename} · {status.row_count?.toLocaleString()} rows
+            </>
+          ) : (
+            "No file uploaded yet."
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SETTINGS_TABS = [
   { key: "users", label: "Users", visible: () => true },
   { key: "sla", label: "SLA Targets", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "recovery", label: "Recovery Settings", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "documents", label: "Documents", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
   { key: "refresh", label: "Data Refresh", visible: (me) => me.role === "admin" },
 ];
 
@@ -545,6 +628,8 @@ export default function SettingsPanel({ me }) {
       {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
 
       {adminTab === "recovery" && <RecoverySettingsPanel />}
+
+      {adminTab === "documents" && <DocumentsPanel />}
 
       {adminTab === "refresh" && isFullAdmin && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
