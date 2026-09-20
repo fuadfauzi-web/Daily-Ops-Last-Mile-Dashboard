@@ -22,7 +22,6 @@ import RpuTab from "./RpuTab";
 import RestockTab from "./RestockTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
-import GuideTab from "./GuideTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -65,8 +64,6 @@ const TABS = [
   { key: "shipper", label: "Shipper Watch" },
   { key: "restock", label: "Restock" },
   { key: "urgent", label: "Urgent TN" },
-  // Staging-only for now (2026-09-20) -- not part of the production tab order yet.
-  { key: "guide", label: "Guide" },
 ];
 
 function fmt(key, value) {
@@ -675,8 +672,6 @@ export default function Dashboard({ me, onCapturedAt }) {
       )}
 
       {tab === "urgent" && <UrgentTnTab me={me} />}
-
-      {tab === "guide" && <GuideTab />}
     </div>
   );
 }

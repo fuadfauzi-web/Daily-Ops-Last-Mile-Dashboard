@@ -3,6 +3,7 @@ import { api } from "./api";
 import { BOARD_COLUMNS } from "./lib/actionMetrics";
 import { resolveThreshold } from "./lib/thresholds";
 import TabBar from "./components/TabBar";
+import GuideTab from "./GuideTab";
 
 // Routed View's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
@@ -402,11 +403,16 @@ function RecoverySettingsPanel() {
   );
 }
 
+// "Users" used to be visible unconditionally -- safe only because the header
+// used to hide the whole Admin page from plain "station" role users. Now that
+// the Guide tab needs Admin reachable by everyone, this needs its own explicit
+// gate matching what used to be the page-level one.
 const ADMIN_TABS = [
-  { key: "users", label: "Users", visible: () => true },
+  { key: "users", label: "Users", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
   { key: "sla", label: "SLA Targets", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "recovery", label: "Recovery Settings", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "refresh", label: "Data Refresh", visible: (me) => me.role === "admin" },
+  { key: "guide", label: "Guide", visible: () => true },
 ];
 
 export default function AdminPanel({ me }) {
@@ -414,7 +420,10 @@ export default function AdminPanel({ me }) {
   const myAllowedRoles = useMemo(() => allowedRoles(me.role), [me.role]);
   const myAllowedScopeTypes = useMemo(() => allowedScopeTypes(me.role), [me.role]);
   const visibleAdminTabs = useMemo(() => ADMIN_TABS.filter((t) => t.visible(me)), [me]);
-  const [adminTab, setAdminTab] = useState("users");
+  // Defaults to the first tab this user can actually see -- for most roles
+  // that's still "users", but a plain station-role user (who can now reach
+  // this page purely for the Guide) only ever has "guide" visible.
+  const [adminTab, setAdminTab] = useState(() => (ADMIN_TABS.find((t) => t.visible(me)) || ADMIN_TABS[ADMIN_TABS.length - 1]).key);
 
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
@@ -545,6 +554,8 @@ export default function AdminPanel({ me }) {
       {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
 
       {adminTab === "recovery" && <RecoverySettingsPanel />}
+
+      {adminTab === "guide" && <GuideTab />}
 
       {adminTab === "refresh" && isFullAdmin && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
