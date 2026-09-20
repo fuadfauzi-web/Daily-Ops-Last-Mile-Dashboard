@@ -330,12 +330,12 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
 
 async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> None:
     """Captures Routed View's "Pending in Yesterday Route" snapshot once per
-    Malaysia calendar day, on the first refresh at or after 02:00 MYT -- a no-op
+    Malaysia calendar day, on the first refresh at or after 00:30 MYT -- a no-op
     every other refresh that day (checked via the captured_for_date primary key).
     Runs off whatever health_v3_rows this refresh cycle already fetched rather
     than hitting Redash again."""
     now_myt = datetime.now(_MYT)
-    if now_myt.hour < 2:
+    if (now_myt.hour, now_myt.minute) < (0, 30):
         return
     today_myt = now_myt.date()
     already = await db.fetch_one(

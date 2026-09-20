@@ -363,8 +363,8 @@ def rollup_missing_details(station_rows: list[dict], group_key: str) -> list[dic
 # ---------------------------------------------------------------------------
 # Routed View's "Pending in Yesterday Route" sub-tab (query 78 again). A snapshot
 # of everything still On Vehicle for Delivery captured once daily just after
-# 02:00 Malaysia time, held static for the rest of the day and replaced at the
-# next day's 02:00 capture -- see main.py's _maybe_capture_pending_yesterday_route,
+# 00:30 Malaysia time, held static for the rest of the day and replaced at the
+# next day's 00:30 capture -- see main.py's _maybe_capture_pending_yesterday_route,
 # which calls this with whatever health_v3_rows that refresh cycle already fetched.
 # ---------------------------------------------------------------------------
 

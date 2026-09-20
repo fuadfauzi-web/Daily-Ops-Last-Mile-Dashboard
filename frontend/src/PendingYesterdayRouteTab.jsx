@@ -14,8 +14,8 @@ const TN_COLUMNS = [
   { key: "attempts", label: "Attempt" },
 ];
 
-// Snapshot of what was still On Vehicle for Delivery at ~2am Malaysia time --
-// frozen for the whole day, refreshed at the next 2am capture (see
+// Snapshot of what was still On Vehicle for Delivery at ~12:30am Malaysia time
+// -- frozen for the whole day, refreshed at the next 12:30am capture (see
 // backend/main.py's _maybe_capture_pending_yesterday_route).
 export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
   const [data, setData] = useState(null);
@@ -96,7 +96,7 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
   if (!data.captured_for_date)
     return (
       <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
-        No snapshot yet -- captured once daily just after 02:00 Malaysia time.
+        No snapshot yet -- captured once daily just after 12:30am Malaysia time.
       </div>
     );
 
@@ -123,7 +123,7 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
       />
       <div className="flex items-center gap-1.5 text-sm text-slate-500">
         <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-        Captured {formatTime(data.captured_at)} for {data.captured_for_date} · stays fixed until the next 2am capture
+        Captured {formatTime(data.captured_at)} for {data.captured_for_date} · stays fixed until the next 12:30am capture
       </div>
 
       <DataTable
