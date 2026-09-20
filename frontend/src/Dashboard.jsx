@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
+import { minMax, colorScaleClass } from "./lib/colorScale";
 import { ALL_COLUMNS } from "./lib/metrics";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
@@ -21,6 +22,7 @@ import RpuTab from "./RpuTab";
 import RestockTab from "./RestockTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
+import GuideTab from "./GuideTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -63,6 +65,8 @@ const TABS = [
   { key: "shipper", label: "Shipper Watch" },
   { key: "restock", label: "Restock" },
   { key: "urgent", label: "Urgent TN" },
+  // Staging-only for now (2026-09-20) -- not part of the production tab order yet.
+  { key: "guide", label: "Guide" },
 ];
 
 function fmt(key, value) {
@@ -275,6 +279,40 @@ export default function Dashboard({ me, onCapturedAt }) {
   const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
   const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
 
+  // Reference metrics (no SLA) get a relative colour scale instead of a flat
+  // grey -- region/zone tables scale each metric against every region/zone
+  // shown; the station table is fixed to scale each station only against the
+  // other stations in its own zone (per 2026-09-20 feedback).
+  const regionRangeByMetric = useMemo(() => {
+    const map = {};
+    ALL_COLUMNS.forEach((c) => {
+      map[c.key] = minMax(filteredRegionGroups.map((g) => g[c.key]));
+    });
+    return map;
+  }, [filteredRegionGroups]);
+  const zoneRangeByMetric = useMemo(() => {
+    const map = {};
+    ALL_COLUMNS.forEach((c) => {
+      map[c.key] = minMax(filteredZoneGroups.map((g) => g[c.key]));
+    });
+    return map;
+  }, [filteredZoneGroups]);
+  const stationRangeByMetricAndZone = useMemo(() => {
+    const byZone = {};
+    filteredStations.forEach((s) => {
+      if (!byZone[s.zone]) byZone[s.zone] = [];
+      byZone[s.zone].push(s);
+    });
+    const map = {};
+    ALL_COLUMNS.forEach((c) => {
+      map[c.key] = {};
+      Object.entries(byZone).forEach(([zone, rows]) => {
+        map[c.key][zone] = minMax(rows.map((r) => r[c.key]));
+      });
+    });
+    return map;
+  }, [filteredStations]);
+
   const yesterdayByCode = useMemo(() => {
     const m = new Map();
     (data?.yesterday_stations || []).forEach((r) => m.set(r.station_code, r));
@@ -362,11 +400,20 @@ export default function Dashboard({ me, onCapturedAt }) {
       </div>
     );
 
-  const groupColumns = ALL_COLUMNS.map((c) => ({
-    key: c.key,
-    label: c.label,
-    render: (g) => fmt(c.key, g[c.key]),
-  }));
+  // Region/zone tables each get their own column set since the colour scale for
+  // a reference metric depends on which row set it's being ranked against.
+  const buildGroupColumns = (rangeByMetric) =>
+    ALL_COLUMNS.map((c) => {
+      const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
+      return {
+        key: c.key,
+        label: c.label,
+        render: (g) => fmt(c.key, g[c.key]),
+        className: isReference ? (g) => colorScaleClass(g[c.key], rangeByMetric[c.key]) : undefined,
+      };
+    });
+  const regionGroupColumns = buildGroupColumns(regionRangeByMetric);
+  const zoneGroupColumns = buildGroupColumns(zoneRangeByMetric);
 
   const stationColumns = [
     ...(!hideRegionCol ? [{ key: "region", label: "Region", render: (r) => r.region, className: () => "text-slate-500" }] : []),
@@ -408,7 +455,7 @@ export default function Dashboard({ me, onCapturedAt }) {
           );
         },
         className: (r) => {
-          if (isReference) return SEVERITY_CLASS.reference;
+          if (isReference) return colorScaleClass(r[c.key], stationRangeByMetricAndZone[c.key]?.[r.zone]);
           const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key], r);
           return SEVERITY_CLASS[sev];
         },
@@ -524,8 +571,8 @@ export default function Dashboard({ me, onCapturedAt }) {
 
       {tab === "health" && (
         <>
-          <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} columns={groupColumns} />
-          <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} columns={groupColumns} />
+          <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} columns={regionGroupColumns} />
+          <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} columns={zoneGroupColumns} />
 
           <DataTable
             title={
@@ -567,7 +614,10 @@ export default function Dashboard({ me, onCapturedAt }) {
           />
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored. Targets are set in Admin → SLA Targets.
+            SLA, never scored. Targets are set in Admin → SLA Targets. Reference metrics (e.g. Total Fresh) instead
+            shade darkest-to-lightest by relative rank — By region/By zone rank against every region/zone shown; this
+            table ranks each station only against other stations in its own zone. That shading is a ranking, not a
+            pass/fail judgement.
             {compareYesterday && " Small numbers next to each value are the change vs. ~24h ago."} Total Fresh,
             Total Routed, Attendance and COD % (Hub) aren't clickable — their source queries don't return individual
             tracking numbers.
@@ -625,6 +675,8 @@ export default function Dashboard({ me, onCapturedAt }) {
       )}
 
       {tab === "urgent" && <UrgentTnTab me={me} />}
+
+      {tab === "guide" && <GuideTab />}
     </div>
   );
 }
