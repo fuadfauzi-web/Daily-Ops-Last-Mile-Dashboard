@@ -24,6 +24,7 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
   const [stationSortDir, setStationSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
+  const [tnStationSearch, setTnStationSearch] = useState("");
   const [copied, setCopied] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
 
@@ -59,7 +60,11 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
 
   const filteredTnRows = useMemo(() => {
     if (!data) return [];
-    const tn = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
+    let tn = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
+    if (tnStationSearch.trim()) {
+      const q = tnStationSearch.trim().toLowerCase();
+      tn = tn.filter((r) => r.station_name?.toLowerCase().includes(q));
+    }
     return [...tn].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -67,7 +72,7 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, visibleStationCodes, tnSortKey, tnSortDir]);
+  }, [data, visibleStationCodes, tnSortKey, tnSortDir, tnStationSearch]);
 
   const toggleStationSort = (key) => {
     if (key === stationSortKey) setStationSortDir(stationSortDir === "asc" ? "desc" : "asc");
@@ -156,7 +161,13 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
       <DataTable
         title="Tracking numbers"
         titleExtra={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              placeholder="Search station (this table only)…"
+              value={tnStationSearch}
+              onChange={(e) => setTnStationSearch(e.target.value)}
+            />
             <button
               onClick={() =>
                 exportCsv(

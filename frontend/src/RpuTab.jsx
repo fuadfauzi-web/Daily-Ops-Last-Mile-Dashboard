@@ -75,16 +75,22 @@ function ShipperSelect({ shipper, setShipper, shippers }) {
 function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
+  const [tnStationSearch, setTnStationSearch] = useState("");
 
   const sorted = useMemo(() => {
-    return [...tnRows].sort((a, b) => {
+    let rows = tnRows;
+    if (tnStationSearch.trim()) {
+      const q = tnStationSearch.trim().toLowerCase();
+      rows = rows.filter((r) => r.station_name?.toLowerCase().includes(q));
+    }
+    return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
       if (av == null || bv == null) return 0;
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [tnRows, tnSortKey, tnSortDir]);
+  }, [tnRows, tnSortKey, tnSortDir, tnStationSearch]);
 
   const toggleTnSort = (key) => {
     if (key === tnSortKey) setTnSortDir(tnSortDir === "asc" ? "desc" : "asc");
@@ -103,7 +109,14 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
     <DataTable
       title="Tracking numbers"
       titleExtra={
-        <button
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            placeholder="Search station (this table only)…"
+            value={tnStationSearch}
+            onChange={(e) => setTnStationSearch(e.target.value)}
+          />
+          <button
           onClick={() =>
             exportCsv(
               `daily-ops-rpu-tns-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -112,9 +125,10 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
             )
           }
           className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-        >
-          Export CSV
-        </button>
+          >
+            Export CSV
+          </button>
+        </div>
       }
       maxHeight="50vh"
       columns={columns}
