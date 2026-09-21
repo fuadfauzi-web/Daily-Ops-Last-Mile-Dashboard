@@ -46,7 +46,7 @@ function localRollup(rows, groupKey) {
   return Object.values(groups);
 }
 
-function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total_count");
@@ -65,7 +65,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
       .missingDetails()
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -252,7 +252,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   );
 }
 
-export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [subTab, setSubTab] = useState("missing");
 
   return (
@@ -260,7 +260,7 @@ export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excl
       <SegmentedControl options={SUB_TABS} value={subTab} onChange={setSubTab} />
       <MissingDetailsView
         regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-        excludeEastMalaysia={excludeEastMalaysia}
+        excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
       />
     </div>
   );

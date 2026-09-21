@@ -4,10 +4,10 @@ import { BOARD_COLUMNS } from "./lib/actionMetrics";
 import { resolveThreshold } from "./lib/thresholds";
 import TabBar from "./components/TabBar";
 
-// Routed View's Productivity % isn't a Station Health/Action Board metric (it's
+// Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
 // so it's kept out of BOARD_COLUMNS entirely and only added here for editing.
-const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Productivity (Routed View)" }];
+const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Productivity (Route Monitoring)" }];
 
 // Productivity is scored per driver position rather than per region -- reuses
 // the exact same (metric_key, scope) mechanism as the region overrides below,
@@ -190,7 +190,7 @@ function SlaTargetsPanel({ regions }) {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-400">Applies at the next 30-minute refresh</span>
+          <span className="text-xs text-slate-400">Applies at the next 15-minute refresh</span>
           <button
             onClick={save}
             disabled={saving}
@@ -387,7 +387,7 @@ function RecoverySettingsPanel() {
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">
             {settings.changed_by ? `Last changed ${formatTime(settings.changed_at)} · ${settings.changed_by}` : "Never changed"}
-            {" · applies at the next 30-minute refresh"}
+            {" · applies at the next 15-minute refresh"}
           </span>
           <button
             onClick={save}
@@ -458,7 +458,7 @@ function DocumentsPanel() {
         <div>
           <div className="font-display text-sm font-semibold text-slate-700">Driver / rider list details</div>
           <p className="mb-3 text-xs text-slate-400">
-            Powers Routed View's driver Tenure column. Upload the driver/rider details export as-is (columns: ID,
+            Powers Route Monitoring's driver Tenure column. Upload the driver/rider details export as-is (columns: ID,
             Display Name, Hub Name, Hub Region, Zone, Driver Type, Employment Start Date, Employment End Date) — Display
             Name must match the driver name format used elsewhere in the app (e.g. "KEP - ID - NOR IKHWAN"). Upload
             daily or whenever there's a new export; each upload fully replaces the previous one.
@@ -662,7 +662,7 @@ export default function SettingsPanel({ me }) {
             </button>
           </div>
           <p className="mt-2 text-xs text-slate-400">
-            Runs automatically every 30 minutes, and now asks Redash to re-run each query first (best-effort — if
+            Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
             the API key can't trigger that, it falls back to whatever Redash last computed on its own).
           </p>
         </div>

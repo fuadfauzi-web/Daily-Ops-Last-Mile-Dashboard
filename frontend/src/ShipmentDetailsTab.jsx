@@ -50,7 +50,7 @@ function TripBadge({ trip }) {
   );
 }
 
-export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("fresh_unscan");
@@ -66,7 +66,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       .shipmentDetails()
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];

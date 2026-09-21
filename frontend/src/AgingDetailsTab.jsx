@@ -60,7 +60,7 @@ function localRollup(rows, groupKey) {
   return Object.values(groups);
 }
 
-export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [agingType, setAgingType] = useState("overall");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -80,7 +80,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
       .agingDetails(agingType)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [agingType]);
+  }, [agingType, refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];

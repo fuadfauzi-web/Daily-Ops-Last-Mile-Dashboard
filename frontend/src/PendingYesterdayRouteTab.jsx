@@ -17,7 +17,7 @@ const TN_COLUMNS = [
 // Snapshot of what was still On Vehicle for Delivery at ~12:30am Malaysia time
 // -- frozen for the whole day, refreshed at the next 12:30am capture (see
 // backend/main.py's _maybe_capture_pending_yesterday_route).
-export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [stationSortKey, setStationSortKey] = useState("total_tn");
@@ -36,7 +36,7 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
       .pendingYesterdayRoute()
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
