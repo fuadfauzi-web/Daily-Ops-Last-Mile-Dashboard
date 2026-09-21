@@ -415,7 +415,12 @@ function DocumentsPanel() {
   const [error, setError] = useState(null);
   const [fileName, setFileName] = useState(null);
 
-  const load = () => api.driverDetails.status().then(setStatus).catch((e) => setError(e.message));
+  // Braces matter here -- see SlaTargetsPanel's note above: an expression-bodied
+  // arrow would return the promise chain, and useEffect would try to call that
+  // as its cleanup function on unmount ("n is not a function").
+  const load = () => {
+    api.driverDetails.status().then(setStatus).catch((e) => setError(e.message));
+  };
   useEffect(load, []);
 
   const onFileChange = async (e) => {
@@ -488,7 +493,7 @@ const SETTINGS_TABS = [
   { key: "users", label: "Users", visible: () => true },
   { key: "sla", label: "SLA Targets", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "recovery", label: "Recovery Settings", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "documents", label: "Documents", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
+  { key: "documents", label: "Documents", visible: (me) => me.role === "admin" },
   { key: "refresh", label: "Data Refresh", visible: (me) => me.role === "admin" },
 ];
 

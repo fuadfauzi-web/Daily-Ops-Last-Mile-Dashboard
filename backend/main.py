@@ -1731,10 +1731,9 @@ async def list_feedback(user: CurrentUser = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# Settings: Documents -- driver/rider list details upload (admin/manager/region,
-# same access as "add teammate", see _require_can_add_users). Currently the only
-# document type: a CSV with one row per driver/rider, used solely to compute
-# Routed View's driver Tenure column (join by exact "Display Name" ==
+# Settings: Documents -- driver/rider list details upload, admin-only. Currently
+# the only document type: a CSV with one row per driver/rider, used solely to
+# compute Routed View's driver Tenure column (join by exact "Display Name" ==
 # driver_name match -- see routed_view() and aggregate.compute_tenure). The
 # whole table is replaced on each upload, not merged/diffed.
 # ---------------------------------------------------------------------------
@@ -1759,7 +1758,7 @@ def _parse_employment_date(value: str | None) -> date | None:
 
 @app.get("/api/admin/driver-details/status", response_model=DriverDetailsStatus)
 async def driver_details_status(user: CurrentUser = Depends(get_current_user)):
-    _require_can_add_users(user)
+    _require_admin(user)
     row = await db.fetch_one(
         "SELECT uploaded_by, filename, row_count, uploaded_at FROM driver_details_upload_log ORDER BY uploaded_at DESC LIMIT 1"
     )
@@ -1770,7 +1769,7 @@ async def driver_details_status(user: CurrentUser = Depends(get_current_user)):
 
 @app.post("/api/admin/driver-details/upload", response_model=OkResult)
 async def upload_driver_details(file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
-    _require_can_add_users(user)
+    _require_admin(user)
     if not (file.filename or "").lower().endswith(".csv"):
         raise HTTPException(status_code=422, detail="Only .csv files are supported")
 
