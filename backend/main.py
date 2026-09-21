@@ -46,7 +46,7 @@ _MYT = timezone(timedelta(hours=8))
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
-REFRESH_INTERVAL_SECONDS = 30 * 60  # every 30 minutes
+REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
 _refresh_task: asyncio.Task | None = None
 
 _METRIC_COLUMNS = METRIC_KEYS
@@ -162,7 +162,7 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
             cod_threshold = DEFAULT_HIGH_COD_VALUE_THRESHOLD
             item_keywords = DEFAULT_HIGH_VALUE_ITEM_KEYWORDS
         missing_details_by_station, missing_details_tn_rows = build_missing_details(
-            missing_rows, health_rows, cod_threshold, item_keywords
+            missing_rows, cod_threshold, item_keywords
         )
 
         captured_at = datetime.now(timezone.utc)
@@ -449,6 +449,7 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
 
 class MetricFields(BaseModel):
     total_in_hub: int
+    zero_attempt_total: int
     zero_attempt: int
     zero_attempt_gt_d0: int
     on_hold: int
@@ -810,14 +811,16 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
 
     # "Total 0 Attempt"/Total In Hub -- merged in from the latest Station Health
     # snapshot so Routed % and Total 0 Attempt are visible alongside routed metrics
-    # without duplicating that computation here.
+    # without duplicating that computation here. zero_attempt_total (not the D0-only
+    # zero_attempt) is what Route Monitoring calls "0 Attempt" -- see aggregate.py's
+    # build_station_metrics for the full D0/>D0 split this sums.
     health_latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
     zero_attempt_by_station: dict[str, int] = {}
     total_in_hub_by_station: dict[str, int] = {}
     station_name_by_code: dict[str, str] = {}
     if health_latest and health_latest[0] is not None:
         for r in await db.fetch_all(
-            "SELECT station_code, station_name, zero_attempt, total_in_hub FROM station_metrics WHERE captured_at = %s",
+            "SELECT station_code, station_name, zero_attempt_total, total_in_hub FROM station_metrics WHERE captured_at = %s",
             (health_latest[0],),
         ):
             station_name_by_code[r[0]] = r[1]
@@ -2059,7 +2062,7 @@ def _refresh_row_to_dict(row) -> dict:
 # column, so they have nothing to score.
 _SLA_METRIC_KEYS = (
     "total_fresh", "total_routed", "routed_pct", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
-    "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
+    "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
     "unsweep_document", "unsweep_parcel", "missing_hub", "missing_ship_in",
     "pending_ats_zero_attempt", "pending_ats_attempted",
     # Action Board's own metrics (frontend/src/lib/actionMetrics.js's EXTRA_METRICS)
