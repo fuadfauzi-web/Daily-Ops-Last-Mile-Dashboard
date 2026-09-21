@@ -162,8 +162,9 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
   const [sortDir, setSortDir] = useState("desc");
   const [detailRow, setDetailRow] = useState(null);
 
-  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
-  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
+  const hideZoneCol =
+    zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   useEffect(() => {
     setData(null);
@@ -289,8 +290,9 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
   const [sortDir, setSortDir] = useState("desc");
   const [detailRow, setDetailRow] = useState(null);
 
-  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
-  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
+  const hideZoneCol =
+    zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   useEffect(() => {
     setData(null);

@@ -124,7 +124,7 @@ export default function App() {
                 <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
                 <div className="text-xs uppercase tracking-wide text-slate-400">
                   {me.role}
-                  {me.scope_type !== "all" && ` · ${me.scope_value}`}
+                  {me.scope_type !== "all" && ` · ${(me.scope_values || []).join(", ")}`}
                 </div>
               </div>
             </div>
@@ -147,7 +147,7 @@ export default function App() {
               <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
               <div className="text-xs uppercase tracking-wide text-slate-400">
                 {me.role}
-                {me.scope_type !== "all" && ` · ${me.scope_value}`}
+                {me.scope_type !== "all" && ` · ${(me.scope_values || []).join(", ")}`}
               </div>
             </div>
             {tab === "dashboard" && freshness && (

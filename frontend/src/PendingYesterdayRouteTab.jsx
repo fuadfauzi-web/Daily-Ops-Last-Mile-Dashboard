@@ -28,8 +28,9 @@ export default function PendingYesterdayRouteTab({ regionFilter, zoneFilter, sea
   const [copied, setCopied] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
 
-  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
-  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
+  const hideZoneCol =
+    zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   useEffect(() => {
     api
