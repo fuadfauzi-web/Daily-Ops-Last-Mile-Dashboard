@@ -34,7 +34,7 @@ _DISPATCHED_STATUSES = {"On Vehicle for Delivery"}
 METRIC_KEYS = (
     "total_in_hub", "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
     "pending_ats_zero_attempt", "pending_ats_attempted",
-    "missing_open", "missing_hub", "missing_ship_in",
+    "missing_open", "missing_hub", "missing_driver_rider", "missing_ship_in",
     "total_fresh", "age_gt3", "reschedule", "still_ovfd",
     "prior_d0", "prior_gt_d0", "unsweep_document", "unsweep_parcel", "cod_pct_hub",
     "total_routed", "routed_pct", "attendance", "cod_pct_routed",
@@ -47,7 +47,7 @@ METRIC_KEYS = (
 DRILLDOWN_METRICS = (
     "total_in_hub", "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
     "pending_ats_zero_attempt", "pending_ats_attempted",
-    "missing_open", "missing_hub", "missing_ship_in",
+    "missing_open", "missing_hub", "missing_driver_rider", "missing_ship_in",
     "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
     "unsweep_document", "unsweep_parcel",
 )
@@ -121,9 +121,9 @@ def _classify_missing(row: dict) -> str | None:
     """Returns 'hub' | 'driver_rider' | 'ship_in' | 'ship_out' | None (PDCNR / B2B /
     unrecognized last_scan_type -- still counted in the overall missing_open total,
     just not attributed to any of the four types). See _LAST_SCAN_TYPE_TO_KIND above.
-    Station Health's own missing_hub/missing_ship_in columns only ever track the
-    'hub'/'ship_in' kinds -- Recovery's build_missing_details below is what surfaces
-    all four."""
+    Station Health tracks three of the four as their own columns -- missing_hub,
+    missing_driver_rider, missing_ship_in (Ship Out has no Station Health column,
+    2026-09-22 feedback) -- Recovery's build_missing_details below surfaces all four."""
     tn = row.get("tracking_id")
     if not tn:
         return None
@@ -242,6 +242,9 @@ def build_station_metrics(
         if kind == "hub":
             by_station[hub]["missing_hub"] += 1
             tn_details[hub]["missing_hub"].append(tn)
+        elif kind == "driver_rider":
+            by_station[hub]["missing_driver_rider"] += 1
+            tn_details[hub]["missing_driver_rider"].append(tn)
         elif kind == "ship_in":
             by_station[hub]["missing_ship_in"] += 1
             tn_details[hub]["missing_ship_in"].append(tn)

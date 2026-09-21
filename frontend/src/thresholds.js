@@ -35,6 +35,7 @@ export const METRICS = {
   unsweep_document: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   unsweep_parcel: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   missing_hub: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
+  missing_driver_rider: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   missing_ship_in: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   pending_ats_zero_attempt: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   pending_ats_attempted: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
