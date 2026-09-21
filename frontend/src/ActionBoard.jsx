@@ -11,7 +11,7 @@ import TnModal from "./components/TnModal";
 // the same role-scoped, already-filtered station list Dashboard already
 // has, so a station clerk automatically sees only their station and a
 // region head only their region, same as everywhere else in the app.
-const DEFAULT_METRICS = ["zero_attempt", "unsweep_parcel", "missing_hub"];
+const DEFAULT_METRICS = ["zero_attempt_total", "unsweep_parcel", "missing_hub"];
 const LEVELS = [
   { key: "region", label: "Region" },
   { key: "zone", label: "Zone" },

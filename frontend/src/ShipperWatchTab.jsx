@@ -59,7 +59,7 @@ const SHIPPERS = [
 ];
 const ALL_SHIPPER_KEYS = SHIPPERS.map((s) => s.key);
 
-export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const storageKey = `shipper-watch-shippers-${me.email}`;
   const [selectedShippers, setSelectedShippers] = useState(() => {
     try {
@@ -102,7 +102,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
       .shipperWatch()
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];

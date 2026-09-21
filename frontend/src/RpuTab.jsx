@@ -153,7 +153,7 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
   );
 }
 
-function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [stage, setStage] = useState("all");
   const [shipper, setShipper] = useState(null);
   const [data, setData] = useState(null);
@@ -171,7 +171,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
       .rpu(stage, shipper)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [stage, shipper]);
+  }, [stage, shipper, refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -280,7 +280,7 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
   );
 }
 
-function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [agingType, setAgingType] = useState("overall");
   const [shipper, setShipper] = useState(null);
   const [data, setData] = useState(null);
@@ -298,7 +298,7 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
       .rpuAging(agingType, shipper)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [agingType, shipper]);
+  }, [agingType, shipper, refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -398,7 +398,7 @@ const RPU_VIEWS = [
   { key: "aging", label: "RPU Aging" },
 ];
 
-export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [view, setView] = useState("status");
 
   return (
@@ -408,12 +408,12 @@ export default function RpuTab({ regionFilter, zoneFilter, search, me, excludeEa
       {view === "status" ? (
         <RpuStatusView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={excludeEastMalaysia}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       ) : (
         <RpuAgingView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={excludeEastMalaysia}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       )}
     </div>

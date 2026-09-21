@@ -15,7 +15,7 @@ const TN_COLUMNS = [
   { key: "shipper_name", label: "Shipper" },
 ];
 
-export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [stationSortKey, setStationSortKey] = useState("total_tn");
@@ -38,7 +38,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
       .oldRoute()
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];

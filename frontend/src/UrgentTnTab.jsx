@@ -10,7 +10,7 @@ function parseTns(text) {
   return Array.from(new Set(text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)));
 }
 
-export default function UrgentTnTab({ me }) {
+export default function UrgentTnTab({ me, refreshTick }) {
   const storageKey = `urgent-tn-list-${me.email}`;
   const [tns, setTns] = useState(() => {
     try {
@@ -54,10 +54,12 @@ export default function UrgentTnTab({ me }) {
     }
   };
 
-  // Auto-lookup whatever was already being tracked, on first load.
+  // Auto-lookup whatever was already being tracked, on first load -- and again
+  // whenever the background auto-refresh ticks, so a watched TN's status stays
+  // current without the user re-pasting the list.
   useEffect(() => {
     if (tns.length > 0) lookup(tns);
-  }, []);
+  }, [refreshTick]);
 
   const addTns = () => {
     const parsed = parseTns(input);
@@ -192,7 +194,7 @@ export default function UrgentTnTab({ me }) {
         footer={
           <>
             {rows.length} tracking number{rows.length === 1 ? "" : "s"} tracked · looked up from the same query 78
-            data Station Health uses (refreshed every 30 minutes), not a live search.
+            data Station Health uses (refreshed every 15 minutes), not a live search.
           </>
         }
       />

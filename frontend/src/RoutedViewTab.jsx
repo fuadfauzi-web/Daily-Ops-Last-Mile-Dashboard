@@ -96,7 +96,7 @@ function renderCell(col, r) {
   return col.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
 }
 
-export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -119,7 +119,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
       .routedView(driverType || undefined)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [driverType]);
+  }, [driverType, refreshTick]);
 
   const rows = useMemo(() => {
     if (!data || NO_DRIVER_TYPE_LEVELS.has(level)) return [];
@@ -281,12 +281,12 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
       {level === "pendingyesterday" ? (
         <PendingYesterdayRouteTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={excludeEastMalaysia}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       ) : level === "oldroute" ? (
         <OldRouteTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={excludeEastMalaysia}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       ) : (
         <>
@@ -298,7 +298,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
             rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
           />
           <DataTable
-            title={`Routed View — by ${identityLabel.toLowerCase()}`}
+            title={`Route Monitoring — by ${identityLabel.toLowerCase()}`}
             titleExtra={
               <button
                 onClick={() =>

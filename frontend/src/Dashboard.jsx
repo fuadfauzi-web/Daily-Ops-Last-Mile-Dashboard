@@ -49,16 +49,24 @@ const PERCENT_SOURCE = { cod_pct_hub: "total_in_hub" };
 const CARD_STATS = [
   { key: "total_fresh", label: "Fresh" },
   { key: "total_routed", label: "Routed" },
-  { key: "zero_attempt", label: "0 Att" },
+  { key: "zero_attempt_total", label: "0 Att" },
   { key: "total_in_hub", label: "In Hub" },
   { key: "age_gt3", label: "Age>3" },
 ];
+
+// 2026-09-21 feedback: silently refresh in the background while a session stays
+// open, instead of making the user hit reload to see the latest capture -- well
+// under the backend's own 15-minute refresh cycle so a new capture shows up
+// within about a minute of landing. Every tab's own fetch (all keyed off this
+// same tick, see the sub-tab renders below) just re-runs in place: tab, filters,
+// sort and scroll position are separate state untouched by a fresh setData.
+const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
 
 const TABS = [
   { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
-  { key: "routed", label: "Routed View" },
+  { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
@@ -290,7 +298,15 @@ export default function Dashboard({ me, onCapturedAt }) {
       .catch((e) => setError(e.message));
   };
 
-  useEffect(load, []);
+  // Ticks up on an interval, purely to retrigger every tab's own fetch below --
+  // see AUTO_REFRESH_INTERVAL_MS above.
+  const [refreshTick, setRefreshTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setRefreshTick((t) => t + 1), AUTO_REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(load, [refreshTick]);
   useEffect(() => {
     api.regions().then(setRegions).catch(() => {});
   }, []);
@@ -328,7 +344,7 @@ export default function Dashboard({ me, onCapturedAt }) {
       if (isGroupSort) {
         const cmp = sortDir === "asc" ? a[sortKey].localeCompare(b[sortKey]) : b[sortKey].localeCompare(a[sortKey]);
         if (cmp !== 0) return cmp;
-        return b.zero_attempt - a.zero_attempt;
+        return b.zero_attempt_total - a.zero_attempt_total;
       }
       const av = a[sortKey];
       const bv = b[sortKey];
@@ -876,6 +892,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         <ShipmentDetailsTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
@@ -883,6 +900,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         <RoutedViewTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
@@ -890,6 +908,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         <ShipperWatchTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
@@ -897,6 +916,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         <RestockTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
@@ -904,6 +924,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         <RecoveryTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
@@ -911,6 +932,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         <AgingDetailsTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
@@ -918,10 +940,11 @@ export default function Dashboard({ me, onCapturedAt }) {
         <RpuTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
         />
       )}
 
-      {tab === "urgent" && <UrgentTnTab me={me} />}
+      {tab === "urgent" && <UrgentTnTab me={me} refreshTick={refreshTick} />}
     </div>
   );
 }

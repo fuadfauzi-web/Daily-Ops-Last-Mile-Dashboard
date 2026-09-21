@@ -41,7 +41,7 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
       .shipperWatch()
       .then(setData)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -128,7 +128,7 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
   );
 }
 
-export default function RestockTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+export default function RestockTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [subTab, setSubTab] = useState("nxd");
 
   return (

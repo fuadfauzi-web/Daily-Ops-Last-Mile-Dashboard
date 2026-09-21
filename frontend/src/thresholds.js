@@ -22,6 +22,7 @@ export const METRICS = {
   cod_pct_hub: { kind: "reference", unit: "%" },
 
   // ---- scored: TO BE SUPPLIED, placeholders below ----
+  zero_attempt_total: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   zero_attempt: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   zero_attempt_gt_d0: { kind: "scored", direction: "higher-is-worse", warning: 0, critical: 0 },
   // Scored as a % of Total In Hub by default (2026-09-20 feedback), e.g.
