@@ -13,6 +13,7 @@ CLAUDE.md's "Substrait deployment" block for the platform's deploy rules.
 import asyncio
 import csv
 import io
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -33,7 +34,7 @@ from aggregate import (
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed, rollup_routed_by_driver_type,
     rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
-from auth import CurrentUser, get_current_user
+from auth import CurrentUser, get_current_user, parse_scope_values
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
     QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP, QUERY_ZALORA_NXD,
@@ -422,7 +423,7 @@ class Me(BaseModel):
     provisioned: bool
     role: str | None = None
     scope_type: str | None = None
-    scope_value: str | None = None
+    scope_values: list[str] = []
     display_name: str | None = None
 
 
@@ -431,7 +432,7 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
     if not x_forwarded_email:
         return {"email": None, "provisioned": False}
     row = await db.fetch_one(
-        "SELECT email, role, scope_type, scope_value, display_name FROM users WHERE email = %s",
+        "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE email = %s",
         (x_forwarded_email,),
     )
     if row is None:
@@ -439,7 +440,7 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
     return {
         "email": row[0], "provisioned": True, "role": row[1], "scope_type": row[2],
-        "scope_value": row[3], "display_name": row[4],
+        "scope_values": parse_scope_values(row[3]), "display_name": row[4],
     }
 
 
@@ -500,11 +501,11 @@ def _scope_filter_stations(rows: list[dict], user: CurrentUser) -> list[dict]:
     if user.scope_type == "all":
         return rows
     if user.scope_type == "region":
-        return [r for r in rows if r["region"] == user.scope_value]
+        return [r for r in rows if r["region"] in user.scope_values]
     if user.scope_type == "zone":
-        return [r for r in rows if r["zone"] == user.scope_value]
+        return [r for r in rows if r["zone"] in user.scope_values]
     if user.scope_type == "station":
-        return [r for r in rows if r["station_name"] == user.scope_value]
+        return [r for r in rows if r["station_name"] in user.scope_values]
     return []
 
 
@@ -1435,7 +1436,9 @@ class MissingDetailsStationRow(BaseModel):
     zone: str
     region: str
     hub_count: int
+    driver_rider_count: int
     ship_in_count: int
+    ship_out_count: int
     other_count: int
     total_count: int
 
@@ -1445,7 +1448,9 @@ class MissingDetailsGroupRow(BaseModel):
     region: str
     station_count: int
     hub_count: int
+    driver_rider_count: int
     ship_in_count: int
+    ship_out_count: int
     other_count: int
     total_count: int
 
@@ -1713,7 +1718,7 @@ async def submit_feedback(payload: FeedbackIn, user: CurrentUser = Depends(get_c
     await db.execute(
         """INSERT INTO app_feedback (email, role, scope_type, scope_value, message, created_at)
            VALUES (%s, %s, %s, %s, %s, %s)""",
-        (user.email, user.role, user.scope_type, user.scope_value, message, datetime.now(timezone.utc)),
+        (user.email, user.role, user.scope_type, ", ".join(user.scope_values) or None, message, datetime.now(timezone.utc)),
     )
     return {"ok": True}
 
@@ -1826,7 +1831,7 @@ class UserOut(BaseModel):
     email: str
     role: str
     scope_type: str
-    scope_value: str | None
+    scope_values: list[str]
     display_name: str | None
     created_at: str
     last_seen_at: str | None
@@ -1834,15 +1839,23 @@ class UserOut(BaseModel):
 
 class UserIn(BaseModel):
     email: str
-    role: str  # 'admin' | 'manager' | 'station'
+    role: str  # 'admin' | 'manager' | 'region' | 'station'
     scope_type: str  # 'all' | 'region' | 'zone' | 'station'
-    scope_value: str | None = None
+    scope_values: list[str] = []
     display_name: str | None = None
 
 
+# Only the app owner can grant the Admin role -- not just any existing admin.
+# 2026-09-21 feedback: an admin promoted by the owner still can't create more
+# admins themselves, which this single check (keyed off the ACTING user's own
+# email, not their role) gives for free.
+_OWNER_EMAIL = "fuad.mawardi@ninjavan.co"
+
+
 def _require_admin(user: CurrentUser) -> None:
-    """Full admin page access (view/edit/remove everyone, trigger refresh) --
-    admin-only. Manager/Region staff get add-only, see _require_can_add_users."""
+    """Full admin page access (trigger refresh, etc) -- admin-only. Manager/
+    Region staff get scoped add/edit/remove, see _require_can_add_users and
+    _require_can_manage_target."""
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -1852,19 +1865,52 @@ def _require_can_add_users(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="Admin, Manager, or Region staff access required")
 
 
+def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
+    """Edit/delete permission on an existing user -- keyed off the TARGET's
+    current role, mirroring _validate_grant_limits' ceiling: a Manager can
+    manage Station/Region-role users, Region staff can manage Station-role
+    users only, Admin can manage anyone."""
+    if acting.role == "admin":
+        return
+    if acting.role == "manager":
+        if target_role not in ("station", "region"):
+            raise HTTPException(status_code=403, detail="Managers can only edit or remove Station staff or Region staff")
+        return
+    if acting.role == "region":
+        if target_role != "station":
+            raise HTTPException(status_code=403, detail="Region staff can only edit or remove Station staff")
+        return
+    raise HTTPException(status_code=403, detail="You can't edit or remove other users")
+
+
+def _require_can_grant_role(acting: CurrentUser, role: str) -> None:
+    if role == "admin" and acting.email != _OWNER_EMAIL:
+        raise HTTPException(status_code=403, detail="Only the app owner can grant the Admin role")
+
+
+def _row_to_user_out(r) -> dict:
+    return {
+        "email": r[0], "role": r[1], "scope_type": r[2], "scope_values": parse_scope_values(r[3]),
+        "display_name": r[4], "created_at": str(r[5]), "last_seen_at": str(r[6]) if r[6] else None,
+    }
+
+
 @app.get("/api/admin/users", response_model=list[UserOut])
 async def list_users(user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
+    _require_can_add_users(user)
     rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_value, display_name, created_at, last_seen_at FROM users ORDER BY created_at"
+        "SELECT email, role, scope_type, scope_values, display_name, created_at, last_seen_at FROM users ORDER BY created_at"
     )
-    return [
-        {
-            "email": r[0], "role": r[1], "scope_type": r[2], "scope_value": r[3],
-            "display_name": r[4], "created_at": str(r[5]), "last_seen_at": str(r[6]) if r[6] else None,
-        }
-        for r in rows
-    ]
+    out = [_row_to_user_out(r) for r in rows]
+    # Same view mirrors what each role can manage (see _require_can_manage_target) --
+    # a Manager/Region user only ever sees the subset they're allowed to act on.
+    if user.role == "admin":
+        return out
+    if user.role == "manager":
+        return [u for u in out if u["role"] in ("station", "region")]
+    if user.role == "region":
+        return [u for u in out if u["role"] == "station"]
+    return []
 
 
 _VALID_ROLES = {"admin", "manager", "region", "station"}
@@ -1876,21 +1922,31 @@ def _validate_user_in(payload: UserIn) -> None:
         raise HTTPException(status_code=422, detail=f"role must be one of {sorted(_VALID_ROLES)}")
     if payload.scope_type not in _VALID_SCOPE_TYPES:
         raise HTTPException(status_code=422, detail=f"scope_type must be one of {sorted(_VALID_SCOPE_TYPES)}")
-    if payload.scope_type == "region" and payload.scope_value not in REGIONS:
-        raise HTTPException(status_code=422, detail=f"scope_value must be one of {REGIONS}")
-    if payload.scope_type == "zone" and payload.scope_value not in ZONES:
-        raise HTTPException(status_code=422, detail=f"scope_value must be one of {ZONES}")
+    if payload.scope_type == "all":
+        return
+    if not payload.scope_values:
+        raise HTTPException(status_code=422, detail="scope_values can't be empty unless scope_type is 'all'")
+    if payload.scope_type == "region":
+        bad = [v for v in payload.scope_values if v not in REGIONS]
+        if bad:
+            raise HTTPException(status_code=422, detail=f"scope_values must each be one of {REGIONS} (got {bad})")
+    if payload.scope_type == "zone":
+        bad = [v for v in payload.scope_values if v not in ZONES]
+        if bad:
+            raise HTTPException(status_code=422, detail=f"scope_values must each be one of {ZONES} (got {bad})")
     if payload.scope_type == "station":
         valid_names = {name for name, _full, _zone, _region in HUBS.values()}
-        if payload.scope_value not in valid_names:
-            raise HTTPException(status_code=422, detail="scope_value must be a valid station name")
+        bad = [v for v in payload.scope_values if v not in valid_names]
+        if bad:
+            raise HTTPException(status_code=422, detail=f"scope_values must each be a valid station name (got {bad})")
 
 
 def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
-    """Caps what a non-admin can hand out when adding someone -- admins have no
-    limit here. A Manager or Region staff member could otherwise create an
-    Admin (or a peer with their own level of access) through the add-user form,
-    which would be a privilege-escalation hole."""
+    """Caps what a non-admin can hand out when adding/editing someone -- admins
+    have no limit here (besides _require_can_grant_role's Admin-role carve-out).
+    A Manager or Region staff member could otherwise create an Admin (or a peer
+    with their own level of access) through the add-user form, which would be
+    a privilege-escalation hole."""
     if acting.role == "admin":
         return
     if acting.role == "manager":
@@ -1905,18 +1961,23 @@ def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
             raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
 
 
+def _scope_values_json(values: list[str]) -> str | None:
+    return json.dumps(values) if values else None
+
+
 @app.post("/api/admin/users", response_model=OkResult)
 async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user)):
     _require_can_add_users(user)
     _validate_user_in(payload)
     _validate_grant_limits(user, payload)
+    _require_can_grant_role(user, payload.role)
     existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (payload.email,))
     if existing:
         raise HTTPException(status_code=409, detail="That email is already set up")
     await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_value, display_name, invited_by)
+        """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
            VALUES (%s, %s, %s, %s, %s, %s)""",
-        (payload.email, payload.role, payload.scope_type, payload.scope_value,
+        (payload.email, payload.role, payload.scope_type, _scope_values_json(payload.scope_values),
          payload.display_name, user.email),
     )
     return {"ok": True}
@@ -1946,6 +2007,7 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
         try:
             _validate_user_in(row)
             _validate_grant_limits(user, row)
+            _require_can_grant_role(user, row.role)
         except HTTPException as exc:
             errors.append(f"{email}: {exc.detail}")
             continue
@@ -1954,9 +2016,9 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             skipped.append(email)
             continue
         await db.execute(
-            """INSERT INTO users (email, role, scope_type, scope_value, display_name, invited_by)
+            """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
                VALUES (%s, %s, %s, %s, %s, %s)""",
-            (email, row.role, row.scope_type, row.scope_value, row.display_name, user.email),
+            (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.display_name, user.email),
         )
         added.append(email)
     return {"added": added, "skipped": skipped, "errors": errors}
@@ -1964,21 +2026,29 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
 
 @app.patch("/api/admin/users/{email}", response_model=OkResult)
 async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
+    target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    _require_can_manage_target(user, target[0])
     _validate_user_in(payload)
-    result = await db.execute(
-        """UPDATE users SET role=%s, scope_type=%s, scope_value=%s, display_name=%s
+    _validate_grant_limits(user, payload)
+    _require_can_grant_role(user, payload.role)
+    await db.execute(
+        """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=%s
            WHERE email=%s""",
-        (payload.role, payload.scope_type, payload.scope_value, payload.display_name, email),
+        (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), payload.display_name, email),
     )
     return {"ok": True}
 
 
 @app.delete("/api/admin/users/{email}", response_model=OkResult)
 async def delete_user(email: str, user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
     if email == user.email:
         raise HTTPException(status_code=400, detail="You can't remove your own access")
+    target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    _require_can_manage_target(user, target[0])
     await db.execute("DELETE FROM users WHERE email=%s", (email,))
     return {"ok": True}
 

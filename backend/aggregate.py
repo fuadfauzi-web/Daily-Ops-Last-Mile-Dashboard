@@ -103,17 +103,27 @@ def _parse_dt(value) -> datetime | None:
 # Station attribution also switches from dest_hub_name (where a parcel is
 # ultimately headed) to last_scan_hub_name (where it actually is right now),
 # matching how every other metric on this page is grouped.
+#
+# 2026-09-21 correction: the raw column values are "Sweep" and "Inbound"
+# separately (not a combined "Inbound / Sweep" -- that string never matched
+# anything, which is why Missing Hub came back empty). All four values are
+# real, first-class outcomes -- Ship Out is not excluded/"Other", it's its own
+# type (see build_missing_details' Recovery-tab breakdown below).
 _LAST_SCAN_TYPE_TO_KIND = {
-    "Inbound / Sweep": "hub",
+    "Sweep": "hub",
+    "Inbound": "driver_rider",
     "Shipment Completion": "ship_in",
-    "Add to Shipment": None,  # Ship Out -- not actually missing, excluded from the Hub/Ship-in split
+    "Add to Shipment": "ship_out",
 }
 
 
 def _classify_missing(row: dict) -> str | None:
-    """Returns 'hub' | 'ship_in' | None (PDCNR / B2B / Ship Out / unrecognized
-    last_scan_type -- not counted in either bucket, but still counted in the
-    overall missing_open total). See _LAST_SCAN_TYPE_TO_KIND above."""
+    """Returns 'hub' | 'driver_rider' | 'ship_in' | 'ship_out' | None (PDCNR / B2B /
+    unrecognized last_scan_type -- still counted in the overall missing_open total,
+    just not attributed to any of the four types). See _LAST_SCAN_TYPE_TO_KIND above.
+    Station Health's own missing_hub/missing_ship_in columns only ever track the
+    'hub'/'ship_in' kinds -- Recovery's build_missing_details below is what surfaces
+    all four."""
     tn = row.get("tracking_id")
     if not tn:
         return None
@@ -261,7 +271,7 @@ def build_station_metrics(
 # with cod_value/item_description/age for the Fleet Manager's recovery workflow).
 # ---------------------------------------------------------------------------
 
-_MISSING_TYPE_LABELS = {"hub": "Hub", "ship_in": "Ship In"}
+_MISSING_TYPE_LABELS = {"hub": "Hub", "driver_rider": "Driver/Rider", "ship_in": "Ship In", "ship_out": "Ship Out"}
 
 # "High COD value or high value item description (e.g. Smartphone)" gets
 # highlighted in the TN list -- these are just the defaults for a fresh DB;
@@ -291,14 +301,18 @@ def build_missing_details(
 ) -> tuple[dict[str, dict], list[dict]]:
     """Returns ({hub_code: overview_row}, [tn_row, ...]) for the Recovery tab.
 
-    overview_row: hub_count/ship_in_count/other_count/total_count per station,
-    for the region/zone/station rollup. tn_row: one row per open missing ticket,
-    carrying cod_value/item_description/age plus the same Hub/Ship-in/Other
-    classification as build_station_metrics's missing_hub/missing_ship_in."""
+    overview_row: hub_count/driver_rider_count/ship_in_count/ship_out_count/
+    other_count/total_count per station, for the region/zone/station rollup.
+    other_count is genuinely unclassified only (PDCNR/B2B/unrecognized
+    last_scan_type) -- Ship Out is its own tracked type, not folded into Other.
+    tn_row: one row per open missing ticket, carrying cod_value/item_description/
+    age plus the same classification as build_station_metrics's missing_hub/
+    missing_ship_in."""
     by_station = {
         hub: {
             "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
-            "hub_count": 0, "ship_in_count": 0, "other_count": 0, "total_count": 0,
+            "hub_count": 0, "driver_rider_count": 0, "ship_in_count": 0, "ship_out_count": 0,
+            "other_count": 0, "total_count": 0,
         }
         for hub in HUBS
     }
@@ -312,8 +326,12 @@ def build_missing_details(
         row["total_count"] += 1
         if kind == "hub":
             row["hub_count"] += 1
+        elif kind == "driver_rider":
+            row["driver_rider_count"] += 1
         elif kind == "ship_in":
             row["ship_in_count"] += 1
+        elif kind == "ship_out":
+            row["ship_out_count"] += 1
         else:
             row["other_count"] += 1
         cod_value = r.get("cod_value")
@@ -340,11 +358,14 @@ def rollup_missing_details(station_rows: list[dict], group_key: str) -> list[dic
         key = row[group_key]
         g = groups.setdefault(key, {
             group_key: key, "region": row["region"], "station_count": 0,
-            "hub_count": 0, "ship_in_count": 0, "other_count": 0, "total_count": 0,
+            "hub_count": 0, "driver_rider_count": 0, "ship_in_count": 0, "ship_out_count": 0,
+            "other_count": 0, "total_count": 0,
         })
         g["station_count"] += 1
         g["hub_count"] += row["hub_count"]
+        g["driver_rider_count"] += row["driver_rider_count"]
         g["ship_in_count"] += row["ship_in_count"]
+        g["ship_out_count"] += row["ship_out_count"]
         g["other_count"] += row["other_count"]
         g["total_count"] += row["total_count"]
     return list(groups.values())
