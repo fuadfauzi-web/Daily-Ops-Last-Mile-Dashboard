@@ -12,7 +12,9 @@ const SUB_TABS = [{ key: "missing", label: "Missing Details" }];
 
 const OVERVIEW_COLUMNS = [
   { key: "hub_count", label: "Hub", render: (r) => r.hub_count.toLocaleString() },
+  { key: "driver_rider_count", label: "Driver/Rider", render: (r) => r.driver_rider_count.toLocaleString() },
   { key: "ship_in_count", label: "Ship In", render: (r) => r.ship_in_count.toLocaleString() },
+  { key: "ship_out_count", label: "Ship Out", render: (r) => r.ship_out_count.toLocaleString() },
   { key: "other_count", label: "Other", render: (r) => r.other_count.toLocaleString() },
   { key: "total_count", label: "Total", className: () => "font-semibold text-status-critical", render: (r) => r.total_count.toLocaleString() },
 ];
@@ -34,12 +36,17 @@ function localRollup(rows, groupKey) {
   rows.forEach((r) => {
     const key = r[groupKey];
     if (!groups[key]) {
-      groups[key] = { key, region: r.region, station_count: 0, hub_count: 0, ship_in_count: 0, other_count: 0, total_count: 0 };
+      groups[key] = {
+        key, region: r.region, station_count: 0,
+        hub_count: 0, driver_rider_count: 0, ship_in_count: 0, ship_out_count: 0, other_count: 0, total_count: 0,
+      };
     }
     const g = groups[key];
     g.station_count += 1;
     g.hub_count += r.hub_count;
+    g.driver_rider_count += r.driver_rider_count;
     g.ship_in_count += r.ship_in_count;
+    g.ship_out_count += r.ship_out_count;
     g.other_count += r.other_count;
     g.total_count += r.total_count;
   });
@@ -57,8 +64,9 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   const [highValueOnly, setHighValueOnly] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
 
-  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
-  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
+  const hideZoneCol =
+    zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   useEffect(() => {
     api

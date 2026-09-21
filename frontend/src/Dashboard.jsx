@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
-import { formatTime } from "./lib/format";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
 import { ALL_COLUMNS } from "./lib/metrics";
 import { exportCsv } from "./lib/csv";
@@ -133,21 +132,6 @@ function exportStationHealthCsv(rows) {
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-// "Compare vs. yesterday": diff against the same station's snapshot from
-// ~24h ago. Reference metrics always render a neutral grey delta (more/less
-// isn't good/bad for those); scored metrics colour it by whether the change
-// moved the wrong way for that metric's own direction.
-function deltaFor(key, current, previous, direction, isReference) {
-  if (previous == null) return null;
-  const diff = current - previous;
-  const sign = diff > 0 ? "+" : diff < 0 ? "−" : "";
-  const magnitude = PERCENT_METRICS.has(key) ? `${Math.abs(diff).toFixed(1)}%` : Math.abs(diff).toLocaleString();
-  const text = diff === 0 ? "0" : `${sign}${magnitude}`;
-  if (isReference || diff === 0) return { text, className: "text-slate-400" };
-  const worse = direction === "lower-is-worse" ? diff < 0 : diff > 0;
-  return { text, className: worse ? "text-status-critical" : "text-status-good" };
-}
-
 export default function Dashboard({ me, onCapturedAt }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
@@ -183,27 +167,13 @@ export default function Dashboard({ me, onCapturedAt }) {
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
   // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
   const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
-  const [compareYesterday, setCompareYesterday] = useState(() => {
-    try {
-      return localStorage.getItem("dashboard-compare-yesterday") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const toggleCompareYesterday = () => {
-    setCompareYesterday((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem("dashboard-compare-yesterday", next ? "1" : "0");
-      } catch {
-        /* private browsing / storage blocked -- choice just won't persist */
-      }
-      return next;
-    });
-  };
 
-  const canPickRegion = me.scope_type === "all";
-  const canPickZone = me.scope_type === "all" || me.scope_type === "region";
+  // A multi-value region/zone user (see me.scope_values) needs the same
+  // narrow-down-to-one picker a nationwide viewer gets -- otherwise there's no
+  // way to focus on just one of their regions/zones.
+  const canPickRegion = me.scope_type === "all" || (me.scope_type === "region" && me.scope_values.length > 1);
+  const canPickZone =
+    me.scope_type === "all" || me.scope_type === "region" || (me.scope_type === "zone" && me.scope_values.length > 1);
   const showFilterBar = me.scope_type !== "station";
   const canToggleEastMalaysia = me.scope_type === "all";
 
@@ -215,16 +185,22 @@ export default function Dashboard({ me, onCapturedAt }) {
   }, [data, includeEastMalaysia, canToggleEastMalaysia]);
 
   const visibleRegions = useMemo(() => {
-    if (canToggleEastMalaysia && !includeEastMalaysia) return regions.filter((r) => r.region !== "East Malaysia");
-    return regions;
-  }, [regions, includeEastMalaysia, canToggleEastMalaysia]);
+    let out = regions;
+    if (canToggleEastMalaysia && !includeEastMalaysia) out = out.filter((r) => r.region !== "East Malaysia");
+    if (me.scope_type === "region") out = out.filter((r) => me.scope_values.includes(r.region));
+    return out;
+  }, [regions, includeEastMalaysia, canToggleEastMalaysia, me.scope_type, me.scope_values]);
 
   // Region/Zone columns are redundant once they can only ever hold one value --
   // either an admin has filtered down to one, or the viewer's own access is
   // already confined to one. Hide them in that case instead of showing a
   // constant column.
-  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
-  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  // 2026-09-21 feedback: a region/zone/station-scoped user can now hold more
+  // than one value (see me.scope_values) -- only collapse the column when
+  // there's exactly one, since 2+ values can span more than one region/zone.
+  const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
+  const hideZoneCol =
+    zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   const load = () => {
     api
@@ -281,6 +257,15 @@ export default function Dashboard({ me, onCapturedAt }) {
         if (cmp !== 0) return cmp;
         return b.zero_attempt_total - a.zero_attempt_total;
       }
+      // 2026-09-21 feedback: Age >3 is scored as a % of Total In Hub (see
+      // thresholds.js's percentOf), so sorting its header should rank stations
+      // by that percentage, not the raw count -- a small station running mostly
+      // aged is just as much a problem as a big one with a bigger raw number.
+      if (sortKey === "age_gt3") {
+        const aPct = a.total_in_hub ? (a.age_gt3 / a.total_in_hub) * 100 : 0;
+        const bPct = b.total_in_hub ? (b.age_gt3 / b.total_in_hub) * 100 : 0;
+        return sortDir === "asc" ? aPct - bPct : bPct - aPct;
+      }
       const av = a[sortKey];
       const bv = b[sortKey];
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -290,12 +275,6 @@ export default function Dashboard({ me, onCapturedAt }) {
 
   const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
   const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
-
-  const yesterdayByCode = useMemo(() => {
-    const m = new Map();
-    (data?.yesterday_stations || []).forEach((r) => m.set(r.station_code, r));
-    return m;
-  }, [data]);
 
   // Restricted to exactly the same stations as filteredStations -- the
   // Action Board aggregates by region/zone, and an aggregate delta is only
@@ -309,12 +288,30 @@ export default function Dashboard({ me, onCapturedAt }) {
   // pick (for admins) or the user's own fixed scope. Region cards -> pick one ->
   // zone cards for it; a region-scoped user goes straight to their zone cards; a
   // zone-scoped user gets their one zone's card; a station-scoped user gets none.
-  const effectiveRegion = regionFilter !== "all" ? regionFilter : me.scope_type === "region" ? me.scope_value : null;
+  // 2026-09-21 feedback: a region/zone-scoped user can hold more than one value
+  // (me.scope_values) -- a single value behaves exactly as before, 2+ values get
+  // their own list of cards (one per assigned region/zone) instead of assuming one.
+  const isMultiRegion = me.scope_type === "region" && me.scope_values.length > 1;
+  const isMultiZone = me.scope_type === "zone" && me.scope_values.length > 1;
 
-  const cardMode = me.scope_type === "station" ? "none" : me.scope_type === "zone" ? "single-zone" : effectiveRegion ? "zones" : "regions";
+  const effectiveRegion =
+    regionFilter !== "all" ? regionFilter : me.scope_type === "region" && !isMultiRegion ? me.scope_values[0] : null;
 
-  // Nationwide total, only meaningful (and only shown) when nothing is filtered down.
-  const showTotalCard = cardMode === "regions" && zoneFilter === "all";
+  const cardMode =
+    me.scope_type === "station"
+      ? "none"
+      : me.scope_type === "zone"
+        ? isMultiZone && zoneFilter === "all"
+          ? "zone-list"
+          : "single-zone"
+        : effectiveRegion
+          ? "zones"
+          : "regions";
+
+  // Nationwide total, only meaningful (and only shown) when nothing is filtered
+  // down AND the viewer actually sees the whole network -- a multi-region user's
+  // "regions" cardMode is just their own subset, not the nationwide total.
+  const showTotalCard = cardMode === "regions" && zoneFilter === "all" && me.scope_type === "all";
 
   const cardStats = (totals) => CARD_STATS.map((s) => ({ key: s.key, label: s.label, value: fmt(s.key, totals[s.key]) }));
 
@@ -333,14 +330,25 @@ export default function Dashboard({ me, onCapturedAt }) {
         },
       }));
     }
+    if (cardMode === "zone-list") {
+      return me.scope_values.map((z) => ({
+        key: z,
+        label: z,
+        active: false,
+        clickable: true,
+        totals: sumMetrics(scopedStations.filter((s) => s.zone === z)),
+        onClick: () => setZoneFilter(z),
+      }));
+    }
     if (cardMode === "single-zone") {
+      const z = zoneFilter !== "all" ? zoneFilter : me.scope_values[0];
       return [
         {
-          key: me.scope_value,
-          label: me.scope_value,
+          key: z,
+          label: z,
           active: false,
           clickable: false,
-          totals: sumMetrics(scopedStations.filter((s) => s.zone === me.scope_value)),
+          totals: sumMetrics(scopedStations.filter((s) => s.zone === z)),
         },
       ];
     }
@@ -354,7 +362,7 @@ export default function Dashboard({ me, onCapturedAt }) {
       totals: sumMetrics(scopedStations.filter((s) => s.zone === z)),
       onClick: () => setZoneFilter(zoneFilter === z ? "all" : z),
     }));
-  }, [data, visibleRegions, scopedStations, cardMode, effectiveRegion, zoneFilter, me.scope_value]);
+  }, [data, visibleRegions, scopedStations, cardMode, effectiveRegion, zoneFilter, me.scope_values]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -411,17 +419,7 @@ export default function Dashboard({ me, onCapturedAt }) {
         render: (r) => {
           const t = resolveThreshold(thresholdRows, c.key, r.region);
           const sev = isReference ? "reference" : classify(t, r[c.key], r);
-          const base = `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, r[c.key], r, t)}`;
-          if (!compareYesterday) return base;
-          const yRow = yesterdayByCode.get(r.station_code);
-          if (!yRow) return base;
-          const d = deltaFor(c.key, r[c.key], yRow[c.key], t.direction, isReference);
-          if (!d) return base;
-          return (
-            <>
-              {base} <span className={`text-[11px] ${d.className}`}>{d.text}</span>
-            </>
-          );
+          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, r[c.key], r, t)}`;
         },
         className: (r) => {
           if (isReference) return SEVERITY_CLASS.reference;
@@ -438,8 +436,6 @@ export default function Dashboard({ me, onCapturedAt }) {
         const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
         const t = resolveThreshold(thresholdRows, c.key, detailRow.region);
         const sev = isReference ? "reference" : classify(t, detailRow[c.key], detailRow);
-        const yRow = yesterdayByCode.get(detailRow.station_code);
-        const d = compareYesterday && yRow ? deltaFor(c.key, detailRow[c.key], yRow[c.key], t.direction, isReference) : null;
         const hasTarget = !isReference && !(t.warning_at === 0 && t.critical_at === 0);
         const percentOfLabel = t.percent_of ? ALL_COLUMNS.find((col) => col.key === t.percent_of)?.label : null;
         return {
@@ -451,8 +447,6 @@ export default function Dashboard({ me, onCapturedAt }) {
                 percentOfLabel ? `% of ${percentOfLabel}` : ""
               }`
             : null,
-          delta: d ? d.text : null,
-          deltaClassName: d ? d.className : null,
         };
       })
     : [];
@@ -551,23 +545,12 @@ export default function Dashboard({ me, onCapturedAt }) {
               </>
             }
             titleExtra={
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={toggleCompareYesterday}
-                  title={data.yesterday_captured_at ? `vs. ${formatTime(data.yesterday_captured_at)}` : "No snapshot from ~24h ago yet"}
-                  className={`rounded-lg border px-3 py-1 font-display text-xs font-semibold ${
-                    compareYesterday ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-600"
-                  }`}
-                >
-                  Δ vs. yesterday
-                </button>
-                <button
-                  onClick={() => exportStationHealthCsv(filteredStations)}
-                  className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  Export CSV
-                </button>
-              </div>
+              <button
+                onClick={() => exportStationHealthCsv(filteredStations)}
+                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Export CSV
+              </button>
             }
             maxHeight="70vh"
             columns={stationColumns}
@@ -583,10 +566,8 @@ export default function Dashboard({ me, onCapturedAt }) {
           />
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored. Targets are set in Admin → SLA Targets.
-            {compareYesterday && " Small numbers next to each value are the change vs. ~24h ago."} Total Fresh,
-            Total Routed, Attendance and COD % (Hub) aren't clickable — their source queries don't return individual
-            tracking numbers.
+            SLA, never scored. Targets are set in Admin → SLA Targets. Total Fresh, Total Routed, Attendance and COD %
+            (Hub) aren't clickable — their source queries don't return individual tracking numbers.
           </p>
         </>
       )}

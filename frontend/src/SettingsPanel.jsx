@@ -14,19 +14,27 @@ const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Prod
 // just with a driver position label as the scope string instead of a region name.
 const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
-const emptyForm = { email: "", role: "station", scope_type: "station", scope_value: "" };
+const emptyForm = { email: "", role: "station", scope_type: "station", scope_values: [] };
 const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
 const ROLE_OPTION_ORDER = ["station", "region", "manager", "admin"];
-const SCOPE_LABELS = { station: "Sees: one station", zone: "Sees: one zone", region: "Sees: one region", all: "Sees: everything" };
+// "Sees: a station/zone/region" -- can be granted more than one, see the
+// multi-select in the add/edit form below.
+const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything" };
 const SCOPE_OPTION_ORDER = ["station", "zone", "region", "all"];
+
+// Only the app owner can grant the Admin role -- mirrors backend/main.py's
+// _OWNER_EMAIL/_require_can_grant_role exactly. An admin who isn't the owner
+// still can't create more admins.
+const OWNER_EMAIL = "fuad.mawardi@ninjavan.co";
 
 // What each acting role is allowed to hand out -- mirrors backend/main.py's
 // _validate_grant_limits exactly, so the dropdowns/template never offer
 // something the server would reject.
-function allowedRoles(actingRole) {
-  if (actingRole === "manager") return ["station", "region"];
-  if (actingRole === "region") return ["station"];
-  return ROLE_OPTION_ORDER; // admin
+function allowedRoles(me) {
+  if (me.role === "manager") return ["station", "region"];
+  if (me.role === "region") return ["station"];
+  // admin
+  return me.email === OWNER_EMAIL ? ROLE_OPTION_ORDER : ROLE_OPTION_ORDER.filter((r) => r !== "admin");
 }
 function allowedScopeTypes(actingRole) {
   if (actingRole === "manager") return ["station", "zone", "region"];
@@ -34,19 +42,29 @@ function allowedScopeTypes(actingRole) {
   return SCOPE_OPTION_ORDER; // admin
 }
 
-function bulkTemplateFor(actingRole) {
-  const lines = ["email,role,scope_type,scope_value"];
-  if (actingRole === "region") {
-    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,station,station,Segambut");
-  } else if (actingRole === "manager") {
-    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,region,region,Southern");
+// Edit/delete permission on an existing user -- mirrors backend/main.py's
+// _require_can_manage_target exactly (keyed off the TARGET's current role).
+function canManageTarget(actingRole, targetRole) {
+  if (actingRole === "admin") return true;
+  if (actingRole === "manager") return targetRole === "station" || targetRole === "region";
+  if (actingRole === "region") return targetRole === "station";
+  return false;
+}
+
+// scope_values within one CSV cell is semicolon-separated, e.g. "Southern;Northern".
+function bulkTemplateFor(me) {
+  const lines = ["email,role,scope_type,scope_values"];
+  if (me.role === "region") {
+    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,station,station,Segambut;Larkin");
+  } else if (me.role === "manager") {
+    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,region,region,Southern;Northern");
   } else {
     lines.push(
       "name1@ninjavan.co,station,station,Larkin",
-      "name2@ninjavan.co,region,region,Southern",
-      "name3@ninjavan.co,manager,zone,South 1",
-      "name4@ninjavan.co,admin,all,"
+      "name2@ninjavan.co,region,region,Southern;Northern",
+      "name3@ninjavan.co,manager,zone,South 1"
     );
+    if (me.email === OWNER_EMAIL) lines.push("name4@ninjavan.co,admin,all,");
   }
   return lines.join("\n");
 }
@@ -67,8 +85,10 @@ function formatTime(iso) {
   return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-// Each line: email,role,scope_type,scope_value -- a leading header line is
-// skipped so pasting the template as-is (with or without editing it) works.
+// Each line: email,role,scope_type,scope_values -- scope_values is
+// semicolon-separated within its cell (e.g. "Southern;Northern") for more than
+// one region/zone/station. A leading header line is skipped so pasting the
+// template as-is (with or without editing it) works.
 function parseBulkRows(text) {
   const lines = text
     .split(/\r?\n/)
@@ -76,12 +96,16 @@ function parseBulkRows(text) {
     .filter(Boolean)
     .filter((l) => !/^email\s*,\s*role\s*,\s*scope_type/i.test(l));
   return lines.map((line) => {
-    const [email, role, scope_type, scope_value] = line.split(",").map((p) => (p ?? "").trim());
+    const [email, role, scope_type, scopeValuesCell] = line.split(",").map((p) => (p ?? "").trim());
+    const scope_values =
+      !scope_type || scope_type === "all"
+        ? []
+        : (scopeValuesCell || "").split(";").map((v) => v.trim()).filter(Boolean);
     return {
       email,
       role: role || "station",
       scope_type: scope_type || "station",
-      scope_value: !scope_type || scope_type === "all" ? null : scope_value || null,
+      scope_values,
     };
   });
 }
@@ -499,7 +523,11 @@ const SETTINGS_TABS = [
 
 export default function SettingsPanel({ me }) {
   const isFullAdmin = me.role === "admin";
-  const myAllowedRoles = useMemo(() => allowedRoles(me.role), [me.role]);
+  // 2026-09-21 feedback: Manager/Region staff can now edit/remove the users
+  // they're allowed to manage (not just add), so they see the (backend-filtered,
+  // see api.users.list) team list too -- previously admin-only.
+  const canManageUsers = me.role === "admin" || me.role === "manager" || me.role === "region";
+  const myAllowedRoles = useMemo(() => allowedRoles(me), [me]);
   const myAllowedScopeTypes = useMemo(() => allowedScopeTypes(me.role), [me.role]);
   const visibleSettingsTabs = useMemo(() => SETTINGS_TABS.filter((t) => t.visible(me)), [me]);
   const [adminTab, setAdminTab] = useState("users");
@@ -523,17 +551,17 @@ export default function SettingsPanel({ me }) {
   useEffect(() => {
     api.stations().then(setStations).catch(() => {});
     api.regions().then(setRegions).catch(() => {});
+    if (canManageUsers) loadUsers();
     if (isFullAdmin) {
-      loadUsers();
       loadRefreshStatus();
     }
-  }, [isFullAdmin]);
+  }, [isFullAdmin, canManageUsers]);
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
   const startEdit = (u) => {
     setEditingEmail(u.email);
-    setForm({ email: u.email, role: u.role, scope_type: u.scope_type, scope_value: u.scope_value || "" });
+    setForm({ email: u.email, role: u.role, scope_type: u.scope_type, scope_values: u.scope_values || [] });
     setError(null);
   };
 
@@ -547,7 +575,7 @@ export default function SettingsPanel({ me }) {
     e.preventDefault();
     setError(null);
     try {
-      const payload = { ...form, scope_value: form.scope_type === "all" ? null : form.scope_value };
+      const payload = { ...form, scope_values: form.scope_type === "all" ? [] : form.scope_values };
       if (editingEmail) {
         await api.users.update(editingEmail, payload);
         setEditingEmail(null);
@@ -555,7 +583,7 @@ export default function SettingsPanel({ me }) {
         await api.users.add(payload);
       }
       setForm(emptyForm);
-      if (isFullAdmin) loadUsers();
+      if (canManageUsers) loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -565,7 +593,7 @@ export default function SettingsPanel({ me }) {
     setError(null);
     setBulkResult(null);
     if (!rows.length) {
-      setError("No rows to add — check the file/text has at least one email,role,scope_type,scope_value line.");
+      setError("No rows to add — check the file/text has at least one email,role,scope_type,scope_values line.");
       return;
     }
     try {
@@ -573,7 +601,7 @@ export default function SettingsPanel({ me }) {
       setBulkResult(result);
       setBulkText("");
       setBulkFileName(null);
-      if (isFullAdmin) loadUsers();
+      if (canManageUsers) loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -670,8 +698,8 @@ export default function SettingsPanel({ me }) {
 
       {adminTab === "users" && !isFullAdmin && (
         <div className="rounded-lg bg-slate-50 px-4 py-2 text-sm text-slate-600 ring-1 ring-slate-200">
-          You can add teammates here. Viewing/editing the full team list and triggering a data refresh are
-          admin-only.
+          You can add, edit, or remove teammates within your own access level below. Viewing the full team list and
+          triggering a data refresh are admin-only.
         </div>
       )}
 
@@ -727,7 +755,7 @@ export default function SettingsPanel({ me }) {
             <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
               value={form.scope_type}
-              onChange={(e) => setForm({ ...form, scope_type: e.target.value, scope_value: "" })}
+              onChange={(e) => setForm({ ...form, scope_type: e.target.value, scope_values: [] })}
             >
               {myAllowedScopeTypes.map((s) => (
                 <option key={s} value={s}>
@@ -738,11 +766,12 @@ export default function SettingsPanel({ me }) {
             {form.scope_type === "station" && (
               <select
                 required
+                multiple
+                size={5}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-                value={form.scope_value}
-                onChange={(e) => setForm({ ...form, scope_value: e.target.value })}
+                value={form.scope_values}
+                onChange={(e) => setForm({ ...form, scope_values: Array.from(e.target.selectedOptions, (o) => o.value) })}
               >
-                <option value="">Pick a station…</option>
                 {stations.map((s) => (
                   <option key={s.station_code} value={s.station_name}>
                     {s.station_name} ({s.zone})
@@ -753,11 +782,12 @@ export default function SettingsPanel({ me }) {
             {form.scope_type === "zone" && (
               <select
                 required
+                multiple
+                size={5}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-                value={form.scope_value}
-                onChange={(e) => setForm({ ...form, scope_value: e.target.value })}
+                value={form.scope_values}
+                onChange={(e) => setForm({ ...form, scope_values: Array.from(e.target.selectedOptions, (o) => o.value) })}
               >
-                <option value="">Pick a zone…</option>
                 {allZones.map((z) => (
                   <option key={z} value={z}>
                     {z}
@@ -768,11 +798,12 @@ export default function SettingsPanel({ me }) {
             {form.scope_type === "region" && (
               <select
                 required
+                multiple
+                size={5}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-                value={form.scope_value}
-                onChange={(e) => setForm({ ...form, scope_value: e.target.value })}
+                value={form.scope_values}
+                onChange={(e) => setForm({ ...form, scope_values: Array.from(e.target.selectedOptions, (o) => o.value) })}
               >
-                <option value="">Pick a region…</option>
                 {regions.map((r) => (
                   <option key={r.region} value={r.region}>
                     {r.region}
@@ -780,12 +811,17 @@ export default function SettingsPanel({ me }) {
                 ))}
               </select>
             )}
-            <button
-              type="submit"
-              className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white sm:col-span-2 lg:col-span-1"
-            >
-              {editingEmail ? "Save changes" : "Add"}
-            </button>
+            <div className="flex flex-col justify-end gap-1 sm:col-span-2 lg:col-span-1">
+              {form.scope_type !== "all" && (
+                <span className="text-[11px] text-slate-400">Ctrl/Cmd-click to select more than one</span>
+              )}
+              <button
+                type="submit"
+                className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white"
+              >
+                {editingEmail ? "Save changes" : "Add"}
+              </button>
+            </div>
           </form>
         )}
 
@@ -794,7 +830,7 @@ export default function SettingsPanel({ me }) {
             <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-3">
               <button
                 type="button"
-                onClick={() => downloadCsv("bulk-add-template.csv", bulkTemplateFor(me.role))}
+                onClick={() => downloadCsv("bulk-add-template.csv", bulkTemplateFor(me))}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
               >
                 Download template (.csv)
@@ -805,8 +841,9 @@ export default function SettingsPanel({ me }) {
               </label>
               {bulkFileName && <span className="text-xs text-slate-500">{bulkFileName}</span>}
               <span className="text-xs text-slate-400">
-                Columns: email, role, scope_type, scope_value. Edit the downloaded file in Excel/Sheets, then
-                upload it back (Save As → CSV if your editor changes the format).
+                Columns: email, role, scope_type, scope_values (semicolon-separated for more than one, e.g.
+                "Southern;Northern"). Edit the downloaded file in Excel/Sheets, then upload it back (Save As → CSV if
+                your editor changes the format).
               </span>
             </div>
 
@@ -815,7 +852,7 @@ export default function SettingsPanel({ me }) {
               <form onSubmit={bulkSubmit} className="mt-2 space-y-2">
                 <textarea
                   rows={5}
-                  placeholder={bulkTemplateFor(me.role)}
+                  placeholder={bulkTemplateFor(me)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-mono"
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
@@ -831,7 +868,9 @@ export default function SettingsPanel({ me }) {
                 ? "You can only grant the Station staff role with station-level access."
                 : me.role === "manager"
                   ? "You can grant Station staff or Region staff roles, with any access level except \"sees everything\"."
-                  : "role: station, region, manager, or admin. scope_type: station, zone, region, or all (leave scope_value blank for \"all\")."}
+                  : me.email === OWNER_EMAIL
+                    ? "role: station, region, manager, or admin. scope_type: station, zone, region, or all (leave scope_values blank for \"all\")."
+                    : "role: station, region, or manager (only the app owner can grant admin). scope_type: station, zone, region, or all (leave scope_values blank for \"all\")."}
             </p>
 
             {bulkResult && (
@@ -850,7 +889,7 @@ export default function SettingsPanel({ me }) {
         )}
       </div>
 
-      {isFullAdmin && (
+      {canManageUsers && (
         <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
@@ -868,16 +907,20 @@ export default function SettingsPanel({ me }) {
                   <td className="px-4 py-2">{u.email}</td>
                   <td className="px-4 py-2">{ROLE_LABELS[u.role] || u.role}</td>
                   <td className="px-4 py-2 text-slate-500">
-                    {u.scope_type === "all" ? "Everything" : `${u.scope_value} (${u.scope_type})`}
+                    {u.scope_type === "all" ? "Everything" : `${(u.scope_values || []).join(", ")} (${u.scope_type})`}
                   </td>
                   <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                   <td className="px-4 py-2 text-right">
-                    <button onClick={() => startEdit(u)} className="mr-3 text-xs text-brand hover:underline">
-                      Edit
-                    </button>
-                    <button onClick={() => remove(u.email)} className="text-xs text-status-critical hover:underline">
-                      Remove
-                    </button>
+                    {canManageTarget(me.role, u.role) && (
+                      <>
+                        <button onClick={() => startEdit(u)} className="mr-3 text-xs text-brand hover:underline">
+                          Edit
+                        </button>
+                        <button onClick={() => remove(u.email)} className="text-xs text-status-critical hover:underline">
+                          Remove
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

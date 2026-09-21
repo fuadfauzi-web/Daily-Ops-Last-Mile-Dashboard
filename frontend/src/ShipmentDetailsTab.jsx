@@ -58,8 +58,9 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
 
-  const hideRegionCol = regionFilter !== "all" || me.scope_type !== "all";
-  const hideZoneCol = zoneFilter !== "all" || me.scope_type === "zone" || me.scope_type === "station";
+  const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
+  const hideZoneCol =
+    zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   useEffect(() => {
     api
