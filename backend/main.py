@@ -458,6 +458,7 @@ class MetricFields(BaseModel):
     pending_ats_attempted: int
     missing_open: int
     missing_hub: int
+    missing_driver_rider: int
     missing_ship_in: int
     total_fresh: int
     age_gt3: int
@@ -2133,7 +2134,7 @@ def _refresh_row_to_dict(row) -> dict:
 _SLA_METRIC_KEYS = (
     "total_fresh", "total_routed", "routed_pct", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
     "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
-    "unsweep_document", "unsweep_parcel", "missing_hub", "missing_ship_in",
+    "unsweep_document", "unsweep_parcel", "missing_hub", "missing_driver_rider", "missing_ship_in",
     "pending_ats_zero_attempt", "pending_ats_attempted",
     # Action Board's own metrics (frontend/src/lib/actionMetrics.js's EXTRA_METRICS)
     # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).

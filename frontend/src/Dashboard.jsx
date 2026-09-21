@@ -25,9 +25,9 @@ import UrgentTnTab from "./UrgentTnTab";
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
 // total or a percentage, with nothing to list.
 const DRILLDOWN_METRICS = new Set([
-  "total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
+  "total_in_hub", "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
   "pending_ats_zero_attempt", "pending_ats_attempted",
-  "missing_open", "missing_hub", "missing_ship_in",
+  "missing_open", "missing_hub", "missing_driver_rider", "missing_ship_in",
   "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
   "unsweep_document", "unsweep_parcel",
 ]);

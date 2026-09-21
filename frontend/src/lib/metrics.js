@@ -21,6 +21,7 @@ export const ALL_COLUMNS = [
   { key: "unsweep_document", label: "Unsweep Document" },
   { key: "unsweep_parcel", label: "Unsweep Parcel" },
   { key: "missing_hub", label: "Missing (Hub)" },
+  { key: "missing_driver_rider", label: "Missing (Driver/Rider)" },
   { key: "missing_ship_in", label: "Missing (Ship-in)" },
   { key: "pending_ats_zero_attempt", label: "Pending ATS (0 Attempt)" },
   { key: "pending_ats_attempted", label: "Pending ATS (Attempted)" },

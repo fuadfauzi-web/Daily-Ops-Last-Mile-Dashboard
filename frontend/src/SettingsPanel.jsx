@@ -3,6 +3,7 @@ import { api } from "./api";
 import { BOARD_COLUMNS } from "./lib/actionMetrics";
 import { resolveThreshold } from "./lib/thresholds";
 import TabBar from "./components/TabBar";
+import MultiSelect from "./components/MultiSelect";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
@@ -764,57 +765,30 @@ export default function SettingsPanel({ me }) {
               ))}
             </select>
             {form.scope_type === "station" && (
-              <select
-                required
-                multiple
-                size={5}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              <MultiSelect
+                placeholder="Pick station(s)…"
+                options={stations.map((s) => ({ value: s.station_name, label: `${s.station_name} (${s.zone})` }))}
                 value={form.scope_values}
-                onChange={(e) => setForm({ ...form, scope_values: Array.from(e.target.selectedOptions, (o) => o.value) })}
-              >
-                {stations.map((s) => (
-                  <option key={s.station_code} value={s.station_name}>
-                    {s.station_name} ({s.zone})
-                  </option>
-                ))}
-              </select>
+                onChange={(vals) => setForm({ ...form, scope_values: vals })}
+              />
             )}
             {form.scope_type === "zone" && (
-              <select
-                required
-                multiple
-                size={5}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              <MultiSelect
+                placeholder="Pick zone(s)…"
+                options={allZones.map((z) => ({ value: z, label: z }))}
                 value={form.scope_values}
-                onChange={(e) => setForm({ ...form, scope_values: Array.from(e.target.selectedOptions, (o) => o.value) })}
-              >
-                {allZones.map((z) => (
-                  <option key={z} value={z}>
-                    {z}
-                  </option>
-                ))}
-              </select>
+                onChange={(vals) => setForm({ ...form, scope_values: vals })}
+              />
             )}
             {form.scope_type === "region" && (
-              <select
-                required
-                multiple
-                size={5}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              <MultiSelect
+                placeholder="Pick region(s)…"
+                options={regions.map((r) => ({ value: r.region, label: r.region }))}
                 value={form.scope_values}
-                onChange={(e) => setForm({ ...form, scope_values: Array.from(e.target.selectedOptions, (o) => o.value) })}
-              >
-                {regions.map((r) => (
-                  <option key={r.region} value={r.region}>
-                    {r.region}
-                  </option>
-                ))}
-              </select>
+                onChange={(vals) => setForm({ ...form, scope_values: vals })}
+              />
             )}
-            <div className="flex flex-col justify-end gap-1 sm:col-span-2 lg:col-span-1">
-              {form.scope_type !== "all" && (
-                <span className="text-[11px] text-slate-400">Ctrl/Cmd-click to select more than one</span>
-              )}
+            <div className="flex items-start sm:col-span-2 lg:col-span-1">
               <button
                 type="submit"
                 className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white"
