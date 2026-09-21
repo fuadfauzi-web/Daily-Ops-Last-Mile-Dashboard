@@ -32,7 +32,7 @@ from stations import ABBR_TO_HUB, HUBS, REGIONS, ZONES, FULL_NAME_TO_HUB
 _DISPATCHED_STATUSES = {"On Vehicle for Delivery"}
 
 METRIC_KEYS = (
-    "total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
+    "total_in_hub", "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
     "pending_ats_zero_attempt", "pending_ats_attempted",
     "missing_open", "missing_hub", "missing_ship_in",
     "total_fresh", "age_gt3", "reschedule", "still_ovfd",
@@ -45,21 +45,13 @@ METRIC_KEYS = (
 # (total_fresh from query 653, total_routed/attendance from query 512 -- route-level,
 # no tracking_id) are excluded -- there's nothing to list.
 DRILLDOWN_METRICS = (
-    "total_in_hub", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
+    "total_in_hub", "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "on_hold",
     "pending_ats_zero_attempt", "pending_ats_attempted",
     "missing_open", "missing_hub", "missing_ship_in",
     "age_gt3", "reschedule", "still_ovfd", "prior_d0", "prior_gt_d0",
     "unsweep_document", "unsweep_parcel",
 )
 
-# Item 4: shipment_dest_hub_name values that mean "this parcel is routed OUT of the
-# network to another zone/state entirely" -- not a local hub/ship-in issue.
-_SHIP_OUT_CODES = {
-    "PRK-PRK", "JHB-JHB", "PEN-PEN", "TGG-TGG", "PHG-PHG", "KEL-KEL", "SBH-SBH",
-    "MM-X-BDR", "MM-Bulky", "MM-Prio", "MM-MM", "MM-RTS", "MM-XDK", "MM-INTL", "MM-B2B",
-    "KDH-KDH", "YPG-YPG", "AOR1-AOR1", "BHU1-BHU1", "KBR1-KBR1", "MKZ-MKZ", "PHG-TEM",
-    "STW1-STW1", "TIN1-TIN1", "TMH1-TMH1", "TPG1-TPG1",
-}
 _B2B_TN_PATTERN = re.compile(r"MYPSO|MYRDO|-DO")
 
 # Unsweep (query 58) split: TN ending in -DO/-MYPSO, starting with MYRDO, or
@@ -104,10 +96,24 @@ def _parse_dt(value) -> datetime | None:
         return None
 
 
-def _classify_missing(row: dict, health_tn_set: set[str]) -> str | None:
-    """Item 4's Hub/Ship-in formula, adapted to query 1297's live field names.
-    Returns 'hub' | 'ship_in' | None (PDCNR / B2B / SHIP OUT / unclassified -- not
-    counted in either bucket, but still counted in the overall missing_open total)."""
+# 2026-09-21 feedback: query 1297 exposes last_scan_type directly (column Q),
+# which says exactly how the ticket's last scan happened -- replaces the old
+# shipment_completion_datetime vs last_scan_datetime heuristic below it (and the
+# East Malaysia/EAST OOZ/SHIP_OUT_CODES special-casing that heuristic needed).
+# Station attribution also switches from dest_hub_name (where a parcel is
+# ultimately headed) to last_scan_hub_name (where it actually is right now),
+# matching how every other metric on this page is grouped.
+_LAST_SCAN_TYPE_TO_KIND = {
+    "Inbound / Sweep": "hub",
+    "Shipment Completion": "ship_in",
+    "Add to Shipment": None,  # Ship Out -- not actually missing, excluded from the Hub/Ship-in split
+}
+
+
+def _classify_missing(row: dict) -> str | None:
+    """Returns 'hub' | 'ship_in' | None (PDCNR / B2B / Ship Out / unrecognized
+    last_scan_type -- not counted in either bucket, but still counted in the
+    overall missing_open total). See _LAST_SCAN_TYPE_TO_KIND above."""
     tn = row.get("tracking_id")
     if not tn:
         return None
@@ -115,30 +121,7 @@ def _classify_missing(row: dict, health_tn_set: set[str]) -> str | None:
         return None  # PDCNR
     if _B2B_TN_PATTERN.search(tn):
         return None  # B2B
-    if (row.get("shipment_dest_hub_name") or "").strip() in _SHIP_OUT_CODES:
-        return None  # SHIP OUT
-
-    dest_hub = row.get("dest_hub_name")
-    region = HUBS[dest_hub][3] if dest_hub in HUBS else None
-
-    if region == "East Malaysia":
-        # "V3 Check": whether this tracking number currently shows up in query 78
-        # (Fleet Health V3) at all.
-        return "hub" if tn in health_tn_set else None
-    if dest_hub == "EAST OOZ":
-        return "hub"
-
-    completion = _parse_dt(row.get("shipment_completion_datetime"))
-    if completion is None:
-        return "hub"
-    last_scan = _parse_dt(row.get("last_scan_datetime"))
-    if last_scan is None:
-        return None  # "HUB to Check" -- ambiguous, leave unclassified
-    if completion == last_scan:
-        return "ship_in"
-    if last_scan > completion:
-        return "hub"
-    return None  # "HUB to Check"
+    return _LAST_SCAN_TYPE_TO_KIND.get(row.get("last_scan_type"))
 
 
 def build_station_metrics(
@@ -161,8 +144,6 @@ def build_station_metrics(
     tn_details = {hub: _empty_tn_lists() for hub in HUBS}
     # Running COD-in-hub numerators, divided into percentages once counting is done.
     cod_in_hub = {hub: 0 for hub in HUBS}
-
-    health_tn_set = {r.get("tracking_id") for r in health_v3_rows if r.get("tracking_id")}
 
     for r in health_v3_rows:
         hub = r.get("last_scan_hub_name")
@@ -202,15 +183,25 @@ def build_station_metrics(
             cod_in_hub[hub] += 1
 
         if attempts == 0:
-            # 2026-09-20 feedback: the two buckets are mutually exclusive by age --
-            # "0 Attempt" is age 0 only, "0 Attempt >D0" is age >0 only (previously
-            # 0 Attempt included the >D0 rows too).
-            if age > 0:
-                row["zero_attempt_gt_d0"] += 1
-                tns["zero_attempt_gt_d0"].append(tn)
-            else:
-                row["zero_attempt"] += 1
-                tns["zero_attempt"].append(tn)
+            # 2026-09-21 feedback: 0 Attempt now requires status == "Arrived at
+            # Sorting Hub" specifically, and days_since_current_hub_first_sweep
+            # must not be blank -- a blank age is excluded entirely (not treated
+            # as age 0, which the bare `age` var above would do via its `or 0`
+            # fallback, so a separate raw read is used here). hub_match (dest hub
+            # == last-scan hub) is already guaranteed by this point. zero_attempt
+            # (D0) and zero_attempt_gt_d0 (>D0) stay mutually exclusive by age as
+            # before; zero_attempt_total is their sum, its own column since
+            # Route Monitoring's "0 Attempt" reads the total, not just D0.
+            raw_age = r.get("days_since_current_hub_first_sweep")
+            if status == "Arrived at Sorting Hub" and raw_age is not None:
+                row["zero_attempt_total"] += 1
+                tns["zero_attempt_total"].append(tn)
+                if raw_age > 0:
+                    row["zero_attempt_gt_d0"] += 1
+                    tns["zero_attempt_gt_d0"].append(tn)
+                else:
+                    row["zero_attempt"] += 1
+                    tns["zero_attempt"].append(tn)
         else:
             row["reschedule"] += 1
             tns["reschedule"].append(tn)
@@ -231,13 +222,13 @@ def build_station_metrics(
         row["cod_pct_hub"] = round(cod_in_hub[hub] / row["total_in_hub"] * 100, 1) if row["total_in_hub"] else 0.0
 
     for r in missing_rows:
-        hub = r.get("dest_hub_name")
+        hub = r.get("last_scan_hub_name")
         if hub not in by_station:
             continue
         tn = r.get("tracking_id")
         by_station[hub]["missing_open"] += 1
         tn_details[hub]["missing_open"].append(tn)
-        kind = _classify_missing(r, health_tn_set)
+        kind = _classify_missing(r)
         if kind == "hub":
             by_station[hub]["missing_hub"] += 1
             tn_details[hub]["missing_hub"].append(tn)
@@ -295,7 +286,6 @@ def _is_high_value(cod_value, item_description, cod_threshold, keywords) -> bool
 
 def build_missing_details(
     missing_rows: list[dict],
-    health_v3_rows: list[dict],
     cod_threshold: float = DEFAULT_HIGH_COD_VALUE_THRESHOLD,
     keywords: tuple[str, ...] = DEFAULT_HIGH_VALUE_ITEM_KEYWORDS,
 ) -> tuple[dict[str, dict], list[dict]]:
@@ -305,7 +295,6 @@ def build_missing_details(
     for the region/zone/station rollup. tn_row: one row per open missing ticket,
     carrying cod_value/item_description/age plus the same Hub/Ship-in/Other
     classification as build_station_metrics's missing_hub/missing_ship_in."""
-    health_tn_set = {r.get("tracking_id") for r in health_v3_rows if r.get("tracking_id")}
     by_station = {
         hub: {
             "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
@@ -315,11 +304,11 @@ def build_missing_details(
     }
     tn_rows = []
     for r in missing_rows:
-        hub = r.get("dest_hub_name")
+        hub = r.get("last_scan_hub_name")
         row = by_station.get(hub)
         if row is None:
             continue
-        kind = _classify_missing(r, health_tn_set)
+        kind = _classify_missing(r)
         row["total_count"] += 1
         if kind == "hub":
             row["hub_count"] += 1
