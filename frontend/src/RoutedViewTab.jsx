@@ -62,6 +62,15 @@ const DRIVER_COLUMNS = [
   { key: "tenure", label: "Tenure", render: "tenure" },
 ];
 
+// A column with `source` displays/sorts another field under an alias (e.g.
+// Productivity shows success_rate as a plain number instead of a percentage --
+// see renderCell's `r[col.source || col.key]`). Built once from both column
+// sets so the sort comparator below resolves the same alias renderCell uses,
+// instead of sorting on a key the row data doesn't actually have.
+const SORT_SOURCE_BY_KEY = Object.fromEntries(
+  [...STATION_COLUMNS, ...DRIVER_COLUMNS].filter((c) => c.source).map((c) => [c.key, c.source])
+);
+
 function successRateClass(rate) {
   if (rate < 70) return "text-status-critical font-semibold";
   if (rate < 85) return "text-status-warning font-medium";
@@ -159,8 +168,9 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
     }
 
     return [...base].sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
+      const dataKey = SORT_SOURCE_BY_KEY[sortKey] || sortKey;
+      const av = a[dataKey];
+      const bv = b[dataKey];
       // == null (not undefined) matters since Tenure comes back null for any
       // driver not in the uploaded driver-details CSV -- comparing against
       // that with .localeCompare would crash the whole tab.
@@ -299,6 +309,11 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
             rows={detailRow ? columnsToDetailRows(columns, detailRow) : []}
           />
           <DataTable
+            // Forces a clean remount on every level switch -- reusing the same
+            // DataTable instance across column-set changes (Driver has extra
+            // columns like Tenure) left its sticky-column scroll state stale,
+            // visibly misaligning the header until a full page reload.
+            key={level}
             title={`Route Monitoring — by ${identityLabel.toLowerCase()}`}
             titleExtra={
               <button
