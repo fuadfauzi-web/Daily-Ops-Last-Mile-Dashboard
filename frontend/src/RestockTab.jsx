@@ -25,7 +25,7 @@ const SUB_TABS = [
   { key: "compliance", label: "Document Compliance" },
 ];
 
-function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia }) {
+function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("restock_bundles");
@@ -137,7 +137,10 @@ export default function RestockTab({ regionFilter, zoneFilter, search, me, exclu
       <SegmentedControl options={SUB_TABS} value={subTab} onChange={setSubTab} />
 
       {subTab === "nxd" ? (
-        <RestockNxdView regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me} excludeEastMalaysia={excludeEastMalaysia} />
+        <RestockNxdView
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
       ) : (
         <div className="rounded-xl bg-white p-6 text-center text-sm text-slate-500 ring-1 ring-slate-200">
           Document Compliance (RDO / GRN / PSO / Reattempt) is coming soon -- the Redash query behind it isn't ready
