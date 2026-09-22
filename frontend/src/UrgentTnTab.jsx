@@ -194,7 +194,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
         footer={
           <>
             {rows.length} tracking number{rows.length === 1 ? "" : "s"} tracked · looked up from the same query 78
-            data Station Health uses (refreshed every 30 minutes), not a live search.
+            data Station Health uses (refreshed every 15 minutes), not a live search.
           </>
         }
       />

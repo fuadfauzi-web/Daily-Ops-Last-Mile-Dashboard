@@ -59,7 +59,7 @@ const SECTIONS = [
       <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-700">
         <li>
           <strong>Data as of X</strong> (top right) is when the numbers on every tab were last pulled from Redash --
-          the whole app refreshes together every 30 minutes, so this one timestamp covers everything except Urgent TN
+          the whole app refreshes together every 15 minutes, so this one timestamp covers everything except Urgent TN
           (see below) and Pending in Yesterday Route (captured once daily at ~12:30am, see Route Monitoring).
         </li>
         <li>
@@ -226,7 +226,7 @@ const SECTIONS = [
     body: (
       <p className="text-sm text-slate-700">
         A personal watchlist -- paste one or more tracking numbers you want to keep an eye on. It looks them up
-        against the same data Station Health already refreshes every 30 minutes (not a live search), and remembers
+        against the same data Station Health already refreshes every 15 minutes (not a live search), and remembers
         your list the next time you open the tab.
       </p>
     ),
