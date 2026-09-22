@@ -48,6 +48,13 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
 REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
+# 2026-09-22 incident: the backend OOM-killed (exit 137) on every restart --
+# root cause was fetching all 11 Redash queries concurrently, holding every
+# raw nationwide payload in memory at once; that happens on EVERY pod start
+# (the refresh loop below runs immediately, no initial sleep), so a crashed
+# pod just re-triggered the same OOM on its very next restart attempt,
+# regardless of this interval. Fixed by fetching sequentially instead (see
+# refresh_metrics) -- the interval itself was never the actual cause.
 _refresh_task: asyncio.Task | None = None
 
 _METRIC_COLUMNS = METRIC_KEYS
@@ -124,25 +131,24 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         (started_at, triggered_by),
     )
     try:
-        # Each fetch also asks Redash to actually re-run the query first (see
-        # redash_client._trigger_refresh) -- that can take a while, so all 11
-        # run concurrently rather than one after another.
-        (
-            health_rows, missing_rows, shipment_rows, routed_rows, tracker_rows, lh_rows,
-            zalora_rows, restock_rows, unsweep_rows, old_route_raw_rows, rpu_raw_rows,
-        ) = await asyncio.gather(
-            fetch_query_results(QUERY_HEALTH_V3),
-            fetch_query_results(QUERY_ACTIVE_MISSING),
-            fetch_query_results(QUERY_TOTAL_SHIPMENTS),
-            fetch_query_results(QUERY_DELIVERY_PERFORMANCE),
-            fetch_query_results(QUERY_SHIPMENT_TRACKER),
-            fetch_query_results(QUERY_LH_TIMING),
-            fetch_query_results(QUERY_ZALORA_NXD),
-            fetch_query_results(QUERY_RESTOCK_NXD),
-            fetch_query_results(QUERY_UNSWEEP),
-            fetch_query_results(QUERY_OLD_ROUTE),
-            fetch_query_results(QUERY_RPU),
-        )
+        # 2026-09-22 incident: fetching all 11 concurrently (each can be a large
+        # nationwide result set) held every raw payload in memory at once and
+        # OOM-killed the pod (exit 137) -- especially bad right at startup,
+        # since that's an immediate refresh with nothing freed yet. Sequential
+        # fetches take longer wall-clock (each also asks Redash to re-run the
+        # query first, see redash_client._trigger_refresh) but only ever hold
+        # one raw payload at a time, well within the 15-30 minute cycle budget.
+        health_rows = await fetch_query_results(QUERY_HEALTH_V3)
+        missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
+        shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
+        routed_rows = await fetch_query_results(QUERY_DELIVERY_PERFORMANCE)
+        tracker_rows = await fetch_query_results(QUERY_SHIPMENT_TRACKER)
+        lh_rows = await fetch_query_results(QUERY_LH_TIMING)
+        zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
+        restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
+        unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
+        old_route_raw_rows = await fetch_query_results(QUERY_OLD_ROUTE)
+        rpu_raw_rows = await fetch_query_results(QUERY_RPU)
 
         by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
@@ -316,6 +322,11 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
             rpu_params,
         )
 
+        try:
+            await _prune_old_snapshots(captured_at)
+        except Exception:  # noqa: BLE001 - isolated so a bug here can't fail the whole refresh
+            log.exception("Pruning old snapshots failed")
+
         await db.execute(
             "UPDATE refresh_log SET finished_at=%s, status='ok', stations_count=%s WHERE id=%s",
             (datetime.now(timezone.utc), len(params), log_id),
@@ -329,6 +340,30 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
             (datetime.now(timezone.utc), str(exc)[:2000], log_id),
         )
         return {"ok": False, "error": str(exc)}
+
+
+# 2026-09-22 feedback: keep only current data, not an ever-growing history --
+# every refresh INSERTs a fresh snapshot into these tables but nothing ever
+# deleted the old ones (aging_details alone had grown past 126k rows). Most
+# of these tables are read by "SELECT ... WHERE captured_at = (SELECT
+# MAX(captured_at) ...)" and never look further back, so only the latest
+# snapshot is actually needed. station_metrics is the one exception --
+# /api/dashboard's "previous"/"yesterday" comparison and Action Board's own
+# delta both look back up to ~24h, so it keeps 2 days instead of 1 snapshot.
+_SINGLE_SNAPSHOT_TABLES = (
+    "shipment_details", "routed_stations", "shipper_watch", "aging_details", "old_route", "rpu_snapshot",
+)
+
+
+async def _prune_old_snapshots(captured_at: datetime) -> None:
+    for table in _SINGLE_SNAPSHOT_TABLES:
+        await db.execute(f"DELETE FROM {table} WHERE captured_at < %s", (captured_at,))
+    await db.execute(
+        "DELETE FROM station_metrics WHERE captured_at < %s", (captured_at - timedelta(days=2),)
+    )
+    await db.execute(
+        "DELETE FROM refresh_log WHERE started_at < %s", (captured_at - timedelta(days=30),)
+    )
 
 
 async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> None:
