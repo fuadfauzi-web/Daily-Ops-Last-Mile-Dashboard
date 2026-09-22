@@ -47,7 +47,13 @@ _MYT = timezone(timedelta(hours=8))
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
-REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
+REFRESH_INTERVAL_SECONDS = 30 * 60  # every 30 minutes
+# 2026-09-22 incident: 15 minutes OOM-killed the backend pod (exit 137) --
+# halving the interval halved the recovery time between refresh_metrics()'s
+# peak memory usage (11 concurrent Redash pulls + several nationwide
+# aggregations held in memory at once) and the container's memory limit.
+# Reverted until the app has more headroom (bump the pod's memory limit in
+# the Substrait portal's Scaling tab) or the refresh's peak footprint shrinks.
 _refresh_task: asyncio.Task | None = None
 
 _METRIC_COLUMNS = METRIC_KEYS

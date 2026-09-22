@@ -53,7 +53,7 @@ const CARD_STATS = [
 
 // 2026-09-21 feedback: silently refresh in the background while a session stays
 // open, instead of making the user hit reload to see the latest capture -- well
-// under the backend's own 15-minute refresh cycle so a new capture shows up
+// under the backend's own 30-minute refresh cycle so a new capture shows up
 // within about a minute of landing. Every tab's own fetch (all keyed off this
 // same tick, see the sub-tab renders below) just re-runs in place: tab, filters,
 // sort and scroll position are separate state untouched by a fresh setData.

@@ -215,7 +215,7 @@ function SlaTargetsPanel({ regions }) {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-400">Applies at the next 15-minute refresh</span>
+          <span className="text-xs text-slate-400">Applies at the next 30-minute refresh</span>
           <button
             onClick={save}
             disabled={saving}
@@ -412,7 +412,7 @@ function RecoverySettingsPanel() {
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">
             {settings.changed_by ? `Last changed ${formatTime(settings.changed_at)} · ${settings.changed_by}` : "Never changed"}
-            {" · applies at the next 15-minute refresh"}
+            {" · applies at the next 30-minute refresh"}
           </span>
           <button
             onClick={save}
@@ -691,7 +691,7 @@ export default function SettingsPanel({ me }) {
             </button>
           </div>
           <p className="mt-2 text-xs text-slate-400">
-            Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
+            Runs automatically every 30 minutes, and now asks Redash to re-run each query first (best-effort — if
             the API key can't trigger that, it falls back to whatever Redash last computed on its own).
           </p>
         </div>
