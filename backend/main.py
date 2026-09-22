@@ -172,7 +172,13 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
             missing_rows, cod_threshold, item_keywords
         )
 
-        captured_at = datetime.now(timezone.utc)
+        # microsecond=0: station_metrics/etc.'s captured_at column is a plain
+        # DATETIME (whole-second precision) -- MySQL silently truncates the
+        # microseconds on insert, so the in-memory value used for _prune_old_
+        # snapshots' "captured_at < %s" below has to match exactly what got
+        # stored, or every fresh row (always a few microseconds "older" than
+        # this variable) gets immediately deleted in the same cycle it landed.
+        captured_at = datetime.now(timezone.utc).replace(microsecond=0)
         global _tn_cache_captured_at, _shipment_tn_cache_captured_at, _routed_drivers, _routed_drivers_captured_at
         global _shipper_tn_cache_captured_at, _aging_rows_captured_at
         global _old_route_rows, _old_route_drivers, _old_route_captured_at, _rpu_rows_cache, _rpu_rows_captured_at
