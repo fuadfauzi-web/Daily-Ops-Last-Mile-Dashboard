@@ -739,24 +739,37 @@ def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[di
 # snapshot has no per-type breakdown (only headcount, via attendance_hd/hr/id/ir),
 # so a type-filtered region/zone/station rollup has to be built fresh from the
 # per-driver rows (build_routed_view's driver_rows) instead of that table.
-DRIVER_TYPE_BUCKETS = {
-    "hybrid": {"HD", "HR"},
-    "independent": {"ID", "IR"},
-    "ops": {"OPS"},
-    "other": {None},
-}
+DRIVER_TYPE_KEYS = ("hybrid", "independent", "ops", "other", "rescue")
+
+
+def driver_type_bucket(d: dict) -> str:
+    """Which DRIVER_TYPE_KEYS bucket a driver_row falls into for filtering. A
+    driver currently routing away from their home station (is_rescue) is always
+    "rescue", regardless of their HD/HR/ID/IR/OPS position code -- e.g. "HTM -
+    HD - ZAHIN" routing at Larkin (home is Ayer Hitam) is a rescue, not a Hybrid,
+    under this filter (2026-09-24 feedback: rescue status is what the Fleet
+    Manager wants to filter on first)."""
+    if d["is_rescue"]:
+        return "rescue"
+    if d["position"] == "OPS":
+        return "ops"
+    if d["position"] in ("HD", "HR"):
+        return "hybrid"
+    if d["position"] in ("ID", "IR"):
+        return "independent"
+    return "other"
 
 
 def rollup_routed_by_driver_type(driver_rows: list[dict], group_key: str, driver_types: list[str] | None) -> list[dict]:
     """Re-aggregates build_routed_view()'s per-driver rows up to station/zone/region
     level (group_key: 'station_code' | 'zone' | 'region'), restricted to the union of
-    one or more driver_type buckets ('hybrid' | 'independent' | 'ops' | 'other'), or
-    every driver if driver_types is None/empty."""
-    allowed = set().union(*(DRIVER_TYPE_BUCKETS[t] for t in driver_types)) if driver_types else None
+    one or more driver_type buckets (see DRIVER_TYPE_KEYS), or every driver if
+    driver_types is None/empty."""
+    allowed = set(driver_types) if driver_types else None
     groups: dict[str, dict] = {}
     position_keys = {"HD": "attendance_hd", "HR": "attendance_hr", "ID": "attendance_id", "IR": "attendance_ir"}
     for d in driver_rows:
-        if allowed is not None and d["position"] not in allowed:
+        if allowed is not None and driver_type_bucket(d) not in allowed:
             continue
         key = d.get(group_key)
         if key is None:

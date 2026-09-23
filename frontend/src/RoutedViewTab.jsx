@@ -27,11 +27,15 @@ const NO_DRIVER_TYPE_LEVELS = new Set(["oldroute", "pendingyesterday"]);
 // Only applies to region/zone/station/driver -- Old Route has no driver concept.
 // "OPS" is its own type (any driver name containing "OPS", see aggregate._parse_driver)
 // -- kept out of "Other", which is now only drivers whose name didn't parse at all.
+// "Rescue" (currently routing away from their home station) takes priority over
+// Hybrid/Independent -- a rescue Hybrid Driver counts as Rescue here, not Hybrid
+// (2026-09-24 feedback; see aggregate.driver_type_bucket).
 const DRIVER_TYPES = [
   { value: "hybrid", label: "Hybrid" },
   { value: "independent", label: "Independent" },
   { value: "ops", label: "OPS" },
   { value: "other", label: "Other" },
+  { value: "rescue", label: "Rescue" },
 ];
 const DRIVER_TYPE_LABEL = Object.fromEntries(DRIVER_TYPES.map((d) => [d.value, d.label]));
 

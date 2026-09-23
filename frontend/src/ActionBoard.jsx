@@ -4,6 +4,7 @@ import { resolveThreshold, classify, SEVERITY_MARK } from "./lib/thresholds";
 import { EXTRA_METRICS, NO_DRILLDOWN_METRICS, BOARD_COLUMNS, findBoardColumn as findColumn } from "./lib/actionMetrics";
 import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
+import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import TnModal from "./components/TnModal";
 
@@ -202,16 +203,13 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     [thresholdRows]
   );
 
-  const toggleMetric = (key) => {
-    setSelectedMetrics((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        /* private browsing / storage blocked -- selection just won't persist */
-      }
-      return next;
-    });
+  const setMetrics = (next) => {
+    setSelectedMetrics(next);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      /* private browsing / storage blocked -- selection just won't persist */
+    }
   };
 
   // If an admin un-scores a metric a user had saved, drop it from the active
@@ -221,6 +219,23 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     () => selectedMetrics.filter((m) => scoredMetrics.some((c) => c.key === m)),
     [selectedMetrics, scoredMetrics]
   );
+
+  // Station-level breach evaluation, independent of the heatmap's own level --
+  // used so a region/zone heatmap row can name WHICH of its stations are
+  // breaching instead of just a count (2026-09-24 feedback).
+  const stationBreachRows = useMemo(() => groupStations(enrichedStations, "station"), [enrichedStations]);
+  const breachingStationNames = useMemo(() => {
+    const map = new Map();
+    stationBreachRows.forEach((r) => {
+      const hasBreach = activeMetrics.some((m) => {
+        const t = resolveThreshold(thresholdRows, m, r.region);
+        const sev = classify(t, r[m], r);
+        return sev === "critical" || sev === "warning";
+      });
+      if (hasBreach) map.set(r.key, r.name);
+    });
+    return map;
+  }, [stationBreachRows, activeMetrics, thresholdRows]);
 
   const todayGroups = useMemo(() => groupStations(enrichedStations, level), [enrichedStations, level]);
   // yesterdayStations only ever carries Station Health fields -- EXTRA_METRICS
@@ -232,7 +247,13 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   const heatmapRows = useMemo(() => {
     const rows = todayGroups.map((r) => {
       const { count, worstRank } = breachInfo(r, activeMetrics, thresholdRows);
-      return { ...r, breachCount: count, worstRank };
+      // Only meaningful for a grouped (region/zone) row -- at station level
+      // each row already IS one station, so there's nothing to list.
+      const breachingStations =
+        level !== "station"
+          ? r.stationCodes.filter((c) => breachingStationNames.has(c)).map((c) => breachingStationNames.get(c))
+          : [];
+      return { ...r, breachCount: count, worstRank, breachingStations };
     });
     const filtered = breachesOnly ? rows.filter((r) => r.breachCount > 0) : rows;
     // No header clicked yet -- default sort stays breach count, then worst
@@ -249,7 +270,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [todayGroups, activeMetrics, thresholdRows, breachesOnly, sortKey, sortDir]);
+  }, [todayGroups, activeMetrics, thresholdRows, breachesOnly, sortKey, sortDir, level, breachingStationNames]);
 
   const toggleHeatmapSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -348,7 +369,19 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
 
   const heatmapColumns = [
     { key: "name", label: identityLabel, sticky: true, align: "left" },
-    { key: "station_count", label: "Stations", className: () => "text-slate-500", render: (r) => r.stationCodes.length },
+    // Region/zone rows name which of their stations are breaching instead of
+    // just a station count; a station row already IS one station, so it gets
+    // neither column (2026-09-24 feedback).
+    ...(level !== "station"
+      ? [{
+          key: "breachingStations",
+          label: "Breach",
+          align: "left",
+          sortable: false,
+          className: () => "text-left text-xs text-slate-600",
+          render: (r) => (r.breachingStations.length ? r.breachingStations.join(", ") : "—"),
+        }]
+      : []),
     ...activeMetrics.map((metricKey) => {
       const col = findColumn(metricKey);
       const isExtra = EXTRA_METRICS.some((e) => e.key === metricKey);
@@ -400,25 +433,20 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
       <div className="space-y-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-display text-xs font-semibold text-slate-700">Metrics:</span>
-          {scoredMetrics.length === 0 && (
+          {scoredMetrics.length === 0 ? (
             <span className="text-xs text-slate-400">
               No metrics are scored yet -- set targets in Admin → SLA Targets first.
             </span>
+          ) : (
+            <div className="w-64">
+              <MultiSelect
+                options={scoredMetrics.map((c) => ({ value: c.key, label: c.label }))}
+                value={selectedMetrics}
+                onChange={setMetrics}
+                placeholder="Select metrics"
+              />
+            </div>
           )}
-          {scoredMetrics.map((c) => {
-            const on = selectedMetrics.includes(c.key);
-            return (
-              <button
-                key={c.key}
-                onClick={() => toggleMetric(c.key)}
-                className={`min-h-[44px] rounded-full border px-3 py-1 font-display text-xs font-semibold ${
-                  on ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-600"
-                }`}
-              >
-                {c.label}
-              </button>
-            );
-          })}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <SegmentedControl options={LEVELS} value={level} onChange={setLevel} />
@@ -442,8 +470,12 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                 onClick={() =>
                   exportCsv(
                     `daily-ops-action-board-${level}-${new Date().toISOString().slice(0, 10)}.csv`,
-                    [identityLabel, "Stations", ...activeMetrics.map((m) => findColumn(m).label)],
-                    heatmapRows.map((r) => [r.name, r.stationCodes.length, ...activeMetrics.map((m) => r[m])])
+                    [identityLabel, ...(level !== "station" ? ["Breach"] : []), ...activeMetrics.map((m) => findColumn(m).label)],
+                    heatmapRows.map((r) => [
+                      r.name,
+                      ...(level !== "station" ? [r.breachingStations.join(", ")] : []),
+                      ...activeMetrics.map((m) => r[m]),
+                    ])
                   )
                 }
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 import db
 from aggregate import (
-    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_BUCKETS,
+    AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
     METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
@@ -885,8 +885,8 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
     # None -- no filter -- since an empty result set for "nothing selected" would
     # be a confusing default.
     driver_types = [t for t in (driver_type or "").split(",") if t] or None
-    if driver_types is not None and any(t not in DRIVER_TYPE_BUCKETS for t in driver_types):
-        raise HTTPException(400, f"driver_type must be a comma-separated list from {list(DRIVER_TYPE_BUCKETS)}")
+    if driver_types is not None and any(t not in DRIVER_TYPE_KEYS for t in driver_types):
+        raise HTTPException(400, f"driver_type must be a comma-separated list from {list(DRIVER_TYPE_KEYS)}")
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM routed_stations")
     captured_at = latest[0] if latest else None
     if captured_at is None:
@@ -985,8 +985,8 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
         stations_out = build_level("station_code")
         zones_out = build_level("zone")
         regions_out = build_level("region")
-        allowed_positions = set().union(*(DRIVER_TYPE_BUCKETS[t] for t in driver_types))
-        driver_rows = [d for d in driver_rows if d["position"] in allowed_positions]
+        allowed_types = set(driver_types)
+        driver_rows = [d for d in driver_rows if driver_type_bucket(d) in allowed_types]
 
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),
