@@ -694,6 +694,33 @@ export default function SettingsPanel({ me }) {
             Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
             the API key can't trigger that, it falls back to whatever Redash last computed on its own).
           </p>
+
+          {refreshStatus?.queries && (
+            <div className="mt-4 overflow-hidden rounded-lg ring-1 ring-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Redash query</th>
+                    <th className="px-3 py-2 font-medium">Feeds</th>
+                    <th className="px-3 py-2 font-medium">Last pulled</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refreshStatus.queries.map((q) => (
+                    <tr key={q.query_id} className="border-t border-slate-100">
+                      <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{q.query_id}</td>
+                      <td className="px-3 py-1.5 text-slate-700">{q.label}</td>
+                      <td className="px-3 py-1.5 text-slate-600">{formatTime(q.fetched_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="mt-2 text-xs text-slate-400">
+            Each query is pulled one at a time during a refresh -- if one of these looks stuck on an old time while
+            the others are fresh, that specific query is what's worth checking in Redash first.
+          </p>
         </div>
       )}
 

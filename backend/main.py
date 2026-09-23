@@ -64,6 +64,32 @@ _refresh_task: asyncio.Task | None = None
 # refresh wait for any in-flight one instead of racing it.
 _refresh_lock = asyncio.Lock()
 
+# 2026-09-24 feedback: every table shares one captured_at (set once, after all
+# 11 Redash fetches complete), so there was no way to tell whether a
+# particular query's own data actually came back fresh this cycle or the fetch
+# quietly failed/short-circuited. This tracks each query's own last-successful-
+# fetch time separately, surfaced on Settings -> Data Refresh.
+_query_fetched_at: dict[int, datetime] = {}
+_QUERY_LABELS = {
+    QUERY_HEALTH_V3: "Health V3 (Station Health)",
+    QUERY_ACTIVE_MISSING: "Active Missing Parcels",
+    QUERY_TOTAL_SHIPMENTS: "Total Shipments & Parcels",
+    QUERY_UNSWEEP: "Unswept Tracking Numbers",
+    QUERY_DELIVERY_PERFORMANCE: "Delivery Performance (Route Monitoring)",
+    QUERY_SHIPMENT_TRACKER: "Shipment Tracker (Fresh Unscan / Latlong)",
+    QUERY_LH_TIMING: "LH Timing / Line-haul Trips",
+    QUERY_ZALORA_NXD: "Zalora NXD (Shipper Watch)",
+    QUERY_RESTOCK_NXD: "Restock NXD (Shipper Watch)",
+    QUERY_OLD_ROUTE: "Old Route / Aging OVFD",
+    QUERY_RPU: "RPU Monitoring",
+}
+
+
+async def _fetch(query_id: int) -> list[dict]:
+    rows = await fetch_query_results(query_id)
+    _query_fetched_at[query_id] = datetime.now(timezone.utc)
+    return rows
+
 _METRIC_COLUMNS = METRIC_KEYS
 
 # Tracking-number lists behind each station's metric counts, for the UI's
@@ -170,38 +196,38 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             cod_threshold = DEFAULT_HIGH_COD_VALUE_THRESHOLD
             item_keywords = DEFAULT_HIGH_VALUE_ITEM_KEYWORDS
 
-        health_rows = await fetch_query_results(QUERY_HEALTH_V3)
-        missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
-        shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
-        unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
+        health_rows = await _fetch(QUERY_HEALTH_V3)
+        missing_rows = await _fetch(QUERY_ACTIVE_MISSING)
+        shipment_rows = await _fetch(QUERY_TOTAL_SHIPMENTS)
+        unsweep_rows = await _fetch(QUERY_UNSWEEP)
         by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         missing_details_by_station, missing_details_tn_rows = build_missing_details(
             missing_rows, cod_threshold, item_keywords
         )
         del missing_rows, unsweep_rows
 
-        routed_rows = await fetch_query_results(QUERY_DELIVERY_PERFORMANCE)
+        routed_rows = await _fetch(QUERY_DELIVERY_PERFORMANCE)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
         merge_routed_into_station_metrics(by_station, routed_by_station)
         del routed_rows
 
-        tracker_rows = await fetch_query_results(QUERY_SHIPMENT_TRACKER)
-        lh_rows = await fetch_query_results(QUERY_LH_TIMING)
+        tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
+        lh_rows = await _fetch(QUERY_LH_TIMING)
         shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
         del shipment_rows, tracker_rows, lh_rows
 
-        zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
-        restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
+        zalora_rows = await _fetch(QUERY_ZALORA_NXD)
+        restock_rows = await _fetch(QUERY_RESTOCK_NXD)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
         del zalora_rows, restock_rows
 
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
 
-        old_route_raw_rows = await fetch_query_results(QUERY_OLD_ROUTE)
+        old_route_raw_rows = await _fetch(QUERY_OLD_ROUTE)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
         del old_route_raw_rows
 
-        rpu_raw_rows = await fetch_query_results(QUERY_RPU)
+        rpu_raw_rows = await _fetch(QUERY_RPU)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
         del rpu_raw_rows
 
@@ -2191,6 +2217,12 @@ async def list_regions(user: CurrentUser = Depends(get_current_user)):
 # Admin: manual refresh
 # ---------------------------------------------------------------------------
 
+class QueryFetchStatus(BaseModel):
+    query_id: int
+    label: str
+    fetched_at: str | None
+
+
 class RefreshStatus(BaseModel):
     id: int
     started_at: str
@@ -2199,6 +2231,7 @@ class RefreshStatus(BaseModel):
     stations_count: int | None
     error_message: str | None
     triggered_by: str | None
+    queries: list[QueryFetchStatus]
 
 
 @app.post("/api/admin/refresh", response_model=RefreshStatus)
@@ -2226,6 +2259,13 @@ def _refresh_row_to_dict(row) -> dict:
     return {
         "id": row[0], "started_at": str(row[1]), "finished_at": str(row[2]) if row[2] else None,
         "status": row[3], "stations_count": row[4], "error_message": row[5], "triggered_by": row[6],
+        "queries": [
+            {
+                "query_id": qid, "label": label,
+                "fetched_at": _query_fetched_at[qid].isoformat() if qid in _query_fetched_at else None,
+            }
+            for qid, label in _QUERY_LABELS.items()
+        ],
     }
 
 
