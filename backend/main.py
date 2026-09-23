@@ -1391,6 +1391,10 @@ def _rpu_shippers(rows: list[dict]) -> list[str]:
     return sorted({r["shipper_name"] for r in rows if r.get("shipper_name")})
 
 
+def _rpu_statuses(rows: list[dict]) -> list[str]:
+    return sorted({r["status"] for r in rows if r.get("status")})
+
+
 def _rpu_empty_response(stage: str, shipper: str | None) -> dict:
     return {
         "captured_at": None, "stage": stage, "shipper": shipper, "shippers": [],
@@ -1400,8 +1404,13 @@ def _rpu_empty_response(stage: str, shipper: str | None) -> dict:
 
 @app.get("/api/rpu", response_model=RpuResponse)
 async def rpu(stage: str = "all", shipper: str | None = None, user: CurrentUser = Depends(get_current_user)):
-    if stage != "all" and stage not in RPU_STAGE_LABELS:
-        raise HTTPException(status_code=422, detail=f"stage must be 'all' or one of {list(RPU_STAGE_LABELS)}")
+    # stage/shipper: comma-separated (2026-09-24 feedback -- were single-value;
+    # the UI now lets a user tick more than one of each). "all"/"" means no
+    # stage filter; an absent/empty shipper means no shipper filter.
+    stages = [s for s in stage.split(",") if s] if stage and stage != "all" else None
+    if stages is not None and any(s not in RPU_STAGE_LABELS for s in stages):
+        raise HTTPException(status_code=422, detail=f"stage must be 'all' or a comma-separated list from {list(RPU_STAGE_LABELS)}")
+    shippers_filter = [s for s in (shipper or "").split(",") if s] or None
     if _rpu_rows_captured_at is None:
         return _rpu_empty_response(stage, shipper)
 
@@ -1411,7 +1420,7 @@ async def rpu(stage: str = "all", shipper: str | None = None, user: CurrentUser 
     # The status filter only narrows the TN table -- the summary always shows
     # every stage as its own column, so it stays built from every row
     # (shipper-filtered, but not stage-filtered).
-    pivot_rows = [r for r in all_scoped if r["shipper_name"] == shipper] if shipper else all_scoped
+    pivot_rows = [r for r in all_scoped if r["shipper_name"] in shippers_filter] if shippers_filter else all_scoped
     scoped_stations = rpu_station_pivot(pivot_rows)
 
     def to_group(g_rows, key):
@@ -1420,7 +1429,7 @@ async def rpu(stage: str = "all", shipper: str | None = None, user: CurrentUser 
             for g in g_rows if g["station_count"] > 0
         ]
 
-    tn_rows_source = pivot_rows if stage == "all" else [r for r in pivot_rows if r["stage"] == stage]
+    tn_rows_source = pivot_rows if stages is None else [r for r in pivot_rows if r["stage"] in stages]
     tn_rows_total = len(tn_rows_source)
     tn_rows_truncated = tn_rows_total > RPU_ROWS_CAP
     tn_rows = (
@@ -1451,6 +1460,8 @@ class RpuAgingResponse(BaseModel):
     type_label: str
     shipper: str | None
     shippers: list[str]
+    status: str | None
+    statuses: list[str]
     buckets: list[str]
     stations: list[AgingStationRow]
     zones: list[AgingGroupRow]
@@ -1461,26 +1472,39 @@ class RpuAgingResponse(BaseModel):
 
 
 @app.get("/api/rpu-aging", response_model=RpuAgingResponse)
-async def rpu_aging(type: str = "overall", shipper: str | None = None, user: CurrentUser = Depends(get_current_user)):
+async def rpu_aging(
+    type: str = "overall", shipper: str | None = None, status: str | None = None,
+    user: CurrentUser = Depends(get_current_user),
+):
     if type not in RPU_AGING_TYPE_LABELS:
         raise HTTPException(status_code=422, detail=f"type must be one of {list(RPU_AGING_TYPE_LABELS)}")
+    # shipper/status: comma-separated (2026-09-24 feedback -- a user can tick
+    # more than one of each). status has no fixed enum (it's whatever granular
+    # status text Redash returns), so it's filtered, not validated.
+    shippers_filter = [s for s in (shipper or "").split(",") if s] or None
+    statuses_filter = [s for s in (status or "").split(",") if s] or None
     if _rpu_rows_captured_at is None:
         return {
             **_rpu_empty_response("all", shipper), "type": type, "type_label": RPU_AGING_TYPE_LABELS[type],
-            "buckets": list(AGING_BUCKET_LABELS.values()),
+            "status": status, "statuses": [], "buckets": list(AGING_BUCKET_LABELS.values()),
         }
 
     all_scoped = _rpu_scoped_rows(user)
     shippers = _rpu_shippers(all_scoped)
+    statuses = _rpu_statuses(all_scoped)
 
     rows = all_scoped
-    if shipper:
-        rows = [r for r in rows if r["shipper_name"] == shipper]
+    if shippers_filter:
+        rows = [r for r in rows if r["shipper_name"] in shippers_filter]
 
     by_station, matched_rows = bucket_rpu_aging(rows, only_zero_attempt=(type == "zero_attempt"))
     scoped_stations = _scope_filter_stations(list(by_station.values()), user)
     scoped_codes = {r["station_code"] for r in scoped_stations}
     tn_rows_all = [r for r in matched_rows if r["station_code"] in scoped_codes]
+    # Status only narrows the TN table -- like RPU Overall's stage filter, the
+    # station/zone/region age buckets stay built from every matched row.
+    if statuses_filter:
+        tn_rows_all = [r for r in tn_rows_all if r["status"] in statuses_filter]
 
     def to_group(g_rows, key):
         return [
@@ -1498,6 +1522,8 @@ async def rpu_aging(type: str = "overall", shipper: str | None = None, user: Cur
         "type_label": RPU_AGING_TYPE_LABELS[type],
         "shipper": shipper,
         "shippers": shippers,
+        "status": status,
+        "statuses": statuses,
         "buckets": list(AGING_BUCKET_LABELS.values()),
         "stations": scoped_stations,
         "zones": to_group(rollup_aging(scoped_stations, "zone"), "zone"),

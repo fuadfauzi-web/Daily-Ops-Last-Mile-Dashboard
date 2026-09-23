@@ -4,6 +4,7 @@ import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
+import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 
@@ -16,10 +17,9 @@ import Skeleton from "./components/Skeleton";
 //   Pending Inbound        -- granular_status = En-route to Sorting Hub (picked
 //                              up, not yet scanned in at the hub)
 const STAGES = [
-  { key: "all", label: "All" },
-  { key: "pending_pickup", label: "Pending Pick Up" },
-  { key: "ovfd", label: "En Route to Sorting Hub" },
-  { key: "pending_inbound", label: "Pending Inbound" },
+  { value: "pending_pickup", label: "Pending Pick Up" },
+  { value: "ovfd", label: "En Route to Sorting Hub" },
+  { value: "pending_inbound", label: "Pending Inbound" },
 ];
 
 const AGING_TYPES = [
@@ -55,33 +55,38 @@ const TN_COLUMNS = [
   { key: "shipper_name", label: "Shipper" },
 ];
 
-function ShipperSelect({ shipper, setShipper, shippers }) {
-  return (
-    <select
-      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-      value={shipper || ""}
-      onChange={(e) => setShipper(e.target.value || null)}
-    >
-      <option value="">All shippers</option>
-      {shippers.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
+// Shared tracking-number table for both RPU Status and RPU Aging -- station
+// search plus an optional status filter (stage for Status, raw granular status
+// for Aging) and an optional failure-reason filter (Status only) all sit
+// together on the title row (2026-09-24 feedback: the status/stage filter used
+// to live in a top bar disconnected from the table it actually narrows).
+function TnTable({
+  tnRows, tnRowsTotal, tnRowsTruncated,
+  statusOptions, statusValue, onStatusChange,
+  showFailureReasonFilter,
+}) {
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
   const [tnStationSearch, setTnStationSearch] = useState("");
+  const [failureReasonFilter, setFailureReasonFilter] = useState([]);
+
+  // Client-side only, same as the station search below -- failure_reason isn't
+  // a bucketed/server-truncation-relevant field, so filtering whatever's
+  // already loaded (like the station search already does) is consistent.
+  const failureReasonOptions = useMemo(() => {
+    if (!showFailureReasonFilter) return [];
+    const values = new Set(tnRows.map((r) => r.failure_reason).filter(Boolean));
+    return Array.from(values).sort().map((v) => ({ value: v, label: v }));
+  }, [tnRows, showFailureReasonFilter]);
 
   const sorted = useMemo(() => {
     let rows = tnRows;
     if (tnStationSearch.trim()) {
       const q = tnStationSearch.trim().toLowerCase();
       rows = rows.filter((r) => r.station_name?.toLowerCase().includes(q));
+    }
+    if (showFailureReasonFilter && failureReasonFilter.length) {
+      rows = rows.filter((r) => r.failure_reason && failureReasonFilter.includes(r.failure_reason));
     }
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
@@ -90,7 +95,7 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [tnRows, tnSortKey, tnSortDir, tnStationSearch]);
+  }, [tnRows, tnSortKey, tnSortDir, tnStationSearch, showFailureReasonFilter, failureReasonFilter]);
 
   const toggleTnSort = (key) => {
     if (key === tnSortKey) setTnSortDir(tnSortDir === "asc" ? "desc" : "asc");
@@ -116,15 +121,30 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
             value={tnStationSearch}
             onChange={(e) => setTnStationSearch(e.target.value)}
           />
+          {statusOptions && (
+            <div className="w-48">
+              <MultiSelect options={statusOptions} value={statusValue} onChange={onStatusChange} placeholder="All statuses" />
+            </div>
+          )}
+          {showFailureReasonFilter && (
+            <div className="w-48">
+              <MultiSelect
+                options={failureReasonOptions}
+                value={failureReasonFilter}
+                onChange={setFailureReasonFilter}
+                placeholder="All failure reasons"
+              />
+            </div>
+          )}
           <button
-          onClick={() =>
-            exportCsv(
-              `daily-ops-rpu-tns-${new Date().toISOString().slice(0, 10)}.csv`,
-              ["Station", ...TN_COLUMNS.map((c) => c.label)],
-              sorted.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
-            )
-          }
-          className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+            onClick={() =>
+              exportCsv(
+                `daily-ops-rpu-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                ["Station", ...TN_COLUMNS.map((c) => c.label)],
+                sorted.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+              )
+            }
+            className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
           >
             Export CSV
           </button>
@@ -154,8 +174,8 @@ function TnTable({ tnRows, tnRowsTotal, tnRowsTruncated }) {
 }
 
 function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  const [stage, setStage] = useState("all");
-  const [shipper, setShipper] = useState(null);
+  const [stages, setStages] = useState([]);
+  const [shippers, setShippers] = useState([]);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total_tn");
@@ -169,10 +189,10 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
   useEffect(() => {
     setData(null);
     api
-      .rpu(stage, shipper)
+      .rpu(stages, shippers)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [stage, shipper, refreshTick]);
+  }, [stages, shippers, refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -225,18 +245,14 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
     <div className="space-y-3">
       {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-          value={stage}
-          onChange={(e) => setStage(e.target.value)}
-        >
-          {STAGES.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
+        <div className="w-64">
+          <MultiSelect
+            options={data.shippers.map((s) => ({ value: s, label: s }))}
+            value={shippers}
+            onChange={setShippers}
+            placeholder="All shippers"
+          />
+        </div>
       </div>
 
       {data.captured_at && (
@@ -274,7 +290,15 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
             emptyMessage="No stations match."
           />
 
-          <TnTable tnRows={filteredTnRows} tnRowsTotal={data.tn_rows_total} tnRowsTruncated={data.tn_rows_truncated} />
+          <TnTable
+            tnRows={filteredTnRows}
+            tnRowsTotal={data.tn_rows_total}
+            tnRowsTruncated={data.tn_rows_truncated}
+            statusOptions={STAGES}
+            statusValue={stages}
+            onStatusChange={setStages}
+            showFailureReasonFilter
+          />
         </>
       )}
     </div>
@@ -283,7 +307,8 @@ function RpuStatusView({ regionFilter, zoneFilter, search, me, excludeEastMalays
 
 function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [agingType, setAgingType] = useState("overall");
-  const [shipper, setShipper] = useState(null);
+  const [shippers, setShippers] = useState([]);
+  const [statuses, setStatuses] = useState([]);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total");
@@ -297,10 +322,10 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
   useEffect(() => {
     setData(null);
     api
-      .rpuAging(agingType, shipper)
+      .rpuAging(agingType, shippers, statuses)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [agingType, shipper, refreshTick]);
+  }, [agingType, shippers, statuses, refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -350,7 +375,24 @@ function RpuAgingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysi
       {!data.captured_at && <div className="text-sm text-slate-500">No data yet.</div>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
-        <ShipperSelect shipper={shipper} setShipper={setShipper} shippers={data.shippers} />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-64">
+            <MultiSelect
+              options={data.shippers.map((s) => ({ value: s, label: s }))}
+              value={shippers}
+              onChange={setShippers}
+              placeholder="All shippers"
+            />
+          </div>
+          <div className="w-64">
+            <MultiSelect
+              options={data.statuses.map((s) => ({ value: s, label: s }))}
+              value={statuses}
+              onChange={setStatuses}
+              placeholder="All statuses"
+            />
+          </div>
+        </div>
       </div>
 
       {data.captured_at && (
