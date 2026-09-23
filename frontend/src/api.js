@@ -49,10 +49,18 @@ export const api = {
   urgentTnLookup: (trackingNumbers) =>
     request("/api/urgent-tn-lookup", { method: "POST", body: JSON.stringify({ tracking_numbers: trackingNumbers }) }),
   pendingYesterdayRoute: () => request("/api/pending-yesterday-route"),
-  rpu: (stage, shipper) =>
-    request(`/api/rpu?stage=${encodeURIComponent(stage)}${shipper ? `&shipper=${encodeURIComponent(shipper)}` : ""}`),
-  rpuAging: (type, shipper) =>
-    request(`/api/rpu-aging?type=${encodeURIComponent(type)}${shipper ? `&shipper=${encodeURIComponent(shipper)}` : ""}`),
+  rpu: (stages, shippers) =>
+    request(
+      `/api/rpu?stage=${encodeURIComponent(stages?.length ? stages.join(",") : "all")}${
+        shippers?.length ? `&shipper=${encodeURIComponent(shippers.join(","))}` : ""
+      }`
+    ),
+  rpuAging: (type, shippers, statuses) =>
+    request(
+      `/api/rpu-aging?type=${encodeURIComponent(type)}${
+        shippers?.length ? `&shipper=${encodeURIComponent(shippers.join(","))}` : ""
+      }${statuses?.length ? `&status=${encodeURIComponent(statuses.join(","))}` : ""}`
+    ),
   users: {
     list: () => request("/api/admin/users"),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),
