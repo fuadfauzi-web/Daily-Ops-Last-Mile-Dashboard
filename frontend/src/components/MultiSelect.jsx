@@ -49,12 +49,15 @@ export default function MultiSelect({ options, value, onChange, placeholder = "S
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-left text-sm"
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-left text-sm"
       >
-        <span className={value.length ? "text-slate-800" : "text-slate-400"}>
+        {/* A long placeholder (e.g. "Search station (this table only)…") must
+            never wrap -- that grows the trigger to two lines, taller than
+            every other filter box next to it (2026-09-24 feedback). */}
+        <span className={`truncate ${value.length ? "text-slate-800" : "text-slate-400"}`}>
           {value.length ? `${value.length} selected` : placeholder}
         </span>
-        <span className="text-slate-400">▾</span>
+        <span className="shrink-0 text-slate-400">▾</span>
       </button>
 
       {open && (
