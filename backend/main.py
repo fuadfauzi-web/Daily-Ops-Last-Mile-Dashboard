@@ -2220,7 +2220,7 @@ _SLA_METRIC_KEYS = (
     "pending_ats_zero_attempt", "pending_ats_attempted",
     # Action Board's own metrics (frontend/src/lib/actionMetrics.js's EXTRA_METRICS)
     # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).
-    "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "productivity_pct",
+    "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "fresh_unscan", "productivity_pct",
 )
 _SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
 # Productivity is scored per driver position instead of per region -- these are

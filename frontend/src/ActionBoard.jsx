@@ -140,7 +140,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     return DEFAULT_METRICS;
   });
   const [level, setLevel] = useState("station");
-  const [breachesOnly, setBreachesOnly] = useState(false);
+  const [breachesOnly, setBreachesOnly] = useState(true);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
