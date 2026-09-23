@@ -104,6 +104,11 @@ _tn_cache_captured_at: str | None = None
 _shipment_tn_cache: dict[str, dict[str, list]] = {}
 _shipment_tn_cache_captured_at: str | None = None
 
+# Shipment Details' nationwide sweep-time-of-day histogram (24 hourly buckets) for
+# the timeline chart -- nationwide, not per-station, so it doesn't fit the
+# shipment_details table; rebuilt every refresh like the drilldown caches above.
+_sweep_timeline: list[int] = [0] * 24
+
 # Routed View's driver-level rows. Not persisted -- rebuilt every refresh, like the
 # drilldown caches (a daily driver roster has no need for hourly history).
 _routed_drivers: list[dict] = []
@@ -213,7 +218,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
 
         tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
         lh_rows = await _fetch(QUERY_LH_TIMING)
-        shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
+        shipment_by_station, shipment_tn_details, sweep_timeline = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
         del shipment_rows, tracker_rows, lh_rows
 
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
@@ -244,6 +249,8 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         global _missing_details_stations, _missing_details_tn_rows, _missing_details_captured_at
         global _missing_details_cod_threshold, _missing_details_item_keywords
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
+        global _sweep_timeline
+        _sweep_timeline = sweep_timeline
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -728,6 +735,10 @@ class ShipmentDetailFields(BaseModel):
     fresh_attempt_count: int
     fresh_attempt_pct: float
     process_time_minutes: float | None
+    process_within_1h: int
+    process_within_2h: int
+    process_within_3h: int
+    process_over_3h: int
 
 
 class ShipmentStationRow(ShipmentDetailFields):
@@ -748,6 +759,7 @@ class ShipmentDetailsResponse(BaseModel):
     stations: list[ShipmentStationRow]
     zones: list[ShipmentGroupRow]
     regions: list[ShipmentGroupRow]
+    sweep_timeline: list[int]
 
 
 async def _fetch_shipment_rows(captured_at) -> list[dict]:
@@ -780,7 +792,7 @@ async def shipment_details(user: CurrentUser = Depends(get_current_user)):
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM shipment_details")
     captured_at = latest[0] if latest else None
     if captured_at is None:
-        return {"captured_at": None, "stations": [], "zones": [], "regions": []}
+        return {"captured_at": None, "stations": [], "zones": [], "regions": [], "sweep_timeline": [0] * 24}
 
     all_rows = await _fetch_shipment_rows(captured_at)
     scoped = _scope_filter_stations(all_rows, user)
@@ -795,6 +807,7 @@ async def shipment_details(user: CurrentUser = Depends(get_current_user)):
         "stations": scoped,
         "zones": [g for g in zone_groups if g["station_count"] > 0],
         "regions": [g for g in region_groups if g["station_count"] > 0],
+        "sweep_timeline": _sweep_timeline,
     }
 
 

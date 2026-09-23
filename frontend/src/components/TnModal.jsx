@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatTime } from "../lib/format";
+import { exportCsv } from "../lib/csv";
 
 // The tracking-number drilldown modal. Every tab that has a clickable metric
 // (Station Health, Shipment Details, Shipper Watch) uses this same component,
@@ -24,6 +25,15 @@ export default function TnModal({ state, onClose, fetcher }) {
   const copy = () => {
     if (!tns?.tracking_numbers?.length) return;
     navigator.clipboard.writeText(tns.tracking_numbers.join("\n")).then(() => setCopied(true));
+  };
+
+  const download = () => {
+    if (!tns?.tracking_numbers?.length) return;
+    exportCsv(
+      `daily-ops-${state.stationCode}-${state.metricKey}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Tracking Number"],
+      tns.tracking_numbers.map((tn) => [tn])
+    );
   };
 
   return (
@@ -52,13 +62,22 @@ export default function TnModal({ state, onClose, fetcher }) {
                   {tns.tracking_numbers.length === 1 ? "" : "s"}
                   {tns.as_of && ` · as of ${formatTime(tns.as_of)}`}
                 </div>
-                <button
-                  onClick={copy}
-                  disabled={!tns.tracking_numbers.length}
-                  className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
-                >
-                  {copied ? "Copied!" : "Copy list"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={download}
+                    disabled={!tns.tracking_numbers.length}
+                    className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 disabled:opacity-40"
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    onClick={copy}
+                    disabled={!tns.tracking_numbers.length}
+                    className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                  >
+                    {copied ? "Copied!" : "Copy list"}
+                  </button>
+                </div>
               </div>
               <div className="max-h-[45vh] overflow-y-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700">
                 {tns.tracking_numbers.length === 0

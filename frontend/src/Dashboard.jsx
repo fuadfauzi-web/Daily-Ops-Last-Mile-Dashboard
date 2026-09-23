@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
-import { minMax, colorScaleClass } from "./lib/colorScale";
 import { ALL_COLUMNS } from "./lib/metrics";
+import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import DataTable from "./components/DataTable";
-import GroupTable from "./components/GroupTable";
-import SegmentedControl from "./components/SegmentedControl";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
+import HeaderNote from "./components/HeaderNote";
 import TabBar from "./components/TabBar";
 import Skeleton from "./components/Skeleton";
 import ActionBoard from "./ActionBoard";
@@ -210,10 +209,8 @@ export default function Dashboard({ me, onCapturedAt }) {
   // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
   const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
 
-  // Experimental (2026-09-20, staging only): Station Health as one combined
-  // region -> zone -> station table instead of three separate ones. Not
-  // persisted -- this is here to try, not to commit to yet.
-  const [stationHealthView, setStationHealthView] = useState("separate");
+  // Station Health: one combined region -> zone -> station table, each level
+  // expandable (2026-09-24: replaced the old three-separate-tables layout).
   const [expandedRegions, setExpandedRegions] = useState(() => new Set());
   const [expandedZones, setExpandedZones] = useState(() => new Set());
   const [combinedSortKey, setCombinedSortKey] = useState(null);
@@ -338,43 +335,6 @@ export default function Dashboard({ me, onCapturedAt }) {
     });
   }, [scopedStations, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
-  const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
-  const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
-
-  // Reference metrics (no SLA) get a relative colour scale instead of a flat
-  // grey -- region/zone tables scale each metric against every region/zone
-  // shown; the station table is fixed to scale each station only against the
-  // other stations in its own zone (per 2026-09-20 feedback).
-  const regionRangeByMetric = useMemo(() => {
-    const map = {};
-    ALL_COLUMNS.forEach((c) => {
-      map[c.key] = minMax(filteredRegionGroups.map((g) => g[c.key]));
-    });
-    return map;
-  }, [filteredRegionGroups]);
-  const zoneRangeByMetric = useMemo(() => {
-    const map = {};
-    ALL_COLUMNS.forEach((c) => {
-      map[c.key] = minMax(filteredZoneGroups.map((g) => g[c.key]));
-    });
-    return map;
-  }, [filteredZoneGroups]);
-  const stationRangeByMetricAndZone = useMemo(() => {
-    const byZone = {};
-    filteredStations.forEach((s) => {
-      if (!byZone[s.zone]) byZone[s.zone] = [];
-      byZone[s.zone].push(s);
-    });
-    const map = {};
-    ALL_COLUMNS.forEach((c) => {
-      map[c.key] = {};
-      Object.entries(byZone).forEach(([zone, rows]) => {
-        map[c.key][zone] = minMax(rows.map((r) => r[c.key]));
-      });
-    });
-    return map;
-  }, [filteredStations]);
-
   // Restricted to exactly the same stations as filteredStations -- the
   // Action Board aggregates by region/zone, and an aggregate delta is only
   // meaningful if both days are summed over the same set of stations.
@@ -463,14 +423,6 @@ export default function Dashboard({ me, onCapturedAt }) {
     }));
   }, [data, visibleRegions, scopedStations, cardMode, effectiveRegion, zoneFilter, me.scope_values]);
 
-  const toggleSort = (key) => {
-    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else {
-      setSortKey(key);
-      setSortDir(key === "region" || key === "zone" ? "asc" : "desc");
-    }
-  };
-
   const openDrilldown = (row, col) => {
     setModal({ stationCode: row.station_code, stationName: row.station_name, metricKey: col.key, metricLabel: col.label });
   };
@@ -487,58 +439,6 @@ export default function Dashboard({ me, onCapturedAt }) {
 
   // Region/zone tables each get their own column set since the colour scale for
   // a reference metric depends on which row set it's being ranked against.
-  const buildGroupColumns = (rangeByMetric) =>
-    ALL_COLUMNS.map((c) => {
-      const natThreshold = resolveThreshold(thresholdRows, c.key, null);
-      const isReference = !natThreshold.scored;
-      if (isReference) {
-        return {
-          key: c.key,
-          label: c.label,
-          render: (g) => fmt(c.key, g[c.key]),
-          className: (g) => colorScaleClass(g[c.key], rangeByMetric[c.key]),
-        };
-      }
-      // Scored metrics: a region/zone row sums every one of its stations' raw
-      // counts, so a raw-count target has to scale the same way (SLA of 100 per
-      // station * 5 stations in South 1 = 500 for South 1) -- per 2026-09-20
-      // feedback. A percentage target (or a metric already scored as "% of"
-      // another field) never scales -- both its numerator and denominator
-      // already sum proportionally, so the same threshold applies as-is.
-      const isPercentBased = PERCENT_METRICS.has(c.key) || !!natThreshold.percent_of;
-      const scaledThreshold = (g) => {
-        const t = resolveThreshold(thresholdRows, c.key, g.region);
-        if (isPercentBased) return t;
-        return { ...t, warning_at: t.warning_at * g.station_count, critical_at: t.critical_at * g.station_count };
-      };
-      return {
-        key: c.key,
-        label: c.label,
-        render: (g) => {
-          const t = scaledThreshold(g);
-          const sev = classify(t, g[c.key], g);
-          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, g[c.key], g, t)}`;
-        },
-        className: (g) => {
-          const t = scaledThreshold(g);
-          const sev = classify(t, g[c.key], g);
-          return SEVERITY_CLASS[sev];
-        },
-      };
-    });
-  const regionGroupColumns = buildGroupColumns(regionRangeByMetric);
-  const zoneGroupColumns = buildGroupColumns(zoneRangeByMetric);
-
-  // Experimental combined table: one column set that works for a region row,
-  // a zone row, or a station row alike -- reference metrics pick the range
-  // matching that row's own level; scored metrics scale their target by
-  // station_count the same way buildGroupColumns does (station rows use
-  // station_count 1, i.e. unscaled).
-  const referenceRangeFor = (row, key) => {
-    if (row.type === "region") return regionRangeByMetric[key];
-    if (row.type === "zone") return zoneRangeByMetric[key];
-    return stationRangeByMetricAndZone[key]?.[row.zone];
-  };
   // Distinct banding per level (region darkest, zone lighter, station plain
   // white) so the three row types are unmistakable at a glance, not just from
   // the name column's own indentation/weight -- per 2026-09-20 feedback.
@@ -581,12 +481,26 @@ export default function Dashboard({ me, onCapturedAt }) {
     ...ALL_COLUMNS.map((c) => {
       const natThreshold = resolveThreshold(thresholdRows, c.key, null);
       const isReference = !natThreshold.scored;
+      // Metrics scored as "% of X" (Admin -> SLA Targets) get a small note under
+      // the header naming X, so it's clear what the shown percentage is relative
+      // to -- e.g. Age >3 is % of Total In Hub, not % of nationwide volume.
+      const percentOfCol = natThreshold.percent_of ? ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of) : null;
+      const label = (
+        <>
+          {c.label}
+          {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
+          {percentOfCol && <div className="text-[10px] font-normal normal-case text-slate-300">% of {percentOfCol.label}</div>}
+        </>
+      );
+      const clickable = row => row.type === "station" && DRILLDOWN_METRICS.has(c.key);
       if (isReference) {
         return {
           key: c.key,
-          label: c.label,
+          label,
           render: (row) => fmt(c.key, row[c.key]),
-          className: (row) => colorScaleClass(row[c.key], referenceRangeFor(row, c.key)),
+          className: () => "text-slate-700",
+          onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
+          clickable,
         };
       }
       const isPercentBased = PERCENT_METRICS.has(c.key) || !!natThreshold.percent_of;
@@ -597,7 +511,7 @@ export default function Dashboard({ me, onCapturedAt }) {
       };
       return {
         key: c.key,
-        label: c.label,
+        label,
         render: (row) => {
           const t = scaledThreshold(row);
           const sev = classify(t, row[c.key], row);
@@ -608,12 +522,22 @@ export default function Dashboard({ me, onCapturedAt }) {
           const sev = classify(t, row[c.key], row);
           return SEVERITY_CLASS[sev];
         },
+        onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
+        clickable,
       };
     }),
   ];
+  // A station-scoped user only ever has one region/zone/station to show --
+  // always-expand for them instead of making them click through empty nesting.
   const combinedRows =
-    stationHealthView === "separate"
-      ? []
+    me.scope_type === "station"
+      ? buildCombinedRows(
+          filteredStations,
+          new Set(filteredStations.map((s) => s.region)),
+          new Set(filteredStations.map((s) => s.zone)),
+          combinedSortKey,
+          combinedSortDir
+        )
       : buildCombinedRows(filteredStations, expandedRegions, expandedZones, combinedSortKey, combinedSortDir);
   const handleCombinedRowClick = (row) => {
     if (row.type === "station") {
@@ -622,45 +546,6 @@ export default function Dashboard({ me, onCapturedAt }) {
       toggleInSet(row.type === "region" ? setExpandedRegions : setExpandedZones, row.key);
     }
   };
-
-  const stationColumns = [
-    ...(!hideRegionCol ? [{ key: "region", label: "Region", render: (r) => r.region, className: () => "text-slate-500" }] : []),
-    ...(!hideZoneCol ? [{ key: "zone", label: "Zone", render: (r) => r.zone, className: () => "text-slate-500" }] : []),
-    { key: "station_name", label: "Station", sticky: true, align: "left", render: (r) => r.station_name },
-    ...ALL_COLUMNS.map((c) => {
-      // Header greying reflects the nationwide row -- whether a metric has an
-      // SLA at all isn't something that should flip on/off per region.
-      const natThreshold = resolveThreshold(thresholdRows, c.key, null);
-      const isReference = !natThreshold.scored;
-      // Metrics scored as "% of X" (Admin -> SLA Targets) get a small note under
-      // the header naming X, so it's clear what the shown percentage is relative
-      // to -- e.g. Age >3 is % of Total In Hub, not % of nationwide volume.
-      const percentOfCol = natThreshold.percent_of ? ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of) : null;
-      return {
-        key: c.key,
-        label: percentOfCol ? (
-          <>
-            {c.label}
-            <div className="text-[10px] font-normal normal-case text-slate-300">% of {percentOfCol.label}</div>
-          </>
-        ) : (
-          c.label
-        ),
-        reference: isReference,
-        render: (r) => {
-          const t = resolveThreshold(thresholdRows, c.key, r.region);
-          const sev = isReference ? "reference" : classify(t, r[c.key], r);
-          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, r[c.key], r, t)}`;
-        },
-        className: (r) => {
-          if (isReference) return colorScaleClass(r[c.key], stationRangeByMetricAndZone[c.key]?.[r.zone]);
-          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key], r);
-          return SEVERITY_CLASS[sev];
-        },
-        onClick: DRILLDOWN_METRICS.has(c.key) ? (r) => openDrilldown(r, c) : undefined,
-      };
-    }),
-  ];
 
   const detailRows = detailRow
     ? ALL_COLUMNS.map((c) => {
@@ -765,108 +650,46 @@ export default function Dashboard({ me, onCapturedAt }) {
 
       {tab === "health" && (
         <>
-          {/* Experimental (2026-09-20, staging only) -- not applicable to a
-              station-scoped user, who only ever has one station to show anyway. */}
-          {me.scope_type !== "station" && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-display text-xs font-semibold text-slate-700">Table style (trying out):</span>
-              <SegmentedControl
-                options={[
-                  { key: "separate", label: "Separate tables" },
-                  { key: "combined", label: "Combined — click to expand" },
-                ]}
-                value={stationHealthView}
-                onChange={setStationHealthView}
-              />
-            </div>
-          )}
-
-          {stationHealthView !== "separate" && me.scope_type !== "station" ? (
-            <>
-              <DataTable
-                title={
-                  <>
-                    Station Health — combined{" "}
-                    <span className="font-normal text-slate-400">
-                      — click a region/zone row to expand it, click a station row for detail, click a column header to
-                      sort (sorts what's currently shown within its own region/zone, doesn't change what's expanded)
-                    </span>
-                  </>
-                }
-                titleExtra={
-                  <button
-                    onClick={() =>
-                      exportStationHealthCsv(combinedRows.filter((r) => r.type === "station"))
-                    }
-                    className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    Export CSV
-                  </button>
-                }
-                maxHeight="75vh"
-                columns={combinedColumns}
-                rows={combinedRows}
-                rowKey={(r) => r.id}
-                rowClassName={combinedRowClassName}
-                onRowClick={handleCombinedRowClick}
-                sortKey={combinedSortKey}
-                sortDir={combinedSortDir}
-                onSort={toggleCombinedSort}
-                emptyMessage="No stations match."
-                footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
-              />
-              <p className="text-xs text-slate-400">
-                Experimental view -- doesn't yet support click-a-number-for-tracking-IDs; use Separate tables for
-                that. ▲ critical · ■ warning; grey/shaded = reference metric (no SLA), shaded
-                darkest-to-lightest by relative rank within that row's own level (region row vs. all regions, zone row
-                vs. all zones, station row vs. other stations in its own zone).
-              </p>
-            </>
-          ) : (
-            <>
-          <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} columns={regionGroupColumns} />
-          <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} columns={zoneGroupColumns} />
-
           <DataTable
             title={
               <>
                 Station Health{" "}
-                <span className="font-normal text-slate-400">— click a number for tracking IDs, click a row for detail</span>
+                <span className="font-normal text-slate-400">
+                  — click a region/zone row to expand it, click a station row for detail, click a number for tracking
+                  IDs, click a column header to sort (sorts what's currently shown within its own region/zone, doesn't
+                  change what's expanded)
+                </span>
               </>
             }
             titleExtra={
               <button
-                onClick={() => exportStationHealthCsv(filteredStations)}
+                onClick={() => exportStationHealthCsv(combinedRows.filter((r) => r.type === "station"))}
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
                 Export CSV
               </button>
             }
-            maxHeight="70vh"
-            columns={stationColumns}
-            rows={filteredStations}
-            rowKey={(r) => r.station_code}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={toggleSort}
-            onRowClick={(r) => setDetailRow(r)}
+            maxHeight="75vh"
+            columns={combinedColumns}
+            rows={combinedRows}
+            rowKey={(r) => r.id}
+            rowClassName={combinedRowClassName}
+            onRowClick={handleCombinedRowClick}
+            sortKey={combinedSortKey}
+            sortDir={combinedSortDir}
+            onSort={toggleCombinedSort}
             emptyMessage="No stations match."
-            subHeader={isGroupSort ? `Sorted by ${sortKey}, then 0-Attempt (highest first) within each ${sortKey}` : null}
-            footer={`${filteredStations.length} rows · first column pinned, header freezes while scrolling`}
+            footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
           />
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored. Targets are set in Admin → SLA Targets. By region/By zone, a raw-count target scales
-            up by how many stations are in that region/zone (e.g. a target of 100 becomes 500 for a 5-station
-            region) — a percentage target (or a metric scored as "% of" another field) never scales, the same number
-            applies at every level. Reference metrics (e.g. Total Fresh) instead shade darkest-to-lightest by
-            relative rank — By region/By zone rank against every region/zone shown; this table ranks each station
-            only against other stations in its own zone. That shading is a ranking, not a pass/fail judgement. Total
-            Fresh, Total Routed, Attendance and COD % (Hub) aren't clickable — their source queries don't return individual
-            tracking numbers.
+            SLA, never scored, shown for context only. Targets are set in Admin → SLA Targets. A region/zone row's
+            raw-count target scales up by how many stations it contains (e.g. a target of 100 becomes 500 for a
+            5-station region) — a percentage target (or a metric scored as "% of" another field) never scales, the
+            same number applies at every level. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't
+            clickable — their source queries don't return individual tracking numbers. Click the ⓘ next to a column
+            name for what that metric counts and what to do about it.
           </p>
-            </>
-          )}
         </>
       )}
 

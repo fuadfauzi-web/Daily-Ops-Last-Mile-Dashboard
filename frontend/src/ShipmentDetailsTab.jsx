@@ -6,6 +6,7 @@ import DataTable from "./components/DataTable";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
 import Skeleton from "./components/Skeleton";
+import SweepTimelineChart from "./components/SweepTimelineChart";
 
 const COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
@@ -13,6 +14,16 @@ const COLUMNS = [
   { key: "fresh_unscan", label: "Fresh Unscan", clickable: true },
   { key: "latlong", label: "Latlong", clickable: true },
   { key: "fresh_attempt_pct", label: "Fresh Attempt %", percent: true },
+];
+
+// Process duration: shipment_completion_datetime (column G) -> 1st_dest_hub_
+// sweep_after_shipment_completion_datetime (column I). Within 1st hour, 2nd
+// hour, 3rd hour, or over 3 hours (2026-09-24 feedback).
+const PROCESS_BUCKET_COLUMNS = [
+  { key: "process_within_1h", label: "Within 1h" },
+  { key: "process_within_2h", label: "1-2h" },
+  { key: "process_within_3h", label: "2-3h" },
+  { key: "process_over_3h", label: "3h+" },
 ];
 
 // "after 10am pre-warning, after 11am warning, after 12pm red flag"
@@ -159,6 +170,12 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       className: () => "text-slate-700",
       render: (r) => formatProcessTime(r.process_time_minutes),
     },
+    ...PROCESS_BUCKET_COLUMNS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      render: (r) => r[c.key].toLocaleString(),
+      className: () => "text-slate-700",
+    })),
   ];
 
   return (
@@ -178,8 +195,14 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
             onClick={() =>
               exportCsv(
                 `daily-ops-shipment-details-${new Date().toISOString().slice(0, 10)}.csv`,
-                ["Region", "Zone", "Station", ...COLUMNS.map((c) => c.label), "Process Time (min of day)"],
-                filteredStations.map((r) => [r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key]), r.process_time_minutes])
+                [
+                  "Region", "Zone", "Station", ...COLUMNS.map((c) => c.label), "Process Time (min of day)",
+                  ...PROCESS_BUCKET_COLUMNS.map((c) => c.label),
+                ],
+                filteredStations.map((r) => [
+                  r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key]), r.process_time_minutes,
+                  ...PROCESS_BUCKET_COLUMNS.map((c) => r[c.key]),
+                ])
               )
             }
             className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -205,10 +228,19 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
               Process Time is a beta figure, not yet confirmed accurate
             </span>{" "}
             — it's the average time-of-day all of today's fresh parcels were first scanned/swept in, not a per-parcel
-            measurement.
+            measurement. Within 1h/1-2h/2-3h/3h+ bucket how long each parcel took from arriving at the station to
+            being scanned in.
           </>
         }
       />
+
+      <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+        <div className="mb-1 font-display text-sm font-medium text-slate-700">Sweep timing — nationwide</div>
+        <div className="mb-3 text-xs text-slate-400">
+          When parcels were actually scanned in today, by hour of day (not filtered by region/zone/station above).
+        </div>
+        <SweepTimelineChart timeline={data.sweep_timeline} />
+      </div>
     </div>
   );
 }
