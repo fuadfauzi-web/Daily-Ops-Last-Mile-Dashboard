@@ -133,32 +133,18 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
     try:
         # 2026-09-22 incident: fetching all 11 concurrently (each can be a large
         # nationwide result set) held every raw payload in memory at once and
-        # OOM-killed the pod (exit 137) -- especially bad right at startup,
-        # since that's an immediate refresh with nothing freed yet. Sequential
-        # fetches take longer wall-clock (each also asks Redash to re-run the
-        # query first, see redash_client._trigger_refresh) but only ever hold
-        # one raw payload at a time, well within the 15-30 minute cycle budget.
-        health_rows = await fetch_query_results(QUERY_HEALTH_V3)
-        missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
-        shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
-        routed_rows = await fetch_query_results(QUERY_DELIVERY_PERFORMANCE)
-        tracker_rows = await fetch_query_results(QUERY_SHIPMENT_TRACKER)
-        lh_rows = await fetch_query_results(QUERY_LH_TIMING)
-        zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
-        restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
-        unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
-        old_route_raw_rows = await fetch_query_results(QUERY_OLD_ROUTE)
-        rpu_raw_rows = await fetch_query_results(QUERY_RPU)
-
-        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
-        routed_by_station, driver_rows = build_routed_view(routed_rows)
-        merge_routed_into_station_metrics(by_station, routed_by_station)
-        shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
-        shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
-        aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
-        old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
-        rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
-
+        # OOM-killed the pod (exit 137). Switching to sequential awaits only
+        # reduced PEAK-DURING-EACH-FETCH memory -- it didn't help, because the
+        # code still fetched all 11 raw payloads up front before running any
+        # aggregation, so by the 6th fetch it was holding 5 full datasets plus
+        # a growing 6th and still OOM'd on production's larger data volume
+        # (57 restarts, crash-looping at the same point every time). Fixed for
+        # real by interleaving: fetch only what the next aggregation step
+        # needs, run it, then `del` the raw rows immediately. health_rows and
+        # shipment_rows are each used by more than one step, so they stay
+        # resident until their last use; everything else is freed right after
+        # its one use. This keeps peak memory to ~2-3 raw datasets instead of
+        # all 11.
         recovery_settings_row = await db.fetch_one(
             "SELECT high_cod_value_threshold, high_value_item_keywords FROM recovery_settings WHERE id = 1"
         )
@@ -168,9 +154,41 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
         else:
             cod_threshold = DEFAULT_HIGH_COD_VALUE_THRESHOLD
             item_keywords = DEFAULT_HIGH_VALUE_ITEM_KEYWORDS
+
+        health_rows = await fetch_query_results(QUERY_HEALTH_V3)
+        missing_rows = await fetch_query_results(QUERY_ACTIVE_MISSING)
+        shipment_rows = await fetch_query_results(QUERY_TOTAL_SHIPMENTS)
+        unsweep_rows = await fetch_query_results(QUERY_UNSWEEP)
+        by_station, tn_details = build_station_metrics(health_rows, missing_rows, shipment_rows, unsweep_rows)
         missing_details_by_station, missing_details_tn_rows = build_missing_details(
             missing_rows, cod_threshold, item_keywords
         )
+        del missing_rows, unsweep_rows
+
+        routed_rows = await fetch_query_results(QUERY_DELIVERY_PERFORMANCE)
+        routed_by_station, driver_rows = build_routed_view(routed_rows)
+        merge_routed_into_station_metrics(by_station, routed_by_station)
+        del routed_rows
+
+        tracker_rows = await fetch_query_results(QUERY_SHIPMENT_TRACKER)
+        lh_rows = await fetch_query_results(QUERY_LH_TIMING)
+        shipment_by_station, shipment_tn_details = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
+        del shipment_rows, tracker_rows, lh_rows
+
+        zalora_rows = await fetch_query_results(QUERY_ZALORA_NXD)
+        restock_rows = await fetch_query_results(QUERY_RESTOCK_NXD)
+        shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
+        del zalora_rows, restock_rows
+
+        aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
+
+        old_route_raw_rows = await fetch_query_results(QUERY_OLD_ROUTE)
+        old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
+        del old_route_raw_rows
+
+        rpu_raw_rows = await fetch_query_results(QUERY_RPU)
+        rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
+        del rpu_raw_rows
 
         # microsecond=0: station_metrics/etc.'s captured_at column is a plain
         # DATETIME (whole-second precision) -- MySQL silently truncates the
@@ -227,6 +245,7 @@ async def refresh_metrics(triggered_by: str | None = None) -> dict:
             await _maybe_capture_pending_yesterday_route(health_rows)
         except Exception:  # noqa: BLE001 - isolated so a bug here can't fail the whole refresh
             log.exception("Pending Yesterday Route capture failed")
+        del health_rows
 
         params = [
             (
