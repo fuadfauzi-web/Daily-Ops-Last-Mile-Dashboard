@@ -439,7 +439,10 @@ def merge_routed_into_station_metrics(by_station: dict[str, dict], routed_by_sta
 # query 1500 line-haul trip arrivals)
 # ---------------------------------------------------------------------------
 
-SHIPMENT_DETAIL_KEYS = ("total_fresh", "total_shipment", "fresh_unscan", "latlong", "fresh_attempt_count")
+SHIPMENT_DETAIL_KEYS = (
+    "total_fresh", "total_shipment", "fresh_unscan", "latlong", "fresh_attempt_count",
+    "process_within_1h", "process_within_2h", "process_within_3h", "process_over_3h",
+)
 SHIPMENT_DRILLDOWN_METRICS = ("fresh_unscan", "latlong")
 
 _RTS_TAG = "RTS"
@@ -458,22 +461,15 @@ def _empty_shipment_row(hub_code: str) -> dict:
 
 def build_shipment_details(
     total_shipments_rows: list[dict], tracker_rows: list[dict], lh_rows: list[dict],
-    health_v3_rows: list[dict] = (),
-) -> tuple[dict[str, dict], dict[str, dict]]:
-    """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}})."""
+) -> tuple[dict[str, dict], dict[str, dict], list[int]]:
+    """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}},
+    sweep_timeline) -- sweep_timeline is a 24-entry list, index = hour of day (0-23),
+    value = how many parcels had their 1st_sweep_at_WM_station_datetime (column H)
+    in that hour nationwide, for the "when did sweeping start/peak/end" timeline
+    chart on the Shipment Details tab."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
-    # "Process Time" = average time-of-day the TN's first hub sweep finished, today
-    # only (Malaysia time), from query 78's current_hub_first_sweep_datetime,
-    # matched by tracking_id.
-    today_myt = datetime.now(_MYT).strftime("%Y-%m-%d")
-    sweep_minutes: dict[str, list[float]] = {hub: [] for hub in HUBS}
-    health_sweep_time = {
-        r["tracking_id"]: r["current_hub_first_sweep_datetime"]
-        for r in health_v3_rows
-        if r.get("tracking_id") and r.get("current_hub_first_sweep_datetime")
-    }
-
+    sweep_timeline = [0] * 24
     for r in total_shipments_rows:
         raw_name = (r.get("dest_hub_name") or "").strip().lower()
         hub = FULL_NAME_TO_HUB.get(raw_name)
@@ -496,10 +492,6 @@ def build_shipment_details(
         if not r.get("1st_sweep_at_WM_station_datetime"):
             row["fresh_unscan"] += 1
             tn_details[hub]["fresh_unscan"].append(tn)
-        else:
-            sweep_dt = _parse_dt(health_sweep_time.get(tn))
-            if sweep_dt is not None and sweep_dt.strftime("%Y-%m-%d") == today_myt:
-                sweep_minutes[hub].append(sweep_dt.hour * 60 + sweep_dt.minute + sweep_dt.second / 60)
 
         # Latlong: shp_dest_hub_name (intended dest) differs from dest_hub_name
         # (current dest) -- but not when either side is an RTS, which the tag
@@ -514,9 +506,25 @@ def build_shipment_details(
         if r.get("first_attempt_datetime"):
             row["fresh_attempt_count"] += 1
 
-    for hub, mins in sweep_minutes.items():
-        if mins:
-            by_station[hub]["process_time_minutes"] = round(sum(mins) / len(mins), 1)
+        # Process duration: how long between the shipment arriving at the
+        # station (shipment_completion_datetime, column G) and it actually
+        # getting scanned in (1st_sweep_at_WM_station_datetime, column H --
+        # 2026-09-24 feedback: was column I, switched to H to match Fresh
+        # Unscan's own definition of "scanned in"). Also feeds sweep_timeline
+        # (hour-of-day the scan happened, nationwide) for the timeline chart.
+        completion_dt = _parse_dt(r.get("shipment_completion_datetime"))
+        swept_dt = _parse_dt(r.get("1st_sweep_at_WM_station_datetime"))
+        if completion_dt is not None and swept_dt is not None and swept_dt >= completion_dt:
+            duration_hours = (swept_dt - completion_dt).total_seconds() / 3600
+            if duration_hours <= 1:
+                row["process_within_1h"] += 1
+            elif duration_hours <= 2:
+                row["process_within_2h"] += 1
+            elif duration_hours <= 3:
+                row["process_within_3h"] += 1
+            else:
+                row["process_over_3h"] += 1
+            sweep_timeline[swept_dt.hour] += 1
 
     for r in lh_rows:
         hub = r.get("dest_hub_name")
@@ -542,7 +550,7 @@ def build_shipment_details(
             round(row["fresh_attempt_count"] / row["total_fresh"] * 100, 1) if row["total_fresh"] else 0.0
         )
 
-    return by_station, tn_details
+    return by_station, tn_details, sweep_timeline
 
 
 def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[dict]:

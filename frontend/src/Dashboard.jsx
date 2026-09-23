@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
 import { ALL_COLUMNS } from "./lib/metrics";
+import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import DataTable from "./components/DataTable";
@@ -9,6 +10,7 @@ import GroupTable from "./components/GroupTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
+import HeaderNote from "./components/HeaderNote";
 import TabBar from "./components/TabBar";
 import Skeleton from "./components/Skeleton";
 import ActionBoard from "./ActionBoard";
@@ -386,9 +388,18 @@ export default function Dashboard({ me, onCapturedAt }) {
       </div>
     );
 
+  // Click-to-open (i) note on each metric header: what it counts and what to do
+  // about it (2026-09-24 feedback).
+  const noteLabel = (c) => (
+    <>
+      {c.label}
+      {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
+    </>
+  );
+
   const groupColumns = ALL_COLUMNS.map((c) => ({
     key: c.key,
-    label: c.label,
+    label: noteLabel(c),
     render: (g) => fmt(c.key, g[c.key]),
   }));
 
@@ -409,11 +420,11 @@ export default function Dashboard({ me, onCapturedAt }) {
         key: c.key,
         label: percentOfCol ? (
           <>
-            {c.label}
+            {noteLabel(c)}
             <div className="text-[10px] font-normal normal-case text-slate-300">% of {percentOfCol.label}</div>
           </>
         ) : (
-          c.label
+          noteLabel(c)
         ),
         reference: isReference,
         render: (r) => {

@@ -5,11 +5,26 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
+import HeaderNote from "./components/HeaderNote";
 import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
+import { ROUTED_NOTES } from "./lib/routedNotes";
 import OldRouteTab from "./OldRouteTab";
 import PendingYesterdayRouteTab from "./PendingYesterdayRouteTab";
+
+// Region/Zone/Station/Driver views only -- Old Route and Pending Yesterday
+// Route have their own separate tables/wording (2026-09-24 feedback).
+function withNote(label, key) {
+  return ROUTED_NOTES[key] ? (
+    <>
+      {label}
+      <HeaderNote>{ROUTED_NOTES[key]}</HeaderNote>
+    </>
+  ) : (
+    label
+  );
+}
 
 const LEVELS = [
   { key: "region", label: "Region" },
@@ -219,10 +234,10 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
     ...(isGroupLevel ? [{ key: "station_count", label: "Stations", className: () => "text-slate-500" }] : []),
     ...(showDriverStationCol ? [{ key: "station_name", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
     ...(!isDriverLevel
-      ? [{ key: "routed_pct", label: "Routed %", render: (r) => `${(r.routed_pct ?? 0).toFixed(2)}%`, className: () => "text-slate-700" }]
+      ? [{ key: "routed_pct", label: withNote("Routed %", "routed_pct"), render: (r) => `${(r.routed_pct ?? 0).toFixed(2)}%`, className: () => "text-slate-700" }]
       : []),
-    ...(!isDriverLevel ? [{ key: "attendance", label: "Attendance", render: (r) => renderCell({ render: "attendance" }, r) }] : []),
-    { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
+    ...(!isDriverLevel ? [{ key: "attendance", label: withNote("Attendance", "attendance"), render: (r) => renderCell({ render: "attendance" }, r) }] : []),
+    { key: "total_routed", label: withNote("Total Routed", "total_routed"), render: (r) => r.total_routed.toLocaleString() },
     ...levelColumns.map((c) => {
       // Driver-level Productivity is admin-scored per driver type (HR/HD/ID/IR --
       // see Admin -> SLA Targets), unlike every other rate column here which is
@@ -231,7 +246,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
       if (c.key === "productivity_pct" && isDriverLevel) {
         return {
           key: c.key,
-          label: c.label,
+          label: withNote(c.label, c.key),
           render: (r) => {
             const t = resolveThreshold(thresholdRows, "productivity_pct", r.driver_type || null);
             const sev = classify(t, r.success_rate);
@@ -245,7 +260,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
       }
       return {
         key: c.key,
-        label: c.label,
+        label: withNote(c.label, c.key),
         render: (r) => renderCell(c, r),
         className: (r) => (c.rate ? rateClass(c, r[c.source || c.key]) : "text-slate-700"),
       };
