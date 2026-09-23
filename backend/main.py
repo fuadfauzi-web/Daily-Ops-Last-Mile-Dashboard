@@ -56,6 +56,13 @@ REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
 # regardless of this interval. Fixed by fetching sequentially instead (see
 # refresh_metrics) -- the interval itself was never the actual cause.
 _refresh_task: asyncio.Task | None = None
+# 2026-09-23 incident: /api/admin/refresh (Settings page's manual Refresh
+# button) called refresh_metrics() with nothing stopping it from overlapping
+# the scheduler's own 15-minute call -- two concurrent refreshes each hold
+# their own raw Redash payloads, doubling peak memory and OOM-killing the pod
+# again even after the fetch/aggregate/free fix. This lock makes a manual
+# refresh wait for any in-flight one instead of racing it.
+_refresh_lock = asyncio.Lock()
 
 _METRIC_COLUMNS = METRIC_KEYS
 
@@ -124,7 +131,15 @@ _AGING_COLUMNS = AGING_KEYS
 
 
 async def refresh_metrics(triggered_by: str | None = None) -> dict:
-    """Pulls fresh data from Redash, recomputes station metrics, stores a new snapshot."""
+    """Pulls fresh data from Redash, recomputes station metrics, stores a new snapshot.
+
+    Serialized via _refresh_lock -- see the comment on that lock for why.
+    """
+    async with _refresh_lock:
+        return await _do_refresh_metrics(triggered_by)
+
+
+async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
     started_at = datetime.now(timezone.utc)
     log_id = await db.execute(
         "INSERT INTO refresh_log (started_at, status, triggered_by) VALUES (%s, 'running', %s)",
