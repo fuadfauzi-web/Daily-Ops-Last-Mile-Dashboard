@@ -18,7 +18,6 @@ import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
 import AgingDetailsTab from "./AgingDetailsTab";
 import RpuTab from "./RpuTab";
-import RestockTab from "./RestockTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
 
@@ -68,8 +67,7 @@ const TABS = [
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
-  { key: "shipper", label: "Shipper Watch" },
-  { key: "restock", label: "Restock" },
+  { key: "shipper", label: "Shipper Radar" },
   { key: "urgent", label: "Urgent TN" },
 ];
 
@@ -711,14 +709,6 @@ export default function Dashboard({ me, onCapturedAt }) {
 
       {tab === "shipper" && (
         <ShipperWatchTab
-          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
-          refreshTick={refreshTick}
-        />
-      )}
-
-      {tab === "restock" && (
-        <RestockTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}

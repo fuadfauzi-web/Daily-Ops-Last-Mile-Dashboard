@@ -22,7 +22,7 @@ const RESTOCK_COLUMNS = [
 
 const SUB_TABS = [
   { key: "nxd", label: "Restock NXD" },
-  { key: "compliance", label: "Document Compliance" },
+  { key: "compliance", label: "B2B Document Compliance" },
 ];
 
 function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
@@ -143,8 +143,8 @@ export default function RestockTab({ regionFilter, zoneFilter, search, me, exclu
         />
       ) : (
         <div className="rounded-xl bg-white p-6 text-center text-sm text-slate-500 ring-1 ring-slate-200">
-          Document Compliance (RDO / GRN / PSO / Reattempt) is coming soon -- the Redash query behind it isn't ready
-          yet.
+          B2B Document Compliance (RDO / GRN / PSO / Reattempt) is coming soon -- RDO's Redash query (1293) is ready,
+          the rest aren't yet.
         </div>
       )}
     </div>

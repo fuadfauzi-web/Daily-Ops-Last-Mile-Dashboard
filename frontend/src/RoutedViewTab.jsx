@@ -16,6 +16,7 @@ const LEVELS = [
   { key: "zone", label: "Zone" },
   { key: "station", label: "Station" },
   { key: "driver", label: "Driver" },
+  { key: "summary", label: "Summary" },
   { key: "oldroute", label: "Old Route" },
   { key: "pendingyesterday", label: "Pending in Yesterday Route" },
 ];
@@ -115,6 +116,105 @@ function renderCell(col, r) {
   return col.percent ? `${value.toFixed(1)}%` : value.toLocaleString();
 }
 
+// End-of-day monitoring: which drivers/riders still haven't cleared their
+// route (Current OVFD > 0, so Completion Rate isn't 100% yet) -- all routes
+// need to be done before 12am. Built to be copy-pasted straight into a
+// WhatsApp group to push the drivers still pending (2026-09-24 feedback).
+function RouteSummaryView({ drivers, regionFilter, zoneFilter, search, me, hideStationCol }) {
+  const [showComplete, setShowComplete] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const scoped = useMemo(() => {
+    let rows = drivers;
+    if (regionFilter !== "all") rows = rows.filter((d) => d.region === regionFilter);
+    if (zoneFilter !== "all") rows = rows.filter((d) => d.zone === zoneFilter);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      rows = rows.filter((d) => d.current_station?.toLowerCase().includes(q));
+    }
+    return rows;
+  }, [drivers, regionFilter, zoneFilter, search]);
+
+  const pending = useMemo(() => scoped.filter((d) => d.current_ovfd > 0), [scoped]);
+  const displayed = useMemo(
+    () => [...(showComplete ? scoped : pending)].sort((a, b) => b.current_ovfd - a.current_ovfd || a.completion_rate - b.completion_rate),
+    [scoped, pending, showComplete]
+  );
+
+  const copyForWhatsapp = () => {
+    if (!pending.length) return;
+    const when = new Date().toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
+    const lines = [...pending]
+      .sort((a, b) => b.current_ovfd - a.current_ovfd || a.completion_rate - b.completion_rate)
+      .map(
+        (d, i) =>
+          `${i + 1}. ${d.driver_name}${hideStationCol ? "" : ` (${d.current_station})`} — Routed ${d.total_routed} | OVFD ${
+            d.current_ovfd
+          } | Completion ${d.completion_rate.toFixed(1)}% | Success ${d.success_rate.toFixed(1)}%`
+      );
+    const text = [
+      `*Route Progress — ${when}*`,
+      `${pending.length} of ${scoped.length} drivers still pending -- push these to clear before 12am:`,
+      "",
+      ...lines,
+    ].join("\n");
+    navigator.clipboard.writeText(text).then(() => setCopied(true));
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const columns = [
+    ...(!hideStationCol ? [{ key: "current_station", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
+    { key: "driver_name", label: "Driver", sticky: true, align: "left" },
+    { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
+    {
+      key: "current_ovfd",
+      label: "Current OVFD",
+      render: (r) => r.current_ovfd.toLocaleString(),
+      className: (r) => (r.current_ovfd > 0 ? "font-semibold text-status-critical" : "text-status-good"),
+    },
+    {
+      key: "success_rate",
+      label: "Success Rate",
+      render: (r) => `${r.success_rate.toFixed(1)}%`,
+      className: (r) => successRateClass(r.success_rate),
+    },
+    {
+      key: "completion_rate",
+      label: "Completion Rate",
+      render: (r) => `${r.completion_rate.toFixed(1)}%`,
+      className: (r) => completionRateClass(r.completion_rate),
+    },
+  ];
+
+  return (
+    <DataTable
+      title="Route Progress — end of day"
+      titleExtra={
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+            <input type="checkbox" checked={showComplete} onChange={(e) => setShowComplete(e.target.checked)} />
+            Show completed too
+          </label>
+          <button
+            onClick={copyForWhatsapp}
+            disabled={!pending.length}
+            className="rounded-lg bg-brand px-3 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40"
+          >
+            {copied ? "Copied!" : "Copy for WhatsApp"}
+          </button>
+        </div>
+      }
+      maxHeight="70vh"
+      columns={columns}
+      rows={displayed}
+      rowKey={(r, i) => r.driver_name || i}
+      sortKey={null}
+      emptyMessage={pending.length === 0 && scoped.length > 0 ? "All drivers in scope have completed their route -- nothing pending." : "No drivers match."}
+      footer={`${pending.length} of ${scoped.length} drivers still pending · complete means Current OVFD = 0`}
+    />
+  );
+}
+
 export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
@@ -142,7 +242,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   }, [driverTypes, refreshTick]);
 
   const rows = useMemo(() => {
-    if (!data || NO_DRIVER_TYPE_LEVELS.has(level)) return [];
+    if (!data || NO_DRIVER_TYPE_LEVELS.has(level) || level === "summary") return [];
     let base;
     if (level === "region") base = data.regions.map((g) => ({ ...g, name: g.key }));
     else if (level === "zone") base = data.zones.map((g) => ({ ...g, name: g.key }));
@@ -287,7 +387,13 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
         </p>
       )}
 
-      {level === "pendingyesterday" ? (
+      {level === "summary" ? (
+        <RouteSummaryView
+          drivers={data?.drivers || []}
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          hideStationCol={me.scope_type === "station"}
+        />
+      ) : level === "pendingyesterday" ? (
         <PendingYesterdayRouteTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
