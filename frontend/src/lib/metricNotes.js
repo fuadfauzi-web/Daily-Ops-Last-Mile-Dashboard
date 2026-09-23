@@ -23,6 +23,6 @@ export const METRIC_NOTES = {
   missing_hub: "Open missing-parcel tickets last scanned as a Sweep (lost somewhere in-hub). Action: physically search the hub, check nearby bins/shelves.",
   missing_driver_rider: "Open missing-parcel tickets last scanned as an Inbound (lost with a driver/rider). Action: follow up with the driver/rider who last had it.",
   missing_ship_in: "Open missing-parcel tickets last scanned as a Shipment Completion (lost in a line-haul/ship-in). Action: trace the shipment/line-haul it came in on.",
-  pending_ats_zero_attempt: "Not yet at its own dest hub (still in transit to the correct hub), 0 attempts. Reference -- nothing to action here until it arrives.",
-  pending_ats_attempted: "Not yet at its own dest hub, but already attempted once (status Arrived at Sorting Hub elsewhere). Reference -- worth checking why an attempt happened before the parcel reached its real dest hub.",
+  pending_ats_zero_attempt: "Pending ATS = pending Add To Shipment. This parcel is at the current hub but isn't meant for it anymore (dest hub ≠ this hub), 0 attempts. Action: station needs to add it to a shipment to clear it out to its correct hub.",
+  pending_ats_attempted: "Pending ATS (already attempted elsewhere) -- not meant for this hub anymore, but already has an attempt on record. Action: same as 0 Attempt -- add it to a shipment to clear it to its correct hub.",
 };

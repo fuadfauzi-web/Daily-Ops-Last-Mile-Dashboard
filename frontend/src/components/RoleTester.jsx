@@ -42,11 +42,14 @@ export default function RoleTester({ me, onChanged }) {
     return [];
   }, [scopeType, regions, stations]);
 
+  // Only Admin is always nationwide -- Manager/Region/Station can each be
+  // scoped to a region/zone/station like any other role (2026-09-24 feedback:
+  // Role Tester wrongly assumed Manager was always "all").
   const apply = () => {
     api.viewAs.set({
       role,
-      scopeType: role === "admin" || role === "manager" ? "all" : scopeType,
-      scopeValues: role === "admin" || role === "manager" ? [] : scopeValues,
+      scopeType: role === "admin" ? "all" : scopeType,
+      scopeValues: role === "admin" ? [] : scopeValues,
     });
     setOpen(false);
     onChanged();
@@ -89,7 +92,7 @@ export default function RoleTester({ me, onChanged }) {
             ))}
           </select>
 
-          {role !== "admin" && role !== "manager" && (
+          {role !== "admin" && (
             <>
               <label className="mb-1 block text-[11px] font-medium text-slate-500">Scope</label>
               <select
@@ -121,7 +124,7 @@ export default function RoleTester({ me, onChanged }) {
           <div className="mt-2 flex items-center gap-2">
             <button
               onClick={apply}
-              disabled={role !== "admin" && role !== "manager" && scopeType !== "all" && scopeValues.length === 0}
+              disabled={role !== "admin" && scopeType !== "all" && scopeValues.length === 0}
               className="flex-1 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
             >
               View as this

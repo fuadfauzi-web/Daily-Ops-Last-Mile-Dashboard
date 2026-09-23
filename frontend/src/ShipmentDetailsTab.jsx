@@ -5,8 +5,21 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
+import HeaderNote from "./components/HeaderNote";
+import { SHIPMENT_NOTES } from "./lib/shipmentNotes";
 import Skeleton from "./components/Skeleton";
 import SweepTimelineChart from "./components/SweepTimelineChart";
+
+function withNote(label, key) {
+  return SHIPMENT_NOTES[key] ? (
+    <>
+      {label}
+      <HeaderNote>{SHIPMENT_NOTES[key]}</HeaderNote>
+    </>
+  ) : (
+    label
+  );
+}
 
 const COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
@@ -123,7 +136,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       if (!c.clickable) {
         return {
           key: c.key,
-          label: c.label,
+          label: withNote(c.label, c.key),
           className: (r) =>
             c.key === "fresh_attempt_pct" ? (r[c.key] >= 96 ? "text-status-good font-semibold" : "text-status-critical font-semibold") : "",
           render: (r) => (
@@ -136,7 +149,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       }
       return {
         key: c.key,
-        label: c.label,
+        label: withNote(c.label, c.key),
         className: (r) => (r[c.key] > 0 ? "font-semibold text-status-critical" : "text-slate-700"),
         render: format,
         onClick: (r) => setModal({ stationCode: r.station_code, stationName: r.station_name, metricKey: c.key, metricLabel: c.label }),
@@ -164,6 +177,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       label: (
         <>
           Process Time
+          <HeaderNote>{SHIPMENT_NOTES.process_time_minutes}</HeaderNote>
           <div className="text-[10px] font-normal normal-case text-slate-300">beta — not yet confirmed accurate</div>
         </>
       ),
@@ -172,7 +186,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
     },
     ...PROCESS_BUCKET_COLUMNS.map((c) => ({
       key: c.key,
-      label: c.label,
+      label: withNote(c.label, c.key),
       render: (r) => r[c.key].toLocaleString(),
       className: () => "text-slate-700",
     })),
