@@ -15,7 +15,7 @@ last_scan_datetime, last_scan_hub_name, days_since_current_hub_first_sweep
 query 1239 (Shipment Tracker) columns used, as of the 2026-09-23 Redash change that
 made every one of these a full datetime (previously date-only, and under slightly
 different names): tracking_id, granular_status, tag, shp_dest_hub_name, dest_hub_name,
-1st_dest_hub_sweep_after_shipment_completion_datetime, first_attempt_datetime.
+1st_sweep_at_WM_station_datetime, first_attempt_datetime.
 
 granular_status values seen: 'Arrived at Sorting Hub', 'En-route to Sorting Hub',
 'On Vehicle for Delivery', 'On Hold', 'Pending Reschedule', 'Arrived at Distribution
@@ -488,11 +488,12 @@ def build_shipment_details(
         tn = r.get("tracking_id")
         tag = (r.get("tag") or "").upper()
 
-        # Fresh Unscan: blank 1st_dest_hub_sweep_after_shipment_completion_datetime
-        # means the parcel hasn't been scanned in at its dest hub since the shipment
-        # was completed (2026-09-23 feedback -- was 1st_sweep_at_WM_station, which
-        # only reflects the first-ever hub sweep, not specifically at the dest hub).
-        if not r.get("1st_dest_hub_sweep_after_shipment_completion_datetime"):
+        # Fresh Unscan: blank 1st_sweep_at_WM_station_datetime (2026-09-23 feedback:
+        # briefly switched to 1st_dest_hub_sweep_after_shipment_completion_datetime,
+        # switched back to this one per Fleet Manager confirmation -- the field
+        # itself is correctly named now, matching the Redash schema change; the
+        # earlier code's bug was the missing "_datetime" suffix, not the column).
+        if not r.get("1st_sweep_at_WM_station_datetime"):
             row["fresh_unscan"] += 1
             tn_details[hub]["fresh_unscan"].append(tn)
         else:
@@ -595,11 +596,19 @@ def _parse_driver(driver_name: str) -> dict:
     if len(parts) < 3:
         return {"name": name, "home_hub": None, "position": None, "label": "Unknown"}
     abbr, position = parts[0].upper(), parts[1].upper()
+    # 2026-09-23 feedback: a name with >=3 dash-separated parts but a 2nd part
+    # that isn't actually HD/HR/ID/IR (e.g. "PSG - FM - ...") used to keep that
+    # unrecognized code as `position` anyway -- it then matched no
+    # DRIVER_TYPE_BUCKETS bucket at all (not even "other", which only matches
+    # None), making the driver invisible under every type filter. Treat an
+    # unrecognized code the same as the <3-parts case: unparseable.
+    if position not in _DRIVER_POSITION_LABELS:
+        return {"name": name, "home_hub": ABBR_TO_HUB.get(abbr), "position": None, "label": "Unknown"}
     return {
         "name": name,
         "home_hub": ABBR_TO_HUB.get(abbr),
         "position": position,
-        "label": _DRIVER_POSITION_LABELS.get(position, "Unknown"),
+        "label": _DRIVER_POSITION_LABELS[position],
     }
 
 
