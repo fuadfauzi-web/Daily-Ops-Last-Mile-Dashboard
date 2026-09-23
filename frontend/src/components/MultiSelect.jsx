@@ -3,11 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // A searchable "dropdown with checkboxes" for picking more than one value --
 // e.g. Settings -> Users' region/zone/station scope_values, where a plain
 // <select multiple> is both hard to search (143 stations) and needs a
-// ctrl/cmd-click most people don't know about. Selected values render as
-// removable chips under the trigger so the current picks stay visible without
-// reopening the panel. No native "required" validation here -- an empty pick
-// is caught by the backend's own scope_values check, surfaced in the form's
-// error banner, same as any other server-side validation on this form.
+// ctrl/cmd-click most people don't know about. The trigger itself just shows
+// a count ("3 selected") plus an always-visible × to clear -- it used to also
+// render a row of removable chips below the trigger, but that pushed
+// everything below it down and made every filter bar taller (2026-09-24
+// feedback); a caller that wants the actual picked labels visible (e.g.
+// Action Board's metric picker) renders its own chips next to this component
+// instead. No native "required" validation here -- an empty pick is caught by
+// the backend's own scope_values check, surfaced in the form's error banner,
+// same as any other server-side validation on this form.
 export default function MultiSelect({ options, value, onChange, placeholder = "Select…" }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -30,8 +34,6 @@ export default function MultiSelect({ options, value, onChange, placeholder = "S
       setTimeout(() => searchRef.current?.focus(), 0);
     }
   }, [open]);
-
-  const byValue = useMemo(() => Object.fromEntries(options.map((o) => [o.value, o.label])), [options]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -57,6 +59,27 @@ export default function MultiSelect({ options, value, onChange, placeholder = "S
         <span className={`truncate ${value.length ? "text-slate-800" : "text-slate-400"}`}>
           {value.length ? `${value.length} selected` : placeholder}
         </span>
+        {value.length > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange([]);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+                e.preventDefault();
+                onChange([]);
+              }
+            }}
+            className="shrink-0 rounded text-slate-400 hover:text-slate-600"
+            aria-label="Clear selection"
+          >
+            ×
+          </span>
+        )}
         <span className="shrink-0 text-slate-400">▾</span>
       </button>
 
@@ -90,27 +113,6 @@ export default function MultiSelect({ options, value, onChange, placeholder = "S
               Clear all
             </button>
           )}
-        </div>
-      )}
-
-      {value.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {value.map((v) => (
-            <span
-              key={v}
-              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
-            >
-              {byValue[v] || v}
-              <button
-                type="button"
-                onClick={() => onChange(value.filter((x) => x !== v))}
-                className="text-slate-400 hover:text-slate-600"
-                aria-label={`Remove ${byValue[v] || v}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
         </div>
       )}
     </div>

@@ -438,14 +438,37 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
               No metrics are scored yet -- set targets in Admin → SLA Targets first.
             </span>
           ) : (
-            <div className="w-64">
-              <MultiSelect
-                options={scoredMetrics.map((c) => ({ value: c.key, label: c.label }))}
-                value={selectedMetrics}
-                onChange={setMetrics}
-                placeholder="Select metrics"
-              />
-            </div>
+            <>
+              <div className="w-64">
+                <MultiSelect
+                  options={scoredMetrics.map((c) => ({ value: c.key, label: c.label }))}
+                  value={selectedMetrics}
+                  onChange={setMetrics}
+                  placeholder="Select metrics"
+                />
+              </div>
+              {/* Chosen metrics shown as chips to the right of the picker, not
+                  below it -- bold like the old toggle-button style, just
+                  smaller (2026-09-24 feedback). */}
+              <div className="flex flex-wrap items-center gap-1">
+                {activeMetrics.map((m) => (
+                  <span
+                    key={m}
+                    className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 font-display text-[11px] font-semibold text-white"
+                  >
+                    {findColumn(m).label}
+                    <button
+                      type="button"
+                      onClick={() => setMetrics(selectedMetrics.filter((k) => k !== m))}
+                      className="text-white/70 hover:text-white"
+                      aria-label={`Remove ${findColumn(m).label}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
