@@ -1,7 +1,6 @@
 // Nationwide sweep-time-of-day bar chart -- when sweeping started, when it
 // peaked, when it ended, from backend/aggregate.py's sweep_timeline (24
-// hourly buckets, hour of 1st_dest_hub_sweep_after_shipment_completion_
-// datetime). Plain inline SVG, no charting library in this app (2026-09-24).
+// hourly buckets, hour of 1st_sweep_at_WM_station_datetime, column H). Plain inline SVG, no charting library in this app (2026-09-24).
 function formatHour(h) {
   const ampm = h >= 12 ? "pm" : "am";
   const h12 = h % 12 === 0 ? 12 : h % 12;

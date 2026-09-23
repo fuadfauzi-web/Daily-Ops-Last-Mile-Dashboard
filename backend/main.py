@@ -225,7 +225,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
 
         tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
         lh_rows = await _fetch(QUERY_LH_TIMING)
-        shipment_by_station, shipment_tn_details, sweep_timeline = build_shipment_details(shipment_rows, tracker_rows, lh_rows, health_rows)
+        shipment_by_station, shipment_tn_details, sweep_timeline = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
         del shipment_rows, tracker_rows, lh_rows
 
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)

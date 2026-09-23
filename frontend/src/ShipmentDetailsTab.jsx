@@ -29,9 +29,9 @@ const COLUMNS = [
   { key: "fresh_attempt_pct", label: "Fresh Attempt %", percent: true },
 ];
 
-// Process duration: shipment_completion_datetime (column G) -> 1st_dest_hub_
-// sweep_after_shipment_completion_datetime (column I). Within 1st hour, 2nd
-// hour, 3rd hour, or over 3 hours (2026-09-24 feedback).
+// Process duration: shipment_completion_datetime (column G) -> 1st_sweep_at_
+// WM_station_datetime (column H). Within 1st hour, 2nd hour, 3rd hour, or over
+// 3 hours (2026-09-24 feedback).
 const PROCESS_BUCKET_COLUMNS = [
   { key: "process_within_1h", label: "Within 1h" },
   { key: "process_within_2h", label: "1-2h" },
@@ -51,18 +51,6 @@ function tripBadgeClass(isoTime) {
 function tripLabel(isoTime) {
   const d = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T"));
   return d.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-// process_time_minutes is the average minute-of-day (0-1439) the day's sweeps
-// finished, today only -- render it the same way a clock would.
-function formatProcessTime(minutes) {
-  if (minutes == null) return <span className="text-slate-300">—</span>;
-  const total = Math.round(minutes);
-  const h24 = Math.floor(total / 60) % 24;
-  const m = total % 60;
-  const ampm = h24 >= 12 ? "pm" : "am";
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
 function TripBadge({ trip }) {
@@ -172,18 +160,6 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
         </div>
       ),
     },
-    {
-      key: "process_time_minutes",
-      label: (
-        <>
-          Process Time
-          <HeaderNote>{SHIPMENT_NOTES.process_time_minutes}</HeaderNote>
-          <div className="text-[10px] font-normal normal-case text-slate-300">beta — not yet confirmed accurate</div>
-        </>
-      ),
-      className: () => "text-slate-700",
-      render: (r) => formatProcessTime(r.process_time_minutes),
-    },
     ...PROCESS_BUCKET_COLUMNS.map((c) => ({
       key: c.key,
       label: withNote(c.label, c.key),
@@ -210,11 +186,11 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
               exportCsv(
                 `daily-ops-shipment-details-${new Date().toISOString().slice(0, 10)}.csv`,
                 [
-                  "Region", "Zone", "Station", ...COLUMNS.map((c) => c.label), "Process Time (min of day)",
+                  "Region", "Zone", "Station", ...COLUMNS.map((c) => c.label),
                   ...PROCESS_BUCKET_COLUMNS.map((c) => c.label),
                 ],
                 filteredStations.map((r) => [
-                  r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key]), r.process_time_minutes,
+                  r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key]),
                   ...PROCESS_BUCKET_COLUMNS.map((c) => r[c.key]),
                 ])
               )
@@ -237,13 +213,8 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
           <>
             {filteredStations.length} rows · LH Timing shows each trip's arrival time followed by the parcel count on
             that trip (e.g. "10:32am · 45" = 45 parcels on that trip); colour bands green &lt;10am, blue 10–11am,
-            amber 11am–12pm, red after 12pm.{" "}
-            <span className="font-medium text-status-warning">
-              Process Time is a beta figure, not yet confirmed accurate
-            </span>{" "}
-            — it's the average time-of-day all of today's fresh parcels were first scanned/swept in, not a per-parcel
-            measurement. Within 1h/1-2h/2-3h/3h+ bucket how long each parcel took from arriving at the station to
-            being scanned in.
+            amber 11am–12pm, red after 12pm. Within 1h/1-2h/2-3h/3h+ bucket how long each parcel took from
+            arriving at the station (shipment completion) to its first scan-in at the station.
           </>
         }
       />
