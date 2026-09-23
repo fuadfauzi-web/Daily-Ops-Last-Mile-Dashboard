@@ -26,19 +26,20 @@ from pydantic import BaseModel
 import db
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
-    METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
+    METRIC_KEYS, OLD_ROUTE_ROWS_CAP, RDO_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
-    build_missing_details, build_old_route, build_pending_yesterday_route, build_routed_view, build_rpu,
-    build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure, merge_routed_into_station_metrics,
-    rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed, rollup_routed_by_driver_type,
-    rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
+    build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view,
+    build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
+    merge_routed_into_station_metrics,
+    rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
+    rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user, parse_scope_values
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
-    QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP, QUERY_ZALORA_NXD,
-    RedashError, fetch_query_results,
+    QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
+    QUERY_ZALORA_NXD, RedashError, fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
@@ -133,6 +134,12 @@ _old_route_captured_at: str | None = None
 # filtering all happens at request time (see /api/rpu, /api/rpu-aging).
 _rpu_rows_cache: list[dict] = []
 _rpu_rows_captured_at: str | None = None
+
+# B2B Document Compliance's RDO station rows + TN-level rows, same in-memory
+# pattern as _old_route_rows.
+_rdo_stations: list[dict] = []
+_rdo_tn_rows: list[dict] = []
+_rdo_captured_at: str | None = None
 
 # Recovery tab's Missing Details, same in-memory pattern as _old_route_rows.
 _missing_details_stations: list[dict] = []
@@ -236,6 +243,10 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
         del rpu_raw_rows
 
+        rdo_raw_rows = await _fetch(QUERY_RDO_PUSH_OFF)
+        rdo_by_station, rdo_tn_rows = build_rdo_compliance(rdo_raw_rows)
+        del rdo_raw_rows
+
         # microsecond=0: station_metrics/etc.'s captured_at column is a plain
         # DATETIME (whole-second precision) -- MySQL silently truncates the
         # microseconds on insert, so the in-memory value used for _prune_old_
@@ -250,6 +261,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         global _missing_details_cod_threshold, _missing_details_item_keywords
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
         global _sweep_timeline
+        global _rdo_stations, _rdo_tn_rows, _rdo_captured_at
         _sweep_timeline = sweep_timeline
         _tn_cache.clear()
         _tn_cache.update(tn_details)
@@ -270,6 +282,9 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         _old_route_captured_at = captured_at.isoformat()
         _rpu_rows_cache = rpu_rows_flat
         _rpu_rows_captured_at = captured_at.isoformat()
+        _rdo_stations = list(rdo_by_station.values())
+        _rdo_tn_rows = rdo_tn_rows
+        _rdo_captured_at = captured_at.isoformat()
         _missing_details_stations = list(missing_details_by_station.values())
         _missing_details_tn_rows = missing_details_tn_rows
         _missing_details_cod_threshold = cod_threshold
@@ -1378,6 +1393,92 @@ async def old_route(user: CurrentUser = Depends(get_current_user)):
         "zones": to_group(rollup_old_route(scoped, "zone"), "zone"),
         "regions": to_group(rollup_old_route(scoped, "region"), "region"),
         "drivers": driver_rows,
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# B2B Document Compliance (query 1293, RDO type only so far -- GRN/PSO/
+# Reattempt aren't wired up yet). document_type is accepted now so the
+# frontend's multi-select filter has something real to send, even though
+# only "rdo" currently does anything.
+# ---------------------------------------------------------------------------
+
+class RdoStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    total_tn: int
+
+
+class RdoGroupRow(BaseModel):
+    key: str
+    region: str
+    station_count: int
+    total_tn: int
+
+
+class RdoTnRow(BaseModel):
+    tracking_number: str | None
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    rdo_status: str | None
+    rdo_created_at: str | None
+    rdo_latest_start_date: str | None
+    bundle_tracking_number: str | None
+    bundle_status: str | None
+    bundle_last_sweep_at: str | None
+    bundle_delivered_at: str | None
+
+
+class RdoComplianceResponse(BaseModel):
+    captured_at: str | None
+    document_types: list[str]
+    stations: list[RdoStationRow]
+    zones: list[RdoGroupRow]
+    regions: list[RdoGroupRow]
+    tn_rows: list[RdoTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/b2b-compliance", response_model=RdoComplianceResponse)
+async def b2b_compliance(document_type: str = "rdo", user: CurrentUser = Depends(get_current_user)):
+    document_types = [t for t in document_type.split(",") if t] or ["rdo"]
+    if any(t not in ("rdo",) for t in document_types):
+        raise HTTPException(status_code=422, detail="document_type must be 'rdo' (the only type wired up so far)")
+    if _rdo_captured_at is None or "rdo" not in document_types:
+        return {
+            "captured_at": None, "document_types": ["rdo"], "stations": [], "zones": [], "regions": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    scoped = _scope_filter_stations(_rdo_stations, user)
+    scoped_codes = {r["station_code"] for r in scoped}
+
+    def to_group(rows, key):
+        return [
+            {"key": g[key], "region": g["region"], "station_count": g["station_count"], "total_tn": g["total_tn"]}
+            for g in rows if g["station_count"] > 0
+        ]
+
+    tn_rows = [r for r in _rdo_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows)
+    tn_rows_truncated = tn_rows_total > RDO_ROWS_CAP
+    if tn_rows_truncated:
+        tn_rows = sorted(tn_rows, key=lambda r: r["rdo_created_at"] or "", reverse=True)[:RDO_ROWS_CAP]
+
+    return {
+        "captured_at": _rdo_captured_at,
+        "document_types": ["rdo"],
+        "stations": scoped,
+        "zones": to_group(rollup_rdo_compliance(scoped, "zone"), "zone"),
+        "regions": to_group(rollup_rdo_compliance(scoped, "region"), "region"),
         "tn_rows": tn_rows,
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,

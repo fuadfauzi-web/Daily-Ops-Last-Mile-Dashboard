@@ -1403,3 +1403,63 @@ def bucket_rpu_aging(rows: list[dict], only_zero_attempt: bool) -> tuple[dict[st
         row["total"] += 1
         rows_out.append(r)
     return by_station, rows_out
+
+
+# ---------------------------------------------------------------------------
+# B2B Document Compliance (query 1293, RDO Push Off) -- first of 4 planned
+# document types (RDO/GRN/PSO/Reattempt); only RDO's Redash query is ready so
+# far, the rest are scaffolded on the frontend's document-type filter but
+# have no data behind them yet. Objective (2026-09-24 feedback): let a hub
+# see which RDO tracking numbers still need their AWB printed in the morning,
+# or which bundle needs chasing at day's end. Grouped by bundle_last_sweep_hub
+# -- where the underlying bundle physically sits -- same as every other
+# "where does this actually sit" metric in this app. The exact Remarks-style
+# classification the Fleet Manager's own sheet computes (e.g. "MPS completed
+# but RDO still Pending routed") isn't reproduced here yet -- this exposes the
+# raw rdo_granular_status/bundle_granular_status pair instead so the numbers
+# are verifiable against Redash directly; that classification is a follow-up
+# once the exact rule is confirmed.
+# ---------------------------------------------------------------------------
+
+RDO_COMPLIANCE_KEYS = ("total_tn",)
+RDO_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route -- bound payload size
+
+
+def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
+    """Returns ({hub_code: {..., total_tn}}, [tn_row, ...])."""
+    by_station = {
+        hub: {"station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3], "total_tn": 0}
+        for hub in HUBS
+    }
+    tn_rows = []
+    for r in rows:
+        hub = r.get("bundle_last_sweep_hub")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        row["total_tn"] += 1
+        tn_rows.append({
+            "tracking_number": r.get("rdo_tracking_id"),
+            "station_code": hub,
+            "station_name": row["station_name"],
+            "zone": row["zone"],
+            "region": row["region"],
+            "rdo_status": r.get("rdo_granular_status"),
+            "rdo_created_at": r.get("rdo_creation_datetime"),
+            "rdo_latest_start_date": r.get("rdo_latest_start_date"),
+            "bundle_tracking_number": r.get("bundle_tracking_id"),
+            "bundle_status": r.get("bundle_granular_status"),
+            "bundle_last_sweep_at": r.get("bundle_last_sweep_timestamp"),
+            "bundle_delivered_at": r.get("bundle_delivery_success_datetime"),
+        })
+    return by_station, tn_rows
+
+
+def rollup_rdo_compliance(station_rows: list[dict], group_key: str) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(key, {group_key: key, "region": row["region"], "station_count": 0, "total_tn": 0})
+        g["station_count"] += 1
+        g["total_tn"] += row["total_tn"]
+    return list(groups.values())

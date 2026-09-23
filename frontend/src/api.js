@@ -62,6 +62,8 @@ export const api = {
     ),
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
   oldRoute: () => request("/api/old-route"),
+  b2bCompliance: (documentTypes) =>
+    request(`/api/b2b-compliance?document_type=${encodeURIComponent(documentTypes?.length ? documentTypes.join(",") : "rdo")}`),
   missingDetails: () => request("/api/recovery/missing-details"),
   recoverySettings: {
     get: () => request("/api/recovery/settings"),
