@@ -67,12 +67,16 @@ function TnTable({
 }) {
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
-  const [tnStationSearch, setTnStationSearch] = useState("");
+  const [tnStationFilter, setTnStationFilter] = useState([]);
   const [failureReasonFilter, setFailureReasonFilter] = useState([]);
 
-  // Client-side only, same as the station search below -- failure_reason isn't
+  const tnStationOptions = useMemo(
+    () => Array.from(new Set(tnRows.map((r) => r.station_name).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
+    [tnRows]
+  );
+  // Client-side only, same as the station filter above -- failure_reason isn't
   // a bucketed/server-truncation-relevant field, so filtering whatever's
-  // already loaded (like the station search already does) is consistent.
+  // already loaded (like the station filter already does) is consistent.
   const failureReasonOptions = useMemo(() => {
     if (!showFailureReasonFilter) return [];
     const values = new Set(tnRows.map((r) => r.failure_reason).filter(Boolean));
@@ -81,10 +85,7 @@ function TnTable({
 
   const sorted = useMemo(() => {
     let rows = tnRows;
-    if (tnStationSearch.trim()) {
-      const q = tnStationSearch.trim().toLowerCase();
-      rows = rows.filter((r) => r.station_name?.toLowerCase().includes(q));
-    }
+    if (tnStationFilter.length) rows = rows.filter((r) => r.station_name && tnStationFilter.includes(r.station_name));
     if (showFailureReasonFilter && failureReasonFilter.length) {
       rows = rows.filter((r) => r.failure_reason && failureReasonFilter.includes(r.failure_reason));
     }
@@ -95,7 +96,7 @@ function TnTable({
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [tnRows, tnSortKey, tnSortDir, tnStationSearch, showFailureReasonFilter, failureReasonFilter]);
+  }, [tnRows, tnSortKey, tnSortDir, tnStationFilter, showFailureReasonFilter, failureReasonFilter]);
 
   const toggleTnSort = (key) => {
     if (key === tnSortKey) setTnSortDir(tnSortDir === "asc" ? "desc" : "asc");
@@ -115,12 +116,9 @@ function TnTable({
       title="Tracking numbers"
       titleExtra={
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-            placeholder="Search station (this table only)…"
-            value={tnStationSearch}
-            onChange={(e) => setTnStationSearch(e.target.value)}
-          />
+          <div className="w-48">
+            <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
+          </div>
           {statusOptions && (
             <div className="w-48">
               <MultiSelect options={statusOptions} value={statusValue} onChange={onStatusChange} placeholder="All statuses" />

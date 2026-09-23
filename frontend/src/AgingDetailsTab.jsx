@@ -5,6 +5,7 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
 import DetailPanel from "./components/DetailPanel";
+import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 
@@ -68,7 +69,8 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const [sortDir, setSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
-  const [tnStationSearch, setTnStationSearch] = useState("");
+  const [tnStationFilter, setTnStationFilter] = useState([]);
+  const [tnStatusFilter, setTnStatusFilter] = useState([]);
   const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
@@ -103,13 +105,26 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
   const visibleStationCodes = useMemo(() => new Set(filteredStations.map((r) => r.station_code)), [filteredStations]);
 
+  // Base set for this table's own filter dropdowns -- station/zone/region/search
+  // scoped, but before this table's own station/status picks are applied, so the
+  // options offered always reflect what's actually available to pick from.
+  const baseTnRows = useMemo(
+    () => (data ? data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code)) : []),
+    [data, visibleStationCodes]
+  );
+  const tnStationOptions = useMemo(
+    () => Array.from(new Set(baseTnRows.map((r) => r.station_name).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
+    [baseTnRows]
+  );
+  const tnStatusOptions = useMemo(
+    () => Array.from(new Set(baseTnRows.map((r) => r.status).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
+    [baseTnRows]
+  );
+
   const filteredTnRows = useMemo(() => {
-    if (!data) return [];
-    let rows = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
-    if (tnStationSearch.trim()) {
-      const q = tnStationSearch.trim().toLowerCase();
-      rows = rows.filter((r) => r.station_name?.toLowerCase().includes(q));
-    }
+    let rows = baseTnRows;
+    if (tnStationFilter.length) rows = rows.filter((r) => tnStationFilter.includes(r.station_name));
+    if (tnStatusFilter.length) rows = rows.filter((r) => r.status && tnStatusFilter.includes(r.status));
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -117,7 +132,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, visibleStationCodes, tnSortKey, tnSortDir, tnStationSearch]);
+  }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter]);
 
   const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
   const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
@@ -223,12 +238,12 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             title={`${data.type_label} — tracking numbers`}
             titleExtra={
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-                  placeholder="Search station (this table only)…"
-                  value={tnStationSearch}
-                  onChange={(e) => setTnStationSearch(e.target.value)}
-                />
+                <div className="w-48">
+                  <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
+                </div>
+                <div className="w-48">
+                  <MultiSelect options={tnStatusOptions} value={tnStatusFilter} onChange={setTnStatusFilter} placeholder="All statuses" />
+                </div>
                 <button
                 onClick={() =>
                   exportCsv(
