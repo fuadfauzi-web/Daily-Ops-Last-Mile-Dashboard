@@ -14,6 +14,7 @@ export const EXTRA_METRICS = [
   { key: "zalora_zero_attempt", label: "Zalora NXD 0 Attempt" },
   { key: "zalora_ovfd", label: "Zalora NXD OVFD" },
   { key: "routed_current_ovfd", label: "Route Monitoring OVFD" },
+  { key: "fresh_unscan", label: "Fresh Unscan" },
 ];
 
 export const NO_DRILLDOWN_METRICS = new Set(["routed_current_ovfd"]);

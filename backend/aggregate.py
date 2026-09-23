@@ -10,8 +10,12 @@ confirmation first.
 query 78 columns used: tracking_id, tag, granular_status, dest_hub,
 last_scan_datetime, last_scan_hub_name, days_since_current_hub_first_sweep
 ("age"), delivery_attempts, cod ('Yes_cod' | 'NO_cod'), current_hub_first_sweep_datetime
-(the only place with a real time-of-day -- used for Shipment Details' Process Time,
-since query 1239's own 1st_sweep_at_WM_station turned out to be date-only).
+(used for Shipment Details' Process Time).
+
+query 1239 (Shipment Tracker) columns used, as of the 2026-09-23 Redash change that
+made every one of these a full datetime (previously date-only, and under slightly
+different names): tracking_id, granular_status, tag, shp_dest_hub_name, dest_hub_name,
+1st_dest_hub_sweep_after_shipment_completion_datetime, first_attempt_datetime.
 
 granular_status values seen: 'Arrived at Sorting Hub', 'En-route to Sorting Hub',
 'On Vehicle for Delivery', 'On Hold', 'Pending Reschedule', 'Arrived at Distribution
@@ -460,9 +464,8 @@ def build_shipment_details(
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
     # "Process Time" = average time-of-day the TN's first hub sweep finished, today
-    # only (Malaysia time). query 1239's own 1st_sweep_at_WM_station turned out to
-    # be date-only (no time-of-day), so the actual time comes from query 78's
-    # current_hub_first_sweep_datetime instead, matched by tracking_id.
+    # only (Malaysia time), from query 78's current_hub_first_sweep_datetime,
+    # matched by tracking_id.
     today_myt = datetime.now(_MYT).strftime("%Y-%m-%d")
     sweep_minutes: dict[str, list[float]] = {hub: [] for hub in HUBS}
     health_sweep_time = {
@@ -485,7 +488,11 @@ def build_shipment_details(
         tn = r.get("tracking_id")
         tag = (r.get("tag") or "").upper()
 
-        if not r.get("1st_sweep_at_WM_station"):
+        # Fresh Unscan: blank 1st_dest_hub_sweep_after_shipment_completion_datetime
+        # means the parcel hasn't been scanned in at its dest hub since the shipment
+        # was completed (2026-09-23 feedback -- was 1st_sweep_at_WM_station, which
+        # only reflects the first-ever hub sweep, not specifically at the dest hub).
+        if not r.get("1st_dest_hub_sweep_after_shipment_completion_datetime"):
             row["fresh_unscan"] += 1
             tn_details[hub]["fresh_unscan"].append(tn)
         else:
@@ -493,11 +500,17 @@ def build_shipment_details(
             if sweep_dt is not None and sweep_dt.strftime("%Y-%m-%d") == today_myt:
                 sweep_minutes[hub].append(sweep_dt.hour * 60 + sweep_dt.minute + sweep_dt.second / 60)
 
-        if r.get("shp_dest_hub_name") != r.get("latest_dest_hub_name") and _RTS_TAG not in tag:
+        # Latlong: shp_dest_hub_name (intended dest) differs from dest_hub_name
+        # (current dest) -- but not when either side is an RTS, which the tag
+        # column flags on this row and dest_hub_name can flag on itself (2026-09-23
+        # feedback; was comparing against a "latest_dest_hub_name" field that
+        # doesn't exist in this query, so latlong was always evaluating False).
+        dest = r.get("dest_hub_name") or ""
+        if r.get("shp_dest_hub_name") != dest and _RTS_TAG not in tag and _RTS_TAG not in dest.upper():
             row["latlong"] += 1
             tn_details[hub]["latlong"].append(tn)
 
-        if r.get("first_attempt_date"):
+        if r.get("first_attempt_datetime"):
             row["fresh_attempt_count"] += 1
 
     for hub, mins in sweep_minutes.items():
@@ -720,15 +733,17 @@ def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[di
 DRIVER_TYPE_BUCKETS = {
     "hybrid": {"HD", "HR"},
     "independent": {"ID", "IR"},
-    "other": {None, "OPS"},
+    "ops": {"OPS"},
+    "other": {None},
 }
 
 
-def rollup_routed_by_driver_type(driver_rows: list[dict], group_key: str, driver_type: str | None) -> list[dict]:
+def rollup_routed_by_driver_type(driver_rows: list[dict], group_key: str, driver_types: list[str] | None) -> list[dict]:
     """Re-aggregates build_routed_view()'s per-driver rows up to station/zone/region
-    level (group_key: 'station_code' | 'zone' | 'region'), restricted to one
-    driver_type bucket ('hybrid' | 'independent' | 'other'), or every driver if None."""
-    allowed = DRIVER_TYPE_BUCKETS.get(driver_type) if driver_type else None
+    level (group_key: 'station_code' | 'zone' | 'region'), restricted to the union of
+    one or more driver_type buckets ('hybrid' | 'independent' | 'ops' | 'other'), or
+    every driver if driver_types is None/empty."""
+    allowed = set().union(*(DRIVER_TYPE_BUCKETS[t] for t in driver_types)) if driver_types else None
     groups: dict[str, dict] = {}
     position_keys = {"HD": "attendance_hd", "HR": "attendance_hr", "ID": "attendance_id", "IR": "attendance_ir"}
     for d in driver_rows:

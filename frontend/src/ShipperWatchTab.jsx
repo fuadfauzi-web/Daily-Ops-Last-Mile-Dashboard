@@ -115,13 +115,18 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
       const q = search.trim().toLowerCase();
       rows = rows.filter((r) => r.station_name.toLowerCase().includes(q));
     }
+    // 2026-09-23 feedback: a station with nothing flagged under any currently
+    // selected shipper is noise, not signal -- drop it rather than showing a
+    // row of zeroes. (Re-evaluated whenever the shipper picker changes, via
+    // activeColumns in the dependency list below.)
+    rows = rows.filter((r) => activeColumns.some((c) => r[c.key] > 0));
     return [...rows].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
+  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia, activeColumns]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -207,7 +212,7 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
           sortDir={sortDir}
           onSort={toggleSort}
           onRowClick={(r) => setDetailRow(r)}
-          emptyMessage="No stations match."
+          emptyMessage="All clear — no station currently has a flagged parcel under the selected shipper(s)."
           footer={
             <>
               {filteredStations.length} rows · Amway/Watson SLA: attempt day 0, succeed before day 3. Zalora only

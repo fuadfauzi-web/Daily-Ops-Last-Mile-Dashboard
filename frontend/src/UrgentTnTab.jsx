@@ -194,7 +194,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
         footer={
           <>
             {rows.length} tracking number{rows.length === 1 ? "" : "s"} tracked · looked up from the same query 78
-            data Station Health uses (refreshed every 15 minutes), not a live search.
+            data Station Health uses (refreshed every 15 minutes), not a live search. A TN showing "Not found" means
+            it's already completed or added to shipment -- it's no longer in the active dataset this looks up against.
           </>
         }
       />
