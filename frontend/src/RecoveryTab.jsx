@@ -5,6 +5,7 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
 import DetailPanel from "./components/DetailPanel";
+import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 
@@ -60,7 +61,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   const [sortDir, setSortDir] = useState("desc");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
-  const [tnStationSearch, setTnStationSearch] = useState("");
+  const [tnStationFilter, setTnStationFilter] = useState([]);
   const [highValueOnly, setHighValueOnly] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
 
@@ -95,17 +96,22 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
 
   const visibleStationCodes = useMemo(() => new Set(filteredStations.map((r) => r.station_code)), [filteredStations]);
 
+  const baseTnRows = useMemo(
+    () => (data ? data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code)) : []),
+    [data, visibleStationCodes]
+  );
+  const tnStationOptions = useMemo(
+    () => Array.from(new Set(baseTnRows.map((r) => r.station_name).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
+    [baseTnRows]
+  );
+
   const filteredTnRows = useMemo(() => {
-    if (!data) return [];
-    let rows = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
+    let rows = baseTnRows;
     if (highValueOnly) rows = rows.filter((r) => r.is_high_value);
     // A second, table-local station filter -- independent of the shared search
     // box above -- so a Manager/Region user can narrow just this TN list to one
     // station without touching the overview tables' own filtering.
-    if (tnStationSearch.trim()) {
-      const q = tnStationSearch.trim().toLowerCase();
-      rows = rows.filter((r) => r.station_name.toLowerCase().includes(q));
-    }
+    if (tnStationFilter.length) rows = rows.filter((r) => tnStationFilter.includes(r.station_name));
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -113,7 +119,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, visibleStationCodes, tnSortKey, tnSortDir, highValueOnly, tnStationSearch]);
+  }, [baseTnRows, tnSortKey, tnSortDir, highValueOnly, tnStationFilter]);
 
   const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
   const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
@@ -209,12 +215,9 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
         title="Tracking numbers"
         titleExtra={
           <div className="flex flex-wrap items-center gap-3">
-            <input
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-              placeholder="Search station (this table only)…"
-              value={tnStationSearch}
-              onChange={(e) => setTnStationSearch(e.target.value)}
-            />
+            <div className="w-48">
+              <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
+            </div>
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
               <input type="checkbox" checked={highValueOnly} onChange={(e) => setHighValueOnly(e.target.checked)} />
               High value only

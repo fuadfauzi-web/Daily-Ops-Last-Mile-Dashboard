@@ -4,6 +4,7 @@ import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
+import MultiSelect from "./components/MultiSelect";
 import Skeleton from "./components/Skeleton";
 
 const TN_COLUMNS = [
@@ -25,7 +26,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
   const [driverSearch, setDriverSearch] = useState("");
   const [tnSortKey, setTnSortKey] = useState("age");
   const [tnSortDir, setTnSortDir] = useState("desc");
-  const [tnStationSearch, setTnStationSearch] = useState("");
+  const [tnStationFilter, setTnStationFilter] = useState([]);
   const [copied, setCopied] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
 
@@ -84,15 +85,20 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
     });
   }, [data, regionFilter, zoneFilter, search, driverSearch, driverSortKey, driverSortDir, excludeEastMalaysia]);
 
+  const baseTnRows = useMemo(
+    () => (data ? data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code)) : []),
+    [data, visibleStationCodes]
+  );
+  const tnStationOptions = useMemo(
+    () => Array.from(new Set(baseTnRows.map((r) => r.station_name).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
+    [baseTnRows]
+  );
+
   const filteredTnRows = useMemo(() => {
-    if (!data) return [];
-    let tn = data.tn_rows.filter((r) => visibleStationCodes.has(r.station_code));
     // Independent of the shared filter bar above -- lets a Manager/Region user
     // narrow just this table to one station without touching By station/By driver.
-    if (tnStationSearch.trim()) {
-      const q = tnStationSearch.trim().toLowerCase();
-      tn = tn.filter((r) => r.station_name?.toLowerCase().includes(q));
-    }
+    let tn = baseTnRows;
+    if (tnStationFilter.length) tn = tn.filter((r) => tnStationFilter.includes(r.station_name));
     return [...tn].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -100,7 +106,7 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, visibleStationCodes, tnSortKey, tnSortDir, tnStationSearch]);
+  }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter]);
 
   const toggleStationSort = (key) => {
     if (key === stationSortKey) setStationSortDir(stationSortDir === "asc" ? "desc" : "asc");
@@ -231,12 +237,9 @@ export default function OldRouteTab({ regionFilter, zoneFilter, search, me, excl
         title="Tracking numbers"
         titleExtra={
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-              placeholder="Search station (this table only)…"
-              value={tnStationSearch}
-              onChange={(e) => setTnStationSearch(e.target.value)}
-            />
+            <div className="w-48">
+              <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
+            </div>
             <button
               onClick={() =>
                 exportCsv(
