@@ -879,8 +879,14 @@ async def _fetch_routed_rows(captured_at) -> list[dict]:
 
 @app.get("/api/routed-view", response_model=RoutedViewResponse)
 async def routed_view(driver_type: str | None = None, user: CurrentUser = Depends(get_current_user)):
-    if driver_type not in (None, "hybrid", "independent", "other"):
-        raise HTTPException(400, "driver_type must be hybrid, independent, or other")
+    # driver_type: comma-separated bucket keys (2026-09-23 feedback -- was a single
+    # value; the UI now lets a user tick more than one). "" (all boxes unticked by
+    # the UI, as opposed to the param being entirely absent) behaves the same as
+    # None -- no filter -- since an empty result set for "nothing selected" would
+    # be a confusing default.
+    driver_types = [t for t in (driver_type or "").split(",") if t] or None
+    if driver_types is not None and any(t not in DRIVER_TYPE_BUCKETS for t in driver_types):
+        raise HTTPException(400, f"driver_type must be a comma-separated list from {list(DRIVER_TYPE_BUCKETS)}")
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM routed_stations")
     captured_at = latest[0] if latest else None
     if captured_at is None:
@@ -924,7 +930,7 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
             start = tenure_start_by_name.get(row["driver_name"])
             row["tenure"] = compute_tenure(start, today_myt) if start else None
 
-    if driver_type is None:
+    if driver_types is None:
         # Fast path: today's default view reads the persisted per-refresh snapshot,
         # same as before the driver-type filter existed.
         all_rows = await _fetch_routed_rows(captured_at)
@@ -956,7 +962,7 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
         # breakdown, so station/zone/region rollups are rebuilt fresh from the
         # (already role-scoped) per-driver rows instead.
         def build_level(group_key):
-            rows = rollup_routed_by_driver_type(driver_rows, group_key, driver_type)
+            rows = rollup_routed_by_driver_type(driver_rows, group_key, driver_types)
             out = []
             for g in rows:
                 zero_attempt = sum(zero_attempt_by_station.get(c, 0) for c in g["station_codes"])
@@ -979,7 +985,8 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
         stations_out = build_level("station_code")
         zones_out = build_level("zone")
         regions_out = build_level("region")
-        driver_rows = [d for d in driver_rows if d["position"] in DRIVER_TYPE_BUCKETS.get(driver_type, set())]
+        allowed_positions = set().union(*(DRIVER_TYPE_BUCKETS[t] for t in driver_types))
+        driver_rows = [d for d in driver_rows if d["position"] in allowed_positions]
 
     return {
         "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else str(captured_at),

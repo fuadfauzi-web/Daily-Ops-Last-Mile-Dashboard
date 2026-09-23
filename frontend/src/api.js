@@ -32,8 +32,8 @@ export const api = {
     request(
       `/api/shipment-drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`
     ),
-  routedView: (driverType) =>
-    request(`/api/routed-view${driverType ? `?driver_type=${encodeURIComponent(driverType)}` : ""}`),
+  routedView: (driverTypes) =>
+    request(`/api/routed-view${driverTypes?.length ? `?driver_type=${encodeURIComponent(driverTypes.join(","))}` : ""}`),
   shipperWatch: () => request("/api/shipper-watch"),
   shipperDrilldown: (stationCode, metric) =>
     request(

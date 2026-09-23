@@ -5,6 +5,7 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
 import DataTable from "./components/DataTable";
 import DetailPanel from "./components/DetailPanel";
+import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 import OldRouteTab from "./OldRouteTab";
@@ -24,12 +25,15 @@ const LEVELS = [
 const NO_DRIVER_TYPE_LEVELS = new Set(["oldroute", "pendingyesterday"]);
 
 // Only applies to region/zone/station/driver -- Old Route has no driver concept.
+// "OPS" is its own type (any driver name containing "OPS", see aggregate._parse_driver)
+// -- kept out of "Other", which is now only drivers whose name didn't parse at all.
 const DRIVER_TYPES = [
-  { key: "", label: "All" },
-  { key: "hybrid", label: "Hybrid" },
-  { key: "independent", label: "Independent" },
-  { key: "other", label: "Other" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "independent", label: "Independent" },
+  { value: "ops", label: "OPS" },
+  { value: "other", label: "Other" },
 ];
+const DRIVER_TYPE_LABEL = Object.fromEntries(DRIVER_TYPES.map((d) => [d.value, d.label]));
 
 // Station/Zone/Region-level columns that come AFTER Attendance and Total Routed
 // (Attendance sits right after the name column; Hybrid/Independent sit at the
@@ -51,8 +55,10 @@ const STATION_COLUMNS = [
   { key: "independent_total", label: "Independent", render: "independent" },
 ];
 
+// Total Routed isn't repeated here -- it's already added unconditionally for
+// every level a few lines below (2026-09-23 feedback: was duplicated at the
+// driver level, once from here and once from that shared column).
 const DRIVER_COLUMNS = [
-  { key: "total_routed", label: "Total Routed" },
   { key: "current_success", label: "Current Success" },
   { key: "current_ovfd", label: "Current OVFD" },
   { key: "cod_pct", label: "COD %", percent: true },
@@ -110,7 +116,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [level, setLevel] = useState("station");
-  const [driverType, setDriverType] = useState("");
+  const [driverTypes, setDriverTypes] = useState([]);
   const [sortKey, setSortKey] = useState("total_routed");
   const [sortDir, setSortDir] = useState("desc");
   // The master "Search station..." box (shared with every other tab) filters the
@@ -126,10 +132,10 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
 
   useEffect(() => {
     api
-      .routedView(driverType || undefined)
+      .routedView(driverTypes)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [driverType, refreshTick]);
+  }, [driverTypes, refreshTick]);
 
   const rows = useMemo(() => {
     if (!data || NO_DRIVER_TYPE_LEVELS.has(level)) return [];
@@ -264,27 +270,15 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
             />
           )}
           {!NO_DRIVER_TYPE_LEVELS.has(level) && (
-            // Deliberately a plain select, not a SegmentedControl like the Level
-            // switcher next to it -- a filter that silently narrows every number
-            // on the page shouldn't look like just another view-level tab a user
-            // might click into by accident.
-            <select
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-              value={driverType}
-              onChange={(e) => setDriverType(e.target.value)}
-            >
-              {DRIVER_TYPES.map((d) => (
-                <option key={d.key} value={d.key}>
-                  {d.key ? `Driver type: ${d.label}` : "All driver types"}
-                </option>
-              ))}
-            </select>
+            <div className="w-48">
+              <MultiSelect options={DRIVER_TYPES} value={driverTypes} onChange={setDriverTypes} placeholder="All driver types" />
+            </div>
           )}
         </div>
       </div>
-      {driverType && !NO_DRIVER_TYPE_LEVELS.has(level) && (
+      {driverTypes.length > 0 && !NO_DRIVER_TYPE_LEVELS.has(level) && (
         <p className="text-xs text-slate-400">
-          Showing {DRIVER_TYPES.find((d) => d.key === driverType)?.label.toLowerCase()} drivers only -- Old Route and
+          Showing {driverTypes.map((t) => DRIVER_TYPE_LABEL[t].toLowerCase()).join(", ")} drivers only -- Old Route and
           Pending Yesterday Route are unaffected by this filter.
         </p>
       )}

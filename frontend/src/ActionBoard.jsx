@@ -139,8 +139,10 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     }
     return DEFAULT_METRICS;
   });
-  const [level, setLevel] = useState("zone");
+  const [level, setLevel] = useState("station");
   const [breachesOnly, setBreachesOnly] = useState(false);
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
   const [tnByStation, setTnByStation] = useState({});
 
@@ -149,10 +151,12 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   const [oldRouteData, setOldRouteData] = useState(null);
   const [shipperData, setShipperData] = useState(null);
   const [routedData, setRoutedData] = useState(null);
+  const [shipmentData, setShipmentData] = useState(null);
   useEffect(() => {
     api.oldRoute().then(setOldRouteData).catch(() => {});
     api.shipperWatch().then(setShipperData).catch(() => {});
     api.routedView().then(setRoutedData).catch(() => {});
+    api.shipmentDetails().then(setShipmentData).catch(() => {});
   }, []);
 
   const oldRouteByStation = useMemo(() => {
@@ -170,6 +174,11 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     (routedData?.stations || []).forEach((s) => m.set(s.station_code, s));
     return m;
   }, [routedData]);
+  const shipmentByStation = useMemo(() => {
+    const m = new Map();
+    (shipmentData?.stations || []).forEach((s) => m.set(s.station_code, s));
+    return m;
+  }, [shipmentData]);
 
   // stations, enriched with EXTRA_METRICS -- built by looking up each already
   // role/filter-scoped station in the (unfiltered but same-role-scoped) extra
@@ -183,8 +192,9 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         zalora_zero_attempt: shipperByStation.get(s.station_code)?.zalora_zero_attempt || 0,
         zalora_ovfd: shipperByStation.get(s.station_code)?.zalora_ovfd || 0,
         routed_current_ovfd: routedByStation.get(s.station_code)?.current_ovfd || 0,
+        fresh_unscan: shipmentByStation.get(s.station_code)?.fresh_unscan || 0,
       })),
-    [stations, oldRouteByStation, shipperByStation, routedByStation]
+    [stations, oldRouteByStation, shipperByStation, routedByStation, shipmentByStation]
   );
 
   const scoredMetrics = useMemo(
@@ -225,10 +235,29 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
       return { ...r, breachCount: count, worstRank };
     });
     const filtered = breachesOnly ? rows.filter((r) => r.breachCount > 0) : rows;
-    return [...filtered].sort(
-      (a, b) => b.breachCount - a.breachCount || b.worstRank - a.worstRank || a.name.localeCompare(b.name)
-    );
-  }, [todayGroups, activeMetrics, thresholdRows, breachesOnly]);
+    // No header clicked yet -- default sort stays breach count, then worst
+    // severity, then name, same as always. Once a header is clicked, that
+    // column drives the sort instead (2026-09-23 feedback).
+    if (!sortKey) {
+      return [...filtered].sort(
+        (a, b) => b.breachCount - a.breachCount || b.worstRank - a.worstRank || a.name.localeCompare(b.name)
+      );
+    }
+    return [...filtered].sort((a, b) => {
+      const av = sortKey === "station_count" ? a.stationCodes.length : a[sortKey];
+      const bv = sortKey === "station_count" ? b.stationCodes.length : b[sortKey];
+      if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return sortDir === "asc" ? av - bv : bv - av;
+    });
+  }, [todayGroups, activeMetrics, thresholdRows, breachesOnly, sortKey, sortDir]);
+
+  const toggleHeatmapSort = (key) => {
+    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
 
   // "Act on these today" is always station-level -- that's the only
   // granularity a tracking-number list (and therefore Copy TNs) makes sense
@@ -272,6 +301,9 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     }
     if (metricKey === "zalora_zero_attempt" || metricKey === "zalora_ovfd") {
       return api.shipperDrilldown(stationCode, metricKey);
+    }
+    if (metricKey === "fresh_unscan") {
+      return api.shipmentDrilldown(stationCode, metricKey);
     }
     return api.drilldown(stationCode, metricKey);
   };
@@ -317,7 +349,6 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   const heatmapColumns = [
     { key: "name", label: identityLabel, sticky: true, align: "left" },
     { key: "station_count", label: "Stations", className: () => "text-slate-500", render: (r) => r.stationCodes.length },
-    { key: "breaches", label: "Breaches", className: () => "font-semibold text-slate-600", render: (r) => r.breachCount },
     ...activeMetrics.map((metricKey) => {
       const col = findColumn(metricKey);
       const isExtra = EXTRA_METRICS.some((e) => e.key === metricKey);
@@ -334,7 +365,6 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
             </div>
           </>
         ),
-        sortable: false,
         render: (r) => {
           const t = resolveThreshold(thresholdRows, metricKey, r.region);
           const sev = classify(t, r[metricKey], r);
@@ -412,8 +442,8 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                 onClick={() =>
                   exportCsv(
                     `daily-ops-action-board-${level}-${new Date().toISOString().slice(0, 10)}.csv`,
-                    [identityLabel, "Stations", "Breaches", ...activeMetrics.map((m) => findColumn(m).label)],
-                    heatmapRows.map((r) => [r.name, r.stationCodes.length, r.breachCount, ...activeMetrics.map((m) => r[m])])
+                    [identityLabel, "Stations", ...activeMetrics.map((m) => findColumn(m).label)],
+                    heatmapRows.map((r) => [r.name, r.stationCodes.length, ...activeMetrics.map((m) => r[m])])
                   )
                 }
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -425,6 +455,9 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
             columns={heatmapColumns}
             rows={heatmapRows}
             rowKey={(r) => r.key}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={toggleHeatmapSort}
             emptyMessage="No rows match."
             footer={`Sorted by breach count, then worst severity. Click a cell to ${
               level === "station" ? "see its tracking numbers" : "filter Station Health to it"
