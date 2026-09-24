@@ -150,6 +150,7 @@ export const api = {
   },
   notifications: () => request("/api/notifications"),
   // Task List (backend/tasklist.py)
+  reminders: { ack: (kind, id) => request("/api/reminders/ack", { method: "POST", body: JSON.stringify({ kind, id }) }) },
   followups: {
     list: () => request("/api/followups"),
     create: (payload) => request("/api/followups", { method: "POST", body: JSON.stringify(payload) }),

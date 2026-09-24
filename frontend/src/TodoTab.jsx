@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
 import { exportCsv } from "./lib/csv";
-import { dueClass, dueLabel, isoToLocalInput, localInputToIso, sortRows, useAction, useSort } from "./lib/taskUi";
+import { dueCell, dueClass, isoToLocalInput, localInputToIso, sortRows, useAction, useSort } from "./lib/taskUi";
 import DataTable from "./components/DataTable";
 import SegmentedControl from "./components/SegmentedControl";
 
@@ -93,7 +93,7 @@ export default function TodoTab({ refreshTick }) {
         </div>
       ),
     },
-    { key: "due_date", label: "Due", render: dueLabel, className: dueClass },
+    { key: "due_date", label: "Due", render: (r) => dueCell(r, (row) => run(() => api.reminders.ack("todo", row.id)), busy), className: dueClass },
     {
       key: "progress",
       label: "Progress",

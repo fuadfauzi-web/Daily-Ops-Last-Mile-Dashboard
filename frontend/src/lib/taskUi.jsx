@@ -18,14 +18,88 @@ export function dueClass(row) {
   return "text-slate-700";
 }
 
+// "19:00" -> "7:00 pm" (19:00 is the EOD time, so it reads "EOD").
+export function formatClock(value) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value || "");
+  if (!m) return "";
+  const h = Number(m[1]);
+  if (value.startsWith("19:00")) return "EOD (7:00 pm)";
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h >= 12 ? "pm" : "am"}`;
+}
+
 export function dueLabel(row) {
   if (!row.due_date) return "—";
   return (
     <>
       {formatDay(row.due_date)}
+      {row.due_time && <div className="text-[11px] font-normal">{formatClock(row.due_time)}</div>}
       {row.overdue && <div className="text-[10px] font-semibold">overdue</div>}
       {row.due_today && <div className="text-[10px] font-semibold">due today</div>}
     </>
+  );
+}
+
+// The Due cell: the date (and time), plus the scheduled reminder chip with a "Got it" button while
+// this item's reminder is ringing. onAck(row) dismisses it until the next reminder slot.
+export function dueCell(row, onAck, busy) {
+  return (
+    <>
+      {dueLabel(row)}
+      {row.reminder_active && (
+        <div className="mt-0.5 whitespace-nowrap">
+          <span className="rounded bg-status-critical px-1.5 py-0.5 font-display text-[10px] font-semibold text-white">REMINDER</span>{" "}
+          <button onClick={() => onAck(row)} disabled={busy} className="text-[11px] font-medium text-slate-500 underline hover:text-brand">
+            got it
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Today's date as the browser sees it, "yyyy-mm-dd" (what <input type="date"> uses).
+export function todayLocalIso() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Due date + optional time of day + an EOD shortcut (before 7pm today). onChange(date, time).
+export function DueInput({ label = "Due", date, time, onChange }) {
+  return (
+    <div className="text-xs text-slate-500">
+      {label}
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          value={date}
+          onChange={(e) => onChange(e.target.value, e.target.value ? time : "")}
+        />
+        <input
+          type="time"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-40"
+          value={time}
+          disabled={!date}
+          onChange={(e) => onChange(date, e.target.value)}
+          title="Optional -- a time of day to go with the date"
+          aria-label="Due time (optional)"
+        />
+        <button
+          type="button"
+          onClick={() => onChange(todayLocalIso(), "19:00")}
+          title="End of day: before 7pm today"
+          className="rounded-lg border border-brand px-3 py-2 font-display text-xs font-semibold text-brand hover:bg-brand/5"
+        >
+          EOD
+        </button>
+        {(date || time) && (
+          <button type="button" onClick={() => onChange("", "")} className="text-xs font-medium text-slate-400 underline hover:text-brand">
+            clear
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

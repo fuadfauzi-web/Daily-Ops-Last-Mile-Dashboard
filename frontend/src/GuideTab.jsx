@@ -363,10 +363,17 @@ const SECTIONS = [
         <p>
           The Task List tab keeps everything you have to chase in one place, in four sub-tabs (Urgent TN, Email / Gchat, Task Assigned, To Do List).
           Each sub-tab has its own red bell, and the tab shows them added up. A small <strong>amber dot</strong> on the tab and the sub-tab means one of
-          your follow-ups, tasks or to-dos is due within 2 days (or is overdue).
+          your follow-ups, tasks or to-dos is due within 2 days (or is overdue) -- for a task or follow-up that includes ones you assigned, not only ones
+          assigned to you.
         </p>
         <Bullets
           items={[
+            <>
+              <strong>Due dates and reminders</strong>: a due date can have an optional time. <strong>EOD</strong> fills in today, before 7pm. An open
+              item with a due date rings the bell on a schedule until you press <em>got it</em>: <strong>10am, 2pm and 5pm every day</strong> once
+              it is due within 2 days (or overdue), and <strong>once a day at 2pm</strong> while it is further away. It applies to Email / Gchat,
+              Task Assigned and the To Do List.
+            </>,
             <><strong>Urgent TN</strong>: tracking numbers you want to keep an eye on, optionally assigned to a PIC (see the Urgent TN section).</>,
             <>
               <strong>Email / Gchat</strong>: emails or chats you want to follow up again. Give each a due date, the <em>contact</em> (the person
@@ -380,9 +387,9 @@ const SECTIONS = [
               done), and optionally a reminder time -- the bell rings when it arrives, until you dismiss it or finish the item.
             </>,
             <>
-              <strong>Task Assigned</strong>: give a task to another dashboard user (for yourself, use the To Do List). They mark it Open / In
-              progress / Done and can reply; you can edit, reopen or remove it (removing deletes it for both of you). The bell rings for a task
-              you haven't picked a status for, while it's due or overdue, and for a reply or status change on one you assigned.
+              <strong>Task Assigned</strong>: give a task to one or more other dashboard users (for yourself, use the To Do List) -- each person
+              gets their own copy. They mark it Open / In progress / Done and can reply; you can edit, reopen or remove each one (removing deletes it
+              for that person too). The bell rings for a task you haven't picked a status for and for a reply or status change on one you assigned.
             </>,
           ]}
         />

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { formatTime } from "./lib/format";
 import { exportCsv } from "./lib/csv";
-import { dueClass, dueLabel, formatDay, notifyChanged, sortRows, useAction, useSort } from "./lib/taskUi";
+import { DueInput, dueCell, dueClass, notifyChanged, sortRows, useAction, useSort } from "./lib/taskUi";
 import DataTable from "./components/DataTable";
 import PicInput from "./components/PicInput";
 import SegmentedControl from "./components/SegmentedControl";
@@ -15,7 +15,7 @@ const CHANNEL_LABEL = { email: "Email", gchat: "Gchat" };
 export default function FollowUpTab({ me, refreshTick }) {
   const [items, setItems] = useState(null);
   const [view, setView] = useState("open");
-  const [form, setForm] = useState({ channel: "email", subject: "", contact: "", link: "", due_date: "", note: "", helper: "" });
+  const [form, setForm] = useState({ channel: "email", subject: "", contact: "", link: "", due_date: "", due_time: "", note: "", helper: "" });
   const [editing, setEditing] = useState(null);
   const [edit, setEdit] = useState({});
   const [replying, setReplying] = useState(null);
@@ -56,20 +56,23 @@ export default function FollowUpTab({ me, refreshTick }) {
         link: form.link,
         note: form.note,
         due_date: form.due_date || null,
+        due_time: form.due_time || null,
         helper_email: form.helper.trim() || null,
       })
     );
-    if (ok) setForm({ channel: form.channel, subject: "", contact: "", link: "", due_date: "", note: "", helper: "" });
+    if (ok) setForm({ channel: form.channel, subject: "", contact: "", link: "", due_date: "", due_time: "", note: "", helper: "" });
   };
 
   const startEdit = (r) => {
     setEditing(r);
-    setEdit({ subject: r.subject, contact: r.contact || "", link: r.link || "", due_date: r.due_date || "", note: r.note || "", helper: r.helper_email || "" });
+    setEdit({ subject: r.subject, contact: r.contact || "", link: r.link || "", due_date: r.due_date || "", due_time: r.due_time || "", note: r.note || "", helper: r.helper_email || "" });
   };
   const saveEdit = async () => {
     const payload = { subject: edit.subject, contact: edit.contact, link: edit.link, note: edit.note };
-    if (edit.due_date) payload.due_date = edit.due_date;
-    else payload.clear_due = true;
+    if (edit.due_date) {
+      payload.due_date = edit.due_date;
+      payload.due_time = edit.due_time || ""; // blank clears the time
+    } else payload.clear_due = true;
     if (edit.helper.trim()) {
       if (edit.helper.trim().toLowerCase() !== (editing.helper_email || "").toLowerCase()) payload.helper_email = edit.helper.trim();
     } else if (editing.helper_email) payload.clear_helper = true;
@@ -127,7 +130,7 @@ export default function FollowUpTab({ me, refreshTick }) {
       ),
     },
     { key: "contact", label: "Contact", render: (r) => r.contact || "—", className: () => "text-slate-700" },
-    { key: "due_date", label: "Due", render: dueLabel, className: dueClass },
+    { key: "due_date", label: "Due", render: (r) => dueCell(r, (row) => run(() => api.reminders.ack("followup", row.id)), busy), className: dueClass },
     {
       key: "helper",
       label: "PIC",
@@ -216,10 +219,7 @@ export default function FollowUpTab({ me, refreshTick }) {
           <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Contact — who is it with? (the sender or recipient)" value={form.contact} onChange={(e) => set("contact")(e.target.value)} maxLength={255} />
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          <label className="block text-xs text-slate-500">
-            Due date
-            <input type="date" className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.due_date} onChange={(e) => set("due_date")(e.target.value)} />
-          </label>
+          <DueInput label="Due date (time is optional)" date={form.due_date} time={form.due_time} onChange={(d, t) => setForm((f) => ({ ...f, due_date: d, due_time: t }))} />
           <label className="block text-xs text-slate-500">
             Link to the email / chat (optional)
             <input className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="https://…" value={form.link} onChange={(e) => set("link")(e.target.value)} maxLength={500} />
@@ -257,7 +257,7 @@ export default function FollowUpTab({ me, refreshTick }) {
           <div className="grid gap-2 sm:grid-cols-3">
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} placeholder="Subject" />
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.contact} onChange={(e) => setEdit({ ...edit, contact: e.target.value })} placeholder="Contact (sender / recipient)" />
-            <input type="date" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.due_date} onChange={(e) => setEdit({ ...edit, due_date: e.target.value })} />
+            <DueInput label="Due date (time is optional)" date={edit.due_date} time={edit.due_time} onChange={(d, t) => setEdit({ ...edit, due_date: d, due_time: t })} />
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.link} onChange={(e) => setEdit({ ...edit, link: e.target.value })} placeholder="Link" />
             <PicInput placeholder="PIC (blank for none)" value={edit.helper} onChange={(v) => setEdit({ ...edit, helper: v })} />
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} placeholder="Note" />
