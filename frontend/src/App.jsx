@@ -3,6 +3,8 @@ import { api } from "./api";
 import Dashboard from "./Dashboard";
 import SettingsPanel from "./SettingsPanel";
 import Logo from "./components/Logo";
+import BellBadge from "./components/BellBadge";
+import { useWhatsNewUnread } from "./lib/whatsNew";
 import RoleTester from "./components/RoleTester";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
@@ -24,6 +26,9 @@ export default function App() {
       .catch(() => setMe(null));
 
   useEffect(loadMe, []);
+
+  // Updates in Guide -> What's new the user hasn't read yet (clears once they open it).
+  const whatsNewUnread = useWhatsNewUnread(me?.provisioned ? me : null);
 
   // Bumped whenever the Role Tester applies / exits a view, and used as a React key below so
   // every screen remounts and re-fetches as the new role/scope. Without it the tab you were
@@ -146,8 +151,11 @@ export default function App() {
                   }`}
                 >
                   {t}
-                  {t === "settings" && (notifCounts?.feedback_replies_unread || 0) > 0 && (
-                    <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-status-critical align-middle" title="New reply to your feedback" />
+                  {t === "settings" && (
+                    <BellBadge
+                      count={(notifCounts?.feedback_replies_unread || 0) + whatsNewUnread}
+                      title="A reply to your feedback, or updates in What's new you haven't read"
+                    />
                   )}
                 </button>
               ))}
@@ -218,8 +226,11 @@ export default function App() {
                   }`}
                 >
                   {t}
-                  {t === "settings" && (notifCounts?.feedback_replies_unread || 0) > 0 && (
-                    <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-status-critical align-middle" title="New reply to your feedback" />
+                  {t === "settings" && (
+                    <BellBadge
+                      count={(notifCounts?.feedback_replies_unread || 0) + whatsNewUnread}
+                      title="A reply to your feedback, or updates in What's new you haven't read"
+                    />
                   )}
                 </button>
               ))}

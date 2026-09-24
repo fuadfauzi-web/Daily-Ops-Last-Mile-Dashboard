@@ -15,6 +15,13 @@
 export const CHANGELOG = [
   {
     date: "2026-09-25",
+    title: "A bell for What's new",
+    points: [
+      "A red bell shows on Settings (and on Guide → What's new) when there are updates you haven't read. It clears as soon as you open What's new, and updates you haven't seen yet are tagged NEW.",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "Stations in scope: now in the header",
     points: ["The \"N stations in scope\" count moved from the top of the page to a small footnote after \"Data as of\" in the header."],
   },
@@ -49,7 +56,7 @@ export const CHANGELOG = [
     title: "Feedback: replies, attachments, delete",
     points: [
       "Attach a screenshot or PDF (up to 20 MB) to your feedback.",
-      "Admins reply and close it; you see the reply under Settings → Feedback, with a red dot on Settings.",
+      "Admins reply and close it; you see the reply under Settings → Feedback, with a red bell on Settings.",
       "You can delete your own feedback whenever you like (it disappears for the admins too). Closed feedback is deleted automatically a week after it's closed.",
     ],
   },
