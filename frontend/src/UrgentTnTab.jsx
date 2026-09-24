@@ -114,13 +114,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
 
   const setStatus = (item, status) => run(() => api.urgentTn.update(item.id, { status }));
-  const closeOrRemove = (item) => {
-    const msg = item.assignee_email
-      ? `Close and remove ${item.tracking_number}? It will be removed from ${item.assigned_to_me ? "your" : "the PIC's"} list too.`
-      : `Remove ${item.tracking_number} from your list?`;
-    if (!window.confirm(msg)) return;
-    run(() => api.urgentTn.remove(item.id), "Removed");
-  };
+  // No "are you sure?" pop-up (2026-09-25 feedback): Close / remove deletes it straight away.
+  const closeOrRemove = (item) => run(() => api.urgentTn.remove(item.id), `Removed ${item.tracking_number}`);
   const startEdit = (item) => {
     setEditing(item);
     setEditAssignee(item.assignee_email || "");
