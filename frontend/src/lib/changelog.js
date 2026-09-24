@@ -47,6 +47,7 @@ export const CHANGELOG = [
       "Start typing a teammate's name or email when you track a tracking number and pick them from the suggestions (they must already be a dashboard user), with an optional note.",
       "They see a red bell on the Urgent TN tab. They pick In progress (the bell goes quiet for an hour, then reminds them if it isn't closed) or Closed (the bell stays off and it stays on their list marked closed), and can type a reply that you see.",
       "When you close or remove it, it disappears from their list too, whatever its status.",
+      "A tracking number with no status (not found) is never assigned to a PIC -- there's nothing to chase. It stays on your own list and is removed automatically after 3 days if it still has no status.",
     ],
   },
   {

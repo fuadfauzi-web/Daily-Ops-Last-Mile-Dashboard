@@ -225,7 +225,19 @@ export default function UrgentTnTab({ me, refreshTick }) {
       key: "tn_status",
       label: "Parcel Status",
       sortable: false,
-      render: (r) => (r.found ? r.tn_status ?? "—" : "Not found"),
+      render: (r) =>
+        r.found ? (
+          r.tn_status ?? "—"
+        ) : (
+          <>
+            Not found
+            {r.no_status_days_left != null && (
+              <div className="text-[10px] font-normal text-slate-400">
+                removed automatically in {r.no_status_days_left} day{r.no_status_days_left === 1 ? "" : "s"}
+              </div>
+            )}
+          </>
+        ),
       className: (r) => (r.found ? "text-slate-700" : "font-medium text-status-critical"),
     },
     { key: "dest_hub", label: "Dest Hub", sortable: false, render: (r) => r.dest_hub ?? "—" },
@@ -306,7 +318,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
         />
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="block text-xs text-slate-500">
-            PIC (optional) — pick a dashboard user, or type their email
+            PIC (optional) — pick a dashboard user, or type their email (only for tracking numbers that have a status)
             <PicInput className="mt-1" placeholder="Start typing a name or email…" value={assignee} onChange={setAssignee} />
           </label>
           <label className="block text-xs text-slate-500">

@@ -454,6 +454,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
 
         try:
             await _prune_old_snapshots(captured_at)
+            await _sync_urgent_no_status(captured_at)
         except Exception:  # noqa: BLE001 - isolated so a bug here can't fail the whole refresh
             log.exception("Pruning old snapshots failed")
 
@@ -483,6 +484,22 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
 _SINGLE_SNAPSHOT_TABLES = (
     "shipment_details", "routed_stations", "shipper_watch", "aging_details", "old_route", "rpu_snapshot",
 )
+
+
+async def _sync_urgent_no_status(now: datetime) -> None:
+    """After a refresh: start the 3-day clock on Urgent TN items whose tracking number has no
+    status, stop it for ones that have one again, and delete the ones that stayed status-less
+    for 3 days (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
+    rows = await db.fetch_all("SELECT id, tracking_number, no_status_since FROM urgent_tn_items")
+    cutoff = now - URGENT_NO_STATUS_TTL
+    for item_id, tn, since in rows:
+        if tn in _health_v3_by_tn:
+            if since is not None:
+                await db.execute("UPDATE urgent_tn_items SET no_status_since = NULL WHERE id = %s", (item_id,))
+        elif since is None:
+            await db.execute("UPDATE urgent_tn_items SET no_status_since = %s WHERE id = %s", (now, item_id))
+        elif _utc_naive(since) < cutoff:
+            await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
 
 
 async def _prune_old_snapshots(captured_at: datetime) -> None:
@@ -2407,6 +2424,11 @@ async def _prune_closed_feedback(now: datetime) -> None:
 URGENT_TN_MAX_PER_REQUEST = 200
 URGENT_STATUSES = ("in_progress", "closed")
 URGENT_REMINDER = timedelta(hours=1)
+# 2026-09-25 feedback: a tracking number with no status in the active data (not found: already
+# completed / added to a shipment) isn't urgent -- nothing to chase. It is never assigned to a
+# PIC, and if it still has no status 3 days after we first noticed, it is removed automatically
+# (see _sync_urgent_no_status, run after every refresh) unless its owner removed it sooner.
+URGENT_NO_STATUS_TTL = timedelta(days=3)
 
 
 class UrgentItemCreate(BaseModel):
@@ -2438,6 +2460,7 @@ class UrgentItem(BaseModel):
     pic_reply: str | None
     pic_replied_at: str | None
     reminder_in_minutes: int | None
+    no_status_days_left: int | None = None
     created_by_me: bool
     assigned_to_me: bool
     is_new: bool
@@ -2464,7 +2487,7 @@ def _iso(value) -> str | None:
 
 _URGENT_COLUMNS = (
     "id, tracking_number, created_by, assignee_email, note, status, created_at, updated_at, closed_at, closed_by, "
-    "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen"
+    "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen, no_status_since"
 )
 
 
@@ -2490,7 +2513,7 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     items = []
     for r in rows:
         (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by,
-         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen) = r
+         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since) = r
         found = _health_v3_by_tn.get(tn)
         created_by_me = created_by.lower() == me
         assigned_to_me = bool(assignee) and assignee.lower() == me
@@ -2499,7 +2522,12 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
             left = _utc_naive(ack_at) + URGENT_REMINDER - now
             if left.total_seconds() > 0:
                 reminder = int(left.total_seconds() // 60) + 1
+        days_left = None
+        if found is None and no_status_since is not None:
+            left = _utc_naive(no_status_since) + URGENT_NO_STATUS_TTL - now
+            days_left = max(0, int(-(-left.total_seconds() // 86400)))
         items.append({
+            "no_status_days_left": days_left,
             "id": item_id, "tracking_number": tn, "created_by": created_by, "assignee_email": assignee,
             "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
             "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
@@ -2578,8 +2606,12 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
     assignee = await _resolve_assignee(payload.assignee_email)
 
+    if _health_v3_by_tn_captured_at is None:
+        # Right after a restart nothing looks "found" yet -- don't judge (or refuse to assign) on that.
+        raise HTTPException(status_code=503, detail="Parcel data is still loading -- try again in a minute")
+
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    added, skipped = 0, 0
+    added, skipped, no_status, not_assigned = 0, 0, 0, 0
     for tn in tns:
         existing = await db.fetch_one(
             "SELECT id FROM urgent_tn_items WHERE tracking_number = %s AND LOWER(created_by) = %s",
@@ -2588,17 +2620,36 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         if existing:
             skipped += 1
             continue
+        # A TN with no status isn't urgent, so it is NOT assigned to the PIC -- it just goes on
+        # your own list and expires in 3 days if it still has no status.
+        has_status = tn in _health_v3_by_tn
+        tn_assignee = assignee if has_status else None
+        if not has_status:
+            no_status += 1
+            if assignee is not None and assignee.lower() != user.email.lower():
+                not_assigned += 1
         # Assigning to yourself is just tracking -- nothing to be notified about.
-        self_or_none = assignee is None or assignee.lower() == user.email.lower()
+        self_or_none = tn_assignee is None or tn_assignee.lower() == user.email.lower()
         await db.execute(
             """INSERT INTO urgent_tn_items
                (tracking_number, created_by, assignee_email, note, status, created_at, updated_at,
-                assignee_seen_at, assignee_ack_at, owner_unseen)
-               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0)""",
-            (tn, user.email, assignee, note, now, now, now if self_or_none else None, now if self_or_none else None),
+                assignee_seen_at, assignee_ack_at, owner_unseen, no_status_since)
+               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0, %s)""",
+            (
+                tn, user.email, tn_assignee, note, now, now,
+                now if self_or_none else None, now if self_or_none else None, None if has_status else now,
+            ),
         )
         added += 1
-    detail = f"Added {added}" + (f", skipped {skipped} already on your list" if skipped else "")
+    detail = f"Added {added}"
+    if skipped:
+        detail += f", skipped {skipped} already on your list"
+    if no_status:
+        detail += (
+            f". {no_status} {'has' if no_status == 1 else 'have'} no status (not found)"
+            + (f", so {'it was' if not_assigned == 1 else f'{not_assigned} were'} not assigned to the PIC" if not_assigned else "")
+            + " -- kept on your list and removed automatically after 3 days unless you remove it first"
+        )
     return {"ok": True, "detail": detail}
 
 
@@ -2656,6 +2707,10 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
             assignee = await _resolve_assignee(payload.assignee_email)
             if assignee is None:
                 raise HTTPException(status_code=422, detail="Enter the PIC's email, or use clear_assignee")
+            if _health_v3_by_tn_captured_at is not None and row[1] not in _health_v3_by_tn:
+                raise HTTPException(
+                    status_code=422, detail=f"{row[1]} has no status (not found), so it isn't urgent and can't be assigned to a PIC"
+                )
             self_assigned = assignee.lower() == me
             sets += ["assignee_email = %s", "assignee_seen_at = %s", "assignee_ack_at = %s", "pic_reply = NULL", "pic_replied_at = NULL"]
             params += [assignee, now if self_assigned else None, now if self_assigned else None]
@@ -2708,11 +2763,17 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
     urgent_owner_updates: items I added where the PIC replied / changed the status."""
     me = user.email.lower()
     threshold = datetime.now(timezone.utc) - URGENT_REMINDER
-    notify = await db.fetch_one(
-        """SELECT COUNT(*) FROM urgent_tn_items
+    notify_rows = await db.fetch_all(
+        """SELECT tracking_number FROM urgent_tn_items
            WHERE LOWER(assignee_email) = %s AND LOWER(created_by) <> %s AND status = 'in_progress'
              AND (assignee_ack_at IS NULL OR assignee_ack_at < %s)""",
         (me, me, threshold),
+    )
+    # A TN with no status any more (completed / added to a shipment) isn't worth a bell.
+    notify = (
+        sum(1 for r in notify_rows if r[0] in _health_v3_by_tn)
+        if _health_v3_by_tn_captured_at is not None
+        else len(notify_rows),
     )
     owner = await db.fetch_one(
         "SELECT COUNT(*) FROM urgent_tn_items WHERE LOWER(created_by) = %s AND owner_unseen = 1", (me,)
