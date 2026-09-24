@@ -339,6 +339,10 @@ const SECTIONS = [
               PIC or note, reopen an item the PIC closed, and <strong>Close / remove</strong> it -- which removes it from the PIC's list too,
               whatever its status.
             </>,
+            <>
+              A tracking number with <strong>no status</strong> ("Not found") is never assigned to a PIC -- it isn't urgent. It stays on
+              your own list, and is removed automatically after 3 days if it still has no status (the list shows how many days are left).
+            </>,
             <>You see the tracking numbers you added and the ones assigned to you.</>,
           ]}
         />
