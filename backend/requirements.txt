@@ -3,3 +3,4 @@ uvicorn[standard]>=0.32
 asyncmy>=0.2.9          # OceanBase / MySQL-wire driver (NOT asyncpg/Postgres)
 httpx>=0.27             # calling the Redash API
 python-multipart>=0.0.12  # FastAPI file uploads (Settings -> Documents)
+google-cloud-storage>=2.18  # feedback attachments (object storage, see storage.py)

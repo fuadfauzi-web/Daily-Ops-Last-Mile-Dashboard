@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import Dashboard from "./Dashboard";
 import SettingsPanel from "./SettingsPanel";
-import AdminPanel from "./AdminPanel";
 import Logo from "./components/Logo";
 import RoleTester from "./components/RoleTester";
 import { useDensity } from "./lib/density";
@@ -24,6 +23,35 @@ export default function App() {
       .catch(() => setMe(null));
 
   useEffect(loadMe, []);
+
+  // Bumped whenever the Role Tester applies / exits a view, and used as a React key below so
+  // every screen remounts and re-fetches as the new role/scope. Without it the tab you were
+  // on kept showing the data it had already loaded as the real admin (2026-09-25 bug: a
+  // Manager / East Coast preview still listed every region on Station Health).
+  const [viewKey, setViewKey] = useState(0);
+
+  // Header bell + dashboard banner (2026-09-25): Urgent TNs assigned to this user
+  // and unread admin replies to their feedback. Polled every minute, and
+  // refreshed at once when other parts of the app fire "notifications-changed".
+  const [notifCounts, setNotifCounts] = useState(null);
+  const provisioned = !!me?.provisioned;
+  useEffect(() => {
+    if (!provisioned) return undefined;
+    const load = () =>
+      api
+        .notifications()
+        .then(setNotifCounts)
+        .catch(() => {
+          /* the bell just keeps its last numbers */
+        });
+    load();
+    const timer = setInterval(load, 60000);
+    window.addEventListener("notifications-changed", load);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("notifications-changed", load);
+    };
+  }, [provisioned]);
 
   if (me === undefined) {
     return (
@@ -64,14 +92,11 @@ export default function App() {
     .map((s) => s[0].toUpperCase())
     .join("");
 
-  // Settings (Users/SLA Targets/Recovery Settings/Data Refresh) is nationwide
-  // configuration -- same admin/manager/region gate the combined Admin page
-  // used to have. Admin (Feedback/Guide, and later Attendance and more) is
-  // day-to-day tooling everyone should be able to reach, regardless of role/
-  // scope -- its own per-tab `visible` checks (see AdminPanel.jsx) don't need
-  // a page-level gate at all.
-  const canSeeSettings = me.role === "admin" || me.role === "manager" || me.role === "region";
-  const navTabs = ["dashboard", ...(canSeeSettings ? ["settings"] : []), "admin"];
+  // Settings holds what every role may reach (Users for admin/manager/region, SLA Targets and
+  // Recovery Settings for admin/manager, plus Feedback and Guide for everyone); Admin is
+  // admin-only (Documents, Data Refresh) -- 2026-09-25 feedback. Each tab inside applies its
+  // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
+  const navTabs = ["dashboard", "settings", ...(me.role === "admin" ? ["admin"] : [])];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -115,6 +140,9 @@ export default function App() {
                   }`}
                 >
                   {t}
+                  {t === "settings" && (notifCounts?.feedback_replies_unread || 0) > 0 && (
+                    <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-status-critical align-middle" title="New reply to your feedback" />
+                  )}
                 </button>
               ))}
             </nav>
@@ -122,6 +150,7 @@ export default function App() {
               me={me}
               onChanged={() => {
                 setTab("dashboard");
+                setViewKey((k) => k + 1);
                 loadMe();
               }}
             />
@@ -178,6 +207,9 @@ export default function App() {
                   }`}
                 >
                   {t}
+                  {t === "settings" && (notifCounts?.feedback_replies_unread || 0) > 0 && (
+                    <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-status-critical align-middle" title="New reply to your feedback" />
+                  )}
                 </button>
               ))}
             </nav>
@@ -199,9 +231,9 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" && <Dashboard me={me} onCapturedAt={setFreshness} />}
-        {tab === "settings" && canSeeSettings && <SettingsPanel me={me} />}
-        {tab === "admin" && <AdminPanel me={me} />}
+        {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} notifCounts={notifCounts} />}
+        {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
+        {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
       </main>
     </div>
   );

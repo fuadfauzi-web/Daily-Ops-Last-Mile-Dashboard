@@ -16,14 +16,17 @@ import io
 import json
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 import db
+import storage
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
     METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
@@ -437,6 +440,7 @@ async def _prune_old_snapshots(captured_at: datetime) -> None:
     await db.execute(
         "DELETE FROM refresh_log WHERE started_at < %s", (captured_at - timedelta(days=30),)
     )
+    await _prune_closed_feedback(captured_at)
 
 
 async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> None:
@@ -543,6 +547,7 @@ async def me(
     x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
     x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
     x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
+    x_view_as_email: str | None = Header(default=None, alias="X-View-As-Email"),
 ):
     if not x_forwarded_email:
         return {"email": None, "provisioned": False}
@@ -556,6 +561,18 @@ async def me(
     real_role = row[1]
     # Same "View As" override as auth.get_current_user -- gated on real_role
     # from the DB, never on the override headers themselves.
+    if real_role == "admin" and x_view_as_email:
+        target = await db.fetch_one(
+            "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE LOWER(email) = %s",
+            (x_view_as_email.strip().lower(),),
+        )
+        if target is None:
+            raise HTTPException(status_code=422, detail="That user isn't in the user list")
+        return {
+            "email": target[0], "provisioned": True, "role": target[1], "scope_type": target[2],
+            "scope_values": parse_scope_values(target[3]), "display_name": target[4],
+            "is_impersonating": True, "real_role": real_role,
+        }
     if real_role == "admin" and x_view_as_role:
         return {
             "email": row[0], "provisioned": True, "role": x_view_as_role,
@@ -1854,8 +1871,22 @@ async def pending_yesterday_route(user: CurrentUser = Depends(get_current_user))
 # ---------------------------------------------------------------------------
 
 
-class FeedbackIn(BaseModel):
-    message: str
+class OkResult(BaseModel):
+    ok: bool
+    detail: str | None = None
+
+
+# 2026-09-25: feedback is now a small ticket workflow (V27 migration). The sender
+# can attach one image/PDF (<= 2 MB, stored on the row), sees ONLY their own
+# feedback plus the admin's reply, and an admin sees everyone's, replies and
+# closes it. A closed feedback (and its attachment) is deleted 7 days after it
+# was closed -- see _prune_closed_feedback, run from the refresh loop.
+FEEDBACK_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+FEEDBACK_ATTACHMENT_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".webp": "image/webp", ".pdf": "application/pdf",
+}
+FEEDBACK_CLOSED_RETENTION_DAYS = 7
 
 
 class FeedbackRow(BaseModel):
@@ -1866,41 +1897,503 @@ class FeedbackRow(BaseModel):
     scope_value: str | None
     message: str
     created_at: str
+    status: str
+    reply: str | None
+    replied_by: str | None
+    replied_at: str | None
+    closed_at: str | None
+    delete_after: str | None
+    reply_unread: bool
+    has_attachment: bool
+    attachment_name: str | None
+    attachment_type: str | None
+    is_mine: bool
 
 
-class OkResult(BaseModel):
-    ok: bool
-    detail: str | None = None
+class FeedbackUpdate(BaseModel):
+    reply: str | None = None
+    status: str | None = None  # 'open' | 'closed'
 
 
 @app.post("/api/feedback", response_model=OkResult)
-async def submit_feedback(payload: FeedbackIn, user: CurrentUser = Depends(get_current_user)):
-    message = payload.message.strip()
+async def submit_feedback(
+    message: str = Form(...), file: UploadFile | None = File(None), user: CurrentUser = Depends(get_current_user)
+):
+    message = message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Feedback message can't be empty")
     if len(message) > 4000:
         raise HTTPException(status_code=422, detail="Feedback message is too long (max 4000 characters)")
+
+    attachment_name = attachment_type = attachment_data = None
+    if file is not None and file.filename:
+        ext = os.path.splitext(file.filename)[1].lower()
+        content_type = FEEDBACK_ATTACHMENT_TYPES.get(ext)
+        if content_type is None:
+            raise HTTPException(status_code=422, detail="Attach an image (png, jpg, gif, webp) or a PDF")
+        attachment_data = await file.read()
+        if len(attachment_data) > FEEDBACK_MAX_ATTACHMENT_BYTES:
+            raise HTTPException(status_code=422, detail="Attachment is too large (max 20 MB)")
+        if not attachment_data:
+            raise HTTPException(status_code=422, detail="The attachment is empty")
+        attachment_name, attachment_type = os.path.basename(file.filename)[:255], content_type
+
+    # Too big for a database row, so the file goes to object storage (the row keeps
+    # only its key) -- see storage.py. Upload first: if it fails nothing is saved.
+    attachment_key = None
+    if attachment_data:
+        attachment_key = storage.safe_key("feedback", f"{uuid.uuid4().hex}{os.path.splitext(attachment_name)[1].lower()}")
+        try:
+            await run_in_threadpool(storage.put_bytes, attachment_key, attachment_data, content_type=attachment_type)
+        except Exception:  # noqa: BLE001
+            log.exception("Feedback attachment upload failed")
+            raise HTTPException(status_code=503, detail="Couldn't store the attachment right now -- try again, or send without it")
+
     await db.execute(
-        """INSERT INTO app_feedback (email, role, scope_type, scope_value, message, created_at)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
-        (user.email, user.role, user.scope_type, ", ".join(user.scope_values) or None, message, datetime.now(timezone.utc)),
+        """INSERT INTO app_feedback
+           (email, role, scope_type, scope_value, message, created_at, attachment_name, attachment_type, attachment_key)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (
+            user.email, user.role, user.scope_type, ", ".join(user.scope_values) or None, message,
+            datetime.now(timezone.utc), attachment_name, attachment_type, attachment_key,
+        ),
     )
     return {"ok": True}
 
 
+_FEEDBACK_COLUMNS = (
+    "id, email, role, scope_type, scope_value, message, created_at, status, reply, replied_by, replied_at, "
+    "closed_at, reply_unread, attachment_name, attachment_type, (attachment_key IS NOT NULL)"
+)
+
+
 @app.get("/api/feedback", response_model=list[FeedbackRow])
 async def list_feedback(user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
-    rows = await db.fetch_all(
-        "SELECT id, email, role, scope_type, scope_value, message, created_at FROM app_feedback ORDER BY created_at DESC"
+    """Admins get everyone's feedback; anyone else gets only their own. Opening the
+    list as the sender clears the "new reply" flag (drives the header bell)."""
+    is_admin = user.role == "admin"
+    if is_admin:
+        rows = await db.fetch_all(f"SELECT {_FEEDBACK_COLUMNS} FROM app_feedback ORDER BY created_at DESC")
+    else:
+        rows = await db.fetch_all(
+            f"SELECT {_FEEDBACK_COLUMNS} FROM app_feedback WHERE LOWER(email) = %s ORDER BY created_at DESC",
+            (user.email.lower(),),
+        )
+    out = []
+    for r in rows:
+        (fid, email, role, scope_type, scope_value, message, created_at, status, reply, replied_by, replied_at,
+         closed_at, reply_unread, att_name, att_type, has_att) = r
+        mine = email.lower() == user.email.lower()
+        out.append({
+            "id": fid, "email": email, "role": role, "scope_type": scope_type, "scope_value": scope_value,
+            "message": message, "created_at": _iso(created_at), "status": status, "reply": reply,
+            "replied_by": replied_by, "replied_at": _iso(replied_at), "closed_at": _iso(closed_at),
+            "delete_after": _iso(closed_at + timedelta(days=FEEDBACK_CLOSED_RETENTION_DAYS)) if closed_at else None,
+            "reply_unread": bool(reply_unread) and mine, "has_attachment": bool(has_att),
+            "attachment_name": att_name, "attachment_type": att_type, "is_mine": mine,
+        })
+    await db.execute("UPDATE app_feedback SET reply_unread = 0 WHERE LOWER(email) = %s AND reply_unread = 1", (user.email.lower(),))
+    return out
+
+
+@app.get("/api/feedback/{feedback_id}/attachment")
+async def feedback_attachment(feedback_id: int, user: CurrentUser = Depends(get_current_user)):
+    row = await db.fetch_one(
+        "SELECT email, attachment_name, attachment_type, attachment_key FROM app_feedback WHERE id = %s", (feedback_id,)
     )
-    return [
-        {
-            "id": r[0], "email": r[1], "role": r[2], "scope_type": r[3], "scope_value": r[4],
-            "message": r[5], "created_at": str(r[6]),
-        }
-        for r in rows
-    ]
+    if row is None or row[3] is None or not (user.role == "admin" or row[0].lower() == user.email.lower()):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    name = (row[1] or "attachment").replace('"', "")
+    disposition = "inline" if row[2].startswith("image/") else "attachment"
+    try:
+        content = await run_in_threadpool(storage.get_bytes, row[3])
+    except Exception:  # noqa: BLE001
+        log.exception("Feedback attachment read failed")
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return Response(
+        content=content, media_type=row[2],
+        headers={"Content-Disposition": f'{disposition}; filename="{name}"', "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.patch("/api/feedback/{feedback_id}", response_model=OkResult)
+async def update_feedback(feedback_id: int, payload: FeedbackUpdate, user: CurrentUser = Depends(get_current_user)):
+    _require_admin(user)
+    row = await db.fetch_one("SELECT id FROM app_feedback WHERE id = %s", (feedback_id,))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sets, params = [], []
+    if payload.reply is not None:
+        reply = payload.reply.strip()
+        if not reply:
+            raise HTTPException(status_code=422, detail="Reply can't be empty")
+        if len(reply) > 4000:
+            raise HTTPException(status_code=422, detail="Reply is too long (max 4000 characters)")
+        sets += ["reply = %s", "replied_by = %s", "replied_at = %s", "reply_unread = 1"]
+        params += [reply, user.email, now]
+    if payload.status is not None:
+        if payload.status == "closed":
+            sets += ["status = 'closed'", "closed_at = %s"]
+            params.append(now)
+        elif payload.status == "open":
+            sets += ["status = 'open'", "closed_at = NULL"]
+        else:
+            raise HTTPException(status_code=422, detail="status must be 'open' or 'closed'")
+    if not sets:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    params.append(feedback_id)
+    await db.execute(f"UPDATE app_feedback SET {', '.join(sets)} WHERE id = %s", tuple(params))
+    return {"ok": True}
+
+
+async def _delete_feedback_files(keys: list[str]) -> None:
+    for key in keys:
+        if not key:
+            continue
+        try:
+            await run_in_threadpool(storage.delete, key)
+        except Exception:  # noqa: BLE001 - an orphaned file is harmless, the row is what matters
+            log.warning("Couldn't delete feedback attachment %s", key)
+
+
+@app.delete("/api/feedback/{feedback_id}", response_model=OkResult)
+async def delete_feedback(feedback_id: int, user: CurrentUser = Depends(get_current_user)):
+    """The sender removes their own feedback -- it disappears for the admins too,
+    whatever its status (2026-09-25 feedback), attachment included."""
+    row = await db.fetch_one("SELECT email, attachment_key FROM app_feedback WHERE id = %s", (feedback_id,))
+    if row is None or row[0].lower() != user.email.lower():
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    await db.execute("DELETE FROM app_feedback WHERE id = %s", (feedback_id,))
+    await _delete_feedback_files([row[1]])
+    return {"ok": True}
+
+
+async def _prune_closed_feedback(now: datetime) -> None:
+    cutoff = now - timedelta(days=FEEDBACK_CLOSED_RETENTION_DAYS)
+    expired = await db.fetch_all(
+        "SELECT attachment_key FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s",
+        (cutoff,),
+    )
+    if not expired:
+        return
+    await db.execute(
+        "DELETE FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s", (cutoff,)
+    )
+    await _delete_feedback_files([r[0] for r in expired])
+
+
+# 2026-09-25: Urgent TN moved from a per-browser localStorage list to the
+# database so a tracking number can be assigned to a PIC (another user) with a
+# reply + status workflow (see V27 / V30 migrations). An item is visible to whoever
+# created it (the OWNER) and to its assignee (the PIC).
+#
+#   PIC:    picks "In progress" (acknowledges it -- the tab's bell goes quiet, and comes
+#           back after 1 hour if it still isn't closed) or "Closed" (bell gone for good,
+#           but the item stays in the PIC's list marked closed), and can type a reply the
+#           owner sees.
+#   Owner:  can edit the PIC/note, reopen an item the PIC closed, and CLOSE or REMOVE it
+#           -- both delete it, so it disappears from the PIC's list too, whatever its
+#           status. The assignee's email must already exist in `users`.
+# Deleting a user deletes the items they created and unassigns items assigned to them
+# (delete_user below).
+
+URGENT_TN_MAX_PER_REQUEST = 200
+URGENT_STATUSES = ("in_progress", "closed")
+URGENT_REMINDER = timedelta(hours=1)
+
+
+class UrgentItemCreate(BaseModel):
+    tracking_numbers: list[str]
+    assignee_email: str | None = None
+    note: str | None = None
+
+
+class UrgentItemUpdate(BaseModel):
+    status: str | None = None
+    assignee_email: str | None = None
+    clear_assignee: bool = False
+    note: str | None = None
+    pic_reply: str | None = None
+
+
+class UrgentItem(BaseModel):
+    id: int
+    tracking_number: str
+    created_by: str
+    assignee_email: str | None
+    assignee_name: str | None
+    note: str | None
+    status: str
+    created_at: str
+    updated_at: str
+    closed_at: str | None
+    closed_by: str | None
+    pic_reply: str | None
+    pic_replied_at: str | None
+    reminder_in_minutes: int | None
+    created_by_me: bool
+    assigned_to_me: bool
+    is_new: bool
+    owner_unseen: bool
+    found: bool
+    dest_hub: str | None = None
+    last_sweep_hub: str | None = None
+    tn_status: str | None = None
+    age: float | None = None
+    attempts: int | None = None
+    cod: str | None = None
+
+
+class UrgentItemsResponse(BaseModel):
+    captured_at: str | None
+    items: list[UrgentItem]
+
+
+def _iso(value) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+_URGENT_COLUMNS = (
+    "id, tracking_number, created_by, assignee_email, note, status, created_at, updated_at, closed_at, closed_by, "
+    "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen"
+)
+
+
+def _utc_naive(value):
+    """DB datetimes come back naive-UTC; make them comparable with now()."""
+    return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
+
+
+async def _urgent_items_for(user: CurrentUser) -> list[dict]:
+    me = user.email.lower()
+    rows = await db.fetch_all(
+        f"""SELECT {_URGENT_COLUMNS} FROM urgent_tn_items
+            WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s
+            ORDER BY (status = 'closed'), created_at DESC""",
+        (me, me),
+    )
+    assignee_emails = {r[3] for r in rows if r[3]}
+    names: dict[str, str | None] = {}
+    for email in assignee_emails:
+        u = await db.fetch_one("SELECT display_name FROM users WHERE LOWER(email) = %s", (email.lower(),))
+        names[email] = u[0] if u else None
+    now = datetime.now(timezone.utc)
+    items = []
+    for r in rows:
+        (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by,
+         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen) = r
+        found = _health_v3_by_tn.get(tn)
+        created_by_me = created_by.lower() == me
+        assigned_to_me = bool(assignee) and assignee.lower() == me
+        reminder = None
+        if assigned_to_me and not created_by_me and status == "in_progress" and ack_at is not None:
+            left = _utc_naive(ack_at) + URGENT_REMINDER - now
+            if left.total_seconds() > 0:
+                reminder = int(left.total_seconds() // 60) + 1
+        items.append({
+            "id": item_id, "tracking_number": tn, "created_by": created_by, "assignee_email": assignee,
+            "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
+            "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
+            "closed_by": closed_by, "pic_reply": pic_reply, "pic_replied_at": _iso(pic_replied_at),
+            "reminder_in_minutes": reminder, "created_by_me": created_by_me, "assigned_to_me": assigned_to_me,
+            "is_new": assigned_to_me and not created_by_me and seen_at is None and status == "in_progress",
+            "owner_unseen": created_by_me and bool(owner_unseen),
+            "found": found is not None,
+            "dest_hub": found.get("dest_hub") if found else None,
+            "last_sweep_hub": found.get("last_sweep_hub") if found else None,
+            "tn_status": found.get("status") if found else None,
+            "age": found.get("age") if found else None,
+            "attempts": found.get("attempts") if found else None,
+            "cod": found.get("cod") if found else None,
+        })
+    return items
+
+
+@app.get("/api/urgent-tn/items", response_model=UrgentItemsResponse)
+async def urgent_tn_items(user: CurrentUser = Depends(get_current_user)):
+    return {"captured_at": _health_v3_by_tn_captured_at, "items": await _urgent_items_for(user)}
+
+
+async def _resolve_assignee(email: str | None) -> str | None:
+    """The stored (canonical-case) users.email for an assignee, or a 422 if that
+    email isn't in the user list."""
+    email = (email or "").strip()
+    if not email:
+        return None
+    row = await db.fetch_one("SELECT email FROM users WHERE LOWER(email) = %s", (email.lower(),))
+    if row is None:
+        raise HTTPException(status_code=422, detail=f"{email} isn't in the user list -- ask an admin to add them first")
+    return row[0]
+
+
+@app.post("/api/urgent-tn/items", response_model=OkResult)
+async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depends(get_current_user)):
+    tns = []
+    for raw in payload.tracking_numbers:
+        tn = (raw or "").strip()
+        if tn and tn not in tns:
+            tns.append(tn)
+    if not tns:
+        raise HTTPException(status_code=422, detail="Add at least one tracking number")
+    if len(tns) > URGENT_TN_MAX_PER_REQUEST:
+        raise HTTPException(status_code=422, detail=f"Add at most {URGENT_TN_MAX_PER_REQUEST} tracking numbers at a time")
+    if any(len(tn) > 64 for tn in tns):
+        raise HTTPException(status_code=422, detail="A tracking number is too long")
+    note = (payload.note or "").strip() or None
+    if note and len(note) > 500:
+        raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
+    assignee = await _resolve_assignee(payload.assignee_email)
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    added, skipped = 0, 0
+    for tn in tns:
+        existing = await db.fetch_one(
+            "SELECT id FROM urgent_tn_items WHERE tracking_number = %s AND LOWER(created_by) = %s",
+            (tn, user.email.lower()),
+        )
+        if existing:
+            skipped += 1
+            continue
+        # Assigning to yourself is just tracking -- nothing to be notified about.
+        self_or_none = assignee is None or assignee.lower() == user.email.lower()
+        await db.execute(
+            """INSERT INTO urgent_tn_items
+               (tracking_number, created_by, assignee_email, note, status, created_at, updated_at,
+                assignee_seen_at, assignee_ack_at, owner_unseen)
+               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0)""",
+            (tn, user.email, assignee, note, now, now, now if self_or_none else None, now if self_or_none else None),
+        )
+        added += 1
+    detail = f"Added {added}" + (f", skipped {skipped} already on your list" if skipped else "")
+    return {"ok": True, "detail": detail}
+
+
+async def _load_urgent_item(item_id: int, user: CurrentUser) -> tuple:
+    row = await db.fetch_one(f"SELECT {_URGENT_COLUMNS} FROM urgent_tn_items WHERE id = %s", (item_id,))
+    me = user.email.lower()
+    if row is None or not (row[2].lower() == me or (row[3] and row[3].lower() == me)):
+        raise HTTPException(status_code=404, detail="Item not found")
+    return row
+
+
+@app.patch("/api/urgent-tn/items/{item_id}", response_model=OkResult)
+async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: CurrentUser = Depends(get_current_user)):
+    row = await _load_urgent_item(item_id, user)
+    me = user.email.lower()
+    is_owner = row[2].lower() == me
+    is_pic = bool(row[3]) and row[3].lower() == me and not is_owner
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    sets, params = ["updated_at = %s"], [now]
+
+    if payload.pic_reply is not None:
+        if not (is_pic or (bool(row[3]) and row[3].lower() == me)):
+            raise HTTPException(status_code=403, detail="Only the PIC can reply here")
+        reply = payload.pic_reply.strip()
+        if len(reply) > 1000:
+            raise HTTPException(status_code=422, detail="Reply is too long (max 1000 characters)")
+        sets += ["pic_reply = %s", "pic_replied_at = %s", "owner_unseen = %s"]
+        params += [reply or None, now if reply else None, 1 if (reply and not is_owner) else row[14]]
+
+    if payload.status is not None:
+        if payload.status not in URGENT_STATUSES:
+            raise HTTPException(status_code=422, detail=f"status must be one of {URGENT_STATUSES}")
+        if is_owner and payload.status == "closed":
+            # Owner closing == removing: it goes from the PIC's list too, whatever its status.
+            await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
+            return {"ok": True, "detail": "Closed and removed"}
+        if is_pic and payload.status == "in_progress":
+            # "In progress" acknowledges it: the bell stays quiet for an hour, then comes
+            # back if it still isn't closed. (Also reopens an item the PIC had closed.)
+            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = %s", "owner_unseen = 1"]
+            params.append(now)
+        elif is_pic and payload.status == "closed":
+            sets += ["status = 'closed'", "closed_at = %s", "closed_by = %s", "owner_unseen = 1"]
+            params += [now, user.email]
+        elif is_owner and payload.status == "in_progress":
+            # Owner reopens an item the PIC closed: the PIC is notified again.
+            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = NULL", "assignee_seen_at = NULL"]
+
+    if payload.assignee_email is not None or payload.clear_assignee or payload.note is not None:
+        if not is_owner:
+            raise HTTPException(status_code=403, detail="Only the person who added this can change its PIC or note")
+        if payload.clear_assignee:
+            sets += ["assignee_email = NULL", "assignee_seen_at = NULL", "assignee_ack_at = NULL"]
+        elif payload.assignee_email is not None:
+            assignee = await _resolve_assignee(payload.assignee_email)
+            if assignee is None:
+                raise HTTPException(status_code=422, detail="Enter the PIC's email, or use clear_assignee")
+            self_assigned = assignee.lower() == me
+            sets += ["assignee_email = %s", "assignee_seen_at = %s", "assignee_ack_at = %s", "pic_reply = NULL", "pic_replied_at = NULL"]
+            params += [assignee, now if self_assigned else None, now if self_assigned else None]
+        if payload.note is not None:
+            note = payload.note.strip() or None
+            if note and len(note) > 500:
+                raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
+            sets.append("note = %s")
+            params.append(note)
+    params.append(item_id)
+    await db.execute(f"UPDATE urgent_tn_items SET {', '.join(sets)} WHERE id = %s", tuple(params))
+    return {"ok": True}
+
+
+@app.delete("/api/urgent-tn/items/{item_id}", response_model=OkResult)
+async def urgent_tn_delete(item_id: int, user: CurrentUser = Depends(get_current_user)):
+    row = await _load_urgent_item(item_id, user)
+    if row[2].lower() != user.email.lower():
+        raise HTTPException(status_code=403, detail="Only the person who added this can remove it")
+    await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
+    return {"ok": True}
+
+
+@app.post("/api/urgent-tn/mark-seen", response_model=OkResult)
+async def urgent_tn_mark_seen(user: CurrentUser = Depends(get_current_user)):
+    """Opening the Urgent TN tab: drops the NEW marker for the PIC and clears the
+    owner's "PIC updated" flag. It does NOT silence the PIC's bell -- only picking
+    a status does (see urgent_tn_update)."""
+    me = user.email.lower()
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    await db.execute(
+        "UPDATE urgent_tn_items SET assignee_seen_at = %s WHERE LOWER(assignee_email) = %s AND assignee_seen_at IS NULL",
+        (now, me),
+    )
+    await db.execute("UPDATE urgent_tn_items SET owner_unseen = 0 WHERE LOWER(created_by) = %s AND owner_unseen = 1", (me,))
+    return {"ok": True}
+
+
+class Notifications(BaseModel):
+    urgent_notify: int
+    urgent_owner_updates: int
+    feedback_replies_unread: int
+
+
+@app.get("/api/notifications", response_model=Notifications)
+async def notifications(user: CurrentUser = Depends(get_current_user)):
+    """Counts behind the Urgent TN tab's bell and the Admin/Feedback badge.
+    urgent_notify: items assigned to me by someone else that are still in progress and
+    either never acknowledged or last acknowledged over an hour ago.
+    urgent_owner_updates: items I added where the PIC replied / changed the status."""
+    me = user.email.lower()
+    threshold = datetime.now(timezone.utc) - URGENT_REMINDER
+    notify = await db.fetch_one(
+        """SELECT COUNT(*) FROM urgent_tn_items
+           WHERE LOWER(assignee_email) = %s AND LOWER(created_by) <> %s AND status = 'in_progress'
+             AND (assignee_ack_at IS NULL OR assignee_ack_at < %s)""",
+        (me, me, threshold),
+    )
+    owner = await db.fetch_one(
+        "SELECT COUNT(*) FROM urgent_tn_items WHERE LOWER(created_by) = %s AND owner_unseen = 1", (me,)
+    )
+    unread = await db.fetch_one(
+        "SELECT COUNT(*) FROM app_feedback WHERE LOWER(email) = %s AND reply_unread = 1", (me,)
+    )
+    return {
+        "urgent_notify": int(notify[0] or 0),
+        "urgent_owner_updates": int(owner[0] or 0),
+        "feedback_replies_unread": int(unread[0] or 0),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2215,6 +2708,13 @@ async def delete_user(email: str, user: CurrentUser = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="User not found")
     _require_can_manage_target(user, target[0])
     await db.execute("DELETE FROM users WHERE email=%s", (email,))
+    # Urgent TN items follow their owner: the ones this user created go with them,
+    # and any assigned to them are just unassigned (V27 migration).
+    await db.execute("DELETE FROM urgent_tn_items WHERE LOWER(created_by) = %s", (email.lower(),))
+    await db.execute(
+        "UPDATE urgent_tn_items SET assignee_email = NULL, assignee_seen_at = NULL WHERE LOWER(assignee_email) = %s",
+        (email.lower(),),
+    )
     return {"ok": True}
 
 
@@ -2225,12 +2725,22 @@ class StationMeta(BaseModel):
     region: str
 
 
+def _stations_in_scope(user: CurrentUser) -> list[dict]:
+    """Stations this user may see -- the region/zone/station pickers offer only
+    these (2026-09-25 feedback: a station user must not see places outside their
+    scope, not even as filter options)."""
+    return _scope_filter_stations(
+        [
+            {"station_code": code, "station_name": name, "zone": zone, "region": region}
+            for code, (name, _full, zone, region) in sorted(HUBS.items(), key=lambda kv: kv[1][0])
+        ],
+        user,
+    )
+
+
 @app.get("/api/stations", response_model=list[StationMeta])
 async def list_stations(user: CurrentUser = Depends(get_current_user)):
-    return [
-        {"station_code": code, "station_name": name, "zone": zone, "region": region}
-        for code, (name, _full, zone, region) in sorted(HUBS.items(), key=lambda kv: kv[1][0])
-    ]
+    return _stations_in_scope(user)
 
 
 class RegionMeta(BaseModel):
@@ -2240,7 +2750,13 @@ class RegionMeta(BaseModel):
 
 @app.get("/api/regions", response_model=list[RegionMeta])
 async def list_regions(user: CurrentUser = Depends(get_current_user)):
-    return [{"region": r, "zones": zs} for r, zs in ZONES_BY_REGION.items()]
+    allowed_zones = {(s["region"], s["zone"]) for s in _stations_in_scope(user)}
+    out = []
+    for region, zones in ZONES_BY_REGION.items():
+        kept = [z for z in zones if (region, z) in allowed_zones]
+        if kept:
+            out.append({"region": region, "zones": kept})
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -134,7 +134,7 @@ function exportStationHealthCsv(rows) {
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-export default function Dashboard({ me, onCapturedAt }) {
+export default function Dashboard({ me, onCapturedAt, notifCounts }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -511,7 +511,15 @@ export default function Dashboard({ me, onCapturedAt }) {
         />
       )}
 
-      <TabBar tabs={TABS} activeKey={tab} onSelect={setTab} />
+      <TabBar
+        tabs={TABS.map((t) =>
+          t.key === "urgent"
+            ? { ...t, badge: (notifCounts?.urgent_notify || 0) + (notifCounts?.urgent_owner_updates || 0) }
+            : t
+        )}
+        activeKey={tab}
+        onSelect={setTab}
+      />
 
       {tab === "action" && (
         <ActionBoard
