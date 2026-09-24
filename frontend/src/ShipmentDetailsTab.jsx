@@ -121,10 +121,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
     }
   };
 
-  const chartTimelines = useMemo(() => {
-    const shown = new Set(filteredStations.map((r) => r.station_code));
-    return (data?.timelines || []).filter((t) => shown.has(t.station_code));
-  }, [data, filteredStations]);
+  const masterCodes = useMemo(() => new Set(filteredStations.map((r) => r.station_code)), [filteredStations]);
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
   if (!data) return <Skeleton />;
@@ -246,14 +243,19 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
         }
       />
 
-      <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-        <div className="mb-1 font-display text-sm font-medium text-slate-700">Timing trend by hour of day</div>
-        <div className="mb-3 text-xs text-slate-400">
-          Scan-in, first attempt and success times, for the stations currently shown in the table above
-          ({filteredStations.length} station{filteredStations.length === 1 ? "" : "s"}) — follows the region / zone /
-          station filters.
+      <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
+          <div className="font-display text-sm font-medium text-slate-700">Timing trend by hour of day</div>
+          <div className="text-xs text-slate-400">
+            Scan-in, first attempt and success. Follows the filters above until you pick a chart filter.
+          </div>
         </div>
-        <SweepTimelineChart timelines={chartTimelines} />
+        <SweepTimelineChart
+          allStations={data.stations}
+          timelines={data.timelines}
+          masterCodes={masterCodes}
+          excludeEastMalaysia={excludeEastMalaysia}
+        />
       </div>
     </div>
   );

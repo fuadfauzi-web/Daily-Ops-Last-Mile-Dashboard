@@ -5,6 +5,7 @@ import SettingsPanel from "./SettingsPanel";
 import AdminPanel from "./AdminPanel";
 import Logo from "./components/Logo";
 import RoleTester from "./components/RoleTester";
+import NotificationBell from "./components/NotificationBell";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
 
@@ -24,6 +25,35 @@ export default function App() {
       .catch(() => setMe(null));
 
   useEffect(loadMe, []);
+
+  // Header bell + dashboard banner (2026-09-25): Urgent TNs assigned to this user
+  // and unread admin replies to their feedback. Polled every minute, and
+  // refreshed at once when other parts of the app fire "notifications-changed".
+  const [notifCounts, setNotifCounts] = useState(null);
+  const [jump, setJump] = useState(null); // { sub, nonce } -- sent to Dashboard / Admin
+  const provisioned = !!me?.provisioned;
+  useEffect(() => {
+    if (!provisioned) return undefined;
+    const load = () =>
+      api
+        .notifications()
+        .then(setNotifCounts)
+        .catch(() => {
+          /* the bell just keeps its last numbers */
+        });
+    load();
+    const timer = setInterval(load, 60000);
+    window.addEventListener("notifications-changed", load);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("notifications-changed", load);
+    };
+  }, [provisioned]);
+  const goTo = ({ tab: nextTab, sub }) => {
+    setTab(nextTab);
+    setJump({ sub, nonce: Date.now() });
+    setMenuOpen(false);
+  };
 
   if (me === undefined) {
     return (
@@ -75,7 +105,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b-[3px] border-brand bg-white">
+      <header className="sticky top-0 z-40 border-b-[3px] border-brand bg-white">
         <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Logo />
@@ -118,6 +148,7 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            <NotificationBell counts={notifCounts} onNavigate={goTo} />
             <RoleTester
               me={me}
               onChanged={() => {
@@ -141,13 +172,16 @@ export default function App() {
 
           {/* Mobile chrome: just the logo (above) plus this one menu button --
               density toggle and nav move into the dropdown below. */}
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-label="Menu"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white lg:hidden"
-          >
-            {initials}
-          </button>
+          <div className="flex items-center gap-2 lg:hidden">
+            <NotificationBell counts={notifCounts} onNavigate={goTo} />
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label="Menu"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white"
+            >
+              {initials}
+            </button>
+          </div>
         </div>
 
         {menuOpen && (
@@ -199,9 +233,26 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" && <Dashboard me={me} onCapturedAt={setFreshness} />}
+        {tab === "dashboard" && (notifCounts?.urgent_assigned_open || 0) > 0 && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-status-critical/5 px-4 py-3 ring-1 ring-status-critical/25">
+            <div className="text-sm text-slate-800">
+              <span className="font-semibold text-status-critical">
+                {notifCounts.urgent_assigned_open} urgent tracking number{notifCounts.urgent_assigned_open === 1 ? "" : "s"}
+              </span>{" "}
+              assigned to you {notifCounts.urgent_assigned_open === 1 ? "is" : "are"} still in progress
+              {notifCounts.urgent_unseen > 0 && ` (${notifCounts.urgent_unseen} new)`}.
+            </div>
+            <button
+              onClick={() => goTo({ tab: "dashboard", sub: "urgent" })}
+              className="rounded-lg bg-brand px-3 py-1.5 font-display text-xs font-semibold text-white"
+            >
+              Open Urgent TN
+            </button>
+          </div>
+        )}
+        {tab === "dashboard" && <Dashboard me={me} onCapturedAt={setFreshness} jump={jump} />}
         {tab === "settings" && canSeeSettings && <SettingsPanel me={me} />}
-        {tab === "admin" && <AdminPanel me={me} />}
+        {tab === "admin" && <AdminPanel me={me} jump={jump} />}
       </main>
     </div>
   );

@@ -171,7 +171,7 @@ function exportStationHealthCsv(rows) {
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-export default function Dashboard({ me, onCapturedAt }) {
+export default function Dashboard({ me, onCapturedAt, jump }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -201,6 +201,10 @@ export default function Dashboard({ me, onCapturedAt }) {
       /* private browsing / storage blocked -- choice just won't persist */
     }
   };
+  // The header bell / banner can send the user straight to a sub-tab (Urgent TN).
+  useEffect(() => {
+    if (jump?.sub && TABS.some((t) => t.key === jump.sub)) setTab(jump.sub);
+  }, [jump?.nonce]);
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can

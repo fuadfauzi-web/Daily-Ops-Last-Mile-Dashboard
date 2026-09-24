@@ -105,9 +105,38 @@ export const api = {
     save: (rows) => request("/api/thresholds", { method: "PUT", body: JSON.stringify({ rows }) }),
   },
   feedback: {
-    submit: (message) => request("/api/feedback", { method: "POST", body: JSON.stringify({ message }) }),
+    // Multipart (message + optional attachment) -- no Content-Type header, the
+    // browser sets the boundary itself (same as driverDetails.upload below).
+    submit: async (message, file) => {
+      const formData = new FormData();
+      formData.append("message", message);
+      if (file) formData.append("file", file);
+      const res = await fetch("/api/feedback", { method: "POST", body: formData });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          detail = (await res.json()).detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      return res.json();
+    },
     list: () => request("/api/feedback"),
+    update: (id, payload) => request(`/api/feedback/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    attachmentUrl: (id) => `/api/feedback/${id}/attachment`,
   },
+  // Urgent TN items live on the server now (assignable to a PIC) -- see backend
+  // main.py's /api/urgent-tn/items.
+  urgentTn: {
+    items: () => request("/api/urgent-tn/items"),
+    create: (payload) => request("/api/urgent-tn/items", { method: "POST", body: JSON.stringify(payload) }),
+    update: (id, payload) => request(`/api/urgent-tn/items/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    remove: (id) => request(`/api/urgent-tn/items/${id}`, { method: "DELETE" }),
+    markSeen: () => request("/api/urgent-tn/mark-seen", { method: "POST" }),
+  },
+  notifications: () => request("/api/notifications"),
   driverDetails: {
     status: () => request("/api/admin/driver-details/status"),
     upload: async (file) => {
