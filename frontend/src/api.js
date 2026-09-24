@@ -145,6 +145,7 @@ export const api = {
     update: (id, payload) => request(`/api/urgent-tn/items/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     remove: (id) => request(`/api/urgent-tn/items/${id}`, { method: "DELETE" }),
     markSeen: () => request("/api/urgent-tn/mark-seen", { method: "POST" }),
+    suggest: (q) => request(`/api/urgent-tn/pic-suggestions?q=${encodeURIComponent(q)}`),
   },
   notifications: () => request("/api/notifications"),
   coldChain: () => request("/api/cold-chain"),

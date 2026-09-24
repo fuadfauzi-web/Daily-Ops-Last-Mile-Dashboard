@@ -44,7 +44,7 @@ export const CHANGELOG = [
     date: "2026-09-25",
     title: "Urgent TN: assign a PIC",
     points: [
-      "Type a teammate's email (they must already be a dashboard user) when you track a tracking number, with an optional note.",
+      "Start typing a teammate's name or email when you track a tracking number and pick them from the suggestions (they must already be a dashboard user), with an optional note.",
       "They see a red bell on the Urgent TN tab. They pick In progress (the bell goes quiet for an hour, then reminds them if it isn't closed) or Closed (the bell stays off and it stays on their list marked closed), and can type a reply that you see.",
       "When you close or remove it, it disappears from their list too, whatever its status.",
     ],
