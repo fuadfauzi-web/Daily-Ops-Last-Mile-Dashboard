@@ -134,11 +134,42 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
 // nothing to explain about them in the UI.
 const DOCUMENT_TYPES = [{ value: "rdo", label: "RDO" }];
 
+// "2026-09-23 11:56:29.000000" -> "23 Sep, 11:56 am". Redash sends these as plain
+// Malaysia local time with no timezone, so format the text itself rather than
+// going through Date (which would shift it by the browser's offset).
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function formatLocalDateTime(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value || "");
+  if (!m) return value || "—";
+  const hour = Number(m[4]);
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}, ${h12}:${m[5]} ${hour >= 12 ? "pm" : "am"}`;
+}
+
+// 2026-09-24 feedback: Bundle Status shows the date the bundle completed (when it
+// has), and a Bundle Last Sweep column gives the date/time of the bundle's last
+// sweep at its hub.
+function bundleStatusText(r) {
+  if (r.bundle_status === "Completed" && r.bundle_delivered_at) {
+    return `Completed · ${formatLocalDateTime(r.bundle_delivered_at)}`;
+  }
+  return r.bundle_status ?? "—";
+}
+
 const RDO_TN_COLUMNS = [
-  { key: "tracking_number", label: "RDO Tracking Number" },
-  { key: "rdo_status", label: "RDO Status" },
-  { key: "bundle_tracking_number", label: "Bundle Tracking Number" },
-  { key: "bundle_status", label: "Bundle Status" },
+  { key: "tracking_number", label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "—" },
+  { key: "rdo_status", label: "RDO Status", text: (r) => r.rdo_status ?? "—" },
+  { key: "bundle_tracking_number", label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "—" },
+  { key: "bundle_delivered_at", label: "Bundle Status", text: bundleStatusText },
+  { key: "bundle_last_sweep_at", label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at) },
+];
+
+// Station-table breakdown of Total TN by RDO status (backend/aggregate.py's
+// RDO_STATUS_COLUMNS); other statuses such as "Pickup fail" only count in Total TN.
+const RDO_STATUS_COLUMNS = [
+  { key: "pending_pickup", label: "Pending Pickup" },
+  { key: "van_enroute", label: "Van En-route to Pickup" },
+  { key: "enroute_sorting", label: "En-route to Sorting Hub" },
 ];
 
 function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
@@ -232,11 +263,17 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
     ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
     { key: "station_name", label: "Station", sticky: true, align: "left" },
     { key: "total_tn", label: "Total TN", className: () => "font-semibold text-status-critical", render: (r) => r.total_tn.toLocaleString() },
+    ...RDO_STATUS_COLUMNS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      className: (r) => (r[c.key] > 0 ? "text-slate-800" : "text-slate-400"),
+      render: (r) => r[c.key].toLocaleString(),
+    })),
   ];
 
   const tnColumns = [
     { key: "station_name", label: "Station", sticky: true, align: "left" },
-    ...RDO_TN_COLUMNS.map((c) => ({ key: c.key, label: c.label, className: () => "font-mono text-xs", render: (r) => r[c.key] ?? "—" })),
+    ...RDO_TN_COLUMNS.map((c) => ({ key: c.key, label: c.label, className: () => "font-mono text-xs", render: c.text })),
   ];
 
   return (
@@ -268,8 +305,10 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
                 onClick={() =>
                   exportCsv(
                     `daily-ops-b2b-compliance-stations-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ["Region", "Zone", "Station", "Total TN"],
-                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total_tn])
+                    ["Region", "Zone", "Station", "Total TN", ...RDO_STATUS_COLUMNS.map((c) => c.label)],
+                    filteredStations.map((r) => [
+                      r.region, r.zone, r.station_name, r.total_tn, ...RDO_STATUS_COLUMNS.map((c) => r[c.key]),
+                    ])
                   )
                 }
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -303,7 +342,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
                     exportCsv(
                       `daily-ops-b2b-compliance-tns-${new Date().toISOString().slice(0, 10)}.csv`,
                       ["Station", ...RDO_TN_COLUMNS.map((c) => c.label)],
-                      filteredTnRows.map((r) => [r.station_name, ...RDO_TN_COLUMNS.map((c) => r[c.key] ?? "")])
+                      filteredTnRows.map((r) => [r.station_name, ...RDO_TN_COLUMNS.map((c) => c.text(r))])
                     )
                   }
                   className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -323,7 +362,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
             footer={
               <>
                 {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by bundle_last_sweep_hub (where
-                the bundle physically sits) · RDO Status/Bundle Status are shown raw from Redash -- the "MPS
+                the bundle physically sits) · Bundle Status shows the date the bundle completed · RDO Status is raw from Redash -- the "MPS
                 completed but RDO still pending" style classification from the Fleet Manager's own sheet isn't
                 reproduced here yet.
                 {data.tn_rows_truncated && (

@@ -32,7 +32,7 @@ const LEVELS = [
   { key: "zone", label: "Zone" },
   { key: "station", label: "Station" },
   { key: "driver", label: "Driver" },
-  { key: "summary", label: "Summary" },
+  { key: "summary", label: "Completion Summary" },
   { key: "oldroute", label: "Old Route" },
   { key: "pendingyesterday", label: "Pending in Yesterday Route" },
 ];
@@ -139,6 +139,16 @@ function renderCell(col, r) {
 function RouteSummaryView({ drivers, regionFilter, zoneFilter, search, me, hideStationCol }) {
   const [showComplete, setShowComplete] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Worst completion first by default (2026-09-24 feedback: headers sortable).
+  const [sortKey, setSortKey] = useState("completion_rate");
+  const [sortDir, setSortDir] = useState("asc");
+  const toggleSort = (key) => {
+    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir(key === "driver_name" || key === "current_station" || key === "completion_rate" ? "asc" : "desc");
+    }
+  };
 
   const scoped = useMemo(() => {
     let rows = drivers;
@@ -152,24 +162,29 @@ function RouteSummaryView({ drivers, regionFilter, zoneFilter, search, me, hideS
   }, [drivers, regionFilter, zoneFilter, search]);
 
   const pending = useMemo(() => scoped.filter((d) => d.current_ovfd > 0), [scoped]);
+  const sortRows = (rows) =>
+    [...rows].sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+      return (sortDir === "asc" ? cmp : -cmp) || a.driver_name.localeCompare(b.driver_name);
+    });
   const displayed = useMemo(
-    () => [...(showComplete ? scoped : pending)].sort((a, b) => b.current_ovfd - a.current_ovfd || a.completion_rate - b.completion_rate),
-    [scoped, pending, showComplete]
+    () => sortRows(showComplete ? scoped : pending),
+    [scoped, pending, showComplete, sortKey, sortDir]
   );
 
   const copyForWhatsapp = () => {
     if (!pending.length) return;
     const when = new Date().toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
-    const lines = [...pending]
-      .sort((a, b) => b.current_ovfd - a.current_ovfd || a.completion_rate - b.completion_rate)
-      .map(
-        (d, i) =>
-          `${i + 1}. ${d.driver_name}${hideStationCol ? "" : ` (${d.current_station})`} — Routed ${d.total_routed} | OVFD ${
-            d.current_ovfd
-          } | Completion ${d.completion_rate.toFixed(1)}% | Success ${d.success_rate.toFixed(1)}%`
-      );
+    const lines = sortRows(pending).map(
+      (d, i) =>
+        `${i + 1}. ${d.driver_name}${hideStationCol ? "" : ` (${d.current_station})`} — Completion ${d.completion_rate.toFixed(
+          1
+        )}% | OVFD ${d.current_ovfd} | Success ${d.success_rate.toFixed(1)}% | Routed ${d.total_routed}`
+    );
     const text = [
-      `*Route Progress — ${when}*`,
+      `*Completion Summary — ${when}*`,
       `${pending.length} of ${scoped.length} drivers still pending -- push these to clear before 12am:`,
       "",
       ...lines,
@@ -179,9 +194,18 @@ function RouteSummaryView({ drivers, regionFilter, zoneFilter, search, me, hideS
   };
 
   const columns = [
-    ...(!hideStationCol ? [{ key: "current_station", label: "Station", sortable: false, className: () => "text-slate-500" }] : []),
+    ...(!hideStationCol ? [{ key: "current_station", label: "Station", className: () => "text-slate-500" }] : []),
     { key: "driver_name", label: "Driver", sticky: true, align: "left" },
-    { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
+    {
+      key: "completion_rate",
+      label: "Completion Rate",
+      render: (r) => (
+        <>
+          {r.completion_rate.toFixed(1)}%<span className="ml-1 text-[11px] font-normal text-slate-400">/100%</span>
+        </>
+      ),
+      className: (r) => completionRateClass(r.completion_rate),
+    },
     {
       key: "current_ovfd",
       label: "Current OVFD",
@@ -194,17 +218,12 @@ function RouteSummaryView({ drivers, regionFilter, zoneFilter, search, me, hideS
       render: (r) => `${r.success_rate.toFixed(1)}%`,
       className: (r) => successRateClass(r.success_rate),
     },
-    {
-      key: "completion_rate",
-      label: "Completion Rate",
-      render: (r) => `${r.completion_rate.toFixed(1)}%`,
-      className: (r) => completionRateClass(r.completion_rate),
-    },
+    { key: "total_routed", label: "Total Routed", render: (r) => r.total_routed.toLocaleString() },
   ];
 
   return (
     <DataTable
-      title="Route Progress — end of day"
+      title="Completion Summary — end of day"
       titleExtra={
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
@@ -224,9 +243,11 @@ function RouteSummaryView({ drivers, regionFilter, zoneFilter, search, me, hideS
       columns={columns}
       rows={displayed}
       rowKey={(r, i) => r.driver_name || i}
-      sortKey={null}
+      sortKey={sortKey}
+      sortDir={sortDir}
+      onSort={toggleSort}
       emptyMessage={pending.length === 0 && scoped.length > 0 ? "All drivers in scope have completed their route -- nothing pending." : "No drivers match."}
-      footer={`${pending.length} of ${scoped.length} drivers still pending · complete means Current OVFD = 0`}
+      footer={`${pending.length} of ${scoped.length} drivers still pending · complete means Current OVFD = 0 (Completion Rate 100%)`}
     />
   );
 }

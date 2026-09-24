@@ -443,7 +443,9 @@ SHIPMENT_DETAIL_KEYS = (
     "total_fresh", "total_shipment", "fresh_unscan", "latlong", "fresh_attempt_count",
     "process_within_1h", "process_within_2h", "process_within_3h", "process_over_3h",
 )
-SHIPMENT_DRILLDOWN_METRICS = ("fresh_unscan", "latlong")
+# 2026-09-24 feedback: the process-duration buckets are clickable too (TN list + CSV).
+PROCESS_BUCKET_KEYS = ("process_within_1h", "process_within_2h", "process_within_3h", "process_over_3h")
+SHIPMENT_DRILLDOWN_METRICS = ("fresh_unscan", "latlong") + PROCESS_BUCKET_KEYS
 
 _RTS_TAG = "RTS"
 _MYT = timezone(timedelta(hours=8))
@@ -461,15 +463,17 @@ def _empty_shipment_row(hub_code: str) -> dict:
 
 def build_shipment_details(
     total_shipments_rows: list[dict], tracker_rows: list[dict], lh_rows: list[dict],
-) -> tuple[dict[str, dict], dict[str, dict], list[int]]:
+) -> tuple[dict[str, dict], dict[str, dict], dict[str, dict]]:
     """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}},
-    sweep_timeline) -- sweep_timeline is a 24-entry list, index = hour of day (0-23),
-    value = how many parcels had their 1st_sweep_at_WM_station_datetime (column H)
-    in that hour nationwide, for the "when did sweeping start/peak/end" timeline
-    chart on the Shipment Details tab."""
+    timelines) -- timelines is {hub_code: {"sweep": [24], "attempt": [24], "success": [24]}},
+    each a 24-entry list indexed by hour of day (0-23), counting parcels whose
+    1st_sweep_at_WM_station_datetime (column H) / first_attempt_datetime /
+    success_datetime fall in that hour. Per station (not nationwide) so the
+    Shipment Details timeline chart can follow the region/zone/station filters
+    (2026-09-24 feedback)."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
-    sweep_timeline = [0] * 24
+    timelines = {hub: {"sweep": [0] * 24, "attempt": [0] * 24, "success": [0] * 24} for hub in HUBS}
     for r in total_shipments_rows:
         raw_name = (r.get("dest_hub_name") or "").strip().lower()
         hub = FULL_NAME_TO_HUB.get(raw_name)
@@ -505,6 +509,12 @@ def build_shipment_details(
 
         if r.get("first_attempt_datetime"):
             row["fresh_attempt_count"] += 1
+        attempt_dt = _parse_dt(r.get("first_attempt_datetime"))
+        if attempt_dt is not None:
+            timelines[hub]["attempt"][attempt_dt.hour] += 1
+        success_dt = _parse_dt(r.get("success_datetime"))
+        if success_dt is not None:
+            timelines[hub]["success"][success_dt.hour] += 1
 
         # Process duration: how long between the shipment arriving at the
         # station (shipment_completion_datetime, column G) and it actually
@@ -517,14 +527,16 @@ def build_shipment_details(
         if completion_dt is not None and swept_dt is not None and swept_dt >= completion_dt:
             duration_hours = (swept_dt - completion_dt).total_seconds() / 3600
             if duration_hours <= 1:
-                row["process_within_1h"] += 1
+                bucket = "process_within_1h"
             elif duration_hours <= 2:
-                row["process_within_2h"] += 1
+                bucket = "process_within_2h"
             elif duration_hours <= 3:
-                row["process_within_3h"] += 1
+                bucket = "process_within_3h"
             else:
-                row["process_over_3h"] += 1
-            sweep_timeline[swept_dt.hour] += 1
+                bucket = "process_over_3h"
+            row[bucket] += 1
+            tn_details[hub][bucket].append(tn)
+            timelines[hub]["sweep"][swept_dt.hour] += 1
 
     for r in lh_rows:
         hub = r.get("dest_hub_name")
@@ -550,7 +562,7 @@ def build_shipment_details(
             round(row["fresh_attempt_count"] / row["total_fresh"] * 100, 1) if row["total_fresh"] else 0.0
         )
 
-    return by_station, tn_details, sweep_timeline
+    return by_station, tn_details, timelines
 
 
 def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[dict]:
@@ -1402,14 +1414,32 @@ def bucket_rpu_aging(rows: list[dict], only_zero_attempt: bool) -> tuple[dict[st
 # once the exact rule is confirmed.
 # ---------------------------------------------------------------------------
 
-RDO_COMPLIANCE_KEYS = ("total_tn",)
+# 2026-09-24 feedback: the by-station table also breaks Total TN down by RDO
+# status. Statuses are matched loosely (case/hyphen/space-insensitive) since
+# Redash spells them "Pending Pickup", "Van en-route to pickup" and
+# "En-route to Sorting Hub"; anything else (e.g. "Pickup fail") only counts in
+# total_tn.
+RDO_STATUS_COLUMNS = {
+    "pendingpickup": "pending_pickup",
+    "vanenroutetopickup": "van_enroute",
+    "enroutetosortinghub": "enroute_sorting",
+}
+RDO_COMPLIANCE_KEYS = ("total_tn",) + tuple(RDO_STATUS_COLUMNS.values())
+
+
+def _rdo_status_key(status: str | None) -> str | None:
+    norm = "".join(ch for ch in (status or "").lower() if ch.isalnum())
+    return RDO_STATUS_COLUMNS.get(norm)
 RDO_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route -- bound payload size
 
 
 def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
-    """Returns ({hub_code: {..., total_tn}}, [tn_row, ...])."""
+    """Returns ({hub_code: {..., total_tn, <per-status counts>}}, [tn_row, ...])."""
     by_station = {
-        hub: {"station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3], "total_tn": 0}
+        hub: {
+            "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
+            **{k: 0 for k in RDO_COMPLIANCE_KEYS},
+        }
         for hub in HUBS
     }
     tn_rows = []
@@ -1419,6 +1449,9 @@ def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]
         if row is None:
             continue
         row["total_tn"] += 1
+        status_col = _rdo_status_key(r.get("rdo_granular_status"))
+        if status_col:
+            row[status_col] += 1
         tn_rows.append({
             "tracking_number": r.get("rdo_tracking_id"),
             "station_code": hub,
@@ -1440,7 +1473,10 @@ def rollup_rdo_compliance(station_rows: list[dict], group_key: str) -> list[dict
     groups: dict[str, dict] = {}
     for row in station_rows:
         key = row[group_key]
-        g = groups.setdefault(key, {group_key: key, "region": row["region"], "station_count": 0, "total_tn": 0})
+        g = groups.setdefault(
+            key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in RDO_COMPLIANCE_KEYS}}
+        )
         g["station_count"] += 1
-        g["total_tn"] += row["total_tn"]
+        for k in RDO_COMPLIANCE_KEYS:
+            g[k] += row[k]
     return list(groups.values())
