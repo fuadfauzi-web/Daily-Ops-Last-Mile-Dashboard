@@ -479,15 +479,10 @@ export default function Dashboard({ me, onCapturedAt }) {
     ...ALL_COLUMNS.map((c) => {
       const natThreshold = resolveThreshold(thresholdRows, c.key, null);
       const isReference = !natThreshold.scored;
-      // Metrics scored as "% of X" (Admin -> SLA Targets) get a small note under
-      // the header naming X, so it's clear what the shown percentage is relative
-      // to -- e.g. Age >3 is % of Total In Hub, not % of nationwide volume.
-      const percentOfCol = natThreshold.percent_of ? ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of) : null;
       const label = (
         <>
           {c.label}
           {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
-          {percentOfCol && <div className="text-[10px] font-normal normal-case text-slate-300">% of {percentOfCol.label}</div>}
         </>
       );
       const clickable = row => row.type === "station" && DRILLDOWN_METRICS.has(c.key);
