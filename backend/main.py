@@ -489,7 +489,7 @@ _SINGLE_SNAPSHOT_TABLES = (
 async def _sync_urgent_no_status(now: datetime) -> None:
     """After a refresh: start the 3-day clock on Urgent TN items whose tracking number has no
     status, stop it for ones that have one again, and delete the ones that stayed status-less
-    for 3 days (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
+    for 1 day (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
     rows = await db.fetch_all("SELECT id, tracking_number, no_status_since FROM urgent_tn_items")
     cutoff = now - URGENT_NO_STATUS_TTL
     for item_id, tn, since in rows:
@@ -2456,9 +2456,9 @@ URGENT_STATUSES = ("in_progress", "closed")
 URGENT_REMINDER = timedelta(hours=1)
 # 2026-09-25 feedback: a tracking number with no status in the active data (not found: already
 # completed / added to a shipment) isn't urgent -- nothing to chase. It is never assigned to a
-# PIC, and if it still has no status 3 days after we first noticed, it is removed automatically
+# PIC, and if it still has no status 1 day after we first noticed, it is removed automatically
 # (see _sync_urgent_no_status, run after every refresh) unless its owner removed it sooner.
-URGENT_NO_STATUS_TTL = timedelta(days=3)
+URGENT_NO_STATUS_TTL = timedelta(days=1)
 
 
 class UrgentItemCreate(BaseModel):
@@ -2490,7 +2490,7 @@ class UrgentItem(BaseModel):
     pic_reply: str | None
     pic_replied_at: str | None
     reminder_in_minutes: int | None
-    no_status_days_left: int | None = None
+    no_status_hours_left: int | None = None
     created_by_me: bool
     assigned_to_me: bool
     is_new: bool
@@ -2552,12 +2552,12 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
             left = _utc_naive(ack_at) + URGENT_REMINDER - now
             if left.total_seconds() > 0:
                 reminder = int(left.total_seconds() // 60) + 1
-        days_left = None
+        hours_left = None
         if found is None and no_status_since is not None:
             left = _utc_naive(no_status_since) + URGENT_NO_STATUS_TTL - now
-            days_left = max(0, int(-(-left.total_seconds() // 86400)))
+            hours_left = max(0, int(-(-left.total_seconds() // 3600)))
         items.append({
-            "no_status_days_left": days_left,
+            "no_status_hours_left": hours_left,
             "id": item_id, "tracking_number": tn, "created_by": created_by, "assignee_email": assignee,
             "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
             "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
@@ -2644,7 +2644,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
     added, skipped, no_status, not_assigned = 0, 0, 0, 0
     for tn in tns:
         # A TN with no status isn't urgent, so it is NOT assigned to the PIC -- it just goes on
-        # your own list and expires in 3 days if it still has no status.
+        # your own list and expires in 1 day if it still has no status.
         has_status = tn in _health_v3_by_tn
         tn_assignee = assignee if has_status else None
         # 2026-09-25 feedback: the same tracking number can go to several PICs -- each assignment is
@@ -2682,7 +2682,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         detail += (
             f". {no_status} {'has' if no_status == 1 else 'have'} no status (not found)"
             + (f", so {'it was' if not_assigned == 1 else f'{not_assigned} were'} not assigned to the PIC" if not_assigned else "")
-            + " -- kept on your list and removed automatically after 3 days unless you remove it first"
+            + " -- kept on your list and removed automatically after 1 day unless you remove it first"
         )
     return {"ok": True, "detail": detail}
 
@@ -2766,6 +2766,27 @@ async def urgent_tn_delete(item_id: int, user: CurrentUser = Depends(get_current
         raise HTTPException(status_code=403, detail="Only the person who added this can remove it")
     await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
     return {"ok": True}
+
+
+class UrgentBulkRemove(BaseModel):
+    ids: list[int]
+
+
+@app.post("/api/urgent-tn/items/bulk-remove", response_model=OkResult)
+async def urgent_tn_bulk_remove(payload: UrgentBulkRemove, user: CurrentUser = Depends(get_current_user)):
+    """Remove several of your own items at once (2026-09-25 feedback). Like a single remove it deletes
+    them for their PICs too; anything in the list that you didn't add is left alone and counted."""
+    ids = list(dict.fromkeys(payload.ids))[:500]
+    if not ids:
+        raise HTTPException(status_code=422, detail="Pick at least one tracking number")
+    removed = 0
+    for item_id in ids:
+        row = await db.fetch_one("SELECT created_by FROM urgent_tn_items WHERE id = %s", (item_id,))
+        if row and row[0].lower() == user.email.lower():
+            await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
+            removed += 1
+    skipped = len(ids) - removed
+    return {"ok": True, "detail": f"Removed {removed}" + (f" ({skipped} weren't yours to remove)" if skipped else "")}
 
 
 @app.post("/api/urgent-tn/mark-seen", response_model=OkResult)

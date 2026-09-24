@@ -32,6 +32,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [items, setItems] = useState(null);
   const [asOf, setAsOf] = useState(null);
   const [view, setView] = useState("open");
+  // Tick several of your own rows and remove them in one go (2026-09-25 feedback).
+  const [selected, setSelected] = useState(() => new Set());
   // 2026-09-25 feedback: every header sorts; newest entry first by default.
   const [sortKey, setSortKey] = useState("created_at");
   const [sortDir, setSortDir] = useState("desc");
@@ -129,6 +131,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const setStatus = (item, status) => run(() => api.urgentTn.update(item.id, { status }));
   // No "are you sure?" pop-up (2026-09-25 feedback): Close / remove deletes it straight away.
   const closeOrRemove = (item) => run(() => api.urgentTn.remove(item.id), `Removed ${item.tracking_number}`);
+  const removeSelected = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const ok = await run(() => api.urgentTn.removeMany(ids));
+    if (ok) setSelected(new Set());
+  };
   const startDelegate = (item) => {
     setDelegating(item);
     setDelegateAssignee("");
@@ -154,6 +162,16 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
 
   const isPic = (r) => r.assigned_to_me && !r.created_by_me;
+
+  // Drop ticks for rows that are gone (removed, or expired) so "Remove selected (N)" never lies.
+  useEffect(() => {
+    if (!items) return;
+    setSelected((prev) => {
+      const alive = new Set(items.map((i) => i.id));
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
 
   const counts = useMemo(() => {
     const list = items || [];
@@ -206,6 +224,18 @@ export default function UrgentTnTab({ me, refreshTick }) {
     });
   }, [items, view, sortKey, sortDir]);
 
+  // Only rows you added can be removed, so only those get a tick box.
+  const selectableIds = rows.filter((r) => r.created_by_me).map((r) => r.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+  const toggleOne = (id) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds));
+
   const picLabel = (r) => {
     if (!r.assignee_email) return "—";
     if (r.assigned_to_me) return "You";
@@ -229,6 +259,24 @@ export default function UrgentTnTab({ me, refreshTick }) {
           )}
         </>
       ),
+    },
+    {
+      key: "select",
+      label: (
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={toggleAll}
+          disabled={selectableIds.length === 0}
+          title="Select all of yours in this list"
+          aria-label="Select all"
+        />
+      ),
+      sortable: false,
+      render: (r) =>
+        r.created_by_me ? (
+          <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} aria-label={`Select ${r.tracking_number}`} />
+        ) : null,
     },
     { key: "created_at", label: "Entry Time", render: (r) => formatTime(r.created_at), className: () => "whitespace-nowrap text-xs text-slate-600" },
     { key: "pic", label: "PIC", render: picLabel, className: (r) => (r.assigned_to_me ? "font-semibold text-brand" : "text-slate-700") },
@@ -280,9 +328,9 @@ export default function UrgentTnTab({ me, refreshTick }) {
         ) : (
           <>
             Not found
-            {r.no_status_days_left != null && (
+            {r.no_status_hours_left != null && (
               <div className="text-[10px] font-normal text-slate-400">
-                removed automatically in {r.no_status_days_left} day{r.no_status_days_left === 1 ? "" : "s"}
+                removed automatically in {r.no_status_hours_left}h
               </div>
             )}
           </>
@@ -409,6 +457,15 @@ export default function UrgentTnTab({ me, refreshTick }) {
           >
             Refresh
           </button>
+          {selected.size > 0 && (
+            <button
+              onClick={removeSelected}
+              disabled={busy}
+              className="min-h-[44px] rounded-lg bg-status-critical px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40"
+            >
+              Remove selected ({selected.size})
+            </button>
+          )}
           {rows.length > 0 && (
             <button
               onClick={() =>

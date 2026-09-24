@@ -341,7 +341,7 @@ const SECTIONS = [
             </>,
             <>
               A tracking number with <strong>no status</strong> ("Not found") is never assigned to a PIC -- it isn't urgent. It stays on
-              your own list, and is removed automatically after 3 days if it still has no status (the list shows how many days are left).
+              your own list, and is removed automatically after 1 day if it still has no status (the list shows how many hours are left). Tick several rows and use <strong>Remove selected</strong> to clear them in one go.
             </>,
             <>
               <strong>More than one PIC</strong>: use <strong>Assign another PIC</strong> to give the same tracking number to additional people -- the
