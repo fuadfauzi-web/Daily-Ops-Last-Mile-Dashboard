@@ -38,7 +38,7 @@ export default function RoleTester({ me, onChanged }) {
   const scopeOptions = useMemo(() => {
     if (scopeType === "region") return regions.map((r) => ({ value: r.region, label: r.region }));
     if (scopeType === "zone") return regions.flatMap((r) => r.zones).map((z) => ({ value: z, label: z }));
-    if (scopeType === "station") return stations.map((s) => ({ value: s.station_code, label: s.station_name }));
+    if (scopeType === "station") return stations.map((s) => ({ value: s.station_name, label: s.station_name }));
     return [];
   }, [scopeType, regions, stations]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { BOARD_COLUMNS } from "./lib/actionMetrics";
 import { resolveThreshold } from "./lib/thresholds";
@@ -538,6 +538,10 @@ export default function SettingsPanel({ me }) {
   const [regions, setRegions] = useState([]);
   const [form, setForm] = useState({ ...emptyForm, role: myAllowedRoles[0], scope_type: myAllowedScopeTypes[0] });
   const [editingEmail, setEditingEmail] = useState(null);
+  // 2026-09-25 feedback: Edit jumps up to the form (it sits above a long list), and
+  // the list has a find box.
+  const formCardRef = useRef(null);
+  const [userSearch, setUserSearch] = useState("");
   const [error, setError] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -560,10 +564,22 @@ export default function SettingsPanel({ me }) {
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    const list = users || [];
+    if (!q) return list;
+    return list.filter((u) =>
+      [u.email, u.display_name, ROLE_LABELS[u.role] || u.role, u.scope_type, ...(u.scope_values || [])]
+        .filter(Boolean)
+        .some((s) => String(s).toLowerCase().includes(q))
+    );
+  }, [users, userSearch]);
+
   const startEdit = (u) => {
     setEditingEmail(u.email);
     setForm({ email: u.email, role: u.role, scope_type: u.scope_type, scope_values: u.scope_values || [] });
     setError(null);
+    formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const cancelEdit = () => {
@@ -733,7 +749,7 @@ export default function SettingsPanel({ me }) {
 
       {adminTab === "users" && (
       <>
-      <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+      <div ref={formCardRef} className="scroll-mt-24 rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <div className="flex items-center justify-between">
           <div className="font-medium text-slate-800">{editingEmail ? `Edit access — ${editingEmail}` : "Add teammate"}</div>
           {editingEmail ? (
@@ -892,8 +908,23 @@ export default function SettingsPanel({ me }) {
 
       {canManageUsers && (
         <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2">
+            <input
+              type="search"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="Find a user by email, name, role or scope…"
+              className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+            />
+            <span className="text-xs text-slate-400">
+              {filteredUsers.length === (users || []).length
+                ? `${(users || []).length} users`
+                : `Showing ${filteredUsers.length} of ${(users || []).length}`}
+            </span>
+          </div>
+          <div className="max-h-[60vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Email</th>
                 <th className="px-4 py-2 font-medium">Role</th>
@@ -903,7 +934,7 @@ export default function SettingsPanel({ me }) {
               </tr>
             </thead>
             <tbody>
-              {(users || []).map((u) => (
+              {filteredUsers.map((u) => (
                 <tr key={u.email} className={`border-t border-slate-100 ${editingEmail === u.email ? "bg-blue-50/50" : ""}`}>
                   <td className="px-4 py-2">{u.email}</td>
                   <td className="px-4 py-2">{ROLE_LABELS[u.role] || u.role}</td>
@@ -925,8 +956,16 @@ export default function SettingsPanel({ me }) {
                   </td>
                 </tr>
               ))}
+              {(users || []).length > 0 && filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">
+                    No user matches "{userSearch}".
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
       </>

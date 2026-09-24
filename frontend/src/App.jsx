@@ -75,7 +75,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b-[3px] border-brand bg-white">
+      <header className="sticky top-0 z-40 border-b-[3px] border-brand bg-white">
         <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Logo />
