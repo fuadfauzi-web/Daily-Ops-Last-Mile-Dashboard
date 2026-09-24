@@ -8,7 +8,6 @@ import DetailPanel from "./components/DetailPanel";
 import HeaderNote from "./components/HeaderNote";
 import { SHIPMENT_NOTES } from "./lib/shipmentNotes";
 import Skeleton from "./components/Skeleton";
-import SweepTimelineChart from "./components/SweepTimelineChart";
 
 function withNote(label, key) {
   return SHIPMENT_NOTES[key] ? (
@@ -219,13 +218,6 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
         }
       />
 
-      <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-        <div className="mb-1 font-display text-sm font-medium text-slate-700">Sweep timing — nationwide</div>
-        <div className="mb-3 text-xs text-slate-400">
-          When parcels were actually scanned in today, by hour of day (not filtered by region/zone/station above).
-        </div>
-        <SweepTimelineChart timeline={data.sweep_timeline} />
-      </div>
     </div>
   );
 }
