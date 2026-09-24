@@ -45,7 +45,7 @@ export default function DataTable({
     <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
       {(title || titleExtra) && (
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
-          <div className="font-display text-sm font-medium text-slate-700">{title}</div>
+          <div className="min-w-0 pr-3 font-display text-sm font-medium text-slate-700">{title}</div>
           {titleExtra}
         </div>
       )}

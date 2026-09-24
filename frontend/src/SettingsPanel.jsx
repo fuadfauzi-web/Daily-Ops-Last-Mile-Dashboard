@@ -5,6 +5,7 @@ import { resolveThreshold } from "./lib/thresholds";
 import TabBar from "./components/TabBar";
 import FeedbackPanel from "./FeedbackPanel";
 import GuideTab from "./GuideTab";
+import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
@@ -532,6 +533,7 @@ const SETTINGS_TABS = [
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
+  const whatsNewUnread = useWhatsNewUnread(me); // bell on the Guide tab until What's new is opened
   const isFullAdmin = me.role === "admin";
   // 2026-09-21 feedback: Manager/Region staff can now edit/remove the users
   // they're allowed to manage (not just add), so they see the (backend-filtered,
@@ -542,9 +544,13 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const visibleSettingsTabs = useMemo(
     () =>
       SETTINGS_TABS.filter((t) => t.area === mode && t.visible(me)).map((t) =>
-        t.key === "feedback" ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 } : t
+        t.key === "feedback"
+          ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 }
+          : t.key === "guide"
+            ? { ...t, badge: whatsNewUnread }
+            : t
       ),
-    [me, mode, notifCounts]
+    [me, mode, notifCounts, whatsNewUnread]
   );
   const [adminTab, setAdminTab] = useState(() => SETTINGS_TABS.find((t) => t.area === mode && t.visible(me))?.key);
 

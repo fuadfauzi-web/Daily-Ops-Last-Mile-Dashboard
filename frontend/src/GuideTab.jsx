@@ -3,6 +3,8 @@ import { api } from "./api";
 import { FEATURES as F } from "./lib/features";
 import { weeklyChanges } from "./lib/changelog";
 import SegmentedControl from "./components/SegmentedControl";
+import BellBadge from "./components/BellBadge";
+import { entryId, markWhatsNewRead, unreadEntries, useWhatsNewUnread } from "./lib/whatsNew";
 
 // In-app onboarding reference (Settings -> Guide, open to everyone).
 //
@@ -104,7 +106,8 @@ const SECTIONS = [
           </>,
           <>
             The <strong>Urgent TN</strong> tab shows a red bell with a number when something needs your attention, and{" "}
-            <strong>Settings</strong> shows a red dot when an admin has replied to your feedback.
+            <strong>Settings</strong> shows a red bell for a reply to your feedback or an update you haven't read in{" "}
+            <strong>Guide → What's new</strong>; it clears once you've read it.
           </>,
           rank >= 3 && F.roleTester && (
             <>
@@ -367,7 +370,7 @@ const SECTIONS = [
             <>
               <strong>Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
               (up to 20 MB). Only you{rank >= 3 ? " (and every other admin)" : " and the admins"} can see it.{" "}
-              {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here, and a red dot appears on Settings. "}
+              {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here, and a red bell appears on Settings. "}
               You can delete your own feedback at any time (it disappears for the admins too), and closed feedback is deleted automatically a
               week after it's closed.
             </>,
@@ -426,6 +429,15 @@ export default function GuideTab({ me }) {
   const [openId, setOpenId] = useState(SECTIONS[0].id);
   const [view, setView] = useState("guide"); // "guide" | "new"
   const weeks = useMemo(() => weeklyChanges({ features: F, rank, wide }), [rank, wide]);
+  const unread = useWhatsNewUnread(me);
+  const [newIds, setNewIds] = useState(() => new Set()); // what was unread when What's new was opened
+  // Opening What's new counts as reading it: remember which items were new (to tag them for
+  // this visit), then clear the bell everywhere.
+  const openNew = () => {
+    setNewIds(new Set(unreadEntries(me).map(entryId)));
+    markWhatsNewRead(me);
+    setView("new");
+  };
   const [showOlder, setShowOlder] = useState(false); // earlier weeks stay hidden until asked for
   const [openWeek, setOpenWeek] = useState(null);
   const [query, setQuery] = useState("");
@@ -460,10 +472,18 @@ export default function GuideTab({ me }) {
     <SegmentedControl
       options={[
         { key: "guide", label: "Guide" },
-        { key: "new", label: `What's new${weeks[0].items.length ? ` (${weeks[0].items.length})` : ""}` },
+        {
+          key: "new",
+          label: (
+            <>
+              What's new{weeks[0].items.length ? ` (${weeks[0].items.length})` : ""}
+              <BellBadge count={unread} title="Updates you haven't read yet" />
+            </>
+          ),
+        },
       ]}
       value={view}
-      onChange={setView}
+      onChange={(k) => (k === "new" ? openNew() : setView(k))}
     />
   );
 
@@ -480,6 +500,9 @@ export default function GuideTab({ me }) {
                 <span className="mr-2 text-slate-400 group-open:hidden">+</span>
                 <span className="mr-2 hidden text-slate-400 group-open:inline">−</span>
                 {c.title}
+                {newIds.has(entryId(c)) && (
+                  <span className="ml-2 rounded bg-status-critical px-1.5 py-0.5 font-display text-[10px] font-semibold text-white">NEW</span>
+                )}
               </summary>
               <ul className="mt-1.5 list-disc space-y-1 pl-9 text-sm text-slate-600">
                 {c.points.map((pt, i) => (
@@ -588,7 +611,7 @@ export default function GuideTab({ me }) {
         <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
           <div className="text-sm font-medium text-slate-700">Didn't find your answer? Ask it.</div>
           <p className="text-xs text-slate-400">
-            It goes to the admins as feedback marked [Question]; their reply appears in Settings → Feedback and a red dot shows on Settings.
+            It goes to the admins as feedback marked [Question]; their reply appears in Settings → Feedback and a red bell shows on Settings.
           </p>
           <textarea
             className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"

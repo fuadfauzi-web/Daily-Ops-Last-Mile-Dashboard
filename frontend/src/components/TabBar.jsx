@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import BellBadge from "./BellBadge";
 
 // Level-2 navigation: an underlined tab bar (Ninja Black text, brand-red
 // underline on the active tab -- not filled pills, which are Level 1's look
@@ -6,23 +7,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 // fit into a right-aligned "More ▾" menu -- built to scale as more
 // top-level views get added, rather than a left sidebar (these tables run
 // to 19 columns wide and need every pixel).
-// A tab can carry a `badge` (a count): shown as a small bell with the number, e.g. the
-// Urgent TN tab when a colleague has assigned you something that needs an answer.
-function Bell({ count }) {
-  return (
-    <span
-      className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-status-critical px-1.5 py-0.5 align-middle text-[10px] font-semibold leading-none text-white"
-      title={`${count} need${count === 1 ? "s" : ""} your attention`}
-    >
-      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-      </svg>
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
-
 function TabButton({ label, active, onClick, className = "", badge = 0 }) {
   return (
     <button
@@ -32,7 +16,7 @@ function TabButton({ label, active, onClick, className = "", badge = 0 }) {
       } ${className}`}
     >
       {label}
-      {badge > 0 && <Bell count={badge} />}
+      {badge > 0 && <BellBadge count={badge} />}
     </button>
   );
 }
@@ -125,7 +109,7 @@ export default function TabBar({ tabs, activeKey, onSelect }) {
                   }`}
                 >
                   {t.label}
-                  {t.badge > 0 && <Bell count={t.badge} />}
+                  {t.badge > 0 && <BellBadge count={t.badge} />}
                 </button>
               ))}
             </div>
