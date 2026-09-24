@@ -11,7 +11,7 @@ export const METRIC_NOTES = {
   zero_attempt: "Zero Attempt parcels aged D0 (today). Action: route today.",
   zero_attempt_gt_d0: "Zero Attempt parcels aged more than D0 -- already sitting past today. Action: prioritise, these are overdue.",
   total_in_hub: "Parcels physically at their correct dest hub right now (not On Hold, not still On Vehicle). The base for several % metrics below.",
-  age_gt3: "Parcels aged more than 3 days since their first sweep at the current hub. Action: investigate why it hasn't moved -- check for a hold, missing route, or recurring failure.",
+  age_gt3: "Parcels aged more than 3 days since their first sweep at the current hub. Scored as a % of In Hub (sorting this header ranks by that %, not the raw count). Action: investigate why it hasn't moved -- check for a hold, missing route, or recurring failure.",
   on_hold: "Parcels with status On Hold. Action: resolve whatever's blocking it (address issue, customer contact, etc.) before it can route.",
   reschedule: "In-hub parcels that have already been attempted at least once (attempts > 0). Action: reschedule/re-route for another attempt.",
   still_ovfd: "Parcels still On Vehicle for Delivery -- out on a route, not yet resolved. Not actionable at the hub until the driver returns/updates.",
