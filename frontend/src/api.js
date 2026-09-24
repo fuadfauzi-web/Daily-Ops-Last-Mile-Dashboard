@@ -149,6 +149,27 @@ export const api = {
     suggest: (q) => request(`/api/urgent-tn/pic-suggestions?q=${encodeURIComponent(q)}`),
   },
   notifications: () => request("/api/notifications"),
+  // Task List (backend/tasklist.py)
+  followups: {
+    list: () => request("/api/followups"),
+    create: (payload) => request("/api/followups", { method: "POST", body: JSON.stringify(payload) }),
+    update: (id, payload) => request(`/api/followups/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    remove: (id) => request(`/api/followups/${id}`, { method: "DELETE" }),
+    markSeen: () => request("/api/followups/mark-seen", { method: "POST" }),
+  },
+  todos: {
+    list: () => request("/api/todos"),
+    create: (payload) => request("/api/todos", { method: "POST", body: JSON.stringify(payload) }),
+    update: (id, payload) => request(`/api/todos/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    remove: (id) => request(`/api/todos/${id}`, { method: "DELETE" }),
+  },
+  tasks: {
+    list: () => request("/api/tasks"),
+    create: (payload) => request("/api/tasks", { method: "POST", body: JSON.stringify(payload) }),
+    update: (id, payload) => request(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    remove: (id) => request(`/api/tasks/${id}`, { method: "DELETE" }),
+    markSeen: () => request("/api/tasks/mark-seen", { method: "POST" }),
+  },
   coldChain: () => request("/api/cold-chain"),
   restockBundles: (view) => request(`/api/restock-bundles?view=${encodeURIComponent(view || "all")}`),
   b2bComplianceTns: (stationCode, status) =>

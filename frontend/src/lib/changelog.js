@@ -34,6 +34,17 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-25",
+    title: "Task List: Email / Gchat, To Do List and Task Assigned",
+    feature: "taskList",
+    points: [
+      "The Urgent TN tab is now the Task List, with four sub-tabs: Urgent TN, Email / Gchat, To Do List and Task Assigned. Each has its own bell.",
+      "Email / Gchat: list the emails and chats you want to follow up, with a due date, and ask another user to help reply or remind you.",
+      "To Do List: your own tracker with due dates, progress and optional reminders.",
+      "Task Assigned: give a task to another user; they update its status and reply.",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "Summary cards removed",
     feature: "hideSummaryCards",
     points: [

@@ -105,7 +105,7 @@ const SECTIONS = [
             and what to do about it.
           </>,
           <>
-            The <strong>Urgent TN</strong> tab shows a red bell with a number when something needs your attention, and{" "}
+            The <strong>{F.taskList ? "Task List" : "Urgent TN"}</strong> tab shows a red bell with a number when something needs your attention, and{" "}
             <strong>Settings</strong> shows a red bell for a reply to your feedback or an update you haven't read in{" "}
             <strong>Guide → What's new</strong>; it clears once you've read it.
           </>,
@@ -316,7 +316,7 @@ const SECTIONS = [
   },
   {
     id: "urgent",
-    title: "Urgent TN",
+    title: F.taskList ? "Task List → Urgent TN" : "Urgent TN",
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
@@ -349,6 +349,39 @@ const SECTIONS = [
               they pick reports back to them. Each assignment is a separate row, and closing or removing one only removes that row.
             </>,
             <>You see the tracking numbers you added and the ones assigned to you.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "tasklist",
+    title: "Task List",
+    show: () => F.taskList,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The Task List tab keeps everything you have to chase in one place, in four sub-tabs. Each sub-tab has its own red bell, and the tab shows
+          them added up.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Urgent TN</strong>: tracking numbers you want to keep an eye on, optionally assigned to a PIC (see the Urgent TN section).</>,
+            <>
+              <strong>Email / Gchat</strong>: emails or chats you want to follow up again. Give each a due date, the person it's with and, if you
+              like, a link. You can ask another dashboard user to help reply or to remind you: they see it under <em>Helping me</em>, can
+              <em> Acknowledge</em> it and type back what they did. You mark it Done. The bell rings for follow-ups due today or overdue, and for
+              a helper until they acknowledge.
+            </>,
+            <>
+              <strong>To Do List</strong>: your own private tracker. Add what you need to do with a due date and a progress (0–100%; 100% counts as
+              done), and optionally a reminder time -- the bell rings when it arrives, until you dismiss it or finish the item.
+            </>,
+            <>
+              <strong>Task Assigned</strong>: give a task to another dashboard user (for yourself, use the To Do List). They mark it Open / In
+              progress / Done and can reply; you can edit, reopen or remove it (removing deletes it for both of you). The bell rings for a task
+              you haven't picked a status for, while it's due or overdue, and for a reply or status change on one you assigned.
+            </>,
           ]}
         />
       </div>
@@ -420,6 +453,7 @@ const FAQS = [
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
   { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
   { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
+  { q: "How do I get reminded to follow up an email or Gchat?", a: "Task List -> Email / Gchat: add it with a due date (and a helper if you want someone to remind you or reply for you). The bell rings when it's due or overdue.", show: () => F.taskList },
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
   { q: "How do I export tracking numbers?", a: "Click any coloured count to open its tracking numbers, then Export CSV (or Copy list). Every table also has its own Export CSV for exactly what's on screen." },

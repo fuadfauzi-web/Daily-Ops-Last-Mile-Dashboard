@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 import db
 import storage
+from tasklist import notification_counts as tasklist_counts, on_user_deleted as tasklist_user_deleted, router as tasklist_router
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
     METRIC_KEYS, OLD_ROUTE_ROWS_CAP, RDO_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
@@ -583,6 +584,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Daily Ops Last Mile Dashboard", lifespan=lifespan)
+app.include_router(tasklist_router)  # Task List: Email / Gchat follow-ups, To Do List, Task Assigned (tasklist.py)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
@@ -2808,6 +2810,9 @@ class Notifications(BaseModel):
     urgent_notify: int
     urgent_owner_updates: int
     feedback_replies_unread: int
+    followups_notify: int
+    todos_notify: int
+    tasks_notify: int
 
 
 @app.get("/api/notifications", response_model=Notifications)
@@ -2840,6 +2845,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "urgent_notify": int(notify[0] or 0),
         "urgent_owner_updates": int(owner[0] or 0),
         "feedback_replies_unread": int(unread[0] or 0),
+        **await tasklist_counts(user),
     }
 
 
@@ -3157,6 +3163,7 @@ async def delete_user(email: str, user: CurrentUser = Depends(get_current_user))
     await db.execute("DELETE FROM users WHERE email=%s", (email,))
     # Urgent TN items follow their owner: the ones this user created go with them,
     # and any assigned to them are just unassigned (V27 migration).
+    await tasklist_user_deleted(email)
     await db.execute("DELETE FROM urgent_tn_items WHERE LOWER(created_by) = %s", (email.lower(),))
     await db.execute(
         "UPDATE urgent_tn_items SET assignee_email = NULL, assignee_seen_at = NULL WHERE LOWER(assignee_email) = %s",
