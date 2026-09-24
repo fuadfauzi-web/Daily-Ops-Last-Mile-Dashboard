@@ -10,7 +10,18 @@ COPY frontend/ .
 ENV VITE_API_URL=""
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# Runtime stage. Every flagged package (openssl/libcrypto3+libssl3, libexpat, libpng,
+# libxml2, musl, c-ares, nghttp2-libs, zlib) is an Alpine OS package that ships with the
+# nginx base image -- none is installed by this Dockerfile -- so the fix is the base image.
+# nginx:1.27-alpine sat on Alpine 3.21.3; 1.30.5-alpine3.24-slim is the current nginx
+# stable line on Alpine 3.24, which carries newer versions of all of them than the
+# fixed-in versions in the scan (e.g. openssl >= 3.3.7-r1, libexpat >= 2.8.4).
+# The -slim variant is the same nginx minus the optional perl/njs/geoip modules, which
+# this app never loads (it only serves static files, see cicd/nginx.conf), so it also
+# ships fewer packages to be flagged. The tag is pinned to an exact nginx + Alpine version.
+FROM nginx:1.30.5-alpine3.24-slim
+# Pick up any Alpine security fixes published after the base image was built.
+RUN apk upgrade --no-cache
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY cicd/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
