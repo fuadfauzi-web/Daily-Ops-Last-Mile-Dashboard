@@ -3,6 +3,8 @@ import { api } from "./api";
 import { BOARD_COLUMNS } from "./lib/actionMetrics";
 import { resolveThreshold } from "./lib/thresholds";
 import TabBar from "./components/TabBar";
+import FeedbackPanel from "./FeedbackPanel";
+import GuideTab from "./GuideTab";
 import MultiSelect from "./components/MultiSelect";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
@@ -514,15 +516,22 @@ function DocumentsPanel() {
   );
 }
 
+// Two areas share this file (2026-09-25 feedback):
+//   Settings -- what any role may reach: Users (admin/manager/region), SLA Targets and Recovery
+//               Settings (admin/manager), plus Feedback and Guide (everyone).
+//   Admin    -- only what solely an admin can change (Documents, Data Refresh); the Admin page
+//               itself is admin-only.
 const SETTINGS_TABS = [
-  { key: "users", label: "Users", visible: () => true },
-  { key: "sla", label: "SLA Targets", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "recovery", label: "Recovery Settings", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "documents", label: "Documents", visible: (me) => me.role === "admin" },
-  { key: "refresh", label: "Data Refresh", visible: (me) => me.role === "admin" },
+  { key: "users", label: "Users", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
+  { key: "sla", label: "SLA Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "feedback", label: "Feedback", area: "settings", visible: () => true },
+  { key: "guide", label: "Guide", area: "settings", visible: () => true },
+  { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "refresh", label: "Data Refresh", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
-export default function SettingsPanel({ me }) {
+export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const isFullAdmin = me.role === "admin";
   // 2026-09-21 feedback: Manager/Region staff can now edit/remove the users
   // they're allowed to manage (not just add), so they see the (backend-filtered,
@@ -530,8 +539,14 @@ export default function SettingsPanel({ me }) {
   const canManageUsers = me.role === "admin" || me.role === "manager" || me.role === "region";
   const myAllowedRoles = useMemo(() => allowedRoles(me), [me]);
   const myAllowedScopeTypes = useMemo(() => allowedScopeTypes(me.role), [me.role]);
-  const visibleSettingsTabs = useMemo(() => SETTINGS_TABS.filter((t) => t.visible(me)), [me]);
-  const [adminTab, setAdminTab] = useState("users");
+  const visibleSettingsTabs = useMemo(
+    () =>
+      SETTINGS_TABS.filter((t) => t.area === mode && t.visible(me)).map((t) =>
+        t.key === "feedback" ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 } : t
+      ),
+    [me, mode, notifCounts]
+  );
+  const [adminTab, setAdminTab] = useState(() => SETTINGS_TABS.find((t) => t.area === mode && t.visible(me))?.key);
 
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
@@ -563,7 +578,7 @@ export default function SettingsPanel({ me }) {
   useEffect(() => {
     api.stations().then(setStations).catch(() => {});
     api.regions().then(setRegions).catch(() => {});
-    if (canManageUsers) loadUsers();
+    if (canManageUsers && mode === "settings") loadUsers();
     if (isFullAdmin) {
       loadRefreshStatus();
     }
@@ -643,7 +658,7 @@ export default function SettingsPanel({ me }) {
         await api.users.add(payload);
       }
       setForm(emptyForm);
-      if (canManageUsers) loadUsers();
+      if (canManageUsers && mode === "settings") loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -661,7 +676,7 @@ export default function SettingsPanel({ me }) {
       setBulkResult(result);
       setBulkText("");
       setBulkFileName(null);
-      if (canManageUsers) loadUsers();
+      if (canManageUsers && mode === "settings") loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -721,6 +736,10 @@ export default function SettingsPanel({ me }) {
       {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
 
       {adminTab === "recovery" && <RecoverySettingsPanel />}
+
+      {adminTab === "feedback" && <FeedbackPanel me={me} />}
+
+      {adminTab === "guide" && <GuideTab me={me} />}
 
       {adminTab === "documents" && <DocumentsPanel />}
 

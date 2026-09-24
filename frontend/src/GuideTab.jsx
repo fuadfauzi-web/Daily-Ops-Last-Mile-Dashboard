@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { api } from "./api";
 import { FEATURES as F } from "./lib/features";
+import { recentChanges } from "./lib/changelog";
+import SegmentedControl from "./components/SegmentedControl";
 
-// In-app onboarding reference (Admin -> Guide, open to everyone).
+// In-app onboarding reference (Settings -> Guide, open to everyone).
 //
 // RULES FOR MAINTAINERS (2026-09-25 feedback):
 //  * Keep this up to date whenever a build changes something a user can see -- new tab,
@@ -30,10 +32,10 @@ const SECTIONS = [
     title: "Roles & what you see",
     body: ({ rank }) => {
       const rows = [
-        { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Admin → Feedback and Guide. No Settings access." },
+        { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
         { role: "Region staff", rank: 1, text: "View the dashboard, plus add, edit and remove Station-staff teammates (with more than one station if needed) in Settings → Users." },
         { role: "Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings." },
-        { role: "Admin", rank: 3, text: "Everything: full user management, all Settings screens, manual data refresh, replying to feedback and the Role Tester." },
+        { role: "Admin", rank: 3, text: "Everything: full user management, all Settings screens, the Admin page (Documents, Data Refresh), replying to feedback and the Role Tester." },
       ].filter((r) => r.rank <= rank);
       return (
         <div className="space-y-2 text-sm text-slate-700">
@@ -102,7 +104,7 @@ const SECTIONS = [
           </>,
           <>
             The <strong>Urgent TN</strong> tab shows a red bell with a number when something needs your attention, and{" "}
-            <strong>Admin</strong> shows a red dot when an admin has replied to your feedback.
+            <strong>Settings</strong> shows a red dot when an admin has replied to your feedback.
           </>,
           rank >= 3 && (
             <>
@@ -343,17 +345,18 @@ const SECTIONS = [
   {
     id: "settings",
     title: "Settings",
-    show: ({ rank }) => rank >= 1,
     body: ({ rank }) => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>Configuration screens -- reachable by Region staff, Managers and Admins (station-scoped users don't see this menu).</p>
+        <p>Configuration and help, reachable by every role -- which tabs you see inside depends on your role.</p>
         <Bullets
           items={[
-            <>
-              <strong>Users</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
-              more than one station. Find people with the search box, filter by role, scope or "Never opened", and click a column header
-              (e.g. Last opened) to sort.
-            </>,
+            rank >= 1 && (
+              <>
+                <strong>Users</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
+                more than one station. Find people with the search box, filter by role, scope or "Never opened", and click a column header
+                (e.g. Last opened) to sort.
+              </>
+            ),
             rank >= 2 && (
               <>
                 <strong>SLA Targets</strong>: Warning / Critical numbers per metric, nationwide or per region (Productivity per driver
@@ -361,12 +364,17 @@ const SECTIONS = [
               </>
             ),
             rank >= 2 && <><strong>Recovery Settings</strong>: the COD-value threshold and item keywords behind Recovery's highlighting.</>,
-            rank >= 3 && (
-              <>
-                <strong>Documents</strong> (driver tenure CSV) and <strong>Data Refresh</strong>: trigger an immediate refresh and see when each
-                Redash query was last pulled.
-              </>
-            ),
+            <>
+              <strong>Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
+              (up to 20 MB). Only you{rank >= 3 ? " (and every other admin)" : " and the admins"} can see it.{" "}
+              {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here, and a red dot appears on Settings. "}
+              You can delete your own feedback at any time (it disappears for the admins too), and closed feedback is deleted automatically a
+              week after it's closed.
+            </>,
+            <>
+              <strong>Guide</strong>: this page -- search it, ask the admins a question if it isn't answered, and see what's changed in the last
+              week under <strong>What's new</strong>.
+            </>,
           ]}
         />
       </div>
@@ -375,18 +383,15 @@ const SECTIONS = [
   {
     id: "admin",
     title: "Admin",
-    body: ({ rank }) => (
+    show: ({ rank }) => rank >= 3,
+    body: () => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>Day-to-day tools open to every role, whatever the scope -- this is where you're reading the Guide now.</p>
+        <p>The admin-only page: the settings only an admin can change.</p>
         <Bullets
           items={[
-            <>
-              <strong>Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
-              (up to 20 MB). Only you{rank >= 3 ? " (and every other admin)" : " and the admins"} can see it. {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here and a red dot appears on Admin. "}
-              You can delete your own feedback at any time (it disappears for the admins too), and closed feedback is deleted automatically a
-              week after it's closed.
-            </>,
-            <><strong>Guide</strong>: this page -- search it, or ask the admins a question if it isn't answered.</>,
+            <><strong>Documents</strong>: upload the driver/rider details CSV that gives Route Monitoring its Tenure column.</>,
+            <><strong>Data Refresh</strong>: trigger an immediate refresh and see when each Redash query was last pulled.</>,
+            <>Feedback replies, the Guide and the Role Tester are not here -- Feedback and Guide are under Settings, and the Role Tester is in the header.</>,
           ]}
         />
       </div>
@@ -410,7 +415,7 @@ const FAQS = [
   { q: "How do I change someone's access?", a: "Settings -> Users -> Edit. You can only grant a role and scope at or below your own. Region staff can edit Station staff and give them more than one station.", show: ({ rank }) => rank >= 1 },
   { q: "Who has never opened the dashboard?", a: "Settings -> Users: tick \"Never opened\", or click the Last opened header to sort.", show: ({ rank }) => rank >= 1 },
   { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTesterUser },
-  { q: "How do I reply to feedback?", a: "Admin -> Feedback -> type in the reply box under the message and Send reply; Close it when it's done (it's deleted a week later).", show: ({ rank }) => rank >= 3 },
+  { q: "How do I reply to feedback?", a: "Settings -> Feedback -> type in the reply box under the message and Send reply; Close it when it's done (it's deleted a week later).", show: ({ rank }) => rank >= 3 },
 ];
 
 export default function GuideTab({ me }) {
@@ -419,6 +424,8 @@ export default function GuideTab({ me }) {
   const ctx = useMemo(() => ({ rank, wide, me }), [rank, wide, me]);
 
   const [openId, setOpenId] = useState(SECTIONS[0].id);
+  const [view, setView] = useState("guide"); // "guide" | "new"
+  const changes = useMemo(() => recentChanges({ features: F, rank }), [rank]);
   const [query, setQuery] = useState("");
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
@@ -447,8 +454,62 @@ export default function GuideTab({ me }) {
     }
   };
 
+  const switcher = (
+    <SegmentedControl
+      options={[
+        { key: "guide", label: "Guide" },
+        { key: "new", label: `What's new (${changes.length})` },
+      ]}
+      value={view}
+      onChange={setView}
+    />
+  );
+
+  if (view === "new") {
+    // Group the last week's changes by day, newest first.
+    const days = [];
+    for (const c of changes) {
+      const last = days[days.length - 1];
+      if (last && last.date === c.date) last.items.push(c);
+      else days.push({ date: c.date, items: [c] });
+    }
+    return (
+      <div className="space-y-2">
+        {switcher}
+        <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+          <div className="font-display text-sm font-semibold text-slate-800">What's new</div>
+          <p className="mt-1 text-sm text-slate-500">Everything that changed in the last 7 days that applies to you.</p>
+        </div>
+        {days.length === 0 ? (
+          <div className="rounded-xl bg-white p-6 text-sm text-slate-400 ring-1 ring-slate-200">Nothing has changed in the last 7 days.</div>
+        ) : (
+          days.map((d) => (
+            <div key={d.date} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+              <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2 font-display text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {new Date(`${d.date}T00:00:00`).toLocaleDateString("en-MY", { weekday: "long", day: "numeric", month: "long" })}
+              </div>
+              <div className="divide-y divide-slate-100">
+                {d.items.map((c) => (
+                  <div key={c.title} className="px-4 py-3">
+                    <div className="text-sm font-semibold text-slate-800">{c.title}</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-600">
+                      {c.points.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
+      {switcher}
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <div className="font-display text-sm font-semibold text-slate-800">How to use this dashboard</div>
         <p className="mt-1 text-sm text-slate-500">
@@ -487,7 +548,7 @@ export default function GuideTab({ me }) {
         <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
           <div className="text-sm font-medium text-slate-700">Didn't find your answer? Ask it.</div>
           <p className="text-xs text-slate-400">
-            It goes to the admins as feedback marked [Question]; their reply appears in Admin → Feedback and a red dot shows on Admin.
+            It goes to the admins as feedback marked [Question]; their reply appears in Settings → Feedback and a red dot shows on Settings.
           </p>
           <textarea
             className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
@@ -507,7 +568,7 @@ export default function GuideTab({ me }) {
             >
               {sending ? "Sending…" : "Ask the admins"}
             </button>
-            {sent && <span className="text-xs text-status-good">Sent — watch Admin → Feedback for the reply.</span>}
+            {sent && <span className="text-xs text-status-good">Sent — watch Settings → Feedback for the reply.</span>}
             {error && <span className="text-xs text-status-critical">{error}</span>}
           </div>
         </div>

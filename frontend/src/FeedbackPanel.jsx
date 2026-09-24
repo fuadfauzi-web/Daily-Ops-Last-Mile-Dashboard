@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
-import TabBar from "./components/TabBar";
-import GuideTab from "./GuideTab";
 
 function formatTime(iso) {
   if (!iso) return "Never";
@@ -9,7 +7,7 @@ function formatTime(iso) {
   return d.toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" });
 }
 
-// Admin -> Feedback (2026-09-25): anyone can send a complaint/suggestion about the
+// Settings -> Feedback (2026-09-25; moved out of Admin): anyone can send a complaint/suggestion about the
 // app, optionally with one image/PDF (max 20 MB). A sender sees only their own
 // feedback plus the admin's reply; a full admin sees everyone's, replies, and
 // closes it. Closed feedback is deleted 7 days after it was closed.
@@ -157,7 +155,7 @@ function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
   );
 }
 
-function FeedbackPanel({ me }) {
+export default function FeedbackPanel({ me }) {
   const isFullAdmin = me.role === "admin";
   const [message, setMessage] = useState("");
   const [file, setFile] = useState(null);
@@ -283,31 +281,6 @@ function FeedbackPanel({ me }) {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// The Admin page: day-to-day tools for using the app, as opposed to Settings
-// (nationwide configuration -- Users/SLA Targets/Recovery Settings/Data
-// Refresh, see SettingsPanel.jsx). Feedback + Guide for now (2026-09-20);
-// Attendance and more are planned here later, not built yet.
-const ADMIN_TABS = [
-  { key: "feedback", label: "Feedback", visible: () => true },
-  { key: "guide", label: "Guide", visible: () => true },
-];
-
-export default function AdminPanel({ me, notifCounts }) {
-  const [adminTab, setAdminTab] = useState(ADMIN_TABS[0].key);
-
-  return (
-    <div className="space-y-6">
-      <TabBar
-        tabs={ADMIN_TABS.map((t) => (t.key === "feedback" ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 } : t))}
-        activeKey={adminTab}
-        onSelect={setAdminTab}
-      />
-      {adminTab === "feedback" && <FeedbackPanel me={me} />}
-      {adminTab === "guide" && <GuideTab me={me} />}
     </div>
   );
 }
