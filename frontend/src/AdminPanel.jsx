@@ -296,18 +296,18 @@ const ADMIN_TABS = [
   { key: "guide", label: "Guide", visible: () => true },
 ];
 
-export default function AdminPanel({ me, jump }) {
+export default function AdminPanel({ me, notifCounts }) {
   const [adminTab, setAdminTab] = useState(ADMIN_TABS[0].key);
-  // The header bell can send the user straight to a sub-tab (e.g. Feedback).
-  useEffect(() => {
-    if (jump?.sub && ADMIN_TABS.some((t) => t.key === jump.sub)) setAdminTab(jump.sub);
-  }, [jump?.nonce]);
 
   return (
     <div className="space-y-6">
-      <TabBar tabs={ADMIN_TABS} activeKey={adminTab} onSelect={setAdminTab} />
+      <TabBar
+        tabs={ADMIN_TABS.map((t) => (t.key === "feedback" ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 } : t))}
+        activeKey={adminTab}
+        onSelect={setAdminTab}
+      />
       {adminTab === "feedback" && <FeedbackPanel me={me} />}
-      {adminTab === "guide" && <GuideTab />}
+      {adminTab === "guide" && <GuideTab me={me} />}
     </div>
   );
 }

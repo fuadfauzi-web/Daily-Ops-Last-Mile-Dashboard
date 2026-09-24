@@ -6,7 +6,24 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 // fit into a right-aligned "More ▾" menu -- built to scale as more
 // top-level views get added, rather than a left sidebar (these tables run
 // to 19 columns wide and need every pixel).
-function TabButton({ label, active, onClick, className = "" }) {
+// A tab can carry a `badge` (a count): shown as a small bell with the number, e.g. the
+// Urgent TN tab when a colleague has assigned you something that needs an answer.
+function Bell({ count }) {
+  return (
+    <span
+      className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-status-critical px-1.5 py-0.5 align-middle text-[10px] font-semibold leading-none text-white"
+      title={`${count} need${count === 1 ? "s" : ""} your attention`}
+    >
+      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      </svg>
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+function TabButton({ label, active, onClick, className = "", badge = 0 }) {
   return (
     <button
       onClick={onClick}
@@ -15,6 +32,7 @@ function TabButton({ label, active, onClick, className = "" }) {
       } ${className}`}
     >
       {label}
+      {badge > 0 && <Bell count={badge} />}
     </button>
   );
 }
@@ -80,13 +98,13 @@ export default function TabBar({ tabs, activeKey, onSelect }) {
           read natural widths so we know how many fit before rendering. */}
       <div ref={measureRef} className="pointer-events-none invisible absolute left-0 top-0 flex" aria-hidden="true">
         {tabs.map((t) => (
-          <TabButton key={t.key} label={t.label} active={t.key === activeKey} />
+          <TabButton key={t.key} label={t.label} active={t.key === activeKey} badge={t.badge} />
         ))}
       </div>
 
       <div className="flex flex-1 overflow-x-auto">
         {visible.map((t) => (
-          <TabButton key={t.key} label={t.label} active={t.key === activeKey} onClick={() => onSelect(t.key)} />
+          <TabButton key={t.key} label={t.label} active={t.key === activeKey} onClick={() => onSelect(t.key)} badge={t.badge} />
         ))}
       </div>
 
@@ -107,6 +125,7 @@ export default function TabBar({ tabs, activeKey, onSelect }) {
                   }`}
                 >
                   {t.label}
+                  {t.badge > 0 && <Bell count={t.badge} />}
                 </button>
               ))}
             </div>

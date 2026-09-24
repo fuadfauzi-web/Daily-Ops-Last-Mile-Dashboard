@@ -1428,11 +1428,10 @@ RDO_STATUS_COLUMNS = {
 RDO_COMPLIANCE_KEYS = ("total_tn",) + tuple(RDO_STATUS_COLUMNS.values())
 RDO_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route -- bound payload size
 
-# 2026-09-25: a hub that isn't one of the 143 stations (PUDO-KV-DEL, CC-GLE, ULTRA KV,
-# ... or a blank one) used to make its rows vanish from every count here -- which
-# is exactly where the not-yet-completed bundles were hiding (e.g. 130 of 478
-# "On Vehicle for Delivery" bundles in the 2026-09-23 export). They now get their
-# own row (region/zone "Other hubs") named after the raw hub, so nothing is dropped.
+# hub_bucket is for the views that DO want non-station hubs (Cold Chain: its parcels
+# sit at CC-* hubs). RDO and Restock only cover the 143 Last Mile stations -- a
+# bundle whose last sweep hub is anything else (PUDO-KV-DEL, CC-GLE, ...) is left out
+# of both (2026-09-25 feedback), but every bundle STATUS, completed or not, stays in.
 OTHER_HUBS_LABEL = "Other hubs"
 
 
@@ -1454,8 +1453,9 @@ def _rdo_status_key(status: str | None) -> str | None:
 
 def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
     """Returns ({hub_code: {..., total_tn, <per-status counts>}}, [tn_row, ...]).
-    Every row is kept, whatever the bundle's status and wherever it last swept --
-    see hub_bucket."""
+    Every bundle status is kept (completed or not), but only bundles whose last
+    sweep hub is one of the 143 stations. age = days since the RDO was created."""
+    today = datetime.now(_MYT).date()
     by_station = {
         hub: {
             "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
@@ -1465,18 +1465,18 @@ def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]
     }
     tn_rows = []
     for r in rows:
-        code, name, zone, region = hub_bucket(r.get("bundle_last_sweep_hub"))
+        code = r.get("bundle_last_sweep_hub")
         row = by_station.get(code)
         if row is None:
-            row = by_station[code] = {
-                "station_code": code, "station_name": name, "zone": zone, "region": region,
-                **{k: 0 for k in RDO_COMPLIANCE_KEYS},
-            }
+            continue
+        name, zone, region = row["station_name"], row["zone"], row["region"]
         row["total_tn"] += 1
         status_col = _rdo_status_key(r.get("rdo_granular_status"))
         if status_col:
             row[status_col] += 1
+        created = _parse_dt(r.get("rdo_creation_datetime"))
         tn_rows.append({
+            "age": max(0, (today - created.date()).days) if created else None,
             "tracking_number": r.get("rdo_tracking_id"),
             "station_code": code,
             "station_name": name,
@@ -1545,7 +1545,8 @@ def build_cold_chain(health_v3_rows: list[dict], cc_tns: set[str]) -> tuple[list
             "tracking_number": tn, "status": r.get("granular_status"), "attempts": r.get("delivery_attempts") or 0,
             "age": age, "tag": r.get("tag"), "cod": r.get("cod"), "dest_hub": r.get("dest_hub"),
         })
-    return list(stations.values()), tn_rows, matched
+    # A station with nothing in it is just noise (2026-09-25 feedback).
+    return [s for s in stations.values() if s["total"] > 0], tn_rows, matched
 
 
 # ---------------------------------------------------------------------------
@@ -1566,7 +1567,13 @@ RESTOCK_BUNDLE_CLASSES = ("mps_incomplete", "complete_on_hold", "single_on_hold"
 _PIECE_SUFFIX = re.compile(r"-(\d{1,4})$")
 
 
-def build_restock_bundles(restock_rows: list[dict]) -> list[dict]:
+def build_restock_bundles(restock_rows: list[dict], attempts_by_tn: dict[str, int] | None = None) -> list[dict]:
+    """One row per bundle, for bundles whose pieces sit at one of the 143 stations
+    (the hub most pieces last scanned at; anything else is left out, 2026-09-25).
+    attempts: one piece's delivery attempt count (the pieces of a bundle share it) --
+    from the restock row itself when query 1585 carries it, otherwise looked up in
+    attempts_by_tn (query 78 by tracking_id)."""
+    attempts_by_tn = attempts_by_tn or {}
     grouped: dict[str, list[dict]] = {}
     for r in restock_rows:
         bundle = r.get("bundle_tracking_number") or r.get("tracking_id")
@@ -1592,7 +1599,21 @@ def build_restock_bundles(restock_rows: list[dict]) -> list[dict]:
             hubs[r.get("last_scan_hub") or ""] = hubs.get(r.get("last_scan_hub") or "", 0) + 1
         on_hold = statuses.get("On Hold", 0)
         hub = max(hubs, key=hubs.get)
+        if hub not in HUBS:
+            continue
         code, name, zone, region = hub_bucket(hub)
+
+        attempts = None
+        for r in sorted(rows, key=lambda x: x.get("tracking_id") or ""):
+            for value in (r.get("delivery_attempts"), r.get("attempts"), attempts_by_tn.get(r.get("tracking_id"))):
+                if value is not None and value != "":
+                    try:
+                        attempts = int(value)
+                    except (TypeError, ValueError):
+                        continue
+                    break
+            if attempts is not None:
+                break
 
         missing_pieces: list[str] = []
         if missing:
@@ -1622,7 +1643,7 @@ def build_restock_bundles(restock_rows: list[dict]) -> list[dict]:
             "bundle_tracking_number": bundle,
             "shipper_name": first.get("shipper_name"),
             "station_code": code, "station_name": name, "zone": zone, "region": region,
-            "piece_count": piece_count, "pieces_seen": seen, "missing_count": missing,
+            "piece_count": piece_count, "pieces_seen": seen, "missing_count": missing, "attempts": attempts,
             "missing_pieces": ", ".join(missing_pieces) if missing_pieces else None,
             "on_hold_pieces": on_hold,
             "statuses": ", ".join(f"{s} ×{n}" for s, n in sorted(statuses.items(), key=lambda kv: -kv[1])),

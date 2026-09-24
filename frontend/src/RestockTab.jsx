@@ -24,7 +24,7 @@ const RESTOCK_COLUMNS = [
 
 const SUB_TABS = [
   { key: "nxd", label: "Restock NXD" },
-  { key: "onhold", label: "On Hold / MPS Incomplete" },
+  { key: "onhold", label: "Restock On Hold Details" },
   { key: "compliance", label: "B2B Document Compliance" },
 ];
 
@@ -35,6 +35,8 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
+  const [bundleStats, setBundleStats] = useState(null); // {station_code: {on_hold_bundles, mps_incomplete}}
+  const [preset, setPreset] = useState(null); // narrows the bundle list underneath
 
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
   const hideZoneCol =
@@ -45,11 +47,20 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
       .shipperWatch()
       .then(setData)
       .catch((e) => setError(e.message));
+    // On Hold / Incomplete counts come from the same bundle data as the list underneath.
+    api
+      .restockBundles("all")
+      .then((res) => setBundleStats(Object.fromEntries(res.stations.map((s) => [s.station_code, s]))))
+      .catch(() => setBundleStats({}));
   }, [refreshTick]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
-    let rows = data.stations;
+    let rows = data.stations.map((s) => ({
+      ...s,
+      restock_on_hold: bundleStats?.[s.station_code]?.on_hold_bundles ?? 0,
+      restock_incomplete: bundleStats?.[s.station_code]?.mps_incomplete ?? 0,
+    }));
     if (excludeEastMalaysia) rows = rows.filter((r) => r.region !== "East Malaysia");
     if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
     if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
@@ -63,7 +74,7 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
+  }, [data, bundleStats, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -89,6 +100,17 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
       className: (r) => (r[c.key] > 0 ? "font-semibold text-status-critical" : "text-slate-700"),
       onClick: (r) => setModal({ stationCode: r.station_code, stationName: r.station_name, metricKey: c.key, metricLabel: c.label }),
     })),
+    // On Hold / Incomplete come from the bundle list: click to filter it to that station + flag.
+    ...[
+      { key: "restock_on_hold", label: "Restock On Hold", classes: ["on_hold"] },
+      { key: "restock_incomplete", label: "Restock Incomplete", classes: ["mps_incomplete"] },
+    ].map((c) => ({
+      key: c.key,
+      label: c.label,
+      render: (r) => r[c.key].toLocaleString(),
+      className: (r) => (r[c.key] > 0 ? "font-semibold text-status-warning" : "text-slate-700"),
+      onClick: (r) => setPreset({ station: r.station_name, classes: c.classes, nonce: Date.now() }),
+    })),
   ];
 
   return (
@@ -108,8 +130,10 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
             onClick={() =>
               exportCsv(
                 `daily-ops-restock-nxd-${new Date().toISOString().slice(0, 10)}.csv`,
-                ["Region", "Zone", "Station", ...RESTOCK_COLUMNS.map((c) => c.label)],
-                filteredStations.map((r) => [r.region, r.zone, r.station_name, ...RESTOCK_COLUMNS.map((c) => r[c.key])])
+                ["Region", "Zone", "Station", ...RESTOCK_COLUMNS.map((c) => c.label), "Restock On Hold", "Restock Incomplete"],
+                filteredStations.map((r) => [
+                  r.region, r.zone, r.station_name, ...RESTOCK_COLUMNS.map((c) => r[c.key]), r.restock_on_hold, r.restock_incomplete,
+                ])
               )
             }
             className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -126,10 +150,11 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
         onSort={toggleSort}
         onRowClick={(r) => setDetailRow(r)}
         emptyMessage="No stations match."
-        footer="Restock is counted by bundle, not by individual parcel -- Pieces is the actual parcel count."
+        footer="Restock is counted by bundle, not by individual parcel -- Pieces is the actual parcel count. On Hold = bundles with a piece on hold; Incomplete = MPS bundles missing pieces (click either to filter the bundle list below)."
       />
       <RestockBundlesView
         view="all"
+        preset={preset}
         regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
         excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
       />
@@ -146,6 +171,7 @@ const DOCUMENT_TYPES = [{ value: "rdo", label: "RDO" }];
 const RDO_TN_COLUMNS = [
   { key: "tracking_number", label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "—" },
   { key: "rdo_status", label: "RDO Status", text: (r) => r.rdo_status ?? "—" },
+  { key: "age", label: "Age (days)", text: (r) => (r.age ?? "—") },
   { key: "bundle_tracking_number", label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "—" },
   { key: "bundle_delivered_at", label: "Bundle Status", text: bundleStatusText },
   { key: "bundle_last_sweep_at", label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at) },
@@ -178,8 +204,14 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
   const hideZoneCol =
     zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
+  // Blink fix (2026-09-25): only a real change of what's being shown (a filter / sub-view)
+  // resets to the loading skeleton. The 60-second auto-refresh tick just re-fetches in
+  // place -- resetting on every tick collapsed the page for a moment and snapped the
+  // scroll position back to the top.
   useEffect(() => {
     setData(null);
+  }, [documentTypes]);
+  useEffect(() => {
     api
       .b2bCompliance(documentTypes)
       .then(setData)
@@ -368,7 +400,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
             footer={
               <>
                 {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by bundle_last_sweep_hub (where
-                the bundle physically sits; hubs that aren't one of our stations show as their own rows under "Other hubs") · every bundle status is included, completed or not · click a count in the station table for its tracking numbers + CSV · Bundle Status shows the date the bundle completed · RDO Status is raw from Redash -- the "MPS
+                the bundle physically sits; bundles whose last sweep hub isn't one of the 143 stations are left out) · every bundle status is included, completed or not · Age = days since the RDO was created · click a count in the station table for its tracking numbers + CSV · Bundle Status shows the date the bundle completed · RDO Status is raw from Redash -- the "MPS
                 completed but RDO still pending" style classification from the Fleet Manager's own sheet isn't
                 reproduced here yet.
                 {data.tn_rows_truncated && (

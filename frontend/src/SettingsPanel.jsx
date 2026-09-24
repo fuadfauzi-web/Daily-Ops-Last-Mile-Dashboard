@@ -542,6 +542,13 @@ export default function SettingsPanel({ me }) {
   // the list has a find box.
   const formCardRef = useRef(null);
   const [userSearch, setUserSearch] = useState("");
+  // 2026-09-25 feedback: sortable headers (e.g. Last opened, to spot who never opens the
+  // app) and Role / Scope / Never-opened filters on the user list.
+  const [userSortKey, setUserSortKey] = useState("email");
+  const [userSortDir, setUserSortDir] = useState("asc");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [scopeFilter, setScopeFilter] = useState("all");
+  const [neverOpenedOnly, setNeverOpenedOnly] = useState(false);
   const [error, setError] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -564,16 +571,52 @@ export default function SettingsPanel({ me }) {
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
+  // Every distinct region/zone/station value any listed user is scoped to, for the Scope filter.
+  const scopeOptions = useMemo(
+    () => Array.from(new Set((users || []).flatMap((u) => u.scope_values || []))).sort(),
+    [users]
+  );
+
+  const scopeText = (u) => (u.scope_type === "all" ? "Everything" : (u.scope_values || []).join(", "));
+
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
-    const list = users || [];
-    if (!q) return list;
-    return list.filter((u) =>
-      [u.email, u.display_name, ROLE_LABELS[u.role] || u.role, u.scope_type, ...(u.scope_values || [])]
-        .filter(Boolean)
-        .some((s) => String(s).toLowerCase().includes(q))
-    );
-  }, [users, userSearch]);
+    let list = users || [];
+    if (q) {
+      list = list.filter((u) =>
+        [u.email, u.display_name, ROLE_LABELS[u.role] || u.role, u.scope_type, ...(u.scope_values || [])]
+          .filter(Boolean)
+          .some((s) => String(s).toLowerCase().includes(q))
+      );
+    }
+    if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter);
+    if (scopeFilter === "everything") list = list.filter((u) => u.scope_type === "all");
+    else if (scopeFilter !== "all") list = list.filter((u) => (u.scope_values || []).includes(scopeFilter));
+    if (neverOpenedOnly) list = list.filter((u) => !u.last_seen_at);
+
+    const dir = userSortDir === "asc" ? 1 : -1;
+    const value = (u) => {
+      if (userSortKey === "role") return ROLE_LABELS[u.role] || u.role;
+      if (userSortKey === "scope") return scopeText(u);
+      if (userSortKey === "last_seen_at") return u.last_seen_at ? new Date(u.last_seen_at.endsWith("Z") ? u.last_seen_at : u.last_seen_at + "Z").getTime() : -1;
+      return u.email;
+    };
+    // A user who has never opened the app sorts as the oldest possible "last opened".
+    return [...list].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+      return cmp * dir || a.email.localeCompare(b.email);
+    });
+  }, [users, userSearch, roleFilter, scopeFilter, neverOpenedOnly, userSortKey, userSortDir]);
+
+  const toggleUserSort = (key) => {
+    if (key === userSortKey) setUserSortDir(userSortDir === "asc" ? "desc" : "asc");
+    else {
+      setUserSortKey(key);
+      setUserSortDir(key === "last_seen_at" ? "asc" : "asc");
+    }
+  };
 
   const startEdit = (u) => {
     setEditingEmail(u.email);
@@ -916,6 +959,39 @@ export default function SettingsPanel({ me }) {
               placeholder="Find a user by email, name, role or scope…"
               className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                aria-label="Filter by role"
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+              >
+                <option value="all">All roles</option>
+                {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={scopeFilter}
+                onChange={(e) => setScopeFilter(e.target.value)}
+                aria-label="Filter by scope"
+                className="h-8 max-w-[11rem] rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+              >
+                <option value="all">All scopes</option>
+                <option value="everything">Everything (nationwide)</option>
+                {scopeOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                <input type="checkbox" checked={neverOpenedOnly} onChange={(e) => setNeverOpenedOnly(e.target.checked)} />
+                Never opened
+              </label>
+            </div>
             <span className="text-xs text-slate-400">
               {filteredUsers.length === (users || []).length
                 ? `${(users || []).length} users`
@@ -926,10 +1002,22 @@ export default function SettingsPanel({ me }) {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Email</th>
-                <th className="px-4 py-2 font-medium">Role</th>
-                <th className="px-4 py-2 font-medium">Scope</th>
-                <th className="px-4 py-2 font-medium">Last opened</th>
+                {[
+                  { key: "email", label: "Email" },
+                  { key: "role", label: "Role" },
+                  { key: "scope", label: "Scope" },
+                  { key: "last_seen_at", label: "Last opened" },
+                ].map((c) => (
+                  <th key={c.key} className="px-4 py-2 font-medium">
+                    <button
+                      onClick={() => toggleUserSort(c.key)}
+                      className={`flex items-center gap-1 font-medium hover:text-brand ${userSortKey === c.key ? "text-ink" : ""}`}
+                    >
+                      {c.label}
+                      <span className="text-[10px]">{userSortKey === c.key ? (userSortDir === "asc" ? "▲" : "▼") : ""}</span>
+                    </button>
+                  </th>
+                ))}
                 <th className="px-4 py-2 font-medium"></th>
               </tr>
             </thead>

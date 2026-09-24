@@ -1,105 +1,134 @@
 import { useMemo, useState } from "react";
 import { api } from "./api";
+import { FEATURES as F } from "./lib/features";
 
-// In-app onboarding reference -- explains roles/scope, the header controls,
-// and every tab's purpose + the logic behind its less-obvious columns. Kept as
-// one accordion (not a wall of text) so a new user can jump straight to the
-// tab they're confused about. Lives in Admin -> Guide, reachable by everyone.
+// In-app onboarding reference (Admin -> Guide, open to everyone).
+//
+// RULES FOR MAINTAINERS (2026-09-25 feedback):
+//  * Keep this up to date whenever a build changes something a user can see -- new tab,
+//    renamed column, changed behaviour. The Guide is part of the change.
+//  * It only describes what the CURRENT build ships (lib/features.js flags), and only
+//    what the signed-in user's role and scope can actually see: a station user is never
+//    told about Region staff, Manager or Admin tools. Gate a section / FAQ / sentence
+//    with ctx.rank (0 station, 1 region, 2 manager, 3 admin) or ctx.wide (scope covers
+//    more than one station).
+const RANK = { station: 0, region: 1, manager: 2, admin: 3 };
+
+function Bullets({ items }) {
+  return (
+    <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-700">
+      {items.filter(Boolean).map((it, i) => (
+        <li key={i}>{it}</li>
+      ))}
+    </ul>
+  );
+}
+
 const SECTIONS = [
   {
     id: "roles",
     title: "Roles & what you see",
-    body: (
-      <div className="space-y-2 text-sm text-slate-700">
-        <p>
-          Two independent things control what you can do and see: your <strong>role</strong> (what actions you're
-          allowed) and your <strong>scope</strong> (which stations' data you see). An admin sets both when adding you
-          in Settings → Users.
-        </p>
-        <table className="w-full text-left text-xs">
-          <thead className="text-slate-400">
-            <tr>
-              <th className="py-1 pr-3">Role</th>
-              <th className="py-1">Can do</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            <tr>
-              <td className="py-1 pr-3 font-medium">Station staff</td>
-              <td className="py-1">View the dashboard for their own scope only, plus Admin → Feedback/Guide. No Settings access.</td>
-            </tr>
-            <tr>
-              <td className="py-1 pr-3 font-medium">Region staff</td>
-              <td className="py-1">View the dashboard, plus add Station-staff teammates in Settings → Users.</td>
-            </tr>
-            <tr>
-              <td className="py-1 pr-3 font-medium">Manager</td>
-              <td className="py-1">
-                All of the above, plus add Region/Station staff, and edit SLA Targets and Recovery Settings.
-              </td>
-            </tr>
-            <tr>
-              <td className="py-1 pr-3 font-medium">Admin</td>
-              <td className="py-1">Everything: full user management, both Settings screens, and manual data refresh.</td>
-            </tr>
-          </tbody>
-        </table>
-        <p>
-          <strong>Scope</strong> (Station / Zone / Region / Everything) narrows every table on every tab to just
-          that slice of the network, automatically -- a station-scoped user never sees another station's numbers,
-          even by typing a different one into search. "Everything" scope gets the Region/Zone/Station filter bar and
-          a search box to narrow down manually.
-        </p>
-      </div>
-    ),
+    body: ({ rank }) => {
+      const rows = [
+        { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Admin → Feedback and Guide. No Settings access." },
+        { role: "Region staff", rank: 1, text: "View the dashboard, plus add, edit and remove Station-staff teammates (with more than one station if needed) in Settings → Users." },
+        { role: "Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings." },
+        { role: "Admin", rank: 3, text: "Everything: full user management, all Settings screens, manual data refresh, replying to feedback and the Role Tester." },
+      ].filter((r) => r.rank <= rank);
+      return (
+        <div className="space-y-2 text-sm text-slate-700">
+          <p>
+            Two independent things control what you can do and see: your <strong>role</strong> (what actions you're
+            allowed) and your <strong>scope</strong> (which stations' data you see). {rank >= 1 ? "An admin or manager sets both when adding someone in Settings → Users." : "Your admin sets both."}
+          </p>
+          <table className="w-full text-left text-xs">
+            <thead className="text-slate-400">
+              <tr>
+                <th className="py-1 pr-3">{rank === 0 ? "Your role" : "Roles you can see"}</th>
+                <th className="py-1">Can do</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((r) => (
+                <tr key={r.role}>
+                  <td className="py-1 pr-3 font-medium">{r.role}</td>
+                  <td className="py-1">{r.text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p>
+            <strong>Scope</strong> (Station / Zone / Region / Everything) narrows every table, every filter list and every
+            tracking-number list on every tab to just that slice of the network, automatically -- you never see anything
+            outside the scope you've been given, not even as a filter option.
+          </p>
+        </div>
+      );
+    },
   },
   {
     id: "header",
     title: "Header & general controls",
-    body: (
-      <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-700">
-        <li>
-          <strong>Data as of X</strong> (top right) is when the numbers on every tab were last pulled from Redash --
-          the whole app refreshes together every 15 minutes, so this one timestamp covers everything except Urgent TN
-          (see below) and Pending in Yesterday Route (captured once daily at ~12:30am, see Route Monitoring).
-        </li>
-        <li>
-          <strong>Compact / Comfortable</strong> toggles row height/density -- personal preference, doesn't change any
-          data.
-        </li>
-        <li>
-          <strong>Region / Zone / Station filters + search</strong> (only shown if your scope is "Everything" or wide
-          enough to need them) apply to most tabs at once -- Action Board, Shipment Details, Station Health, Routed
-          View, Aging Details, RPU, Recovery and Shipper Watch all follow the same filter selection.
-        </li>
-        <li>
-          <strong>Include East Malaysia</strong> is off by default (it's Retail, not Last Mile) -- full-access
-          viewers can switch it back on.
-        </li>
-        <li>
-          Clicking a <strong>clickable number</strong> (usually coloured) opens a tracking-number list for exactly
-          that metric at that station. Clicking a <strong>row</strong> opens a full detail slide-over with every
-          column for that row.
-        </li>
-        <li>Every table has an <strong>Export CSV</strong> button that exports exactly what's currently filtered/sorted on screen.</li>
-      </ul>
+    body: ({ wide, rank }) => (
+      <Bullets
+        items={[
+          <>
+            <strong>Data as of X</strong> (top right) is when the numbers were last pulled from Redash -- the whole app
+            refreshes together every 15 minutes, so this one timestamp covers everything except Urgent TN's own list and
+            Pending in Yesterday Route (captured once a day at ~12:30am).
+          </>,
+          <>
+            <strong>Compact / Comfortable</strong> toggles row height -- a personal preference, it doesn't change any data.
+          </>,
+          wide && (
+            <>
+              <strong>Region / Zone / Station filters + search</strong> apply to most tabs at once. They only list the
+              regions, zones and stations inside your scope.
+            </>
+          ),
+          wide && rank >= 2 && (
+            <>
+              <strong>Include East Malaysia</strong> switches East Malaysia (Retail, not Last Mile) back on where your scope allows it.
+            </>
+          ),
+          <>
+            Clicking a <strong>clickable number</strong> (usually coloured) opens the tracking numbers behind it, with
+            Export CSV and Copy list. Clicking a <strong>row</strong> opens a slide-over with every column for that row.
+          </>,
+          <>Every table has an <strong>Export CSV</strong> button that exports exactly what's filtered and sorted on screen.</>,
+          <>
+            A small <strong>i</strong> next to a column header opens a note explaining exactly how that number is worked out
+            and what to do about it.
+          </>,
+          <>
+            The <strong>Urgent TN</strong> tab shows a red bell with a number when something needs your attention, and{" "}
+            <strong>Admin</strong> shows a red dot when an admin has replied to your feedback.
+          </>,
+          rank >= 3 && (
+            <>
+              The <strong>Role Tester</strong> button (admin only) previews the app as another role and scope
+              {F.roleTesterUser ? ", or acts as one specific user so you can test things tied to a person" : ""}.
+            </>
+          ),
+        ]}
+      />
     ),
   },
   {
     id: "action",
     title: "Action Board",
-    body: (
+    body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          The "what do I act on today" tab. Pick which metrics matter to you from the picker at the top -- it draws
-          from Station Health plus a few extras (Old Route's stuck count, Zalora NXD 0 Attempt/OVFD, and Routed
-          View's Current OVFD, which is heatmap-only since it has no tracking-number list behind it).
+          The "what do I act on today" tab. Pick the metrics you care about from the searchable picker at the top -- it
+          draws from Station Health plus a few extras (Old Route's stuck count, Zalora NXD 0 Attempt/OVFD, Fresh Unscan and
+          Route Monitoring's Current OVFD).
         </p>
         <p>
-          The heatmap groups by Region/Zone/Station and colours each cell by whether it's breaching the Warning/
-          Critical target set in Settings → SLA Targets. "Act on these today" lists the worst individual stations,
-          worst first, each with a <strong>Copy TNs</strong> and <strong>Export CSV</strong> button that group the
-          tracking numbers by which metric flagged them.
+          The heatmap groups by Region / Zone / Station and colours each cell by whether it breaches the Warning / Critical
+          target set in SLA Targets; every column sorts, and "Breaches only" is on by default. "Act on these today" lists the
+          worst stations first, each with <strong>Copy TNs</strong> and <strong>Export CSV</strong> grouped by which metric
+          flagged them.
         </p>
       </div>
     ),
@@ -107,237 +136,288 @@ const SECTIONS = [
   {
     id: "shipment",
     title: "Shipment Details",
-    body: (
-      <ul className="list-disc space-y-1.5 pl-5 text-sm text-slate-700">
-        <li><strong>Total Fresh</strong> / <strong>Total Shipment</strong>: today's order volume and shipment count for the hub.</li>
-        <li><strong>Fresh Unscan</strong>: fresh parcels that haven't been scanned in at the hub yet.</li>
-        <li><strong>Latlong</strong>: parcels that ended up shipped somewhere other than their real destination.</li>
-        <li><strong>Fresh Attempt %</strong>: attempted ÷ total fresh, target ≥96%.</li>
-        <li><strong>LH Timing</strong>: each line-haul trip's arrival time and the parcel count on that trip (e.g. "10:32am · 45" = 45 parcels). Colour bands: green before 10am, blue 10–11am, amber 11am–12pm, red after 12pm.</li>
-        <li>
-          <strong>Within 1h / 1-2h / 2-3h / 3h+</strong>: how long each parcel took from the shipment arriving at the
-          station (column G) to its first scan-in there (column H). Each shows the count and its % of Total Fresh, sorts
-          by that %, and opens its tracking numbers (with CSV) when clicked.
-        </li>
-        <li>
-          The <strong>timing chart</strong> under the table plots scan-in, first-attempt and success times by hour of
-          day. It follows the table's filters until you pick its own Region / Zone / Station filter, which then
-          overrides them.
-        </li>
-      </ul>
+    body: () => (
+      <Bullets
+        items={[
+          <><strong>Total Fresh</strong> / <strong>Total Shipment</strong>: today's order volume and shipment count for the hub.</>,
+          <><strong>Fresh Unscan</strong>: parcels with no first scan-in at the station yet (blank 1st sweep). <strong>Latlong</strong>: parcels whose current destination differs from the intended one (RTS excluded).</>,
+          <><strong>Fresh Attempt %</strong>: parcels with a first attempt ÷ Total Fresh, target ≥96%.</>,
+          <><strong>LH Timing</strong>: each line-haul trip's arrival time and parcel count (e.g. "10:32am · 45"). Colour bands: green before 10am, blue 10–11am, amber 11am–12pm, red after 12pm.</>,
+          <>
+            <strong>Within 1h / 1-2h / 2-3h / 3h+</strong>: how long each parcel took from the shipment arriving at the
+            station (column G) to its first scan-in there (column H).
+            {F.bucketDetails ? " Each shows the count and its % of Total Fresh, sorts by that %, and opens its tracking numbers (with CSV) when clicked." : ""}
+          </>,
+          F.timingChart && (
+            <>
+              The <strong>timing chart</strong> under the table plots scan-in, first-attempt and success times by hour of day.
+              It follows the table's filters until you pick its own Region / Zone / Station filter, which then overrides them.
+            </>
+          ),
+        ]}
+      />
     ),
   },
   {
     id: "health",
     title: "Station Health",
-    body: (
+    body: () => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>The master per-station KPI table. Every column follows the same "grouped by last_scan_hub_name" rule (where a parcel physically is right now), except the missing/routed columns which have their own logic noted below.</p>
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li><strong>0 Attempt</strong> is age-0 only; <strong>0 Attempt &gt;D0</strong> is the same thing aged &gt;0 days -- the two never overlap.</li>
-          <li><strong>Age &gt;3</strong> is parcels sitting in-hub &gt;3 days -- an admin can score this as a raw count or as a % of Total In Hub (a header note appears when it's set that way).</li>
-          <li><strong>Missing (Hub)</strong> / <strong>(Ship-in)</strong>: open missing-parcel tickets, split by whether the station itself or an inbound shipment is on the hook for it.</li>
-          <li><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub) -- how much of what could be routed already has been.</li>
-          <li>
-            Coloured cells (▲ critical / ■ warning / plain = good) are metrics with an SLA target, set in Settings → SLA
-            Targets. Grey/shaded cells have no SLA -- they're shaded on a relative scale instead: darkest = highest
-            value. By region/By zone shade against every region/zone shown; this table shades each station only
-            against other stations in its own zone. That shading is a ranking, never a pass/fail judgement.
-          </li>
-        </ul>
+        <p>
+          The master per-station KPI table. Every column follows the same rule -- grouped by <em>where the parcel physically is</em> (last
+          scan hub) -- except the missing and routed columns, whose header notes give their own logic.
+        </p>
+        <Bullets
+          items={[
+            <><strong>0 Attempt</strong> is age-0 only; <strong>0 Attempt &gt;D0</strong> is the same thing aged over 0 days -- they never overlap.</>,
+            <><strong>Age &gt;3</strong> is parcels sitting in-hub more than 3 days, scored as a count or as a % of Total In Hub.</>,
+            <><strong>Missing (Hub / Driver-Rider / Ship-in)</strong>: open missing-parcel tickets split by who is on the hook. <strong>Pending ATS</strong> is parcels pending Add To Shipment.</>,
+            <><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub).</>,
+            F.stationHealthCombined ? (
+              <>One expandable table: click a Region to open its Zones, a Zone to open its Stations. Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for the whole table.</>
+            ) : (
+              <>Coloured cells (▲ critical / ■ warning) are metrics with an SLA target. Cells without a target are shaded on a relative scale instead -- a ranking, never a pass/fail judgement.</>
+            ),
+            <>Click any number for its tracking numbers; click a column header's <strong>i</strong> for what the number means and the action to take.</>,
+          ]}
+        />
       </div>
     ),
   },
   {
     id: "routed",
     title: "Route Monitoring",
-    body: (
+    body: () => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>Switch between Region / Zone / Station / Driver / Old Route / Pending in Yesterday Route with the level switcher.</p>
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li><strong>Productivity</strong>: Total Success ÷ Total Routed, shown as a plain number (not a %) -- at the driver level it's scored against a target set per driver position (Hybrid Driver/Rider, Independent Driver/Rider) in Settings → SLA Targets.</li>
-          <li><strong>Completion Rate</strong>: (Total Routed − Current OVFD) ÷ Total Routed -- 100% means nothing is left on the vehicle.</li>
-          <li>The <strong>driver-type dropdown</strong> (deliberately a plain select, not a tab-style button) filters Region/Zone/Station/Driver views to Hybrid, Independent or Other drivers only. It never affects Old Route or Pending in Yesterday Route -- neither has a driver concept.</li>
-          <li><strong>Old Route</strong>: tracking numbers still stuck on an old Route ID/date.</li>
-          <li><strong>Pending in Yesterday Route</strong>: a frozen snapshot of everything still On Vehicle for Delivery at ~12:30am Malaysia time -- stays fixed all day, replaced at the next 12:30am capture.</li>
-        </ul>
+        <p>
+          Switch between Region / Zone / Station / Driver{F.completionSummary ? " / Completion Summary" : ""} / Old Route / Pending in Yesterday Route with the level switcher.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Productivity</strong>: Total Success ÷ Total Routed as a plain number; at driver level it's scored against a target per driver position.</>,
+            <><strong>Completion Rate</strong>: (Total Routed − Current OVFD) ÷ Total Routed -- 100% means nothing is left on the vehicle.</>,
+            <>
+              The <strong>driver-type</strong> picker (tick more than one) filters the Region / Zone / Station / Driver views to Hybrid, Independent, OPS, Other or Rescue.
+              A driver routing away from their home station counts as <strong>Rescue</strong>, whatever their own type. It never affects Old Route or Pending in Yesterday Route.
+            </>,
+            F.completionSummary && (
+              <>
+                <strong>Completion Summary</strong>: the drivers who haven't cleared their route yet, worst completion first
+                (columns: Completion Rate → Current OVFD → Success Rate → Total Routed; every header sorts). "Copy for
+                WhatsApp" builds a ready-to-paste list to push them before 12am.
+              </>
+            ),
+            <><strong>Old Route</strong>: tracking numbers still stuck on an old Route ID/date.</>,
+            <><strong>Pending in Yesterday Route</strong>: a frozen snapshot of everything still On Vehicle for Delivery at ~12:30am, replaced at the next 12:30am.</>,
+          ]}
+        />
       </div>
     ),
   },
   {
     id: "aging",
     title: "Aging Details",
-    body: (
+    body: () => (
       <p className="text-sm text-slate-700">
-        Overall / 0 Attempt / Delivery / ATS / COD pivots by age bucket (0, 1, 2, 3, 4-6, 7+), grouped the same way as
-        everywhere else. Unlike Station Health's Age &gt;3 (which excludes On Hold/On Vehicle for Delivery), this view
-        includes them -- it's the full picture of everything sitting in a hub by age, not just the actionable subset.
+        Overall / 0 Attempt / Delivery / ATS / COD pivots by age bucket (0, 1, 2, 3, 4-6, 7+), grouped by where the parcel is.
+        Unlike Station Health's Age &gt;3 (which leaves out On Hold / On Vehicle for Delivery), this view includes them -- the
+        full picture of everything sitting in a hub by age.
       </p>
     ),
   },
   {
     id: "coldchain",
     title: "Cold Chain",
-    body: (
+    show: () => F.coldChain,
+    body: () => (
       <p className="text-sm text-slate-700">
-        Aging Overall, but only for the cold-chain tracking numbers (Redash query 1410): a station x age-bucket pivot and
-        the full TN list, grouped by where each parcel physically is. Cold-chain parcels often sit at CC hubs that
-        aren't stations; those show as their own "Other hubs" rows so nothing is hidden. A cold-chain TN that isn't
-        found in the active dataset is already completed or added to a shipment.
+        Aging Overall, but only for the cold-chain tracking numbers: a station × age-bucket pivot and the full TN list, grouped by
+        where each parcel physically is. Stations with nothing in them are hidden. Cold-chain parcels often sit at CC hubs that
+        aren't stations; those show as their own "Other hubs" rows. A cold-chain TN missing from the active dataset is already
+        completed or added to a shipment. It's a tab of its own and also a sub-tab of Shipper Radar.
       </p>
     ),
   },
   {
     id: "rpu",
     title: "RPU",
-    body: (
+    body: () => (
       <p className="text-sm text-slate-700">
-        RPU Status breaks pickups into Pending Pick Up / En Route to Sorting Hub / Pending Inbound. RPU Aging pivots
-        the same data by age bucket instead. Both can be filtered to one shipper at a time.
+        RPU Status breaks return pickups into Pending Pick Up / En Route to Sorting Hub / Pending Inbound; RPU Aging pivots the
+        same data by age. Both filter by shipper (tick several), status and failure reason.
       </p>
     ),
   },
   {
     id: "recovery",
     title: "Recovery",
-    body: (
-      <div className="space-y-2 text-sm text-slate-700">
-        <p>
-          Missing Details shows open missing-parcel tickets by Region/Zone/Station (Hub/Ship In/Other/Total), plus
-          the full TN list with COD Value and Item description.
-        </p>
-        <p>
-          Rows shaded red have a COD value at or above the threshold, or an item description matching a keyword --
-          both are editable in <strong>Settings → Recovery Settings</strong>. The TN list has its own station search box,
-          separate from the shared one above, so you can narrow just that table to one station without touching the
-          overview tables.
-        </p>
-      </div>
+    body: () => (
+      <p className="text-sm text-slate-700">
+        Missing Details shows open missing-parcel tickets by Region / Zone / Station (Hub / Ship In / Other / Total) plus the
+        full TN list with COD value and item description. Rows shaded red are at or above the high-value COD threshold or match
+        a high-value keyword{"  "}(both editable in Recovery Settings by an admin or manager).
+      </p>
     ),
   },
   {
     id: "shipper",
-    title: "Shipper Watch",
-    body: (
-      <p className="text-sm text-slate-700">
-        Hypercare metrics for a handful of shippers with their own SLA: Zalora NXD (0 Attempt / OVFD / Other status),
-        Amway and Watson (0 Attempt, Aging &gt;D0 -- their SLA is attempt day 0, succeed before day 3), Orca and
-        Sodaxpress (OVFD vs everything else). Use the Shippers picker at the top to show just the ones you care about
-        -- pick more than one to compare them side by side.
-      </p>
+    title: F.shipperRadar ? "Shipper Radar" : "Shipper Watch",
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          {F.shipperRadar ? "Shipper SLA is the first sub-tab: " : ""}hypercare metrics for shippers with their own SLA -- Zalora NXD (0 Attempt / OVFD / Other), Amway and Watson
+          (0 Attempt, Aging &gt;D0: attempt day 0, succeed before day 3), Orca and Sodaxpress (OVFD vs everything else). Pick the
+          shippers at the top; a station with nothing flagged is hidden, and if none is flagged the table says "all clear".
+        </p>
+        {F.shipperRadar && (
+          <p>
+            The other sub-tabs are <strong>Restock</strong>{F.coldChain ? " and " : ""}
+            {F.coldChain && <strong>Cold Chain</strong>}.
+          </p>
+        )}
+      </div>
     ),
   },
   {
     id: "restock",
     title: "Restock",
-    body: (
+    body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          <strong>Restock NXD</strong>: Bundles / Pieces / Potential Breach / Breach by station, counted by bundle
-          ("Pieces" is the actual parcel count), with the bundle-level tracking-number list underneath.
+          <strong>Restock NXD</strong>: Bundles / Pieces / Potential Breach / Breach by station, counted by bundle ("Pieces" is the actual parcel count)
+          {F.restockBundles ? ", plus Restock On Hold and Restock Incomplete, with the bundle-level tracking-number list underneath (filter by station and flag; the CSV lists each bundle's pieces)" : ""}.
         </p>
-        <p>
-          <strong>On Hold / MPS Incomplete</strong>: bundles that are on hold and/or missing pieces. <em>MPS
-          incomplete</em> means fewer pieces are here than the bundle's piece count (for example -001 and -002 have
-          arrived but -003 hasn't). <em>Complete but on hold</em> means every piece is here yet one is still On Hold,
-          so the hold can be released. This rule is provisional -- tell us if a bundle is flagged wrongly.
-        </p>
-        <p>
-          <strong>B2B Document Compliance</strong> (RDO for now): RDO tracking numbers by station and RDO status
-          (Pending Pickup, Van En-route to Pickup, En-route to Sorting Hub, Pickup Fail), grouped by where the bundle
-          last swept. Bundles of every status are included, completed or not; hubs that aren't one of our stations show
-          as "Other hubs". Click a count for its tracking numbers and a CSV with the bundle details.
-        </p>
+        {F.restockBundles ? (
+          <>
+            <p>
+              <strong>Restock On Hold Details</strong>: bundles that are on hold and/or missing pieces, with a by-station table that has a
+              column for every flag. <em>MPS incomplete</em>: fewer pieces are here than the bundle's piece count (e.g. -001 and -002 arrived
+              but -003 didn't). <em>Complete but on hold</em>: every piece is here yet one is still On Hold, so the hold can be released.{" "}
+              <em>On hold (single piece)</em>: a one-piece bundle on hold. This rule is provisional -- tell us if a bundle is flagged wrongly.
+            </p>
+            <p>
+              <strong>B2B Document Compliance</strong> (RDO for now): RDO tracking numbers by station and RDO status (Pending Pickup, Van
+              En-route to Pickup, En-route to Sorting Hub, Pickup Fail), grouped by where the bundle last swept. Only the 143 stations are
+              counted; every bundle status is included, completed or not. Click a count for its tracking numbers and a CSV with the bundle
+              details; the list shows Age (days since the RDO was created).
+            </p>
+            <p>Restock views only include bundles sitting at one of the 143 stations.</p>
+          </>
+        ) : (
+          <p>Document Compliance (RDO / GRN / PSO / Reattempt) is a placeholder for now; it isn't wired to real data yet.</p>
+        )}
       </div>
     ),
   },
   {
     id: "urgent",
     title: "Urgent TN",
-    body: (
+    body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          Paste one or more tracking numbers you want to keep an eye on. It looks them up against the same data
-          Station Health refreshes every 15 minutes (not a live search); "Not found" means the parcel is already
-          completed or added to a shipment.
+          Paste one or more tracking numbers to keep an eye on. It looks them up against the same data Station Health refreshes every 15
+          minutes (not a live search); "Not found" means the parcel is already completed or added to a shipment.
         </p>
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li>
-            <strong>Assign a PIC</strong>: type a teammate's email (they must already be in the user list) and an optional
-            note. They get a bell notification in the header and a banner on the dashboard, and see it marked NEW.
-          </li>
-          <li>
-            Either of you can <strong>Close</strong> or <strong>Reopen</strong> it. Only whoever added it can change the
-            PIC or note, or <strong>Remove</strong> it -- removing it takes it off the PIC's list too, whatever its status.
-          </li>
-          <li>You see the tracking numbers you added and the ones assigned to you.</li>
-        </ul>
+        <Bullets
+          items={[
+            <>
+              <strong>Assign a PIC</strong>: type a teammate's email (they must already be a dashboard user) and an optional note.
+              The tab shows a red bell with a number for them, and the item is marked NEW.
+            </>,
+            <>
+              The <strong>PIC</strong> picks <strong>In progress</strong> (acknowledges it: the bell goes quiet, and comes back after 1 hour if it
+              still isn't closed) or <strong>Closed</strong> (the bell stays off and the item stays on their list, marked closed). They can also
+              type a <strong>Reply</strong> the owner sees.
+            </>,
+            <>
+              The <strong>owner</strong> (whoever added it) sees the PIC's status and reply (the bell tells them when it changes), can change the
+              PIC or note, reopen an item the PIC closed, and <strong>Close / remove</strong> it -- which removes it from the PIC's list too,
+              whatever its status.
+            </>,
+            <>You see the tracking numbers you added and the ones assigned to you.</>,
+          ]}
+        />
       </div>
     ),
   },
   {
     id: "settings",
     title: "Settings",
-    body: (
+    show: ({ rank }) => rank >= 1,
+    body: ({ rank }) => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>
-          Nationwide configuration -- only reachable by Admin, Manager and Region-staff roles (station-scoped users
-          don't see this nav item at all).
-        </p>
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li><strong>Users</strong>: add/edit teammates. You can only grant a role/scope at or below your own.</li>
-          <li>
-            <strong>SLA Targets</strong>: set Warning/Critical numbers per metric, at a Nationwide default or a region
-            override (Productivity uses driver-position overrides instead). Turning "Scored" off makes a metric
-            reference-only everywhere at once. "Score as % of" evaluates a metric as a percentage of another field on
-            the same row instead of its raw count.
-          </li>
-          <li><strong>Recovery Settings</strong>: the COD-value threshold and item keywords behind Recovery's high-value highlighting.</li>
-          <li><strong>Data Refresh</strong> (admin only): trigger an immediate refresh and see when the last one ran.</li>
-        </ul>
+        <p>Configuration screens -- reachable by Region staff, Managers and Admins (station-scoped users don't see this menu).</p>
+        <Bullets
+          items={[
+            <>
+              <strong>Users</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
+              more than one station. Find people with the search box, filter by role, scope or "Never opened", and click a column header
+              (e.g. Last opened) to sort.
+            </>,
+            rank >= 2 && (
+              <>
+                <strong>SLA Targets</strong>: Warning / Critical numbers per metric, nationwide or per region (Productivity per driver
+                position). Turning "Scored" off makes a metric reference-only everywhere.
+              </>
+            ),
+            rank >= 2 && <><strong>Recovery Settings</strong>: the COD-value threshold and item keywords behind Recovery's highlighting.</>,
+            rank >= 3 && (
+              <>
+                <strong>Documents</strong> (driver tenure CSV) and <strong>Data Refresh</strong>: trigger an immediate refresh and see when each
+                Redash query was last pulled.
+              </>
+            ),
+          ]}
+        />
       </div>
     ),
   },
   {
     id: "admin",
     title: "Admin",
-    body: (
+    body: ({ rank }) => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>
-          Day-to-day tools, open to every role regardless of scope -- this is where you're reading this Guide right
-          now. Feedback and Guide are here for now; more will be added over time (attendance is planned next).
-        </p>
-        <ul className="list-disc space-y-1.5 pl-5">
-          <li>
-            <strong>Feedback</strong>: send a complaint, bug report, question or idea straight to the admin team, with an
-            optional screenshot or PDF (up to 20 MB). Only you and the admins can see it. Admins reply and close it;
-            you'll see the reply here and a bell notification. You can delete your own feedback at any time, and closed
-            feedback is deleted automatically a week after it's closed.
-          </li>
-          <li><strong>Guide</strong>: this page.</li>
-        </ul>
+        <p>Day-to-day tools open to every role, whatever the scope -- this is where you're reading the Guide now.</p>
+        <Bullets
+          items={[
+            <>
+              <strong>Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
+              (up to 20 MB). Only you{rank >= 3 ? " (and every other admin)" : " and the admins"} can see it. {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here and a red dot appears on Admin. "}
+              You can delete your own feedback at any time (it disappears for the admins too), and closed feedback is deleted automatically a
+              week after it's closed.
+            </>,
+            <><strong>Guide</strong>: this page -- search it, or ask the admins a question if it isn't answered.</>,
+          ]}
+        />
       </div>
     ),
   },
 ];
 
-// Quick answers to the questions people ask most (2026-09-25). Searchable; anything
-// not covered here can be sent to the admins as a question, which lands in
-// Admin -> Feedback with a "[Question]" prefix so the answer comes back there.
+// Quick answers to the questions people ask most. `show` gates by role/scope. Anything
+// not covered can be sent to the admins as a question, which lands in Admin -> Feedback
+// with a "[Question]" prefix so the answer comes back there.
 const FAQS = [
-  { q: "How often does the data refresh?", a: "Every 15 minutes. The \"Data as of\" time in the header is when everything was last pulled from Redash. Settings -> Data Refresh (admin) shows each query's own last pull time." },
+  { q: "How often does the data refresh?", a: "Every 15 minutes. \"Data as of\" in the header is when everything was last pulled from Redash." },
   { q: "Why does a tracking number show \"Not found\" in Urgent TN?", a: "Urgent TN looks parcels up in the same active dataset Station Health uses. A parcel that's already completed or added to a shipment is no longer in it." },
-  { q: "Why can't I see another station's numbers?", a: "Your scope (set by an admin in Settings -> Users) limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
-  { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, type your colleague's email in the PIC box (they must already be a dashboard user) and press Track & assign. They'll get a bell notification." },
-  { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%." },
+  { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
+  { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, type your colleague's email in the PIC box (they must already be a dashboard user) and press Track & assign. The Urgent TN tab shows a bell for them." },
+  { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
+  { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
-  { q: "Why is East Malaysia hidden?", a: "East Malaysia is Retail, not Last Mile, so it's off by default. Users with a wide enough scope can switch \"Include East Malaysia\" on." },
   { q: "How do I export tracking numbers?", a: "Click any coloured count to open its tracking numbers, then Export CSV (or Copy list). Every table also has its own Export CSV for exactly what's on screen." },
-  { q: "My numbers look different from Redash.", a: "The dashboard groups parcels by where they physically are (last scan hub), not their intended destination, unless a column's note says otherwise. Click a header's note (the small i) for the exact rule, then send us a question if it still doesn't match." },
-  { q: "How do I change someone's access?", a: "Settings -> Users -> Edit. You can only grant a role and scope at or below your own. Region staff can edit Station staff and give them more than one station." },
+  { q: "My numbers look different from Redash.", a: "The dashboard groups parcels by where they physically are (last scan hub), not their intended destination, unless a column's note says otherwise. Click the small i beside a column header for the exact rule, then send us a question if it still doesn't match." },
+  { q: "How do I change someone's access?", a: "Settings -> Users -> Edit. You can only grant a role and scope at or below your own. Region staff can edit Station staff and give them more than one station.", show: ({ rank }) => rank >= 1 },
+  { q: "Who has never opened the dashboard?", a: "Settings -> Users: tick \"Never opened\", or click the Last opened header to sort.", show: ({ rank }) => rank >= 1 },
+  { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTesterUser },
+  { q: "How do I reply to feedback?", a: "Admin -> Feedback -> type in the reply box under the message and Send reply; Close it when it's done (it's deleted a week later).", show: ({ rank }) => rank >= 3 },
 ];
 
-export default function GuideTab() {
+export default function GuideTab({ me }) {
+  const rank = RANK[me?.role] ?? 0;
+  const wide = me?.scope_type === "all" || (me?.scope_values || []).length > 1;
+  const ctx = useMemo(() => ({ rank, wide, me }), [rank, wide, me]);
+
   const [openId, setOpenId] = useState(SECTIONS[0].id);
   const [query, setQuery] = useState("");
   const [question, setQuestion] = useState("");
@@ -346,8 +426,10 @@ export default function GuideTab() {
   const [error, setError] = useState(null);
 
   const q = query.trim().toLowerCase();
-  const faqs = useMemo(() => (q ? FAQS.filter((f) => `${f.q} ${f.a}`.toLowerCase().includes(q)) : FAQS), [q]);
-  const sections = useMemo(() => (q ? SECTIONS.filter((s) => s.title.toLowerCase().includes(q)) : SECTIONS), [q]);
+  const visibleSections = useMemo(() => SECTIONS.filter((s) => !s.show || s.show(ctx)), [ctx]);
+  const visibleFaqs = useMemo(() => FAQS.filter((f) => !f.show || f.show(ctx)), [ctx]);
+  const faqs = useMemo(() => (q ? visibleFaqs.filter((f) => `${f.q} ${f.a}`.toLowerCase().includes(q)) : visibleFaqs), [q, visibleFaqs]);
+  const sections = useMemo(() => (q ? visibleSections.filter((s) => s.title.toLowerCase().includes(q)) : visibleSections), [q, visibleSections]);
 
   const ask = async () => {
     if (!question.trim()) return;
@@ -357,6 +439,7 @@ export default function GuideTab() {
       await api.feedback.submit(`[Question] ${question.trim()}`);
       setQuestion("");
       setSent(true);
+      window.dispatchEvent(new Event("notifications-changed"));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -369,8 +452,8 @@ export default function GuideTab() {
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <div className="font-display text-sm font-semibold text-slate-800">How to use this dashboard</div>
         <p className="mt-1 text-sm text-slate-500">
-          A quick reference for new users -- what each role sees, what each tab is for, and the logic behind the
-          less-obvious columns. Search below, or click a section to expand it.
+          A quick reference for what each tab is for and the logic behind the less-obvious columns -- showing what applies to your
+          role and scope. Search below, or click a section to expand it.
         </p>
         <input
           type="search"
@@ -404,8 +487,7 @@ export default function GuideTab() {
         <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
           <div className="text-sm font-medium text-slate-700">Didn't find your answer? Ask it.</div>
           <p className="text-xs text-slate-400">
-            It goes to the admins as feedback marked [Question]; their reply appears in Admin → Feedback and you'll get a
-            bell notification.
+            It goes to the admins as feedback marked [Question]; their reply appears in Admin → Feedback and a red dot shows on Admin.
           </p>
           <textarea
             className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
@@ -442,7 +524,7 @@ export default function GuideTab() {
               {s.title}
               <span className="text-slate-400">{open ? "−" : "+"}</span>
             </button>
-            {open && <div className="border-t border-slate-100 px-4 py-3">{s.body}</div>}
+            {open && <div className="border-t border-slate-100 px-4 py-3">{s.body(ctx)}</div>}
           </div>
         );
       })}

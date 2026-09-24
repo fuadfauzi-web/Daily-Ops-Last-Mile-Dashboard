@@ -11,18 +11,21 @@ function parseTns(text) {
   return Array.from(new Set(text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)));
 }
 
-// Tells the header bell / banner in App.jsx to re-fetch its counts now instead
-// of waiting for its next poll.
+// Tells the app shell (the Urgent TN tab's bell, the Admin badge) to re-fetch its
+// counts now instead of waiting for its next poll.
 function notifyChanged() {
   window.dispatchEvent(new Event("notifications-changed"));
 }
 
 // 2026-09-25: the tracked list is stored on the server (not in this browser) so a
 // tracking number can be assigned to a PIC -- another user, by email, who must
-// already be in the user list. The PIC sees it here (marked NEW), in the header
-// bell and in a banner on the dashboard, and either side can move it between
-// In progress and Closed. Only whoever added it can change its PIC/note or
-// delete it.
+// already be in the user list. Two roles on each item:
+//   * the PIC (assignee) picks a status -- "In progress" (acknowledges it: the tab's bell
+//     goes quiet and comes back after an hour if it still isn't closed) or "Closed" (bell
+//     gone; the item stays in the PIC's list, marked closed) -- and can type a reply the
+//     owner sees;
+//   * the owner (whoever added it) can edit the PIC / note, reopen an item the PIC
+//     closed, and Close or Remove it -- both delete it, so it leaves the PIC's list too.
 export default function UrgentTnTab({ me, refreshTick }) {
   const legacyKey = `urgent-tn-list-${me.email}`;
   const [items, setItems] = useState(null);
@@ -34,11 +37,13 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
-  const [editing, setEditing] = useState(null); // item being reassigned / re-noted
+  const [editing, setEditing] = useState(null); // owner: item being re-assigned / re-noted
   const [editAssignee, setEditAssignee] = useState("");
   const [editNote, setEditNote] = useState("");
-  // Items that were NEW when this tab was opened stay highlighted for the visit,
-  // even though opening the tab marks them as seen for the bell.
+  const [replying, setReplying] = useState(null); // PIC: item being replied to
+  const [replyText, setReplyText] = useState("");
+  // Items that were NEW / UPDATED when this tab was opened stay highlighted for the visit,
+  // even though opening the tab marks them as seen.
   const [newIds, setNewIds] = useState(() => new Set());
   const migrated = useRef(false);
 
@@ -47,7 +52,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
       const res = await api.urgentTn.items();
       setItems(res.items);
       setAsOf(res.captured_at);
-      const fresh = res.items.filter((i) => i.is_new).map((i) => i.id);
+      const fresh = res.items.filter((i) => i.is_new || i.owner_unseen).map((i) => i.id);
       if (fresh.length) {
         setNewIds((prev) => new Set([...prev, ...fresh]));
         await api.urgentTn.markSeen();
@@ -109,9 +114,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
 
   const setStatus = (item, status) => run(() => api.urgentTn.update(item.id, { status }));
-  const removeItem = (item) => {
-    if (!window.confirm(`Remove ${item.tracking_number} from the list?`)) return;
-    run(() => api.urgentTn.remove(item.id));
+  const closeOrRemove = (item) => {
+    const msg = item.assignee_email
+      ? `Close and remove ${item.tracking_number}? It will be removed from ${item.assigned_to_me ? "your" : "the PIC's"} list too.`
+      : `Remove ${item.tracking_number} from your list?`;
+    if (!window.confirm(msg)) return;
+    run(() => api.urgentTn.remove(item.id), "Removed");
   };
   const startEdit = (item) => {
     setEditing(item);
@@ -125,12 +133,22 @@ export default function UrgentTnTab({ me, refreshTick }) {
     const ok = await run(() => api.urgentTn.update(editing.id, payload));
     if (ok) setEditing(null);
   };
+  const startReply = (item) => {
+    setReplying(item);
+    setReplyText(item.pic_reply || "");
+  };
+  const saveReply = async () => {
+    const ok = await run(() => api.urgentTn.update(replying.id, { pic_reply: replyText }), "Reply sent");
+    if (ok) setReplying(null);
+  };
+
+  const isPic = (r) => r.assigned_to_me && !r.created_by_me;
 
   const counts = useMemo(() => {
     const list = items || [];
     return {
       open: list.filter((i) => i.status === "in_progress").length,
-      mine: list.filter((i) => i.status === "in_progress" && i.assigned_to_me).length,
+      mine: list.filter((i) => i.assigned_to_me && !i.created_by_me).length,
       closed: list.filter((i) => i.status === "closed").length,
     };
   }, [items]);
@@ -138,7 +156,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const rows = useMemo(() => {
     const list = items || [];
     if (view === "closed") return list.filter((i) => i.status === "closed");
-    if (view === "mine") return list.filter((i) => i.status === "in_progress" && i.assigned_to_me);
+    if (view === "mine") return list.filter((i) => i.assigned_to_me && !i.created_by_me);
     return list.filter((i) => i.status === "in_progress");
   }, [items, view]);
 
@@ -159,7 +177,9 @@ export default function UrgentTnTab({ me, refreshTick }) {
         <>
           {r.tracking_number}
           {newIds.has(r.id) && (
-            <span className="ml-2 rounded bg-status-critical px-1.5 py-0.5 font-display text-[10px] font-semibold text-white">NEW</span>
+            <span className="ml-2 rounded bg-status-critical px-1.5 py-0.5 font-display text-[10px] font-semibold text-white">
+              {r.created_by_me ? "UPDATED" : "NEW"}
+            </span>
           )}
         </>
       ),
@@ -171,14 +191,39 @@ export default function UrgentTnTab({ me, refreshTick }) {
       sortable: false,
       align: "left",
       render: (r) => r.note || "—",
-      className: () => "max-w-[260px] whitespace-normal text-xs text-slate-600",
+      className: () => "max-w-[220px] whitespace-normal text-xs text-slate-600",
     },
     {
       key: "status",
-      label: "Status",
+      label: "PIC Status",
       sortable: false,
-      render: (r) => (r.status === "closed" ? `Closed${r.closed_by ? ` by ${r.closed_by.split("@")[0]}` : ""}` : "In progress"),
-      className: (r) => (r.status === "closed" ? "text-slate-400" : "font-medium text-status-warning"),
+      render: (r) => {
+        if (!r.assignee_email) return "—";
+        if (r.status === "closed") return `Closed${r.closed_by && r.closed_by.toLowerCase() !== me.email.toLowerCase() ? ` by ${r.closed_by.split("@")[0]}` : ""}`;
+        return (
+          <>
+            In progress
+            {r.reminder_in_minutes ? <div className="text-[10px] font-normal text-slate-400">reminder in {r.reminder_in_minutes} min</div> : null}
+          </>
+        );
+      },
+      className: (r) => (r.status === "closed" ? "text-slate-400" : r.assignee_email ? "font-medium text-status-warning" : "text-slate-400"),
+    },
+    {
+      key: "pic_reply",
+      label: "PIC Reply",
+      sortable: false,
+      align: "left",
+      render: (r) =>
+        r.pic_reply ? (
+          <>
+            {r.pic_reply}
+            {r.pic_replied_at && <div className="text-[10px] text-slate-400">{formatTime(r.pic_replied_at)}</div>}
+          </>
+        ) : (
+          "—"
+        ),
+      className: () => "max-w-[240px] whitespace-normal text-xs text-slate-600",
     },
     {
       key: "tn_status",
@@ -205,22 +250,43 @@ export default function UrgentTnTab({ me, refreshTick }) {
       sortable: false,
       render: (r) => (
         <div className="flex items-center justify-end gap-3 whitespace-nowrap">
-          {r.status === "closed" ? (
-            <button onClick={() => setStatus(r, "in_progress")} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-brand">
-              Reopen
-            </button>
-          ) : (
-            <button onClick={() => setStatus(r, "closed")} disabled={busy} className="text-xs font-semibold text-status-good hover:underline">
-              Close
-            </button>
+          {isPic(r) && (
+            <>
+              <div className="flex overflow-hidden rounded-md border border-slate-300 text-[11px] font-semibold">
+                <button
+                  onClick={() => setStatus(r, "in_progress")}
+                  disabled={busy}
+                  title="Acknowledge: silences the bell for 1 hour, then it reminds you again if it isn't closed"
+                  className={`px-2 py-1 ${r.status === "in_progress" ? "bg-status-warning/15 text-status-warning" : "text-slate-500 hover:bg-slate-50"}`}
+                >
+                  In progress
+                </button>
+                <button
+                  onClick={() => setStatus(r, "closed")}
+                  disabled={busy}
+                  title="Done: the bell stays off; it remains on your list marked closed until the owner removes it"
+                  className={`border-l border-slate-300 px-2 py-1 ${r.status === "closed" ? "bg-status-good/15 text-status-good" : "text-slate-500 hover:bg-slate-50"}`}
+                >
+                  Closed
+                </button>
+              </div>
+              <button onClick={() => startReply(r)} className="text-xs font-medium text-slate-500 hover:text-brand">
+                Reply
+              </button>
+            </>
           )}
           {r.created_by_me && (
             <>
+              {r.status === "closed" && (
+                <button onClick={() => setStatus(r, "in_progress")} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-brand">
+                  Reopen
+                </button>
+              )}
               <button onClick={() => startEdit(r)} className="text-xs font-medium text-slate-500 hover:text-brand">
                 Edit PIC
               </button>
-              <button onClick={() => removeItem(r)} disabled={busy} className="text-xs font-medium text-slate-400 hover:text-status-critical">
-                Remove
+              <button onClick={() => closeOrRemove(r)} disabled={busy} className="text-xs font-semibold text-status-good hover:underline" title="Deletes it from your list and the PIC's">
+                Close / remove
               </button>
             </>
           )}
@@ -285,10 +351,10 @@ export default function UrgentTnTab({ me, refreshTick }) {
               onClick={() =>
                 exportCsv(
                   `daily-ops-urgent-tn-${new Date().toISOString().slice(0, 10)}.csv`,
-                  ["Tracking Number", "PIC", "Note", "Status", "Parcel Status", "Dest Hub", "Last Sweep Hub", "Age", "Attempt", "COD", "Added by"],
+                  ["Tracking Number", "PIC", "Note", "PIC Status", "PIC Reply", "Parcel Status", "Dest Hub", "Last Sweep Hub", "Age", "Attempt", "COD", "Added by"],
                   rows.map((r) => [
-                    r.tracking_number, r.assignee_email ?? "", r.note ?? "", r.status === "closed" ? "Closed" : "In progress",
-                    r.found ? r.tn_status ?? "" : "Not found", r.dest_hub ?? "", r.last_sweep_hub ?? "", r.age ?? "",
+                    r.tracking_number, r.assignee_email ?? "", r.note ?? "", r.assignee_email ? (r.status === "closed" ? "Closed" : "In progress") : "",
+                    r.pic_reply ?? "", r.found ? r.tn_status ?? "" : "Not found", r.dest_hub ?? "", r.last_sweep_hub ?? "", r.age ?? "",
                     r.attempts ?? "", r.cod ?? "", r.created_by,
                   ])
                 )
@@ -338,6 +404,32 @@ export default function UrgentTnTab({ me, refreshTick }) {
         </div>
       )}
 
+      {replying && (
+        <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
+          <div className="font-display text-xs font-semibold text-slate-700">
+            Reply to {replying.created_by} — <span className="font-mono">{replying.tracking_number}</span>
+          </div>
+          {replying.note && <div className="text-xs text-slate-500">Their note: {replying.note}</div>}
+          <textarea
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            rows={3}
+            maxLength={1000}
+            placeholder="Type your update / reply…"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button onClick={saveReply} disabled={busy} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
+              Send reply
+            </button>
+            <button onClick={() => setReplying(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <SegmentedControl
         options={[
           { key: "open", label: `In progress (${counts.open})` },
@@ -359,7 +451,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           rowKey={(r) => r.id}
           emptyMessage={
             view === "closed"
-              ? "Nothing closed yet."
+              ? "Nothing closed."
               : view === "mine"
                 ? "Nothing is assigned to you right now."
                 : "Nothing tracked yet -- paste a tracking number above."
@@ -367,9 +459,10 @@ export default function UrgentTnTab({ me, refreshTick }) {
           footer={
             <>
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
-              to you. Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes),
-              not a live search. "Not found" means the parcel is already completed or added to a shipment -- it's no
-              longer in the active dataset. The PIC must already be in the user list.
+              to you. A PIC picks In progress (quiets the tab's bell for an hour) or Closed (bell off; it stays on their list
+              marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
+              Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
+              search; "Not found" means the parcel is already completed or added to a shipment.
             </>
           }
         />

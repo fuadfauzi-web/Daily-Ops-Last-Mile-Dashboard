@@ -248,7 +248,11 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
         restock_rows = await _fetch(QUERY_RESTOCK_NXD)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
-        restock_bundle_rows = build_restock_bundles(restock_rows)
+        restock_piece_tns = {r.get('tracking_id') for r in restock_rows}
+        restock_bundle_rows = build_restock_bundles(
+            restock_rows,
+            {r['tracking_id']: r.get('delivery_attempts') for r in health_rows if r.get('tracking_id') in restock_piece_tns},
+        )
         del zalora_rows, restock_rows
 
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
@@ -1425,6 +1429,7 @@ class RestockBundleRow(BaseModel):
     piece_count: int
     pieces_seen: int
     missing_count: int
+    attempts: int | None = None
     missing_pieces: str | None
     on_hold_pieces: int
     statuses: str
@@ -1444,6 +1449,7 @@ class RestockStationRow(BaseModel):
     on_hold_bundles: int
     mps_incomplete: int
     complete_on_hold: int
+    single_on_hold: int
     missing_pieces_total: int
 
 
@@ -1471,7 +1477,8 @@ async def restock_bundles(view: str = "all", user: CurrentUser = Depends(get_cur
     for b in scoped:
         s = stations.setdefault(b["station_code"], {
             "station_code": b["station_code"], "station_name": b["station_name"], "zone": b["zone"], "region": b["region"],
-            "bundles": 0, "on_hold_bundles": 0, "mps_incomplete": 0, "complete_on_hold": 0, "missing_pieces_total": 0,
+            "bundles": 0, "on_hold_bundles": 0, "mps_incomplete": 0, "complete_on_hold": 0, "single_on_hold": 0,
+            "missing_pieces_total": 0,
         })
         s["bundles"] += 1
         if b["on_hold_pieces"] > 0:
@@ -1480,6 +1487,8 @@ async def restock_bundles(view: str = "all", user: CurrentUser = Depends(get_cur
             s["mps_incomplete"] += 1
         elif b["bundle_class"] == "complete_on_hold":
             s["complete_on_hold"] += 1
+        elif b["bundle_class"] == "single_on_hold":
+            s["single_on_hold"] += 1
         s["missing_pieces_total"] += b["missing_count"]
 
     total = len(scoped)
@@ -1636,6 +1645,7 @@ class RdoTnRow(BaseModel):
     rdo_status: str | None
     status_key: str | None = None
     bundle_last_sweep_hub: str | None = None
+    age: int | None = None
     rdo_created_at: str | None
     rdo_latest_start_date: str | None
     bundle_tracking_number: str | None
@@ -2410,15 +2420,23 @@ async def _prune_closed_feedback(now: datetime) -> None:
 
 
 # 2026-09-25: Urgent TN moved from a per-browser localStorage list to the
-# database so a tracking number can be assigned to a PIC (another user) with an
-# in-progress / closed workflow (see V27__urgent_tn_pic_and_feedback_workflow.sql).
-# An item is visible to whoever created it and to its assignee. Both can close /
-# reopen it; only the creator can reassign, edit the note or delete it. The
-# assignee's email must already exist in `users`. Deleting a user deletes the
-# items they created and clears them as assignee elsewhere (delete_user below).
+# database so a tracking number can be assigned to a PIC (another user) with a
+# reply + status workflow (see V27 / V30 migrations). An item is visible to whoever
+# created it (the OWNER) and to its assignee (the PIC).
+#
+#   PIC:    picks "In progress" (acknowledges it -- the tab's bell goes quiet, and comes
+#           back after 1 hour if it still isn't closed) or "Closed" (bell gone for good,
+#           but the item stays in the PIC's list marked closed), and can type a reply the
+#           owner sees.
+#   Owner:  can edit the PIC/note, reopen an item the PIC closed, and CLOSE or REMOVE it
+#           -- both delete it, so it disappears from the PIC's list too, whatever its
+#           status. The assignee's email must already exist in `users`.
+# Deleting a user deletes the items they created and unassigns items assigned to them
+# (delete_user below).
 
 URGENT_TN_MAX_PER_REQUEST = 200
 URGENT_STATUSES = ("in_progress", "closed")
+URGENT_REMINDER = timedelta(hours=1)
 
 
 class UrgentItemCreate(BaseModel):
@@ -2432,6 +2450,7 @@ class UrgentItemUpdate(BaseModel):
     assignee_email: str | None = None
     clear_assignee: bool = False
     note: str | None = None
+    pic_reply: str | None = None
 
 
 class UrgentItem(BaseModel):
@@ -2446,9 +2465,13 @@ class UrgentItem(BaseModel):
     updated_at: str
     closed_at: str | None
     closed_by: str | None
+    pic_reply: str | None
+    pic_replied_at: str | None
+    reminder_in_minutes: int | None
     created_by_me: bool
     assigned_to_me: bool
     is_new: bool
+    owner_unseen: bool
     found: bool
     dest_hub: str | None = None
     last_sweep_hub: str | None = None
@@ -2471,8 +2494,13 @@ def _iso(value) -> str | None:
 
 _URGENT_COLUMNS = (
     "id, tracking_number, created_by, assignee_email, note, status, created_at, updated_at, closed_at, closed_by, "
-    "assignee_seen_at"
+    "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen"
 )
+
+
+def _utc_naive(value):
+    """DB datetimes come back naive-UTC; make them comparable with now()."""
+    return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
 
 async def _urgent_items_for(user: CurrentUser) -> list[dict]:
@@ -2488,17 +2516,27 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     for email in assignee_emails:
         u = await db.fetch_one("SELECT display_name FROM users WHERE LOWER(email) = %s", (email.lower(),))
         names[email] = u[0] if u else None
+    now = datetime.now(timezone.utc)
     items = []
     for r in rows:
-        (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by, seen_at) = r
+        (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by,
+         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen) = r
         found = _health_v3_by_tn.get(tn)
+        created_by_me = created_by.lower() == me
         assigned_to_me = bool(assignee) and assignee.lower() == me
+        reminder = None
+        if assigned_to_me and not created_by_me and status == "in_progress" and ack_at is not None:
+            left = _utc_naive(ack_at) + URGENT_REMINDER - now
+            if left.total_seconds() > 0:
+                reminder = int(left.total_seconds() // 60) + 1
         items.append({
             "id": item_id, "tracking_number": tn, "created_by": created_by, "assignee_email": assignee,
             "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
             "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
-            "closed_by": closed_by, "created_by_me": created_by.lower() == me, "assigned_to_me": assigned_to_me,
-            "is_new": assigned_to_me and seen_at is None and status == "in_progress",
+            "closed_by": closed_by, "pic_reply": pic_reply, "pic_replied_at": _iso(pic_replied_at),
+            "reminder_in_minutes": reminder, "created_by_me": created_by_me, "assigned_to_me": assigned_to_me,
+            "is_new": assigned_to_me and not created_by_me and seen_at is None and status == "in_progress",
+            "owner_unseen": created_by_me and bool(owner_unseen),
             "found": found is not None,
             "dest_hub": found.get("dest_hub") if found else None,
             "last_sweep_hub": found.get("last_sweep_hub") if found else None,
@@ -2549,22 +2587,23 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
     added, skipped = 0, 0
     for tn in tns:
         existing = await db.fetch_one(
-            "SELECT id FROM urgent_tn_items WHERE tracking_number = %s AND LOWER(created_by) = %s AND status = 'in_progress'",
+            "SELECT id FROM urgent_tn_items WHERE tracking_number = %s AND LOWER(created_by) = %s",
             (tn, user.email.lower()),
         )
         if existing:
             skipped += 1
             continue
         # Assigning to yourself is just tracking -- nothing to be notified about.
-        seen_at = now if (assignee is None or assignee.lower() == user.email.lower()) else None
+        self_or_none = assignee is None or assignee.lower() == user.email.lower()
         await db.execute(
             """INSERT INTO urgent_tn_items
-               (tracking_number, created_by, assignee_email, note, status, created_at, updated_at, assignee_seen_at)
-               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s)""",
-            (tn, user.email, assignee, note, now, now, seen_at),
+               (tracking_number, created_by, assignee_email, note, status, created_at, updated_at,
+                assignee_seen_at, assignee_ack_at, owner_unseen)
+               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0)""",
+            (tn, user.email, assignee, note, now, now, now if self_or_none else None, now if self_or_none else None),
         )
         added += 1
-    detail = f"Added {added}" + (f", skipped {skipped} already in progress" if skipped else "")
+    detail = f"Added {added}" + (f", skipped {skipped} already on your list" if skipped else "")
     return {"ok": True, "detail": detail}
 
 
@@ -2579,30 +2618,52 @@ async def _load_urgent_item(item_id: int, user: CurrentUser) -> tuple:
 @app.patch("/api/urgent-tn/items/{item_id}", response_model=OkResult)
 async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: CurrentUser = Depends(get_current_user)):
     row = await _load_urgent_item(item_id, user)
-    is_creator = row[2].lower() == user.email.lower()
+    me = user.email.lower()
+    is_owner = row[2].lower() == me
+    is_pic = bool(row[3]) and row[3].lower() == me and not is_owner
     now = datetime.now(timezone.utc).replace(microsecond=0)
     sets, params = ["updated_at = %s"], [now]
+
+    if payload.pic_reply is not None:
+        if not (is_pic or (bool(row[3]) and row[3].lower() == me)):
+            raise HTTPException(status_code=403, detail="Only the PIC can reply here")
+        reply = payload.pic_reply.strip()
+        if len(reply) > 1000:
+            raise HTTPException(status_code=422, detail="Reply is too long (max 1000 characters)")
+        sets += ["pic_reply = %s", "pic_replied_at = %s", "owner_unseen = %s"]
+        params += [reply or None, now if reply else None, 1 if (reply and not is_owner) else row[14]]
 
     if payload.status is not None:
         if payload.status not in URGENT_STATUSES:
             raise HTTPException(status_code=422, detail=f"status must be one of {URGENT_STATUSES}")
-        if payload.status == "closed":
-            sets += ["status = 'closed'", "closed_at = %s", "closed_by = %s"]
+        if is_owner and payload.status == "closed":
+            # Owner closing == removing: it goes from the PIC's list too, whatever its status.
+            await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
+            return {"ok": True, "detail": "Closed and removed"}
+        if is_pic and payload.status == "in_progress":
+            # "In progress" acknowledges it: the bell stays quiet for an hour, then comes
+            # back if it still isn't closed. (Also reopens an item the PIC had closed.)
+            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = %s", "owner_unseen = 1"]
+            params.append(now)
+        elif is_pic and payload.status == "closed":
+            sets += ["status = 'closed'", "closed_at = %s", "closed_by = %s", "owner_unseen = 1"]
             params += [now, user.email]
-        else:
-            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL"]
+        elif is_owner and payload.status == "in_progress":
+            # Owner reopens an item the PIC closed: the PIC is notified again.
+            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = NULL", "assignee_seen_at = NULL"]
+
     if payload.assignee_email is not None or payload.clear_assignee or payload.note is not None:
-        if not is_creator:
+        if not is_owner:
             raise HTTPException(status_code=403, detail="Only the person who added this can change its PIC or note")
         if payload.clear_assignee:
-            sets += ["assignee_email = NULL", "assignee_seen_at = NULL"]
+            sets += ["assignee_email = NULL", "assignee_seen_at = NULL", "assignee_ack_at = NULL"]
         elif payload.assignee_email is not None:
             assignee = await _resolve_assignee(payload.assignee_email)
             if assignee is None:
                 raise HTTPException(status_code=422, detail="Enter the PIC's email, or use clear_assignee")
-            self_assigned = assignee.lower() == user.email.lower()
-            sets += ["assignee_email = %s", "assignee_seen_at = %s"]
-            params += [assignee, now if self_assigned else None]
+            self_assigned = assignee.lower() == me
+            sets += ["assignee_email = %s", "assignee_seen_at = %s", "assignee_ack_at = %s", "pic_reply = NULL", "pic_replied_at = NULL"]
+            params += [assignee, now if self_assigned else None, now if self_assigned else None]
         if payload.note is not None:
             note = payload.note.strip() or None
             if note and len(note) > 500:
@@ -2618,40 +2679,55 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
 async def urgent_tn_delete(item_id: int, user: CurrentUser = Depends(get_current_user)):
     row = await _load_urgent_item(item_id, user)
     if row[2].lower() != user.email.lower():
-        raise HTTPException(status_code=403, detail="Only the person who added this can delete it")
+        raise HTTPException(status_code=403, detail="Only the person who added this can remove it")
     await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
     return {"ok": True}
 
 
 @app.post("/api/urgent-tn/mark-seen", response_model=OkResult)
 async def urgent_tn_mark_seen(user: CurrentUser = Depends(get_current_user)):
+    """Opening the Urgent TN tab: drops the NEW marker for the PIC and clears the
+    owner's "PIC updated" flag. It does NOT silence the PIC's bell -- only picking
+    a status does (see urgent_tn_update)."""
+    me = user.email.lower()
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     await db.execute(
         "UPDATE urgent_tn_items SET assignee_seen_at = %s WHERE LOWER(assignee_email) = %s AND assignee_seen_at IS NULL",
-        (datetime.now(timezone.utc).replace(microsecond=0), user.email.lower()),
+        (now, me),
     )
+    await db.execute("UPDATE urgent_tn_items SET owner_unseen = 0 WHERE LOWER(created_by) = %s AND owner_unseen = 1", (me,))
     return {"ok": True}
 
 
 class Notifications(BaseModel):
-    urgent_assigned_open: int
-    urgent_unseen: int
+    urgent_notify: int
+    urgent_owner_updates: int
     feedback_replies_unread: int
 
 
 @app.get("/api/notifications", response_model=Notifications)
 async def notifications(user: CurrentUser = Depends(get_current_user)):
+    """Counts behind the Urgent TN tab's bell and the Admin/Feedback badge.
+    urgent_notify: items assigned to me by someone else that are still in progress and
+    either never acknowledged or last acknowledged over an hour ago.
+    urgent_owner_updates: items I added where the PIC replied / changed the status."""
     me = user.email.lower()
-    open_assigned = await db.fetch_one(
-        """SELECT COUNT(*), COALESCE(SUM(assignee_seen_at IS NULL), 0) FROM urgent_tn_items
-           WHERE LOWER(assignee_email) = %s AND LOWER(created_by) <> %s AND status = 'in_progress'""",
-        (me, me),
+    threshold = datetime.now(timezone.utc) - URGENT_REMINDER
+    notify = await db.fetch_one(
+        """SELECT COUNT(*) FROM urgent_tn_items
+           WHERE LOWER(assignee_email) = %s AND LOWER(created_by) <> %s AND status = 'in_progress'
+             AND (assignee_ack_at IS NULL OR assignee_ack_at < %s)""",
+        (me, me, threshold),
+    )
+    owner = await db.fetch_one(
+        "SELECT COUNT(*) FROM urgent_tn_items WHERE LOWER(created_by) = %s AND owner_unseen = 1", (me,)
     )
     unread = await db.fetch_one(
         "SELECT COUNT(*) FROM app_feedback WHERE LOWER(email) = %s AND reply_unread = 1", (me,)
     )
     return {
-        "urgent_assigned_open": int(open_assigned[0] or 0),
-        "urgent_unseen": int(open_assigned[1] or 0),
+        "urgent_notify": int(notify[0] or 0),
+        "urgent_owner_updates": int(owner[0] or 0),
         "feedback_replies_unread": int(unread[0] or 0),
     }
 

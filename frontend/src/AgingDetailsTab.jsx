@@ -81,8 +81,14 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const hideZoneCol =
     zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
+  // Blink fix (2026-09-25): only a real change of what's being shown (a filter / sub-view)
+  // resets to the loading skeleton. The 60-second auto-refresh tick just re-fetches in
+  // place -- resetting on every tick collapsed the page for a moment and snapped the
+  // scroll position back to the top.
   useEffect(() => {
     setData(null);
+  }, [agingType, isCold]);
+  useEffect(() => {
     (isCold ? api.coldChain() : api.agingDetails(agingType))
       .then(setData)
       .catch((e) => setError(e.message));

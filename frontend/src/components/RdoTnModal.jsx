@@ -18,6 +18,7 @@ const COLUMNS = [
   { label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "" },
   { label: "RDO Status", text: (r) => r.rdo_status ?? "" },
   { label: "RDO Created", text: (r) => formatLocalDateTime(r.rdo_created_at) },
+  { label: "Age (days)", text: (r) => (r.age ?? "") },
   { label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "" },
   { label: "Bundle Status", text: bundleStatusText },
   { label: "Bundle Last Sweep Hub", text: (r) => r.bundle_last_sweep_hub ?? "" },
@@ -115,7 +116,7 @@ export default function RdoTnModal({ state, onClose }) {
                       rows.map((r, i) => (
                         <tr key={`${r.tracking_number}-${i}`} className="border-t border-slate-100">
                           {COLUMNS.map((c, j) => (
-                            <td key={c.label} className={`whitespace-nowrap px-3 py-1.5 ${j === 0 || j === 3 ? "font-mono" : ""}`}>
+                            <td key={c.label} className={`whitespace-nowrap px-3 py-1.5 ${j === 0 || j === 4 ? "font-mono" : ""}`}>
                               {c.text(r) || "—"}
                             </td>
                           ))}

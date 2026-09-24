@@ -27,15 +27,28 @@ const CLASS_STYLE = {
   ok: "bg-status-good/10 text-status-good",
 };
 
+// One column per flag (2026-09-25): each opens the bundle list filtered to that station + flag.
 const STATION_COUNT_COLUMNS = [
   { key: "bundles", label: "Bundles" },
-  { key: "on_hold_bundles", label: "On Hold Bundles" },
-  { key: "mps_incomplete", label: "MPS Incomplete" },
-  { key: "complete_on_hold", label: "Complete but On Hold" },
+  { key: "on_hold_bundles", label: "On Hold Bundles", flag: "on_hold" },
+  { key: "mps_incomplete", label: "MPS Incomplete", flag: "mps_incomplete" },
+  { key: "complete_on_hold", label: "Complete but On Hold", flag: "complete_on_hold" },
+  { key: "single_on_hold", label: "On Hold (single piece)", flag: "single_on_hold" },
   { key: "missing_pieces_total", label: "Missing Pieces" },
 ];
 
-export default function RestockBundlesView({ view, regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
+// `preset` lets a parent (the Restock NXD station table) narrow this list: { station, classes, nonce }.
+// Long text kept to one short line (full text on hover) so the table stays compact.
+function Clip({ text, width }) {
+  if (!text) return <span className="text-slate-300">—</span>;
+  return (
+    <div className={`${width} truncate`} title={text}>
+      {text}
+    </div>
+  );
+}
+
+export default function RestockBundlesView({ view, regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, preset }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("on_hold_bundles");
@@ -45,13 +58,25 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
   const [stationFilter, setStationFilter] = useState([]);
   const [classFilter, setClassFilter] = useState([]);
 
+  useEffect(() => {
+    if (!preset) return;
+    setStationFilter(preset.station ? [preset.station] : []);
+    setClassFilter(preset.classes || []);
+  }, [preset?.nonce]);
+
   const attention = view === "attention";
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
   const hideZoneCol =
     zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
+  // Blink fix (2026-09-25): only a real change of what's being shown (a filter / sub-view)
+  // resets to the loading skeleton. The 60-second auto-refresh tick just re-fetches in
+  // place -- resetting on every tick collapsed the page for a moment and snapped the
+  // scroll position back to the top.
   useEffect(() => {
     setData(null);
+  }, [view]);
+  useEffect(() => {
     api
       .restockBundles(view)
       .then(setData)
@@ -81,14 +106,18 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
     () => Array.from(new Set(baseRows.map((r) => r.station_name))).sort().map((v) => ({ value: v, label: v })),
     [baseRows]
   );
+  // "on_hold" is a synthetic flag: any bundle with at least one piece on hold, whatever its other flag.
   const classOptions = useMemo(
-    () => Array.from(new Set(baseRows.map((r) => r.bundle_class))).map((v) => ({ value: v, label: CLASS_LABEL[v] || v })),
+    () => [
+      { value: "on_hold", label: "Any piece on hold" },
+      ...Array.from(new Set(baseRows.map((r) => r.bundle_class))).map((v) => ({ value: v, label: CLASS_LABEL[v] || v })),
+    ],
     [baseRows]
   );
   const rows = useMemo(() => {
     let out = baseRows;
     if (stationFilter.length) out = out.filter((r) => stationFilter.includes(r.station_name));
-    if (classFilter.length) out = out.filter((r) => classFilter.includes(r.bundle_class));
+    if (classFilter.length) out = out.filter((r) => classFilter.includes(r.bundle_class) || (classFilter.includes("on_hold") && r.on_hold_pieces > 0));
     return [...out].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -120,15 +149,18 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
       label: c.label,
       render: (r) => r[c.key].toLocaleString(),
       className: (r) => (r[c.key] > 0 && c.key !== "bundles" ? "font-semibold text-status-critical" : "text-slate-700"),
-      // Click a count to narrow the bundle list below to that station.
-      onClick: (r) => setStationFilter([r.station_name]),
+      // Click a count to narrow the bundle list below to that station (and flag).
+      onClick: (r) => {
+        setStationFilter([r.station_name]);
+        setClassFilter(c.flag ? [c.flag] : []);
+      },
     })),
   ];
 
   const bundleColumns = [
     { key: "station_name", label: "Station", sticky: true, align: "left" },
     { key: "bundle_tracking_number", label: "Bundle", className: () => "font-mono text-xs", render: (r) => r.bundle_tracking_number },
-    { key: "shipper_name", label: "Shipper", align: "left", className: () => "max-w-[220px] truncate text-xs", render: (r) => r.shipper_name || "—" },
+    { key: "shipper_name", label: "Shipper", align: "left", className: () => "text-xs", render: (r) => <Clip text={r.shipper_name} width="max-w-[150px]" /> },
     {
       key: "pieces_seen",
       label: "Pieces (here / total)",
@@ -138,13 +170,14 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
     {
       key: "missing_count",
       label: "Missing",
-      render: (r) => (r.missing_count > 0 ? `${r.missing_count}${r.missing_pieces ? ` (${r.missing_pieces})` : ""}` : "—"),
-      className: (r) => (r.missing_count > 0 ? "text-status-critical" : "text-slate-400"),
+      render: (r) => (r.missing_count > 0 ? <Clip text={`${r.missing_count}${r.missing_pieces ? ` (${r.missing_pieces})` : ""}`} width="max-w-[90px]" /> : "—"),
+      className: (r) => (r.missing_count > 0 ? "text-xs text-status-critical" : "text-slate-400"),
     },
     { key: "on_hold_pieces", label: "On Hold", render: (r) => r.on_hold_pieces || "—", className: (r) => (r.on_hold_pieces > 0 ? "font-semibold text-status-warning" : "text-slate-400") },
-    { key: "statuses", label: "Piece statuses", align: "left", sortable: false, className: () => "text-xs text-slate-600", render: (r) => r.statuses },
+    { key: "attempts", label: "Attempt", render: (r) => r.attempts ?? "—" },
+    { key: "statuses", label: "Piece statuses", align: "left", sortable: false, className: () => "text-xs text-slate-600", render: (r) => <Clip text={r.statuses} width="max-w-[130px]" /> },
     { key: "aging_days", label: "Aging (days)", render: (r) => r.aging_days },
-    { key: "days_group", label: "Days group", align: "left", className: () => "text-xs text-slate-500", render: (r) => r.days_group || "—" },
+    { key: "days_group", label: "Days group", align: "left", className: () => "text-xs text-slate-500", render: (r) => <Clip text={r.days_group} width="max-w-[110px]" /> },
     {
       key: "bundle_class",
       label: "Flag",
@@ -154,16 +187,16 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
         </span>
       ),
     },
-    { key: "hold_details", label: "Hold details", align: "left", sortable: false, className: () => "max-w-[240px] whitespace-normal text-xs text-slate-500", render: (r) => r.hold_details || "—" },
+    { key: "hold_details", label: "Hold details", align: "left", sortable: false, className: () => "text-xs text-slate-500", render: (r) => <Clip text={r.hold_details} width="max-w-[140px]" /> },
   ];
 
   const csvHeaders = [
-    "Station", "Bundle", "Shipper", "Pieces here", "Pieces total", "Missing", "Missing pieces", "On hold pieces",
+    "Station", "Bundle", "Shipper", "Pieces here", "Pieces total", "Missing", "Missing pieces", "On hold pieces", "Attempt",
     "Piece statuses", "Aging (days)", "Days group", "Flag", "Hold details", "Piece tracking numbers",
   ];
   const csvRow = (r) => [
     r.station_name, r.bundle_tracking_number, r.shipper_name ?? "", r.pieces_seen, r.piece_count, r.missing_count,
-    r.missing_pieces ?? "", r.on_hold_pieces, r.statuses, r.aging_days, r.days_group ?? "", CLASS_LABEL[r.bundle_class],
+    r.missing_pieces ?? "", r.on_hold_pieces, r.attempts ?? "", r.statuses, r.aging_days, r.days_group ?? "", CLASS_LABEL[r.bundle_class],
     r.hold_details ?? "", r.tracking_numbers.join(" "),
   ];
 
@@ -171,7 +204,7 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
     <div className="space-y-3">
       {attention && (
         <DataTable
-          title="On Hold / MPS Incomplete — by station"
+          title="Restock On Hold Details — by station"
           titleExtra={
             <button
               onClick={() =>
@@ -199,17 +232,15 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
       )}
 
       <DataTable
-        title={attention ? "Bundles needing attention" : "Restock bundles — tracking numbers"}
+        title={attention ? "Restock On Hold Details — bundles" : "Restock bundles — tracking numbers"}
         titleExtra={
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-48">
               <MultiSelect options={stationOptions} value={stationFilter} onChange={setStationFilter} placeholder="Search station (this table only)…" />
             </div>
-            {attention && (
-              <div className="w-48">
-                <MultiSelect options={classOptions} value={classFilter} onChange={setClassFilter} placeholder="All flags" />
-              </div>
-            )}
+            <div className="w-48">
+              <MultiSelect options={classOptions} value={classFilter} onChange={setClassFilter} placeholder="All flags" />
+            </div>
             <button
               onClick={() =>
                 exportCsv(
