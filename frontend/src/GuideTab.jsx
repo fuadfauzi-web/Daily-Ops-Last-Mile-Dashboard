@@ -326,7 +326,7 @@ const SECTIONS = [
         <Bullets
           items={[
             <>
-              <strong>Assign a PIC</strong>: type a teammate's email (they must already be a dashboard user) and an optional note.
+              <strong>Assign a PIC</strong>: start typing a teammate's name or email and pick them from the suggestions (they must already be a dashboard user), and add an optional note.
               The tab shows a red bell with a number for them, and the item is marked NEW.
             </>,
             <>
@@ -409,7 +409,7 @@ const FAQS = [
   { q: "How often does the data refresh?", a: "Every 15 minutes. \"Data as of\" in the header is when everything was last pulled from Redash." },
   { q: "Why does a tracking number show \"Not found\" in Urgent TN?", a: "Urgent TN looks parcels up in the same active dataset Station Health uses. A parcel that's already completed or added to a shipment is no longer in it." },
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
-  { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, type your colleague's email in the PIC box (they must already be a dashboard user) and press Track & assign. The Urgent TN tab shows a bell for them." },
+  { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
   { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },

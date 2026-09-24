@@ -2535,6 +2535,31 @@ async def _resolve_assignee(email: str | None) -> str | None:
     return row[0]
 
 
+class PicSuggestion(BaseModel):
+    email: str
+    display_name: str | None
+    role: str
+
+
+@app.get("/api/urgent-tn/pic-suggestions", response_model=list[PicSuggestion])
+async def urgent_pic_suggestions(q: str = "", user: CurrentUser = Depends(get_current_user)):
+    """Dashboard users matching what's typed in the Urgent TN PIC box (2026-09-25 feedback).
+    Any signed-in user can call it, since anyone may pick a PIC -- so it is kept narrow: 2+
+    characters, 8 results at most, never the caller, and only email / name / role are returned
+    (no scope, no last-seen)."""
+    q = q.strip().lower().replace("%", "").replace("_", "")
+    if len(q) < 2:
+        return []
+    like = f"%{q}%"
+    rows = await db.fetch_all(
+        """SELECT email, display_name, role FROM users
+           WHERE (LOWER(email) LIKE %s OR LOWER(display_name) LIKE %s) AND LOWER(email) <> %s
+           ORDER BY email LIMIT 8""",
+        (like, like, user.email.lower()),
+    )
+    return [{"email": r[0], "display_name": r[1], "role": r[2]} for r in rows]
+
+
 @app.post("/api/urgent-tn/items", response_model=OkResult)
 async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depends(get_current_user)):
     tns = []

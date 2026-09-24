@@ -4,6 +4,7 @@ import { formatTime } from "./lib/format";
 import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
 import SegmentedControl from "./components/SegmentedControl";
+import PicInput from "./components/PicInput";
 
 // Parses a paste of tracking numbers separated by newlines, commas, semicolons
 // or whitespace -- however the user copies them out of a sheet or chat message.
@@ -305,14 +306,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
         />
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="block text-xs text-slate-500">
-            PIC (optional) — email of someone already in the user list
-            <input
-              type="email"
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-              placeholder="name@ninjavan.co"
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-            />
+            PIC (optional) — pick a dashboard user, or type their email
+            <PicInput className="mt-1" placeholder="Start typing a name or email…" value={assignee} onChange={setAssignee} />
           </label>
           <label className="block text-xs text-slate-500">
             Note for the PIC (optional)
@@ -372,13 +367,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
             Edit PIC / note — <span className="font-mono">{editing.tracking_number}</span>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <input
-              type="email"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-              placeholder="PIC email (leave blank to unassign)"
-              value={editAssignee}
-              onChange={(e) => setEditAssignee(e.target.value)}
-            />
+            <PicInput placeholder="PIC name or email (leave blank to unassign)" value={editAssignee} onChange={setEditAssignee} />
             <input
               type="text"
               maxLength={500}
