@@ -65,6 +65,7 @@ const TABS = [
   { key: "health", label: "Station Health" },
   { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
+  { key: "coldchain", label: "Cold Chain" },
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Shipper Radar" },
@@ -724,6 +725,15 @@ export default function Dashboard({ me, onCapturedAt, jump }) {
 
       {tab === "aging" && (
         <AgingDetailsTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
+        />
+      )}
+
+      {tab === "coldchain" && (
+        <AgingDetailsTab
+          source="coldchain"
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}

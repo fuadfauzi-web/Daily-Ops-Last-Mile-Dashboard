@@ -1,30 +1,27 @@
 description: >
-  Live nationwide operations dashboard for Ninja Van's last-mile fleet (143 stations
-  across Southern, Northern, Klang Valley, East Coast, and East Malaysia -- East
-  Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls
-  parcel- and route-level data hourly from Redash across seven views: Station Health
-  (in-hub, zero-attempt, on-hold, aging, prior-tag, COD%, Unsweep Document/Parcel,
-  Missing Hub-vs-Ship-in, Pending ATS -- grouped by where each parcel physically is,
-  not just its intended destination), Shipment Details (fresh unscan, latlong,
-  fresh-attempt %, line-haul trip timing, average sweep Process Time), Routed View
-  (Total Routed/Attendance/OVFD/Success/COD%/Success Rate/Completion Rate at
-  region/zone/station/driver level, with hybrid-vs-independent and rescue-route
-  driver breakdowns, plus an Old Route sub-view for tracking numbers stuck on their
-  original Route ID/date), Shipper Watch (Zalora NXD, Amway/Watson/Orca/Sodaxpress
-  hypercare SLAs, and Restock NXD monitoring), Aging Details (five sub-views --
-  Overall/0 Attempt/Delivery/ATS/COD -- each a station x age-bucket pivot with full
-  TN-level detail), and RPU for return pickups (Pending Pick Up/En Route to Sorting
-  Hub/Pending Inbound in one status-filterable view, plus RPU Aging with the same
-  age-bucket pivot as Aging Details -- both filterable to any shipper). Every
-  parcel-level count can be clicked to see the underlying tracking numbers. Access
-  is role-based: admins see and manage everything (the only role that can view/edit
-  the team list or trigger a refresh); managers and region staff can add teammates
-  (single or bulk) but not the rest of admin; station staff just see their station.
-  Refreshes every 30 minutes, asking Redash to re-run each query first rather than
-  just reading its last cached result. For Fleet Managers and their regional/
-  station teams.
+  Live nationwide operations dashboard for Ninja Van Malaysia's last-mile fleet team
+  (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia --
+  East Malaysia is Retail, not Last Mile, so it can be toggled out of every view).
+  Pulls parcel- and route-level data from Redash every 15 minutes and shows it per
+  region, zone, station and driver: Action Board (SLA heatmap), Shipment Details
+  (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station
+  Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route
+  Monitoring (routed, attendance, OVFD, success and completion rates by driver type,
+  old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU,
+  Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress
+  SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document
+  compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a
+  PIC with in-progress / closed status and notifications). Every count opens its
+  tracking numbers, with CSV export. Access is role-based (admin, manager, region,
+  station) with multi-value region/zone/station scopes enforced in the backend; an
+  admin can preview any role or user with the Role Tester. Users can send feedback
+  (with an attachment) that admins reply to and close. For Fleet Managers and their
+  regional and station teams.
 
 database: oceanbase
+
+services:
+  object-storage: {}
 
 # Skill/plugin version this app was last deployed with — stamped by
 # /substrait:deploy; do not edit by hand.

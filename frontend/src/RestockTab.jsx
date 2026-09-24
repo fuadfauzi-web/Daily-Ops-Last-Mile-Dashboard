@@ -7,6 +7,9 @@ import DetailPanel from "./components/DetailPanel";
 import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import TnModal from "./components/TnModal";
+import RdoTnModal, { bundleStatusText } from "./components/RdoTnModal";
+import { formatLocalDateTime } from "./lib/format";
+import RestockBundlesView from "./RestockBundlesView";
 import Skeleton from "./components/Skeleton";
 
 // Restock NXD reuses Shipper Watch's own data (query 1585, see
@@ -21,6 +24,7 @@ const RESTOCK_COLUMNS = [
 
 const SUB_TABS = [
   { key: "nxd", label: "Restock NXD" },
+  { key: "onhold", label: "On Hold / MPS Incomplete" },
   { key: "compliance", label: "B2B Document Compliance" },
 ];
 
@@ -124,6 +128,11 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
         emptyMessage="No stations match."
         footer="Restock is counted by bundle, not by individual parcel -- Pieces is the actual parcel count."
       />
+      <RestockBundlesView
+        view="all"
+        regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+        excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+      />
     </div>
   );
 }
@@ -134,28 +143,6 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
 // nothing to explain about them in the UI.
 const DOCUMENT_TYPES = [{ value: "rdo", label: "RDO" }];
 
-// "2026-09-23 11:56:29.000000" -> "23 Sep, 11:56 am". Redash sends these as plain
-// Malaysia local time with no timezone, so format the text itself rather than
-// going through Date (which would shift it by the browser's offset).
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function formatLocalDateTime(value) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value || "");
-  if (!m) return value || "—";
-  const hour = Number(m[4]);
-  const h12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}, ${h12}:${m[5]} ${hour >= 12 ? "pm" : "am"}`;
-}
-
-// 2026-09-24 feedback: Bundle Status shows the date the bundle completed (when it
-// has), and a Bundle Last Sweep column gives the date/time of the bundle's last
-// sweep at its hub.
-function bundleStatusText(r) {
-  if (r.bundle_status === "Completed" && r.bundle_delivered_at) {
-    return `Completed · ${formatLocalDateTime(r.bundle_delivered_at)}`;
-  }
-  return r.bundle_status ?? "—";
-}
-
 const RDO_TN_COLUMNS = [
   { key: "tracking_number", label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "—" },
   { key: "rdo_status", label: "RDO Status", text: (r) => r.rdo_status ?? "—" },
@@ -165,11 +152,12 @@ const RDO_TN_COLUMNS = [
 ];
 
 // Station-table breakdown of Total TN by RDO status (backend/aggregate.py's
-// RDO_STATUS_COLUMNS); other statuses such as "Pickup fail" only count in Total TN.
+// RDO_STATUS_COLUMNS). Any other status only counts in Total TN.
 const RDO_STATUS_COLUMNS = [
   { key: "pending_pickup", label: "Pending Pickup" },
   { key: "van_enroute", label: "Van En-route to Pickup" },
   { key: "enroute_sorting", label: "En-route to Sorting Hub" },
+  { key: "pickup_fail", label: "Pickup Fail" },
 ];
 
 function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
@@ -182,7 +170,9 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
   const [tnSortDir, setTnSortDir] = useState("desc");
   const [tnStationFilter, setTnStationFilter] = useState([]);
   const [tnStatusFilter, setTnStatusFilter] = useState([]);
+  const [tnBundleFilter, setTnBundleFilter] = useState([]);
   const [detailRow, setDetailRow] = useState(null);
+  const [tnModal, setTnModal] = useState(null); // { stationCode, stationName, status, label }
 
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
   const hideZoneCol =
@@ -227,10 +217,15 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
     () => Array.from(new Set(baseTnRows.map((r) => r.rdo_status).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
     [baseTnRows]
   );
+  const tnBundleOptions = useMemo(
+    () => Array.from(new Set(baseTnRows.map((r) => r.bundle_status).filter(Boolean))).sort().map((v) => ({ value: v, label: v })),
+    [baseTnRows]
+  );
   const filteredTnRows = useMemo(() => {
     let rows = baseTnRows;
     if (tnStationFilter.length) rows = rows.filter((r) => tnStationFilter.includes(r.station_name));
     if (tnStatusFilter.length) rows = rows.filter((r) => r.rdo_status && tnStatusFilter.includes(r.rdo_status));
+    if (tnBundleFilter.length) rows = rows.filter((r) => r.bundle_status && tnBundleFilter.includes(r.bundle_status));
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -238,7 +233,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter]);
+  }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter, tnBundleFilter]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -262,12 +257,19 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
     ...(!hideRegionCol ? [{ key: "region", label: "Region", className: () => "text-slate-500" }] : []),
     ...(!hideZoneCol ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
     { key: "station_name", label: "Station", sticky: true, align: "left" },
-    { key: "total_tn", label: "Total TN", className: () => "font-semibold text-status-critical", render: (r) => r.total_tn.toLocaleString() },
+    {
+      key: "total_tn",
+      label: "Total TN",
+      className: () => "font-semibold text-status-critical",
+      render: (r) => r.total_tn.toLocaleString(),
+      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: "all", label: "Total TN" }),
+    },
     ...RDO_STATUS_COLUMNS.map((c) => ({
       key: c.key,
       label: c.label,
       className: (r) => (r[c.key] > 0 ? "text-slate-800" : "text-slate-400"),
       render: (r) => r[c.key].toLocaleString(),
+      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: c.key, label: c.label }),
     })),
   ];
 
@@ -285,6 +287,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
         </div>
       </div>
 
+      <RdoTnModal state={tnModal} onClose={() => setTnModal(null)} />
       {!data.captured_at ? (
         <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
           {documentTypes.length === 0 ? "Pick at least one document type above." : "No data yet."}
@@ -335,7 +338,10 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
                   <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
                 </div>
                 <div className="w-48">
-                  <MultiSelect options={tnStatusOptions} value={tnStatusFilter} onChange={setTnStatusFilter} placeholder="All statuses" />
+                  <MultiSelect options={tnStatusOptions} value={tnStatusFilter} onChange={setTnStatusFilter} placeholder="All RDO statuses" />
+                </div>
+                <div className="w-48">
+                  <MultiSelect options={tnBundleOptions} value={tnBundleFilter} onChange={setTnBundleFilter} placeholder="All bundle statuses" />
                 </div>
                 <button
                   onClick={() =>
@@ -362,7 +368,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
             footer={
               <>
                 {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by bundle_last_sweep_hub (where
-                the bundle physically sits) · Bundle Status shows the date the bundle completed · RDO Status is raw from Redash -- the "MPS
+                the bundle physically sits; hubs that aren't one of our stations show as their own rows under "Other hubs") · every bundle status is included, completed or not · click a count in the station table for its tracking numbers + CSV · Bundle Status shows the date the bundle completed · RDO Status is raw from Redash -- the "MPS
                 completed but RDO still pending" style classification from the Fleet Manager's own sheet isn't
                 reproduced here yet.
                 {data.tn_rows_truncated && (
@@ -389,6 +395,12 @@ export default function RestockTab({ regionFilter, zoneFilter, search, me, exclu
 
       {subTab === "nxd" ? (
         <RestockNxdView
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      ) : subTab === "onhold" ? (
+        <RestockBundlesView
+          view="attention"
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />

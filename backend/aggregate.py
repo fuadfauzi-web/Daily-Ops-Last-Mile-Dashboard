@@ -1423,18 +1423,39 @@ RDO_STATUS_COLUMNS = {
     "pendingpickup": "pending_pickup",
     "vanenroutetopickup": "van_enroute",
     "enroutetosortinghub": "enroute_sorting",
+    "pickupfail": "pickup_fail",
 }
 RDO_COMPLIANCE_KEYS = ("total_tn",) + tuple(RDO_STATUS_COLUMNS.values())
+RDO_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route -- bound payload size
+
+# 2026-09-25: a hub that isn't one of the 143 stations (PUDO-KV-DEL, CC-GLE, ULTRA KV,
+# ... or a blank one) used to make its rows vanish from every count here -- which
+# is exactly where the not-yet-completed bundles were hiding (e.g. 130 of 478
+# "On Vehicle for Delivery" bundles in the 2026-09-23 export). They now get their
+# own row (region/zone "Other hubs") named after the raw hub, so nothing is dropped.
+OTHER_HUBS_LABEL = "Other hubs"
+
+
+def hub_bucket(hub: str | None) -> tuple[str, str, str, str]:
+    """(station_code, station_name, zone, region) for a raw hub name -- the real
+    station's details when it is one of ours, otherwise a pseudo-station named
+    after the raw hub."""
+    if hub in HUBS:
+        name, _full, zone, region = HUBS[hub]
+        return hub, name, zone, region
+    label = (hub or "").strip() or "(no sweep hub)"
+    return label, label, OTHER_HUBS_LABEL, OTHER_HUBS_LABEL
 
 
 def _rdo_status_key(status: str | None) -> str | None:
     norm = "".join(ch for ch in (status or "").lower() if ch.isalnum())
     return RDO_STATUS_COLUMNS.get(norm)
-RDO_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route -- bound payload size
 
 
 def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
-    """Returns ({hub_code: {..., total_tn, <per-status counts>}}, [tn_row, ...])."""
+    """Returns ({hub_code: {..., total_tn, <per-status counts>}}, [tn_row, ...]).
+    Every row is kept, whatever the bundle's status and wherever it last swept --
+    see hub_bucket."""
     by_station = {
         hub: {
             "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
@@ -1444,27 +1465,32 @@ def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]
     }
     tn_rows = []
     for r in rows:
-        hub = r.get("bundle_last_sweep_hub")
-        row = by_station.get(hub)
+        code, name, zone, region = hub_bucket(r.get("bundle_last_sweep_hub"))
+        row = by_station.get(code)
         if row is None:
-            continue
+            row = by_station[code] = {
+                "station_code": code, "station_name": name, "zone": zone, "region": region,
+                **{k: 0 for k in RDO_COMPLIANCE_KEYS},
+            }
         row["total_tn"] += 1
         status_col = _rdo_status_key(r.get("rdo_granular_status"))
         if status_col:
             row[status_col] += 1
         tn_rows.append({
             "tracking_number": r.get("rdo_tracking_id"),
-            "station_code": hub,
-            "station_name": row["station_name"],
-            "zone": row["zone"],
-            "region": row["region"],
+            "station_code": code,
+            "station_name": name,
+            "zone": zone,
+            "region": region,
             "rdo_status": r.get("rdo_granular_status"),
+            "status_key": status_col,
             "rdo_created_at": r.get("rdo_creation_datetime"),
             "rdo_latest_start_date": r.get("rdo_latest_start_date"),
             "bundle_tracking_number": r.get("bundle_tracking_id"),
             "bundle_status": r.get("bundle_granular_status"),
             "bundle_last_sweep_at": r.get("bundle_last_sweep_timestamp"),
             "bundle_delivered_at": r.get("bundle_delivery_success_datetime"),
+            "bundle_last_sweep_hub": r.get("bundle_last_sweep_hub"),
         })
     return by_station, tn_rows
 
@@ -1480,3 +1506,129 @@ def rollup_rdo_compliance(station_rows: list[dict], group_key: str) -> list[dict
         for k in RDO_COMPLIANCE_KEYS:
             g[k] += row[k]
     return list(groups.values())
+
+
+# ---------------------------------------------------------------------------
+# Cold Chain tab (2026-09-25, staging). The tracking numbers come from Redash
+# query 1410 ("CC Daily Orders") -- only its tracking_id column (column A) is
+# used; everything shown is joined from query 78 (the same rows Station Health /
+# Aging read), so the Cold Chain view is "Aging Overall, but only for these TNs",
+# grouped by where the parcel physically is (last_scan_hub_name). Cold-chain
+# parcels often sit at CC-* hubs that aren't stations -- those get their own
+# "Other hubs" rows instead of being dropped (see hub_bucket).
+# ---------------------------------------------------------------------------
+
+def build_cold_chain(health_v3_rows: list[dict], cc_tns: set[str]) -> tuple[list[dict], list[dict], int]:
+    """Returns (station_pivot_rows, tn_rows, matched_tn_count). matched_tn_count is
+    how many of cc_tns were found in query 78 (the rest are already completed /
+    added to a shipment, same as Urgent TN's "Not found")."""
+    stations: dict[str, dict] = {hub: _empty_aging_row(hub) for hub in HUBS}
+    tn_rows: list[dict] = []
+    matched = 0
+    for r in health_v3_rows:
+        tn = r.get("tracking_id")
+        if tn not in cc_tns:
+            continue
+        matched += 1
+        code, name, zone, region = hub_bucket(r.get("last_scan_hub_name"))
+        row = stations.get(code)
+        if row is None:
+            row = stations[code] = {
+                "station_code": code, "station_name": name, "zone": zone, "region": region,
+                **{k: 0 for k in AGING_KEYS},
+            }
+        age = int(r.get("days_since_current_hub_first_sweep") or 0)
+        row[AGING_BUCKET_KEYS[_age_bucket(age)]] += 1
+        row["total"] += 1
+        tn_rows.append({
+            "station_code": code, "station_name": name, "zone": zone, "region": region,
+            "tracking_number": tn, "status": r.get("granular_status"), "attempts": r.get("delivery_attempts") or 0,
+            "age": age, "tag": r.get("tag"), "cod": r.get("cod"), "dest_hub": r.get("dest_hub"),
+        })
+    return list(stations.values()), tn_rows, matched
+
+
+# ---------------------------------------------------------------------------
+# Restock bundles (query 1585) -- one row per bundle_tracking_number, for the
+# Restock tab's bundle list and the On Hold / MPS Incomplete sub-tab
+# (2026-09-25). Query 1585 has one row per piece (tracking_id "<bundle>-001",
+# "-002"...) plus the bundle's declared piece_count, so:
+#   * MPS incomplete  = fewer piece rows present than piece_count (e.g. NVMYTEST
+#     -001/-002 here but piece_count 3: -003 hasn't arrived / isn't in the
+#     active dataset);
+#   * complete but on hold = every piece is present, yet at least one is On
+#     Hold -- nothing is missing, so the hold can be released.
+# Provisional: "present" means "in the active-orders query", so a piece already
+# delivered would also read as missing. Confirm against a real MPS example.
+# ---------------------------------------------------------------------------
+
+RESTOCK_BUNDLE_CLASSES = ("mps_incomplete", "complete_on_hold", "single_on_hold", "ok")
+_PIECE_SUFFIX = re.compile(r"-(\d{1,4})$")
+
+
+def build_restock_bundles(restock_rows: list[dict]) -> list[dict]:
+    grouped: dict[str, list[dict]] = {}
+    for r in restock_rows:
+        bundle = r.get("bundle_tracking_number") or r.get("tracking_id")
+        if bundle:
+            grouped.setdefault(bundle, []).append(r)
+
+    out = []
+    for bundle, rows in grouped.items():
+        first = rows[0]
+        try:
+            piece_count = int(first.get("piece_count") or 0)
+        except (TypeError, ValueError):
+            piece_count = 0
+        piece_tns = sorted({r.get("tracking_id") for r in rows if r.get("tracking_id")})
+        seen = len(piece_tns)
+        piece_count = max(piece_count, 1)
+        missing = max(0, piece_count - seen)
+
+        statuses: dict[str, int] = {}
+        hubs: dict[str, int] = {}
+        for r in rows:
+            statuses[r.get("granular_status") or "—"] = statuses.get(r.get("granular_status") or "—", 0) + 1
+            hubs[r.get("last_scan_hub") or ""] = hubs.get(r.get("last_scan_hub") or "", 0) + 1
+        on_hold = statuses.get("On Hold", 0)
+        hub = max(hubs, key=hubs.get)
+        code, name, zone, region = hub_bucket(hub)
+
+        missing_pieces: list[str] = []
+        if missing:
+            present = {int(m.group(1)) for tn in piece_tns if (m := _PIECE_SUFFIX.search(tn))}
+            if len(present) == seen and all(1 <= n <= piece_count for n in present):
+                missing_pieces = [f"-{n:03d}" for n in range(1, piece_count + 1) if n not in present][:20]
+
+        if missing > 0:
+            klass = "mps_incomplete"
+        elif on_hold > 0 and piece_count > 1:
+            klass = "complete_on_hold"
+        elif on_hold > 0:
+            klass = "single_on_hold"
+        else:
+            klass = "ok"
+
+        aging = 0
+        for r in rows:
+            try:
+                aging = max(aging, int(r.get("days_aging_excl_sunday") or 0))
+            except (TypeError, ValueError):
+                pass
+        hold_details = next(
+            (r.get(k) for r in rows for k in ("parcel_on_hold_details", "ticket_notes", "first_comment") if r.get(k)), None
+        )
+        out.append({
+            "bundle_tracking_number": bundle,
+            "shipper_name": first.get("shipper_name"),
+            "station_code": code, "station_name": name, "zone": zone, "region": region,
+            "piece_count": piece_count, "pieces_seen": seen, "missing_count": missing,
+            "missing_pieces": ", ".join(missing_pieces) if missing_pieces else None,
+            "on_hold_pieces": on_hold,
+            "statuses": ", ".join(f"{s} ×{n}" for s, n in sorted(statuses.items(), key=lambda kv: -kv[1])),
+            "days_group": first.get("days_group"), "aging_days": aging,
+            "hold_details": (hold_details or "").strip() or None,
+            "bundle_class": klass,
+            "tracking_numbers": piece_tns[:100],
+        })
+    return out

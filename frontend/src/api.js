@@ -3,7 +3,7 @@
 // that role/scope would see it. The backend only honours this for a real
 // admin (checked server-side from the SSO email, see auth.get_current_user),
 // so setting it client-side can't itself grant access to anything.
-let viewAs = null; // { role, scopeType, scopeValues } | null
+let viewAs = null; // { role, scopeType, scopeValues } | { email } | null
 function setViewAs(next) {
   viewAs = next;
 }
@@ -12,17 +12,26 @@ function getViewAs() {
 }
 
 // Always same-origin relative paths — the ingress routes /api to the backend.
+// "View as a specific user" sends just the email -- the backend takes that user's
+// real role and scope from the users table (2026-09-25).
+function viewAsHeaders() {
+  if (!viewAs) return {};
+  if (viewAs.email) return { "X-View-As-Email": viewAs.email };
+  return {
+    "X-View-As-Role": viewAs.role,
+    "X-View-As-Scope-Type": viewAs.scopeType || "all",
+    "X-View-As-Scope-Values": (viewAs.scopeValues || []).join(","),
+  };
+}
+
+// opts.noViewAs: send this one request as the real signed-in admin even while a View As
+// is active (the Role Tester's own pickers must always list everything).
 async function request(path, opts = {}) {
-  const viewAsHeaders = viewAs
-    ? {
-        "X-View-As-Role": viewAs.role,
-        "X-View-As-Scope-Type": viewAs.scopeType || "all",
-        "X-View-As-Scope-Values": (viewAs.scopeValues || []).join(","),
-      }
-    : {};
+  const { noViewAs, ...fetchOpts } = opts;
+  opts = fetchOpts;
   const res = await fetch(path, {
     ...opts,
-    headers: { "Content-Type": "application/json", ...viewAsHeaders, ...(opts.headers || {}) },
+    headers: { "Content-Type": "application/json", ...(noViewAs ? {} : viewAsHeaders()), ...(opts.headers || {}) },
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -44,8 +53,8 @@ export const api = {
   me: () => request("/api/me"),
   viewAs: { set: setViewAs, get: getViewAs },
   dashboard: () => request("/api/dashboard"),
-  stations: () => request("/api/stations"),
-  regions: () => request("/api/regions"),
+  stations: (opts) => request("/api/stations", opts),
+  regions: (opts) => request("/api/regions", opts),
   drilldown: (stationCode, metric) =>
     request(`/api/drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`),
   shipmentDetails: () => request("/api/shipment-details"),
@@ -85,7 +94,7 @@ export const api = {
       }${statuses?.length ? `&status=${encodeURIComponent(statuses.join(","))}` : ""}`
     ),
   users: {
-    list: () => request("/api/admin/users"),
+    list: (opts) => request("/api/admin/users", opts),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),
     bulkAdd: (payload) => request("/api/admin/users/bulk", { method: "POST", body: JSON.stringify(payload) }),
     update: (email, payload) =>
@@ -111,7 +120,7 @@ export const api = {
       const formData = new FormData();
       formData.append("message", message);
       if (file) formData.append("file", file);
-      const res = await fetch("/api/feedback", { method: "POST", body: formData });
+      const res = await fetch("/api/feedback", { method: "POST", body: formData, headers: viewAsHeaders() });
       if (!res.ok) {
         let detail = res.statusText;
         try {
@@ -126,6 +135,7 @@ export const api = {
     list: () => request("/api/feedback"),
     update: (id, payload) => request(`/api/feedback/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     attachmentUrl: (id) => `/api/feedback/${id}/attachment`,
+    remove: (id) => request(`/api/feedback/${id}`, { method: "DELETE" }),
   },
   // Urgent TN items live on the server now (assignable to a PIC) -- see backend
   // main.py's /api/urgent-tn/items.
@@ -137,6 +147,10 @@ export const api = {
     markSeen: () => request("/api/urgent-tn/mark-seen", { method: "POST" }),
   },
   notifications: () => request("/api/notifications"),
+  coldChain: () => request("/api/cold-chain"),
+  restockBundles: (view) => request(`/api/restock-bundles?view=${encodeURIComponent(view || "all")}`),
+  b2bComplianceTns: (stationCode, status) =>
+    request(`/api/b2b-compliance/tns?station_code=${encodeURIComponent(stationCode)}&status=${encodeURIComponent(status || "all")}`),
   driverDetails: {
     status: () => request("/api/admin/driver-details/status"),
     upload: async (file) => {

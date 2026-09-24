@@ -16,28 +16,32 @@ import io
 import json
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 import db
+import storage
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
     METRIC_KEYS, OLD_ROUTE_ROWS_CAP, RDO_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
-    build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS,
+    build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
     build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
+    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL,
     merge_routed_into_station_metrics,
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user, parse_scope_values
 from redash_client import (
-    QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
+    QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
     QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
     QUERY_ZALORA_NXD, RedashError, fetch_query_results,
 )
@@ -83,6 +87,8 @@ _QUERY_LABELS = {
     QUERY_RESTOCK_NXD: "Restock NXD (Shipper Watch)",
     QUERY_OLD_ROUTE: "Old Route / Aging OVFD",
     QUERY_RPU: "RPU Monitoring",
+    QUERY_RDO_PUSH_OFF: "RDO Push Off (B2B Document Compliance)",
+    QUERY_COLD_CHAIN: "Cold Chain Daily Orders",
 }
 
 
@@ -141,6 +147,16 @@ _rpu_rows_captured_at: str | None = None
 _rdo_stations: list[dict] = []
 _rdo_tn_rows: list[dict] = []
 _rdo_captured_at: str | None = None
+
+# Cold Chain tab (query 1410's tracking numbers joined to query 78) and the Restock
+# bundle list / On Hold view (query 1585 grouped per bundle), same in-memory pattern.
+_cold_chain_stations: list[dict] = []
+_cold_chain_rows: list[dict] = []
+_cold_chain_captured_at: str | None = None
+_cold_chain_source_count = 0
+_cold_chain_matched_count = 0
+_restock_bundles: list[dict] = []
+_restock_bundles_captured_at: str | None = None
 
 # Recovery tab's Missing Details, same in-memory pattern as _old_route_rows.
 _missing_details_stations: list[dict] = []
@@ -232,9 +248,23 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
         restock_rows = await _fetch(QUERY_RESTOCK_NXD)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
+        restock_bundle_rows = build_restock_bundles(restock_rows)
         del zalora_rows, restock_rows
 
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
+
+        # Cold Chain: only query 1410's tracking_id column matters; isolated so a
+        # problem with that one query can't fail the whole refresh -- the tab just
+        # keeps its previous numbers.
+        cold_chain_result = None
+        try:
+            cc_raw_rows = await _fetch(QUERY_COLD_CHAIN)
+            cc_tns = {r.get("tracking_id") for r in cc_raw_rows if r.get("tracking_id")}
+            del cc_raw_rows
+            cc_stations, cc_tn_rows, cc_matched = build_cold_chain(health_rows, cc_tns)
+            cold_chain_result = (cc_stations, cc_tn_rows, len(cc_tns), cc_matched)
+        except Exception:  # noqa: BLE001
+            log.exception("Cold Chain refresh failed -- keeping the previous data")
 
         old_route_raw_rows = await _fetch(QUERY_OLD_ROUTE)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
@@ -263,6 +293,8 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
         global _shipment_timelines
         global _rdo_stations, _rdo_tn_rows, _rdo_captured_at
+        global _cold_chain_stations, _cold_chain_rows, _cold_chain_captured_at
+        global _cold_chain_source_count, _cold_chain_matched_count, _restock_bundles, _restock_bundles_captured_at
         _shipment_timelines = shipment_timelines
         _tn_cache.clear()
         _tn_cache.update(tn_details)
@@ -286,6 +318,11 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         _rdo_stations = list(rdo_by_station.values())
         _rdo_tn_rows = rdo_tn_rows
         _rdo_captured_at = captured_at.isoformat()
+        _restock_bundles = restock_bundle_rows
+        _restock_bundles_captured_at = captured_at.isoformat()
+        if cold_chain_result is not None:
+            _cold_chain_stations, _cold_chain_rows, _cold_chain_source_count, _cold_chain_matched_count = cold_chain_result
+            _cold_chain_captured_at = captured_at.isoformat()
         _missing_details_stations = list(missing_details_by_station.values())
         _missing_details_tn_rows = missing_details_tn_rows
         _missing_details_cod_threshold = cod_threshold
@@ -560,6 +597,7 @@ async def me(
     x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
     x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
     x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
+    x_view_as_email: str | None = Header(default=None, alias="X-View-As-Email"),
 ):
     if not x_forwarded_email:
         return {"email": None, "provisioned": False}
@@ -571,8 +609,20 @@ async def me(
         return {"email": x_forwarded_email, "provisioned": False}
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
     real_role = row[1]
-    # Same "View As" override as auth.get_current_user -- gated on real_role
+    # Same "View As" overrides as auth.get_current_user -- gated on real_role
     # from the DB, never on the override headers themselves.
+    if real_role == "admin" and x_view_as_email:
+        target = await db.fetch_one(
+            "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE LOWER(email) = %s",
+            (x_view_as_email.strip().lower(),),
+        )
+        if target is None:
+            raise HTTPException(status_code=422, detail="That user isn't in the user list")
+        return {
+            "email": target[0], "provisioned": True, "role": target[1], "scope_type": target[2],
+            "scope_values": parse_scope_values(target[3]), "display_name": target[4],
+            "is_impersonating": True, "real_role": real_role,
+        }
     if real_role == "admin" and x_view_as_role:
         return {
             "email": row[0], "provisioned": True, "role": x_view_as_role,
@@ -1309,6 +1359,140 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
 
 
 # ---------------------------------------------------------------------------
+# Cold Chain (query 1410's tracking numbers joined to query 78) -- same response
+# shape as Aging Details plus how many of the source TNs were found in query 78.
+# ---------------------------------------------------------------------------
+
+class ColdChainResponse(AgingDetailsResponse):
+    source_tn_count: int
+    matched_tn_count: int
+
+
+COLD_CHAIN_ROWS_CAP = 3000
+
+
+@app.get("/api/cold-chain", response_model=ColdChainResponse)
+async def cold_chain(user: CurrentUser = Depends(get_current_user)):
+    empty = {
+        "captured_at": None, "type": "cold_chain", "type_label": "Cold Chain",
+        "buckets": list(AGING_BUCKET_LABELS.values()), "stations": [], "zones": [], "regions": [], "tn_rows": [],
+        "tn_rows_total": 0, "tn_rows_truncated": False, "source_tn_count": 0, "matched_tn_count": 0,
+    }
+    if _cold_chain_captured_at is None:
+        return empty
+
+    scoped = _scope_filter_stations(_cold_chain_stations, user)
+    scoped_codes = {r["station_code"] for r in scoped}
+
+    def to_group(rows, key):
+        return [
+            {**{k: g[k] for k in _AGING_COLUMNS}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+            for g in rows if g["station_count"] > 0
+        ]
+
+    tn_rows = [r for r in _cold_chain_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows)
+    tn_rows_truncated = tn_rows_total > COLD_CHAIN_ROWS_CAP
+    if tn_rows_truncated:
+        tn_rows = sorted(tn_rows, key=lambda r: r["age"], reverse=True)[:COLD_CHAIN_ROWS_CAP]
+    return {
+        **empty,
+        "captured_at": _cold_chain_captured_at,
+        "stations": scoped,
+        "zones": to_group(rollup_aging(scoped, "zone"), "zone"),
+        "regions": to_group(rollup_aging(scoped, "region"), "region"),
+        "tn_rows": tn_rows, "tn_rows_total": tn_rows_total, "tn_rows_truncated": tn_rows_truncated,
+        "source_tn_count": _cold_chain_source_count, "matched_tn_count": _cold_chain_matched_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Restock bundles: one row per bundle (query 1585), for the Restock tab's bundle
+# list (view=all) and the On Hold / MPS Incomplete sub-tab (view=attention: any
+# bundle that is on hold or missing pieces). See aggregate.build_restock_bundles.
+# ---------------------------------------------------------------------------
+
+RESTOCK_BUNDLES_ROWS_CAP = 3000
+
+
+class RestockBundleRow(BaseModel):
+    bundle_tracking_number: str
+    shipper_name: str | None
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    piece_count: int
+    pieces_seen: int
+    missing_count: int
+    missing_pieces: str | None
+    on_hold_pieces: int
+    statuses: str
+    days_group: str | None
+    aging_days: int
+    hold_details: str | None
+    bundle_class: str
+    tracking_numbers: list[str]
+
+
+class RestockStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    bundles: int
+    on_hold_bundles: int
+    mps_incomplete: int
+    complete_on_hold: int
+    missing_pieces_total: int
+
+
+class RestockBundlesResponse(BaseModel):
+    captured_at: str | None
+    view: str
+    stations: list[RestockStationRow]
+    bundles: list[RestockBundleRow]
+    bundles_total: int
+    bundles_truncated: bool
+
+
+@app.get("/api/restock-bundles", response_model=RestockBundlesResponse)
+async def restock_bundles(view: str = "all", user: CurrentUser = Depends(get_current_user)):
+    if view not in ("all", "attention"):
+        raise HTTPException(status_code=422, detail="view must be 'all' or 'attention'")
+    if _restock_bundles_captured_at is None:
+        return {"captured_at": None, "view": view, "stations": [], "bundles": [], "bundles_total": 0, "bundles_truncated": False}
+
+    scoped = _scope_filter_stations(_restock_bundles, user)
+    if view == "attention":
+        scoped = [b for b in scoped if b["bundle_class"] != "ok"]
+
+    stations: dict[str, dict] = {}
+    for b in scoped:
+        s = stations.setdefault(b["station_code"], {
+            "station_code": b["station_code"], "station_name": b["station_name"], "zone": b["zone"], "region": b["region"],
+            "bundles": 0, "on_hold_bundles": 0, "mps_incomplete": 0, "complete_on_hold": 0, "missing_pieces_total": 0,
+        })
+        s["bundles"] += 1
+        if b["on_hold_pieces"] > 0:
+            s["on_hold_bundles"] += 1
+        if b["bundle_class"] == "mps_incomplete":
+            s["mps_incomplete"] += 1
+        elif b["bundle_class"] == "complete_on_hold":
+            s["complete_on_hold"] += 1
+        s["missing_pieces_total"] += b["missing_count"]
+
+    total = len(scoped)
+    rows = sorted(scoped, key=lambda b: (b["bundle_class"] == "ok", -b["aging_days"], b["bundle_tracking_number"]))
+    truncated = total > RESTOCK_BUNDLES_ROWS_CAP
+    return {
+        "captured_at": _restock_bundles_captured_at, "view": view,
+        "stations": list(stations.values()), "bundles": rows[:RESTOCK_BUNDLES_ROWS_CAP],
+        "bundles_total": total, "bundles_truncated": truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Old Route (query 1451) -- tracking numbers stuck on their original Route ID/date.
 # ---------------------------------------------------------------------------
 
@@ -1429,6 +1613,7 @@ class RdoStationRow(BaseModel):
     pending_pickup: int
     van_enroute: int
     enroute_sorting: int
+    pickup_fail: int
 
 
 class RdoGroupRow(BaseModel):
@@ -1439,6 +1624,7 @@ class RdoGroupRow(BaseModel):
     pending_pickup: int
     van_enroute: int
     enroute_sorting: int
+    pickup_fail: int
 
 
 class RdoTnRow(BaseModel):
@@ -1448,6 +1634,8 @@ class RdoTnRow(BaseModel):
     zone: str
     region: str
     rdo_status: str | None
+    status_key: str | None = None
+    bundle_last_sweep_hub: str | None = None
     rdo_created_at: str | None
     rdo_latest_start_date: str | None
     bundle_tracking_number: str | None
@@ -1503,6 +1691,39 @@ async def b2b_compliance(document_type: str = "rdo", user: CurrentUser = Depends
         "tn_rows": tn_rows,
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+class RdoTnListResponse(BaseModel):
+    captured_at: str | None
+    station_code: str
+    station_name: str
+    status: str
+    tn_rows: list[RdoTnRow]
+
+
+@app.get("/api/b2b-compliance/tns", response_model=RdoTnListResponse)
+async def b2b_compliance_tns(station_code: str, status: str = "all", user: CurrentUser = Depends(get_current_user)):
+    """Every RDO tracking number behind one station row's count (all of them --
+    unlike the main table this isn't capped), with the bundle details, for the
+    click-a-number modal and its CSV export. status: 'all' (Total TN) or one of
+    the per-status columns."""
+    valid = ("all",) + tuple(RDO_STATUS_COLUMNS.values())
+    if status not in valid:
+        raise HTTPException(status_code=422, detail=f"status must be one of {list(valid)}")
+    station = next((s for s in _rdo_stations if s["station_code"] == station_code), None)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Unknown station")
+    if not _scope_filter_stations([station], user):
+        raise HTTPException(status_code=403, detail="That station isn't in your scope")
+    rows = [
+        r for r in _rdo_tn_rows
+        if r["station_code"] == station_code and (status == "all" or r["status_key"] == status)
+    ]
+    rows.sort(key=lambda r: r["rdo_created_at"] or "", reverse=True)
+    return {
+        "captured_at": _rdo_captured_at, "station_code": station_code, "station_name": station["station_name"],
+        "status": status, "tn_rows": rows,
     }
 
 
@@ -1986,7 +2207,7 @@ class OkResult(BaseModel):
 # feedback plus the admin's reply, and an admin sees everyone's, replies and
 # closes it. A closed feedback (and its attachment) is deleted 7 days after it
 # was closed -- see _prune_closed_feedback, run from the refresh loop.
-FEEDBACK_MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024
+FEEDBACK_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 FEEDBACK_ATTACHMENT_TYPES = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
     ".webp": "image/webp", ".pdf": "application/pdf",
@@ -2038,18 +2259,29 @@ async def submit_feedback(
             raise HTTPException(status_code=422, detail="Attach an image (png, jpg, gif, webp) or a PDF")
         attachment_data = await file.read()
         if len(attachment_data) > FEEDBACK_MAX_ATTACHMENT_BYTES:
-            raise HTTPException(status_code=422, detail="Attachment is too large (max 2 MB)")
+            raise HTTPException(status_code=422, detail="Attachment is too large (max 20 MB)")
         if not attachment_data:
             raise HTTPException(status_code=422, detail="The attachment is empty")
         attachment_name, attachment_type = os.path.basename(file.filename)[:255], content_type
 
+    # Too big for a database row, so the file goes to object storage (the row keeps
+    # only its key) -- see storage.py. Upload first: if it fails nothing is saved.
+    attachment_key = None
+    if attachment_data:
+        attachment_key = storage.safe_key("feedback", f"{uuid.uuid4().hex}{os.path.splitext(attachment_name)[1].lower()}")
+        try:
+            await run_in_threadpool(storage.put_bytes, attachment_key, attachment_data, content_type=attachment_type)
+        except Exception:  # noqa: BLE001
+            log.exception("Feedback attachment upload failed")
+            raise HTTPException(status_code=503, detail="Couldn't store the attachment right now -- try again, or send without it")
+
     await db.execute(
         """INSERT INTO app_feedback
-           (email, role, scope_type, scope_value, message, created_at, attachment_name, attachment_type, attachment_data)
+           (email, role, scope_type, scope_value, message, created_at, attachment_name, attachment_type, attachment_key)
            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (
             user.email, user.role, user.scope_type, ", ".join(user.scope_values) or None, message,
-            datetime.now(timezone.utc), attachment_name, attachment_type, attachment_data,
+            datetime.now(timezone.utc), attachment_name, attachment_type, attachment_key,
         ),
     )
     return {"ok": True}
@@ -2057,7 +2289,7 @@ async def submit_feedback(
 
 _FEEDBACK_COLUMNS = (
     "id, email, role, scope_type, scope_value, message, created_at, status, reply, replied_by, replied_at, "
-    "closed_at, reply_unread, attachment_name, attachment_type, (attachment_data IS NOT NULL)"
+    "closed_at, reply_unread, attachment_name, attachment_type, (attachment_key IS NOT NULL)"
 )
 
 
@@ -2093,14 +2325,19 @@ async def list_feedback(user: CurrentUser = Depends(get_current_user)):
 @app.get("/api/feedback/{feedback_id}/attachment")
 async def feedback_attachment(feedback_id: int, user: CurrentUser = Depends(get_current_user)):
     row = await db.fetch_one(
-        "SELECT email, attachment_name, attachment_type, attachment_data FROM app_feedback WHERE id = %s", (feedback_id,)
+        "SELECT email, attachment_name, attachment_type, attachment_key FROM app_feedback WHERE id = %s", (feedback_id,)
     )
     if row is None or row[3] is None or not (user.role == "admin" or row[0].lower() == user.email.lower()):
         raise HTTPException(status_code=404, detail="Attachment not found")
     name = (row[1] or "attachment").replace('"', "")
     disposition = "inline" if row[2].startswith("image/") else "attachment"
+    try:
+        content = await run_in_threadpool(storage.get_bytes, row[3])
+    except Exception:  # noqa: BLE001
+        log.exception("Feedback attachment read failed")
+        raise HTTPException(status_code=404, detail="Attachment not found")
     return Response(
-        content=bytes(row[3]), media_type=row[2],
+        content=content, media_type=row[2],
         headers={"Content-Disposition": f'{disposition}; filename="{name}"', "X-Content-Type-Options": "nosniff"},
     )
 
@@ -2136,11 +2373,40 @@ async def update_feedback(feedback_id: int, payload: FeedbackUpdate, user: Curre
     return {"ok": True}
 
 
+async def _delete_feedback_files(keys: list[str]) -> None:
+    for key in keys:
+        if not key:
+            continue
+        try:
+            await run_in_threadpool(storage.delete, key)
+        except Exception:  # noqa: BLE001 - an orphaned file is harmless, the row is what matters
+            log.warning("Couldn't delete feedback attachment %s", key)
+
+
+@app.delete("/api/feedback/{feedback_id}", response_model=OkResult)
+async def delete_feedback(feedback_id: int, user: CurrentUser = Depends(get_current_user)):
+    """The sender removes their own feedback -- it disappears for the admins too,
+    whatever its status (2026-09-25 feedback), attachment included."""
+    row = await db.fetch_one("SELECT email, attachment_key FROM app_feedback WHERE id = %s", (feedback_id,))
+    if row is None or row[0].lower() != user.email.lower():
+        raise HTTPException(status_code=404, detail="Feedback not found")
+    await db.execute("DELETE FROM app_feedback WHERE id = %s", (feedback_id,))
+    await _delete_feedback_files([row[1]])
+    return {"ok": True}
+
+
 async def _prune_closed_feedback(now: datetime) -> None:
-    await db.execute(
-        "DELETE FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s",
-        (now - timedelta(days=FEEDBACK_CLOSED_RETENTION_DAYS),),
+    cutoff = now - timedelta(days=FEEDBACK_CLOSED_RETENTION_DAYS)
+    expired = await db.fetch_all(
+        "SELECT attachment_key FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s",
+        (cutoff,),
     )
+    if not expired:
+        return
+    await db.execute(
+        "DELETE FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s", (cutoff,)
+    )
+    await _delete_feedback_files([r[0] for r in expired])
 
 
 # 2026-09-25: Urgent TN moved from a per-browser localStorage list to the
@@ -2719,12 +2985,22 @@ class StationMeta(BaseModel):
     region: str
 
 
+def _stations_in_scope(user: CurrentUser) -> list[dict]:
+    """Stations this user may see -- the region/zone/station pickers offer only
+    these (2026-09-25 feedback: a station user must not see places outside their
+    scope, not even as filter options)."""
+    return _scope_filter_stations(
+        [
+            {"station_code": code, "station_name": name, "zone": zone, "region": region}
+            for code, (name, _full, zone, region) in sorted(HUBS.items(), key=lambda kv: kv[1][0])
+        ],
+        user,
+    )
+
+
 @app.get("/api/stations", response_model=list[StationMeta])
 async def list_stations(user: CurrentUser = Depends(get_current_user)):
-    return [
-        {"station_code": code, "station_name": name, "zone": zone, "region": region}
-        for code, (name, _full, zone, region) in sorted(HUBS.items(), key=lambda kv: kv[1][0])
-    ]
+    return _stations_in_scope(user)
 
 
 class RegionMeta(BaseModel):
@@ -2734,7 +3010,13 @@ class RegionMeta(BaseModel):
 
 @app.get("/api/regions", response_model=list[RegionMeta])
 async def list_regions(user: CurrentUser = Depends(get_current_user)):
-    return [{"region": r, "zones": zs} for r, zs in ZONES_BY_REGION.items()]
+    allowed_zones = {(s["region"], s["zone"]) for s in _stations_in_scope(user)}
+    out = []
+    for region, zones in ZONES_BY_REGION.items():
+        kept = [z for z in zones if (region, z) in allowed_zones]
+        if kept:
+            out.append({"region": region, "zones": kept})
+    return out
 
 
 # ---------------------------------------------------------------------------

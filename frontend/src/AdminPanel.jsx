@@ -10,10 +10,10 @@ function formatTime(iso) {
 }
 
 // Admin -> Feedback (2026-09-25): anyone can send a complaint/suggestion about the
-// app, optionally with one image/PDF (max 2 MB). A sender sees only their own
+// app, optionally with one image/PDF (max 20 MB). A sender sees only their own
 // feedback plus the admin's reply; a full admin sees everyone's, replies, and
 // closes it. Closed feedback is deleted 7 days after it was closed.
-const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
   const [reply, setReply] = useState(r.reply || "");
@@ -85,6 +85,30 @@ function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
             {r.replied_at && <span className="ml-1 font-normal text-slate-400">{formatTime(r.replied_at)}</span>}
           </div>
           <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{r.reply}</p>
+        </div>
+      )}
+
+      {r.is_mine && (
+        <div className="mt-2">
+          <button
+            onClick={async () => {
+              if (!window.confirm("Delete this feedback? It will be removed for the admins too.")) return;
+              setBusy(true);
+              setError(null);
+              try {
+                await api.feedback.remove(r.id);
+                onChanged();
+              } catch (e) {
+                setError(e.message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+            disabled={busy}
+            className="text-xs font-medium text-slate-400 hover:text-status-critical disabled:opacity-40"
+          >
+            Delete my feedback
+          </button>
         </div>
       )}
 
@@ -160,7 +184,7 @@ function FeedbackPanel({ me }) {
   const pickFile = (e) => {
     const f = e.target.files?.[0] || null;
     if (f && f.size > MAX_ATTACHMENT_BYTES) {
-      setError("That file is over 2 MB -- pick a smaller image or PDF.");
+      setError("That file is over 20 MB -- pick a smaller image or PDF.");
       e.target.value = "";
       return;
     }
@@ -213,7 +237,7 @@ function FeedbackPanel({ me }) {
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-xs text-slate-500">
-            Attach a screenshot or PDF (optional, max 2 MB){" "}
+            Attach a screenshot or PDF (optional, max 20 MB){" "}
             <input
               ref={fileInput}
               type="file"

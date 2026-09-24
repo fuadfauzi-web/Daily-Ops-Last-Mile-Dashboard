@@ -126,11 +126,11 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
   const visible = SERIES.filter((s) => !hidden[s.key]);
 
   const width = 720;
-  const height = 150;
+  const height = 100;
   const padLeft = 30;
   const padRight = 10;
-  const padBottom = 20;
-  const padTop = 12;
+  const padBottom = 17;
+  const padTop = 9;
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
   const baseline = padTop + plotH;

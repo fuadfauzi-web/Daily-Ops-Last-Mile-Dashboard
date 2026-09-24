@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { api } from "./api";
 
 // In-app onboarding reference -- explains roles/scope, the header controls,
 // and every tab's purpose + the logic behind its less-obvious columns. Kept as
@@ -114,9 +115,14 @@ const SECTIONS = [
         <li><strong>Fresh Attempt %</strong>: attempted ÷ total fresh, target ≥96%.</li>
         <li><strong>LH Timing</strong>: each line-haul trip's arrival time and the parcel count on that trip (e.g. "10:32am · 45" = 45 parcels). Colour bands: green before 10am, blue 10–11am, amber 11am–12pm, red after 12pm.</li>
         <li>
-          <strong>Process Time</strong> is a <span className="font-medium text-status-warning">beta figure, not yet
-          confirmed accurate</span> -- it's the average time-of-day <em>all</em> of today's fresh parcels were first
-          scanned/swept in, not a measurement of any single parcel.
+          <strong>Within 1h / 1-2h / 2-3h / 3h+</strong>: how long each parcel took from the shipment arriving at the
+          station (column G) to its first scan-in there (column H). Each shows the count and its % of Total Fresh, sorts
+          by that %, and opens its tracking numbers (with CSV) when clicked.
+        </li>
+        <li>
+          The <strong>timing chart</strong> under the table plots scan-in, first-attempt and success times by hour of
+          day. It follows the table's filters until you pick its own Region / Zone / Station filter, which then
+          overrides them.
         </li>
       </ul>
     ),
@@ -170,6 +176,18 @@ const SECTIONS = [
     ),
   },
   {
+    id: "coldchain",
+    title: "Cold Chain",
+    body: (
+      <p className="text-sm text-slate-700">
+        Aging Overall, but only for the cold-chain tracking numbers (Redash query 1410): a station x age-bucket pivot and
+        the full TN list, grouped by where each parcel physically is. Cold-chain parcels often sit at CC hubs that
+        aren't stations; those show as their own "Other hubs" rows so nothing is hidden. A cold-chain TN that isn't
+        found in the active dataset is already completed or added to a shipment.
+      </p>
+    ),
+  },
+  {
     id: "rpu",
     title: "RPU",
     body: (
@@ -213,22 +231,48 @@ const SECTIONS = [
     id: "restock",
     title: "Restock",
     body: (
-      <p className="text-sm text-slate-700">
-        Restock NXD is live: Bundles/Pieces/Potential Breach/Breach, counted by bundle -- "Pieces" is the actual
-        parcel count. Document Compliance (RDO/GRN/PSO/Reattempt) is a placeholder for now; it isn't wired to real
-        data yet.
-      </p>
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          <strong>Restock NXD</strong>: Bundles / Pieces / Potential Breach / Breach by station, counted by bundle
+          ("Pieces" is the actual parcel count), with the bundle-level tracking-number list underneath.
+        </p>
+        <p>
+          <strong>On Hold / MPS Incomplete</strong>: bundles that are on hold and/or missing pieces. <em>MPS
+          incomplete</em> means fewer pieces are here than the bundle's piece count (for example -001 and -002 have
+          arrived but -003 hasn't). <em>Complete but on hold</em> means every piece is here yet one is still On Hold,
+          so the hold can be released. This rule is provisional -- tell us if a bundle is flagged wrongly.
+        </p>
+        <p>
+          <strong>B2B Document Compliance</strong> (RDO for now): RDO tracking numbers by station and RDO status
+          (Pending Pickup, Van En-route to Pickup, En-route to Sorting Hub, Pickup Fail), grouped by where the bundle
+          last swept. Bundles of every status are included, completed or not; hubs that aren't one of our stations show
+          as "Other hubs". Click a count for its tracking numbers and a CSV with the bundle details.
+        </p>
+      </div>
     ),
   },
   {
     id: "urgent",
     title: "Urgent TN",
     body: (
-      <p className="text-sm text-slate-700">
-        A personal watchlist -- paste one or more tracking numbers you want to keep an eye on. It looks them up
-        against the same data Station Health already refreshes every 15 minutes (not a live search), and remembers
-        your list the next time you open the tab.
-      </p>
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          Paste one or more tracking numbers you want to keep an eye on. It looks them up against the same data
+          Station Health refreshes every 15 minutes (not a live search); "Not found" means the parcel is already
+          completed or added to a shipment.
+        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <strong>Assign a PIC</strong>: type a teammate's email (they must already be in the user list) and an optional
+            note. They get a bell notification in the header and a banner on the dashboard, and see it marked NEW.
+          </li>
+          <li>
+            Either of you can <strong>Close</strong> or <strong>Reopen</strong> it. Only whoever added it can change the
+            PIC or note, or <strong>Remove</strong> it -- removing it takes it off the PIC's list too, whatever its status.
+          </li>
+          <li>You see the tracking numbers you added and the ones assigned to you.</li>
+        </ul>
+      </div>
     ),
   },
   {
@@ -264,7 +308,12 @@ const SECTIONS = [
           now. Feedback and Guide are here for now; more will be added over time (attendance is planned next).
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li><strong>Feedback</strong>: send a complaint, bug report, or idea straight to the admin team. Only a full admin can read what's been submitted.</li>
+          <li>
+            <strong>Feedback</strong>: send a complaint, bug report, question or idea straight to the admin team, with an
+            optional screenshot or PDF (up to 20 MB). Only you and the admins can see it. Admins reply and close it;
+            you'll see the reply here and a bell notification. You can delete your own feedback at any time, and closed
+            feedback is deleted automatically a week after it's closed.
+          </li>
           <li><strong>Guide</strong>: this page.</li>
         </ul>
       </div>
@@ -272,8 +321,48 @@ const SECTIONS = [
   },
 ];
 
+// Quick answers to the questions people ask most (2026-09-25). Searchable; anything
+// not covered here can be sent to the admins as a question, which lands in
+// Admin -> Feedback with a "[Question]" prefix so the answer comes back there.
+const FAQS = [
+  { q: "How often does the data refresh?", a: "Every 15 minutes. The \"Data as of\" time in the header is when everything was last pulled from Redash. Settings -> Data Refresh (admin) shows each query's own last pull time." },
+  { q: "Why does a tracking number show \"Not found\" in Urgent TN?", a: "Urgent TN looks parcels up in the same active dataset Station Health uses. A parcel that's already completed or added to a shipment is no longer in it." },
+  { q: "Why can't I see another station's numbers?", a: "Your scope (set by an admin in Settings -> Users) limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
+  { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, type your colleague's email in the PIC box (they must already be a dashboard user) and press Track & assign. They'll get a bell notification." },
+  { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%." },
+  { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
+  { q: "Why is East Malaysia hidden?", a: "East Malaysia is Retail, not Last Mile, so it's off by default. Users with a wide enough scope can switch \"Include East Malaysia\" on." },
+  { q: "How do I export tracking numbers?", a: "Click any coloured count to open its tracking numbers, then Export CSV (or Copy list). Every table also has its own Export CSV for exactly what's on screen." },
+  { q: "My numbers look different from Redash.", a: "The dashboard groups parcels by where they physically are (last scan hub), not their intended destination, unless a column's note says otherwise. Click a header's note (the small i) for the exact rule, then send us a question if it still doesn't match." },
+  { q: "How do I change someone's access?", a: "Settings -> Users -> Edit. You can only grant a role and scope at or below your own. Region staff can edit Station staff and give them more than one station." },
+];
+
 export default function GuideTab() {
   const [openId, setOpenId] = useState(SECTIONS[0].id);
+  const [query, setQuery] = useState("");
+  const [question, setQuestion] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState(null);
+
+  const q = query.trim().toLowerCase();
+  const faqs = useMemo(() => (q ? FAQS.filter((f) => `${f.q} ${f.a}`.toLowerCase().includes(q)) : FAQS), [q]);
+  const sections = useMemo(() => (q ? SECTIONS.filter((s) => s.title.toLowerCase().includes(q)) : SECTIONS), [q]);
+
+  const ask = async () => {
+    if (!question.trim()) return;
+    setSending(true);
+    setError(null);
+    try {
+      await api.feedback.submit(`[Question] ${question.trim()}`);
+      setQuestion("");
+      setSent(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -281,11 +370,69 @@ export default function GuideTab() {
         <div className="font-display text-sm font-semibold text-slate-800">How to use this dashboard</div>
         <p className="mt-1 text-sm text-slate-500">
           A quick reference for new users -- what each role sees, what each tab is for, and the logic behind the
-          less-obvious columns. Click a section to expand it.
+          less-obvious columns. Search below, or click a section to expand it.
         </p>
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search the guide and common questions…"
+          className="mt-3 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+        />
       </div>
-      {SECTIONS.map((s) => {
-        const open = openId === s.id;
+
+      <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+        <div className="border-b border-slate-100 px-4 py-2 font-display text-sm font-medium text-slate-800">
+          Common questions{q && ` (${faqs.length})`}
+        </div>
+        {faqs.length === 0 ? (
+          <div className="px-4 py-4 text-sm text-slate-400">No common question matches "{query}".</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {faqs.map((f) => (
+              <details key={f.q} className="group px-4 py-2.5">
+                <summary className="cursor-pointer list-none text-sm font-medium text-slate-800">
+                  <span className="mr-2 text-slate-400 group-open:hidden">+</span>
+                  <span className="mr-2 hidden text-slate-400 group-open:inline">−</span>
+                  {f.q}
+                </summary>
+                <p className="mt-1.5 pl-5 text-sm text-slate-600">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        )}
+        <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+          <div className="text-sm font-medium text-slate-700">Didn't find your answer? Ask it.</div>
+          <p className="text-xs text-slate-400">
+            It goes to the admins as feedback marked [Question]; their reply appears in Admin → Feedback and you'll get a
+            bell notification.
+          </p>
+          <textarea
+            className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+            rows={2}
+            placeholder="Type your question…"
+            value={question}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              setSent(false);
+            }}
+          />
+          <div className="mt-1.5 flex items-center gap-3">
+            <button
+              onClick={ask}
+              disabled={sending || !question.trim()}
+              className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {sending ? "Sending…" : "Ask the admins"}
+            </button>
+            {sent && <span className="text-xs text-status-good">Sent — watch Admin → Feedback for the reply.</span>}
+            {error && <span className="text-xs text-status-critical">{error}</span>}
+          </div>
+        </div>
+      </div>
+
+      {sections.map((s) => {
+        const open = openId === s.id || (!!q && sections.length <= 3);
         return (
           <div key={s.id} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
             <button
