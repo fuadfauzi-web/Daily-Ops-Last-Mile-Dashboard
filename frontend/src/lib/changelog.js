@@ -1,8 +1,9 @@
 // "What's new" (Guide -> What's new). Every build that changes something a user can see gets
 // an entry HERE, at the top, in the same change (2026-09-25 feedback: keep this current).
 //
-//  * The page only shows entries from the last 7 days (by `date`, yyyy-mm-dd), so old ones
-//    drop off by themselves -- no need to delete them, though old entries can be pruned.
+//  * The page is a WEEKLY summary: entries are grouped into Monday-Sunday weeks by `date`
+//    (yyyy-mm-dd); the current week is shown first and older weeks stay collapsed behind
+//    "Show earlier weeks". Nothing needs deleting -- a new entry just lands in the current week.
 //  * `feature` (optional): a key in lib/features.js -- the entry only shows in a build that
 //    ships that feature, so production never advertises something it doesn't have yet.
 //  * `minRank` (optional): 0 station, 1 region, 2 manager, 3 admin -- only shown to that role
@@ -185,18 +186,75 @@ export const CHANGELOG = [
     minRank: 1,
     points: ["Settings → Users can give one person more than one region, zone or station."],
   },
+  {
+    date: "2026-09-20",
+    title: "Redesigned dashboard",
+    points: [
+      "New Ninja Van look, the Action Board as the landing tab, sticky table headers, CSV export on every table and a slide-over with every column when you click a row.",
+      "Warning / Critical targets (SLA Targets) now drive the colours on Station Health and the Action Board.",
+    ],
+  },
+  {
+    date: "2026-09-20",
+    title: "New tabs: Recovery, Urgent TN, Pending in Yesterday Route, Restock",
+    points: [
+      "Recovery lists open missing-parcel tickets with high-value highlighting; Urgent TN tracks tracking numbers you care about; Pending in Yesterday Route is a snapshot taken at ~12:30am; Restock NXD watches restock bundles.",
+    ],
+  },
+  {
+    date: "2026-09-20",
+    title: "Guide, Feedback and driver tenure",
+    points: [
+      "An in-app Guide and a Feedback form for everyone.",
+      "Route Monitoring can show driver tenure once an admin uploads the driver details file.",
+      "Every tracking-number table has its own station search box.",
+    ],
+  },
+  {
+    date: "2026-09-19",
+    title: "Nationwide, with more views",
+    points: [
+      "The dashboard covers all 143 stations (East Malaysia can be toggled out) with Shipment Details, Route Monitoring, Shipper Watch, Aging Details, RPU and Old Route views.",
+      "Managers and Region staff can add teammates, singly or in bulk from a CSV file.",
+    ],
+  },
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Entries from the last `days` days that this build ships and this role may see.
-export function recentChanges({ features, rank, days = 7, now = new Date() }) {
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - days * DAY_MS;
-  return CHANGELOG.filter((e) => {
+function mondayOf(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); // back to Monday
+  return x;
+}
+
+const fmt = (d) => d.toLocaleDateString("en-MY", { day: "numeric", month: "short" });
+
+// Weeks (Monday-Sunday), newest first, each with the entries this build ships and this role
+// may see. The current week is always first, even when nothing has changed in it yet.
+export function weeklyChanges({ features, rank, now = new Date() }) {
+  const byWeek = new Map();
+  const thisMonday = mondayOf(now);
+  byWeek.set(thisMonday.getTime(), []);
+  for (const e of CHANGELOG) {
+    if (e.feature && !features[e.feature]) continue;
+    if ((e.minRank || 0) > rank) continue;
     const [y, m, d] = e.date.split("-").map(Number);
-    if (new Date(y, m - 1, d).getTime() < cutoff) return false;
-    if (e.feature && !features[e.feature]) return false;
-    if ((e.minRank || 0) > rank) return false;
-    return true;
-  });
+    const key = mondayOf(new Date(y, m - 1, d)).getTime();
+    if (!byWeek.has(key)) byWeek.set(key, []);
+    byWeek.get(key).push(e);
+  }
+  return [...byWeek.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([key, items]) => {
+      const start = new Date(key);
+      const end = new Date(key + 6 * DAY_MS);
+      const weeksAgo = Math.round((thisMonday.getTime() - key) / (7 * DAY_MS));
+      return {
+        key,
+        items,
+        range: `${fmt(start)} – ${fmt(end)}`,
+        label: weeksAgo === 0 ? "This week" : weeksAgo === 1 ? "Last week" : `Week of ${fmt(start)}`,
+      };
+    });
 }

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "./api";
 import { FEATURES as F } from "./lib/features";
-import { recentChanges } from "./lib/changelog";
+import { weeklyChanges } from "./lib/changelog";
 import SegmentedControl from "./components/SegmentedControl";
 
 // In-app onboarding reference (Settings -> Guide, open to everyone).
@@ -425,7 +425,9 @@ export default function GuideTab({ me }) {
 
   const [openId, setOpenId] = useState(SECTIONS[0].id);
   const [view, setView] = useState("guide"); // "guide" | "new"
-  const changes = useMemo(() => recentChanges({ features: F, rank }), [rank]);
+  const weeks = useMemo(() => weeklyChanges({ features: F, rank }), [rank]);
+  const [showOlder, setShowOlder] = useState(false); // earlier weeks stay hidden until asked for
+  const [openWeek, setOpenWeek] = useState(null);
   const [query, setQuery] = useState("");
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
@@ -458,7 +460,7 @@ export default function GuideTab({ me }) {
     <SegmentedControl
       options={[
         { key: "guide", label: "Guide" },
-        { key: "new", label: `What's new (${changes.length})` },
+        { key: "new", label: `What's new${weeks[0].items.length ? ` (${weeks[0].items.length})` : ""}` },
       ]}
       value={view}
       onChange={setView}
@@ -466,42 +468,80 @@ export default function GuideTab({ me }) {
   );
 
   if (view === "new") {
-    // Group the last week's changes by day, newest first.
-    const days = [];
-    for (const c of changes) {
-      const last = days[days.length - 1];
-      if (last && last.date === c.date) last.items.push(c);
-      else days.push({ date: c.date, items: [c] });
-    }
+    const [latest, ...older] = weeks;
+    const WeekItems = ({ items }) =>
+      items.length === 0 ? (
+        <div className="px-4 py-4 text-sm text-slate-400">Nothing new yet this week.</div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {items.map((c) => (
+            <details key={c.title} className="group px-4 py-2.5">
+              <summary className="cursor-pointer list-none text-sm font-medium text-slate-800">
+                <span className="mr-2 text-slate-400 group-open:hidden">+</span>
+                <span className="mr-2 hidden text-slate-400 group-open:inline">−</span>
+                {c.title}
+              </summary>
+              <ul className="mt-1.5 list-disc space-y-1 pl-9 text-sm text-slate-600">
+                {c.points.map((pt, i) => (
+                  <li key={i}>{pt}</li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        </div>
+      );
     return (
       <div className="space-y-2">
         {switcher}
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
           <div className="font-display text-sm font-semibold text-slate-800">What's new</div>
-          <p className="mt-1 text-sm text-slate-500">Everything that changed in the last 7 days that applies to you.</p>
+          <p className="mt-1 text-sm text-slate-500">
+            A weekly summary of what changed in the dashboard, newest week first, showing what applies to your role. Click an item for the details.
+          </p>
         </div>
-        {days.length === 0 ? (
-          <div className="rounded-xl bg-white p-6 text-sm text-slate-400 ring-1 ring-slate-200">Nothing has changed in the last 7 days.</div>
-        ) : (
-          days.map((d) => (
-            <div key={d.date} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-              <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-2 font-display text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {new Date(`${d.date}T00:00:00`).toLocaleDateString("en-MY", { weekday: "long", day: "numeric", month: "long" })}
-              </div>
-              <div className="divide-y divide-slate-100">
-                {d.items.map((c) => (
-                  <div key={c.title} className="px-4 py-3">
-                    <div className="text-sm font-semibold text-slate-800">{c.title}</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                      {c.points.map((pt, i) => (
-                        <li key={i}>{pt}</li>
-                      ))}
-                    </ul>
+
+        <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+          <div className="flex items-baseline justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-2">
+            <span className="font-display text-sm font-semibold text-slate-800">{latest.label}</span>
+            <span className="text-xs text-slate-400">{latest.range}</span>
+          </div>
+          <WeekItems items={latest.items} />
+        </div>
+
+        {older.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowOlder((v) => !v)}
+              className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-4 py-2 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              {showOlder ? "Hide earlier weeks" : `Show earlier weeks (${older.length})`}
+            </button>
+            {showOlder &&
+              older.map((w) => {
+                const open = openWeek === w.key;
+                return (
+                  <div key={w.key} className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+                    <button
+                      onClick={() => setOpenWeek(open ? null : w.key)}
+                      className="flex w-full min-h-[44px] items-center justify-between px-4 py-2.5 text-left"
+                    >
+                      <span>
+                        <span className="font-display text-sm font-medium text-slate-800">{w.label}</span>
+                        <span className="ml-2 text-xs text-slate-400">
+                          {w.range} · {w.items.length} update{w.items.length === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <span className="text-slate-400">{open ? "−" : "+"}</span>
+                    </button>
+                    {open && (
+                      <div className="border-t border-slate-100">
+                        <WeekItems items={w.items} />
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          ))
+                );
+              })}
+          </>
         )}
       </div>
     );
