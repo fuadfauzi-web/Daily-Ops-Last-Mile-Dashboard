@@ -191,7 +191,7 @@ function exportStationHealthCsv(rows) {
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-export default function Dashboard({ me, onCapturedAt, notifCounts }) {
+export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -373,6 +373,12 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
       return sortDir === "asc" ? av - bv : bv - av;
     });
   }, [scopedStations, regionFilter, zoneFilter, search, sortKey, sortDir]);
+
+  // The "N stations in scope" count now lives in the header, as a small footnote after "Data as of"
+  // (2026-09-25 feedback) -- reported up here the same way the freshness timestamp is.
+  useEffect(() => {
+    if (data) onStationsInScope?.(filteredStations.length);
+  }, [data, filteredStations.length]);
 
   // Restricted to exactly the same stations as filteredStations -- the
   // Action Board aggregates by region/zone, and an aggregate delta is only
@@ -622,8 +628,6 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
         subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
         rows={detailRows}
       />
-
-      <div className="text-sm text-slate-500">{filteredStations.length} stations in scope</div>
 
       {!FEATURES.hideSummaryCards && showTotalCard && (
         <SummaryCard label="TOTAL LAST MILE" active={false} clickable={false} emphasis stats={cardStats(sumMetrics(scopedStations))} />

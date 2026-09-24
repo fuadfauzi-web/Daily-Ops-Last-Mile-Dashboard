@@ -15,6 +15,11 @@
 export const CHANGELOG = [
   {
     date: "2026-09-25",
+    title: "Stations in scope: now in the header",
+    points: ["The \"N stations in scope\" count moved from the top of the page to a small footnote after \"Data as of\" in the header."],
+  },
+  {
+    date: "2026-09-25",
     title: "Station Health follows your scope",
     feature: "stationHealthCombined",
     points: [

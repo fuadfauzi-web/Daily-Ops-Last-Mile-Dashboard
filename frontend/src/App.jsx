@@ -15,6 +15,7 @@ export default function App() {
   // Reported up by Dashboard once its data loads -- shown here so it's visible
   // the instant the app opens, regardless of which tab/sub-tab is active.
   const [freshness, setFreshness] = useState(null);
+  const [stationsInScope, setStationsInScope] = useState(null); // shown as a footnote after "Data as of"
 
   const loadMe = () =>
     api
@@ -114,6 +115,11 @@ export default function App() {
               <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
+                {stationsInScope != null && (
+                  <span className="text-[11px] text-slate-400">
+                    · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
+                  </span>
+                )}
               </div>
             )}
             <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
@@ -189,9 +195,14 @@ export default function App() {
               </div>
             </div>
             {tab === "dashboard" && freshness && (
-              <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-500">
+              <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
+                {stationsInScope != null && (
+                  <span className="text-[11px] text-slate-400">
+                    · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
+                  </span>
+                )}
               </div>
             )}
             <nav className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
@@ -231,7 +242,7 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} notifCounts={notifCounts} />}
+        {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
       </main>
