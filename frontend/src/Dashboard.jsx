@@ -634,7 +634,13 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       )}
 
       {!FEATURES.hideSummaryCards && cards.length > 0 && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        // One column per card (up to 5) so the row always spans the same full width as the TOTAL LAST
+        // MILE card above it -- a fixed 5-column grid left a gap when there were only 4 regions.
+        <div
+          className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${
+            { 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" }[cards.length] || "lg:grid-cols-5"
+          }`}
+        >
           {cards.map((c) => (
             <SummaryCard
               key={c.key}
