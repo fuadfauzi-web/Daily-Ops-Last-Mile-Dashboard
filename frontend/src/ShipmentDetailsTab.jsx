@@ -8,6 +8,7 @@ import DetailPanel from "./components/DetailPanel";
 import HeaderNote from "./components/HeaderNote";
 import { SHIPMENT_NOTES } from "./lib/shipmentNotes";
 import Skeleton from "./components/Skeleton";
+import SweepTimelineChart from "./components/SweepTimelineChart";
 
 function withNote(label, key) {
   return SHIPMENT_NOTES[key] ? (
@@ -80,9 +81,23 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       .catch((e) => setError(e.message));
   }, [refreshTick]);
 
+  // 2026-09-24 feedback: each process-duration bucket also shows its share of the
+  // station's Total Fresh, and the column sorts by that share rather than the raw
+  // count, so a big station and a small one compare fairly.
+  const stationRows = useMemo(
+    () =>
+      (data?.stations || []).map((r) => ({
+        ...r,
+        ...Object.fromEntries(
+          PROCESS_BUCKET_COLUMNS.map((c) => [`${c.key}_pct`, r.total_fresh ? (r[c.key] / r.total_fresh) * 100 : 0])
+        ),
+      })),
+    [data]
+  );
+
   const filteredStations = useMemo(() => {
     if (!data) return [];
-    let rows = data.stations;
+    let rows = stationRows;
     if (excludeEastMalaysia) rows = rows.filter((r) => r.region !== "East Malaysia");
     if (regionFilter !== "all") rows = rows.filter((r) => r.region === regionFilter);
     if (zoneFilter !== "all") rows = rows.filter((r) => r.zone === zoneFilter);
@@ -96,7 +111,7 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? av - bv : bv - av;
     });
-  }, [data, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
+  }, [data, stationRows, regionFilter, zoneFilter, search, sortKey, sortDir, excludeEastMalaysia]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -105,6 +120,8 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       setSortDir("desc");
     }
   };
+
+  const masterCodes = useMemo(() => new Set(filteredStations.map((r) => r.station_code)), [filteredStations]);
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
   if (!data) return <Skeleton />;
@@ -160,10 +177,16 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       ),
     },
     ...PROCESS_BUCKET_COLUMNS.map((c) => ({
-      key: c.key,
+      key: `${c.key}_pct`,
       label: withNote(c.label, c.key),
-      render: (r) => r[c.key].toLocaleString(),
+      render: (r) => (
+        <>
+          {r[c.key].toLocaleString()}
+          <span className="ml-1 text-[11px] text-slate-400">{r[`${c.key}_pct`].toFixed(1)}%</span>
+        </>
+      ),
       className: () => "text-slate-700",
+      onClick: (r) => setModal({ stationCode: r.station_code, stationName: r.station_name, metricKey: c.key, metricLabel: c.label }),
     })),
   ];
 
@@ -186,11 +209,11 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
                 `daily-ops-shipment-details-${new Date().toISOString().slice(0, 10)}.csv`,
                 [
                   "Region", "Zone", "Station", ...COLUMNS.map((c) => c.label),
-                  ...PROCESS_BUCKET_COLUMNS.map((c) => c.label),
+                  ...PROCESS_BUCKET_COLUMNS.flatMap((c) => [c.label, `${c.label} %`]),
                 ],
                 filteredStations.map((r) => [
                   r.region, r.zone, r.station_name, ...COLUMNS.map((c) => r[c.key]),
-                  ...PROCESS_BUCKET_COLUMNS.map((c) => r[c.key]),
+                  ...PROCESS_BUCKET_COLUMNS.flatMap((c) => [r[c.key], r[`${c.key}_pct`].toFixed(1)]),
                 ])
               )
             }
@@ -213,11 +236,27 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
             {filteredStations.length} rows · LH Timing shows each trip's arrival time followed by the parcel count on
             that trip (e.g. "10:32am · 45" = 45 parcels on that trip); colour bands green &lt;10am, blue 10–11am,
             amber 11am–12pm, red after 12pm. Within 1h/1-2h/2-3h/3h+ bucket how long each parcel took from
-            arriving at the station (shipment completion) to its first scan-in at the station.
+            arriving at the station (shipment completion) to its first scan-in at the station; the small % is that
+            count's share of the station's Total Fresh, and those columns sort by the %. Click a count for its
+            tracking numbers.
           </>
         }
       />
 
+      <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
+          <div className="font-display text-sm font-medium text-slate-700">Timing trend by hour of day</div>
+          <div className="text-xs text-slate-400">
+            Scan-in, first attempt and success. Follows the filters above until you pick a chart filter.
+          </div>
+        </div>
+        <SweepTimelineChart
+          allStations={data.stations}
+          timelines={data.timelines}
+          masterCodes={masterCodes}
+          excludeEastMalaysia={excludeEastMalaysia}
+        />
+      </div>
     </div>
   );
 }

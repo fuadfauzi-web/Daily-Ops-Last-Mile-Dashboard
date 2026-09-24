@@ -3,7 +3,6 @@ import { api } from "./api";
 import Dashboard from "./Dashboard";
 import SettingsPanel from "./SettingsPanel";
 import Logo from "./components/Logo";
-import RoleTester from "./components/RoleTester";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
 
@@ -15,6 +14,7 @@ export default function App() {
   // Reported up by Dashboard once its data loads -- shown here so it's visible
   // the instant the app opens, regardless of which tab/sub-tab is active.
   const [freshness, setFreshness] = useState(null);
+  const [stationsInScope, setStationsInScope] = useState(null); // shown as a footnote after "Data as of"
 
   const loadMe = () =>
     api
@@ -23,12 +23,6 @@ export default function App() {
       .catch(() => setMe(null));
 
   useEffect(loadMe, []);
-
-  // Bumped whenever the Role Tester applies / exits a view, and used as a React key below so
-  // every screen remounts and re-fetches as the new role/scope. Without it the tab you were
-  // on kept showing the data it had already loaded as the real admin (2026-09-25 bug: a
-  // Manager / East Coast preview still listed every region on Station Health).
-  const [viewKey, setViewKey] = useState(0);
 
   // Header bell + dashboard banner (2026-09-25): Urgent TNs assigned to this user
   // and unread admin replies to their feedback. Polled every minute, and
@@ -114,6 +108,11 @@ export default function App() {
               <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
+                {stationsInScope != null && (
+                  <span className="text-[11px] text-slate-400">
+                    · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
+                  </span>
+                )}
               </div>
             )}
             <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
@@ -146,14 +145,6 @@ export default function App() {
                 </button>
               ))}
             </nav>
-            <RoleTester
-              me={me}
-              onChanged={() => {
-                setTab("dashboard");
-                setViewKey((k) => k + 1);
-                loadMe();
-              }}
-            />
             <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                 {initials}
@@ -189,9 +180,14 @@ export default function App() {
               </div>
             </div>
             {tab === "dashboard" && freshness && (
-              <div className="mb-3 flex items-center gap-1.5 text-xs text-slate-500">
+              <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
+                {stationsInScope != null && (
+                  <span className="text-[11px] text-slate-400">
+                    · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
+                  </span>
+                )}
               </div>
             )}
             <nav className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
@@ -231,9 +227,9 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} notifCounts={notifCounts} />}
-        {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
-        {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
+        {tab === "dashboard" && <Dashboard key="dashboard" me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
+        {tab === "settings" && <SettingsPanel key="settings" me={me} mode="settings" notifCounts={notifCounts} />}
+        {tab === "admin" && me.role === "admin" && <SettingsPanel key="admin" me={me} mode="admin" />}
       </main>
     </div>
   );

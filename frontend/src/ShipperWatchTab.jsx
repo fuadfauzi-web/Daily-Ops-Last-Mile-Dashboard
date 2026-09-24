@@ -5,7 +5,20 @@ import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
+import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
+import RestockTab from "./RestockTab";
+import AgingDetailsTab from "./AgingDetailsTab";
+
+// 2026-09-24 feedback: renamed Shipper Watch -> Shipper Radar, restructured
+// as two sub-tabs -- the original per-shipper SLA table below (now "Shipper
+// SLA") plus Restock (previously its own top-level tab, unchanged, just
+// relocated here since it's the same kind of watch-list).
+const RADAR_SUB_TABS = [
+  { key: "sla", label: "Shipper SLA" },
+  { key: "restock", label: "Restock" },
+  { key: "cold", label: "Cold Chain" }, // 2026-09-25: lives here only (its own top-level tab was removed)
+];
 
 // Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt
 // and Aging(>Day0) are what matters. Orca: OVFD vs everything else (no confirmed TN
@@ -59,7 +72,7 @@ const SHIPPERS = [
 ];
 const ALL_SHIPPER_KEYS = SHIPPERS.map((s) => s.key);
 
-export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
+function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const storageKey = `shipper-watch-shippers-${me.email}`;
   const [selectedShippers, setSelectedShippers] = useState(() => {
     try {
@@ -220,6 +233,34 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
               against live data yet — flag anything that looks off.
             </>
           }
+        />
+      )}
+    </div>
+  );
+}
+
+export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
+  const [subTab, setSubTab] = useState("sla");
+
+  return (
+    <div className="space-y-3">
+      <SegmentedControl options={RADAR_SUB_TABS} value={subTab} onChange={setSubTab} />
+
+      {subTab === "sla" ? (
+        <ShipperSlaView
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      ) : subTab === "cold" ? (
+        <AgingDetailsTab
+          source="coldchain"
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      ) : (
+        <RestockTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       )}
     </div>

@@ -8,8 +8,33 @@
 //    ships that feature, so production never advertises something it doesn't have yet.
 //  * `minRank` (optional): 0 station, 1 region, 2 manager, 3 admin -- only shown to that role
 //    and above (a station user isn't told about admin-only tools).
+//  * `wide` (optional): only shown to someone whose scope covers more than one station (a
+//    station-scoped user is never told about region / zone level features they can't use).
+//  So "What's new" only ever lists what applies to the viewer's role AND scope.
 //  * Write for the people using the dashboard: what changed and where to find it.
 export const CHANGELOG = [
+  {
+    date: "2026-09-25",
+    title: "Stations in scope: now in the header",
+    points: ["The \"N stations in scope\" count moved from the top of the page to a small footnote after \"Data as of\" in the header."],
+  },
+  {
+    date: "2026-09-25",
+    title: "Station Health follows your scope",
+    feature: "stationHealthCombined",
+    points: [
+      "The table starts at your own level: a station-scoped user sees just their stations, a zone-scoped user their zones and stations, a region-scoped user their regions, zones and stations.",
+      "Region and zone-scoped users can switch the region / zone rows on or off with \"Show region rows\" / \"Show zone rows\" (remembered for next time).",
+    ],
+  },
+  {
+    date: "2026-09-25",
+    title: "Summary cards removed",
+    feature: "hideSummaryCards",
+    points: [
+      "The Region / Zone and TOTAL LAST MILE summary cards above the filters are gone -- the filters and the tables below work as before.",
+    ],
+  },
   {
     date: "2026-09-25",
     title: "Urgent TN: assign a PIC",
@@ -49,7 +74,7 @@ export const CHANGELOG = [
     title: "Users list: find, filter and sort",
     minRank: 1,
     points: [
-      "Find a person with the search box, filter by role, by scope, or tick \"Never opened\" to see who has never used the dashboard.",
+      "Find a person with the search box, filter by role, by scope type (Everything / Region / Zone / Station) and a searchable scope, or tick \"Never opened\" to see who has never used the dashboard.",
       "Click any column header to sort -- for example Last opened.",
       "Edit now jumps straight to the form, and the header stays in view as you scroll.",
     ],
@@ -57,6 +82,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-25",
     title: "Filter lists follow your scope",
+    wide: true,
     points: [
       "The Region, Zone and Station filters now only list places inside your scope -- a station user no longer sees the rest of the network in the dropdowns.",
     ],
@@ -80,7 +106,7 @@ export const CHANGELOG = [
     title: "Cold Chain",
     feature: "coldChain",
     points: [
-      "New Cold Chain view (its own tab, and a sub-tab of Shipper Radar): the cold-chain tracking numbers by station and age, with the full TN list. Stations with nothing in them are hidden.",
+      "New Cold Chain view (a sub-tab of Shipper Radar): the cold-chain tracking numbers by station and age, with the full TN list. Stations with nothing in them are hidden.",
     ],
   },
   {
@@ -95,8 +121,15 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-25",
+    title: "Restock: every table sorts",
+    feature: "restockBundles",
+    points: ["Click any column header in the Restock, Restock On Hold Details and B2B Document Compliance tables (and the tracking-number pop-up) to sort; empty values always go last."],
+  },
+  {
+    date: "2026-09-25",
     title: "Timing chart: its own filters",
     feature: "timingChart",
+    wide: true,
     points: ["The Shipment Details timing chart has its own Region / Zone / Station filters and now draws scan-in, first attempt and success in one chart."],
   },
   {
@@ -123,6 +156,7 @@ export const CHANGELOG = [
     date: "2026-09-24",
     title: "Role Tester",
     minRank: 3,
+    feature: "roleTester",
     points: ["Admins can preview the app as any role and scope from the header, without changing their own account."],
   },
   {
@@ -134,6 +168,7 @@ export const CHANGELOG = [
     date: "2026-09-24",
     title: "Station Health: one combined table",
     feature: "stationHealthCombined",
+    wide: true,
     points: ["Region → Zone → Station in one expandable table, without the colour scale, with CSV export and click-for-tracking-numbers."],
   },
   {
@@ -232,13 +267,14 @@ const fmt = (d) => d.toLocaleDateString("en-MY", { day: "numeric", month: "short
 
 // Weeks (Monday-Sunday), newest first, each with the entries this build ships and this role
 // may see. The current week is always first, even when nothing has changed in it yet.
-export function weeklyChanges({ features, rank, now = new Date() }) {
+export function weeklyChanges({ features, rank, wide = true, now = new Date() }) {
   const byWeek = new Map();
   const thisMonday = mondayOf(now);
   byWeek.set(thisMonday.getTime(), []);
   for (const e of CHANGELOG) {
     if (e.feature && !features[e.feature]) continue;
     if ((e.minRank || 0) > rank) continue;
+    if (e.wide && !wide) continue;
     const [y, m, d] = e.date.split("-").map(Number);
     const key = mondayOf(new Date(y, m - 1, d)).getTime();
     if (!byWeek.has(key)) byWeek.set(key, []);

@@ -5,8 +5,8 @@ import { ALL_COLUMNS } from "./lib/metrics";
 import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
+import { FEATURES } from "./lib/features";
 import DataTable from "./components/DataTable";
-import GroupTable from "./components/GroupTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
@@ -19,7 +19,6 @@ import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
 import AgingDetailsTab from "./AgingDetailsTab";
 import RpuTab from "./RpuTab";
-import RestockTab from "./RestockTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
 
@@ -69,8 +68,7 @@ const TABS = [
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
-  { key: "shipper", label: "Shipper Watch" },
-  { key: "restock", label: "Restock" },
+  { key: "shipper", label: "Shipper Radar" },
   { key: "urgent", label: "Urgent TN" },
 ];
 
@@ -128,13 +126,72 @@ function localRollup(rows, groupKey) {
   }));
 }
 
+// Sorts one level's siblings by sortKey without touching the tree structure --
+// "name" isn't a real field on the raw region/zone/station rows (they have
+// key/station_name respectively), so it's mapped to whichever field actually
+// holds that level's display name.
+function sortSiblings(rows, sortKey, sortDir, nameField) {
+  if (!sortKey) return rows;
+  const key = sortKey === "name" ? nameField : sortKey;
+  return [...rows].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av === undefined || bv === undefined) return 0;
+    if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+}
+
+// Experimental (2026-09-20, staging only): flattens region -> zone -> station
+// into one row list for Station Health's "combined -- click to expand" style.
+// A region/zone only expands once its key is in the matching Set. sortKey/
+// sortDir (if given) sort each level's siblings independently -- clicking a
+// column header re-sorts region rows against each other, zone rows within
+// their own region against each other, and so on, without breaking the
+// region -> zone -> station nesting itself.
+//
+// 2026-09-25: the table starts at the viewer's own scope level (a station-scoped user sees
+// stations only, a zone-scoped user zone rows + stations, ...), and a region/zone-scoped
+// user can hide the region/zone rows -- `levels` says which of the two grouping levels to
+// draw (showRegion / showZone); with both off it is a flat list of stations. regionOpen /
+// zoneOpen say whether a shown row is expanded.
+function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sortDir) {
+  const { showRegion, showZone } = levels;
+  const rows = [];
+  const pushStations = (list) =>
+    sortSiblings(list, sortKey, sortDir, "station_name").forEach((s) =>
+      rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name })
+    );
+  const emitZones = (inScope) => {
+    if (!showZone) {
+      pushStations(inScope);
+      return;
+    }
+    sortSiblings(localRollup(inScope, "zone"), sortKey, sortDir, "key").forEach((z) => {
+      rows.push({ ...z, type: "zone", id: `zone:${z.key}`, displayName: z.key });
+      if (!zoneOpen(z.key)) return;
+      pushStations(inScope.filter((s) => s.zone === z.key));
+    });
+  };
+  if (!showRegion) {
+    emitZones(stations);
+    return rows;
+  }
+  sortSiblings(localRollup(stations, "region"), sortKey, sortDir, "key").forEach((r) => {
+    rows.push({ ...r, type: "region", id: `region:${r.key}`, displayName: r.key });
+    if (!regionOpen(r.key)) return;
+    emitZones(stations.filter((s) => s.region === r.key));
+  });
+  return rows;
+}
+
 function exportStationHealthCsv(rows) {
   const headers = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
   const values = rows.map((r) => [r.region, r.zone, r.station_name, ...ALL_COLUMNS.map((c) => r[c.key])]);
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-export default function Dashboard({ me, onCapturedAt, notifCounts }) {
+export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -169,6 +226,48 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
   // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
   const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
+
+  // Station Health: one combined region -> zone -> station table, each level
+  // expandable (2026-09-24: replaced the old three-separate-tables layout).
+  const [expandedRegions, setExpandedRegions] = useState(() => new Set());
+  const [expandedZones, setExpandedZones] = useState(() => new Set());
+  const [combinedSortKey, setCombinedSortKey] = useState(null);
+  const [combinedSortDir, setCombinedSortDir] = useState("asc");
+  // Region / zone-scoped users can hide the region / zone grouping rows (remembered per person).
+  const levelsKey = `station-health-levels-${me.email}`;
+  const [levelPrefs, setLevelPrefs] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(levelsKey) || "null");
+      if (saved && typeof saved === "object") return { region: saved.region !== false, zone: saved.zone !== false };
+    } catch {
+      /* storage blocked / bad JSON -- default to showing both */
+    }
+    return { region: true, zone: true };
+  });
+  const setLevelPref = (level, value) =>
+    setLevelPrefs((prev) => {
+      const next = { ...prev, [level]: value };
+      try {
+        localStorage.setItem(levelsKey, JSON.stringify(next));
+      } catch {
+        /* private browsing / storage blocked -- the choice just won't persist */
+      }
+      return next;
+    });
+  const toggleCombinedSort = (key) => {
+    if (key === combinedSortKey) setCombinedSortDir(combinedSortDir === "asc" ? "desc" : "asc");
+    else {
+      setCombinedSortKey(key);
+      setCombinedSortDir("asc");
+    }
+  };
+  const toggleInSet = (setter, key) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   // A multi-value region/zone user (see me.scope_values) needs the same
   // narrow-down-to-one picker a nationwide viewer gets -- otherwise there's no
@@ -275,8 +374,11 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
     });
   }, [scopedStations, regionFilter, zoneFilter, search, sortKey, sortDir]);
 
-  const filteredRegionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
-  const filteredZoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
+  // The "N stations in scope" count now lives in the header, as a small footnote after "Data as of"
+  // (2026-09-25 feedback) -- reported up here the same way the freshness timestamp is.
+  useEffect(() => {
+    if (data) onStationsInScope?.(filteredStations.length);
+  }, [data, filteredStations.length]);
 
   // Restricted to exactly the same stations as filteredStations -- the
   // Action Board aggregates by region/zone, and an aggregate delta is only
@@ -366,14 +468,6 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
     }));
   }, [data, visibleRegions, scopedStations, cardMode, effectiveRegion, zoneFilter, me.scope_values]);
 
-  const toggleSort = (key) => {
-    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else {
-      setSortKey(key);
-      setSortDir(key === "region" || key === "zone" ? "asc" : "desc");
-    }
-  };
-
   const openDrilldown = (row, col) => {
     setModal({ stationCode: row.station_code, stationName: row.station_name, metricKey: col.key, metricLabel: col.label });
   };
@@ -388,48 +482,121 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
       </div>
     );
 
-  // Click-to-open (i) note on each metric header: what it counts and what to do
-  // about it (2026-09-24 feedback).
-  const noteLabel = (c) => (
-    <>
-      {c.label}
-      {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
-    </>
-  );
+  // Region/zone tables each get their own column set since the colour scale for
+  // a reference metric depends on which row set it's being ranked against.
+  // Distinct banding per level (region darkest, zone lighter, station plain
+  // white) so the three row types are unmistakable at a glance, not just from
+  // the name column's own indentation/weight -- per 2026-09-20 feedback.
+  // Which grouping levels this viewer sees (2026-09-25 feedback): nationwide viewers get
+  // region -> zone -> station; a region-scoped user starts at region; a zone-scoped user at
+  // zone; a station-scoped user sees stations only. Region / zone-scoped users can also switch
+  // the region / zone rows off. Nationwide viewers keep the click-to-expand behaviour (rows
+  // start collapsed); scoped viewers' rows start expanded (the Sets then hold the COLLAPSED
+  // ones), since they only have a few of them.
+  const scopeType = me.scope_type;
+  const canHideRegionRows = scopeType === "region";
+  const canHideZoneRows = scopeType === "region" || scopeType === "zone";
+  const showRegionRows = (scopeType === "all" || scopeType === "region") && (scopeType === "all" || levelPrefs.region);
+  const showZoneRows = scopeType !== "station" && (scopeType === "all" || levelPrefs.zone);
+  const startsExpanded = scopeType !== "all";
+  const isRegionOpen = (key) => (startsExpanded ? !expandedRegions.has(key) : expandedRegions.has(key));
+  const isZoneOpen = (key) => (startsExpanded ? !expandedZones.has(key) : expandedZones.has(key));
 
-  const groupColumns = ALL_COLUMNS.map((c) => ({
-    key: c.key,
-    label: noteLabel(c),
-    render: (g) => fmt(c.key, g[c.key]),
-  }));
-
-  const stationColumns = [
-    ...(!hideRegionCol ? [{ key: "region", label: "Region", render: (r) => r.region, className: () => "text-slate-500" }] : []),
-    ...(!hideZoneCol ? [{ key: "zone", label: "Zone", render: (r) => r.zone, className: () => "text-slate-500" }] : []),
-    { key: "station_name", label: "Station", sticky: true, align: "left", render: (r) => r.station_name },
+  const combinedRowClassName = (row) => {
+    if (row.type === "region") return "bg-slate-100";
+    if (row.type === "zone") return "bg-slate-50";
+    return "";
+  };
+  const combinedColumns = [
+    {
+      key: "name",
+      label: [showRegionRows && "Region", showZoneRows && "Zone", "Station"].filter(Boolean).join(" / "),
+      sticky: true,
+      align: "left",
+      render: (row) => {
+        const caret = row.type !== "station" ? (
+          <span className="text-slate-400">
+            {(row.type === "region" ? isRegionOpen(row.key) : isZoneOpen(row.key)) ? "▾" : "▸"}
+          </span>
+        ) : null;
+        if (row.type === "region") {
+          return (
+            <span className="flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-wide text-ink">
+              {caret}
+              {row.displayName} <span className="text-xs font-normal normal-case text-slate-400">({row.station_count})</span>
+            </span>
+          );
+        }
+        if (row.type === "zone") {
+          return (
+            <span className="flex items-center gap-1.5 pl-5 font-display font-semibold text-slate-700">
+              {caret}
+              {row.displayName} <span className="text-xs font-normal text-slate-400">({row.station_count})</span>
+            </span>
+          );
+        }
+        return <span className="pl-10 text-slate-700">{row.displayName}</span>;
+      },
+    },
     ...ALL_COLUMNS.map((c) => {
-      // Header greying reflects the nationwide row -- whether a metric has an
-      // SLA at all isn't something that should flip on/off per region.
       const natThreshold = resolveThreshold(thresholdRows, c.key, null);
       const isReference = !natThreshold.scored;
+      const label = (
+        <>
+          {c.label}
+          {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
+        </>
+      );
+      const clickable = row => row.type === "station" && DRILLDOWN_METRICS.has(c.key);
+      if (isReference) {
+        return {
+          key: c.key,
+          label,
+          render: (row) => fmt(c.key, row[c.key]),
+          className: () => "text-slate-700",
+          onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
+          clickable,
+        };
+      }
+      const isPercentBased = PERCENT_METRICS.has(c.key) || !!natThreshold.percent_of;
+      const scaledThreshold = (row) => {
+        const t = resolveThreshold(thresholdRows, c.key, row.region);
+        if (isPercentBased || row.type === "station") return t;
+        return { ...t, warning_at: t.warning_at * row.station_count, critical_at: t.critical_at * row.station_count };
+      };
       return {
         key: c.key,
-        label: noteLabel(c),
-        reference: isReference,
-        render: (r) => {
-          const t = resolveThreshold(thresholdRows, c.key, r.region);
-          const sev = isReference ? "reference" : classify(t, r[c.key], r);
-          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, r[c.key], r, t)}`;
+        label,
+        render: (row) => {
+          const t = scaledThreshold(row);
+          const sev = classify(t, row[c.key], row);
+          return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, row[c.key], row, t)}`;
         },
-        className: (r) => {
-          if (isReference) return SEVERITY_CLASS.reference;
-          const sev = classify(resolveThreshold(thresholdRows, c.key, r.region), r[c.key], r);
+        className: (row) => {
+          const t = scaledThreshold(row);
+          const sev = classify(t, row[c.key], row);
           return SEVERITY_CLASS[sev];
         },
-        onClick: DRILLDOWN_METRICS.has(c.key) ? (r) => openDrilldown(r, c) : undefined,
+        onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
+        clickable,
       };
     }),
   ];
+  const combinedRows = buildCombinedRows(
+    filteredStations,
+    { showRegion: showRegionRows, showZone: showZoneRows },
+    isRegionOpen,
+    isZoneOpen,
+    combinedSortKey,
+    combinedSortDir
+  );
+  const handleCombinedRowClick = (row) => {
+    if (row.type === "station") {
+      setDetailRow(row);
+    } else {
+      toggleInSet(row.type === "region" ? setExpandedRegions : setExpandedZones, row.key);
+    }
+  };
 
   const detailRows = detailRow
     ? ALL_COLUMNS.map((c) => {
@@ -462,13 +629,11 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
         rows={detailRows}
       />
 
-      <div className="text-sm text-slate-500">{filteredStations.length} stations in scope</div>
-
-      {showTotalCard && (
+      {!FEATURES.hideSummaryCards && showTotalCard && (
         <SummaryCard label="TOTAL LAST MILE" active={false} clickable={false} emphasis stats={cardStats(sumMetrics(scopedStations))} />
       )}
 
-      {cards.length > 0 && (
+      {!FEATURES.hideSummaryCards && cards.length > 0 && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {cards.map((c) => (
             <SummaryCard
@@ -542,40 +707,59 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
 
       {tab === "health" && (
         <>
-          <GroupTable title="By region (follows filters below)" groupLabel="Region" rows={filteredRegionGroups} columns={groupColumns} />
-          <GroupTable title="By zone (follows filters below)" groupLabel="Zone" rows={filteredZoneGroups} columns={groupColumns} />
-
           <DataTable
             title={
               <>
                 Station Health{" "}
-                <span className="font-normal text-slate-400">— click a number for tracking IDs, click a row for detail</span>
+                <span className="font-normal text-slate-400">
+                  — {showRegionRows || showZoneRows ? "click a region/zone row to expand or collapse it, " : ""}click a station
+                  row for detail, click a number for tracking IDs, click a column header to sort
+                  {showRegionRows || showZoneRows ? " (sorts within each group without changing what's expanded)" : ""}
+                </span>
               </>
             }
             titleExtra={
-              <button
-                onClick={() => exportStationHealthCsv(filteredStations)}
-                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Export CSV
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {canHideRegionRows && (
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={levelPrefs.region} onChange={(e) => setLevelPref("region", e.target.checked)} />
+                    Show region rows
+                  </label>
+                )}
+                {canHideZoneRows && (
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={levelPrefs.zone} onChange={(e) => setLevelPref("zone", e.target.checked)} />
+                    Show zone rows
+                  </label>
+                )}
+                <button
+                  onClick={() => exportStationHealthCsv(combinedRows.filter((r) => r.type === "station"))}
+                  className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Export CSV
+                </button>
+              </div>
             }
-            maxHeight="70vh"
-            columns={stationColumns}
-            rows={filteredStations}
-            rowKey={(r) => r.station_code}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={toggleSort}
-            onRowClick={(r) => setDetailRow(r)}
+            maxHeight="75vh"
+            columns={combinedColumns}
+            rows={combinedRows}
+            rowKey={(r) => r.id}
+            rowClassName={combinedRowClassName}
+            onRowClick={handleCombinedRowClick}
+            sortKey={combinedSortKey}
+            sortDir={combinedSortDir}
+            onSort={toggleCombinedSort}
             emptyMessage="No stations match."
-            subHeader={isGroupSort ? `Sorted by ${sortKey}, then 0-Attempt (highest first) within each ${sortKey}` : null}
-            footer={`${filteredStations.length} rows · first column pinned, header freezes while scrolling`}
+            footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
           />
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored. Targets are set in Admin → SLA Targets. Total Fresh, Total Routed, Attendance and COD %
-            (Hub) aren't clickable — their source queries don't return individual tracking numbers.
+            SLA, never scored, shown for context only. Targets are set in Admin → SLA Targets. A region/zone row's
+            raw-count target scales up by how many stations it contains (e.g. a target of 100 becomes 500 for a
+            5-station region) — a percentage target (or a metric scored as "% of" another field) never scales, the
+            same number applies at every level. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't
+            clickable — their source queries don't return individual tracking numbers. Click the ⓘ next to a column
+            name for what that metric counts and what to do about it.
           </p>
         </>
       )}
@@ -598,14 +782,6 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
 
       {tab === "shipper" && (
         <ShipperWatchTab
-          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
-          refreshTick={refreshTick}
-        />
-      )}
-
-      {tab === "restock" && (
-        <RestockTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}

@@ -3,19 +3,19 @@ description: >
   (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia --
   East Malaysia is Retail, not Last Mile, so it can be toggled out of every view).
   Pulls parcel- and route-level data from Redash every 15 minutes and shows it per
-  region, zone, station and driver: Action Board (SLA heatmap), Shipment Details (fresh
-  unscan, latlong, scan-in duration buckets, line-haul timing), Station Health (in-hub,
-  0-attempt, on-hold, aging, missing, pending ATS, COD%), Route Monitoring (routed,
-  attendance, OVFD, success and completion rates by driver type, old routes,
-  pending-in-yesterday-route), Aging Details, RPU, Recovery (missing parcels), Shipper
-  Watch (Zalora, Amway, Watson, Orca, Sodaxpress SLAs), Restock NXD and Urgent TN (track
-  tracking numbers and assign them to a PIC with in-progress / closed status, replies and
-  notifications). Every count opens its tracking numbers, with CSV export. Access is
-  role-based (admin, manager, region, station) with multi-value region/zone/station
-  scopes enforced in the backend; an admin can preview any role or user with the Role
-  Tester. Users can send feedback (with an attachment) that admins reply to and close,
-  and read an in-app guide with a what's-new page. For Fleet Managers and their regional
-  and station teams.
+  region, zone, station and driver: Action Board (SLA heatmap), Shipment Details
+  (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station
+  Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route
+  Monitoring (routed, attendance, OVFD, success and completion rates by driver type,
+  old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU,
+  Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress
+  SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document
+  compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a
+  PIC with in-progress / closed status and notifications). Every count opens its
+  tracking numbers, with CSV export. Access is role-based (admin, manager, region,
+  station) with multi-value region/zone/station scopes enforced in the backend. Users can send feedback
+  (with an attachment) that admins reply to and close. For Fleet Managers and their
+  regional and station teams.
 
 database: oceanbase
 

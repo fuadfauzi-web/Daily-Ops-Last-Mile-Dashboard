@@ -25,6 +25,10 @@ export default function DataTable({
   emptyMessage = "No rows match.",
   footer,
   onRowClick,
+  // Optional per-row background (e.g. banding region/zone/station rows
+  // differently in a combined hierarchical table) -- (row) => a bg-* class,
+  // or "" for no override. Left undefined, every row stays plain white.
+  rowClassName,
 }) {
   const [scrolled, setScrolled] = useState(false);
   const dark = variant === "dark";
@@ -84,11 +88,13 @@ export default function DataTable({
             )}
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {rows.map((row, i) => {
+              const rowBg = rowClassName ? rowClassName(row) : "";
+              return (
               <tr
                 key={rowKey(row, i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`border-t border-slate-100 ${rowHover} ${onRowClick ? "cursor-pointer" : ""}`}
+                className={`border-t border-slate-100 ${rowBg} ${rowHover} ${onRowClick ? "cursor-pointer" : ""}`}
               >
                 {columns.map((c) => {
                   const align = c.align || (c.sticky ? "left" : "center");
@@ -98,13 +104,17 @@ export default function DataTable({
                   // that need severity/emphasis colouring always supply their own.
                   const extraClass = c.className ? c.className(row) : "text-slate-700";
                   const isClickable = !!c.onClick && (c.clickable ? c.clickable(row) : true);
+                  // The sticky column paints its own opaque background (so table
+                  // content doesn't show through while pinned) -- inherit the row's
+                  // own banding instead of a flat white when one is set.
+                  const stickyBg = rowBg || "bg-white";
                   return (
                     <td
                       key={c.key}
                       className={[
                         "px-4 py-2 whitespace-nowrap",
                         align === "center" ? "text-center tabular-nums" : "",
-                        c.sticky ? `sticky left-0 z-10 bg-white font-medium text-slate-800 ${stickyShadow}` : "",
+                        c.sticky ? `sticky left-0 z-10 ${stickyBg} font-medium text-slate-800 ${stickyShadow}` : "",
                         extraClass,
                       ].join(" ")}
                     >
@@ -127,7 +137,8 @@ export default function DataTable({
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-6 text-center text-slate-400">

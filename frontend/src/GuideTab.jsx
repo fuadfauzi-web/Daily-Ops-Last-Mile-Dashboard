@@ -35,7 +35,7 @@ const SECTIONS = [
         { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
         { role: "Region staff", rank: 1, text: "View the dashboard, plus add, edit and remove Station-staff teammates (with more than one station if needed) in Settings → Users." },
         { role: "Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings." },
-        { role: "Admin", rank: 3, text: "Everything: full user management, all Settings screens, the Admin page (Documents, Data Refresh), replying to feedback and the Role Tester." },
+        { role: "Admin", rank: 3, text: `Everything: full user management, all Settings screens, the Admin page (Documents, Data Refresh), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
       ].filter((r) => r.rank <= rank);
       return (
         <div className="space-y-2 text-sm text-slate-700">
@@ -106,7 +106,7 @@ const SECTIONS = [
             The <strong>Urgent TN</strong> tab shows a red bell with a number when something needs your attention, and{" "}
             <strong>Settings</strong> shows a red dot when an admin has replied to your feedback.
           </>,
-          rank >= 3 && (
+          rank >= 3 && F.roleTester && (
             <>
               The <strong>Role Tester</strong> button (admin only) previews the app as another role and scope
               {F.roleTesterUser ? ", or acts as one specific user so you can test things tied to a person" : ""}.
@@ -176,7 +176,7 @@ const SECTIONS = [
             <><strong>Missing (Hub / Driver-Rider / Ship-in)</strong>: open missing-parcel tickets split by who is on the hook. <strong>Pending ATS</strong> is parcels pending Add To Shipment.</>,
             <><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub).</>,
             F.stationHealthCombined ? (
-              <>One expandable table: click a Region to open its Zones, a Zone to open its Stations. Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for the whole table.</>
+              <>One expandable table that starts at your own scope: a nationwide view opens Region → Zone → Station, a station-scoped view is just your stations. Region and zone-scoped users can hide the region / zone rows with the checkboxes above the table. Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for what's shown.</>
             ) : (
               <>Coloured cells (▲ critical / ■ warning) are metrics with an SLA target. Cells without a target are shaded on a relative scale instead -- a ranking, never a pass/fail judgement.</>
             ),
@@ -236,7 +236,7 @@ const SECTIONS = [
         Aging Overall, but only for the cold-chain tracking numbers: a station × age-bucket pivot and the full TN list, grouped by
         where each parcel physically is. Stations with nothing in them are hidden. Cold-chain parcels often sit at CC hubs that
         aren't stations; those show as their own "Other hubs" rows. A cold-chain TN missing from the active dataset is already
-        completed or added to a shipment. It's a tab of its own and also a sub-tab of Shipper Radar.
+        completed or added to a shipment. You'll find it under Shipper Radar.
       </p>
     ),
   },
@@ -353,7 +353,7 @@ const SECTIONS = [
             rank >= 1 && (
               <>
                 <strong>Users</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
-                more than one station. Find people with the search box, filter by role, scope or "Never opened", and click a column header
+                more than one station. Find people with the search box, filter by role, scope type, a searchable scope or "Never opened", and click a column header
                 (e.g. Last opened) to sort.
               </>
             ),
@@ -391,7 +391,7 @@ const SECTIONS = [
           items={[
             <><strong>Documents</strong>: upload the driver/rider details CSV that gives Route Monitoring its Tenure column.</>,
             <><strong>Data Refresh</strong>: trigger an immediate refresh and see when each Redash query was last pulled.</>,
-            <>Feedback replies, the Guide and the Role Tester are not here -- Feedback and Guide are under Settings, and the Role Tester is in the header.</>,
+            <>Feedback and the Guide are not here -- they're under Settings{F.roleTester ? ", and the Role Tester is in the header" : ""}.</>,
           ]}
         />
       </div>
@@ -414,7 +414,7 @@ const FAQS = [
   { q: "My numbers look different from Redash.", a: "The dashboard groups parcels by where they physically are (last scan hub), not their intended destination, unless a column's note says otherwise. Click the small i beside a column header for the exact rule, then send us a question if it still doesn't match." },
   { q: "How do I change someone's access?", a: "Settings -> Users -> Edit. You can only grant a role and scope at or below your own. Region staff can edit Station staff and give them more than one station.", show: ({ rank }) => rank >= 1 },
   { q: "Who has never opened the dashboard?", a: "Settings -> Users: tick \"Never opened\", or click the Last opened header to sort.", show: ({ rank }) => rank >= 1 },
-  { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTesterUser },
+  { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTester && F.roleTesterUser },
   { q: "How do I reply to feedback?", a: "Settings -> Feedback -> type in the reply box under the message and Send reply; Close it when it's done (it's deleted a week later).", show: ({ rank }) => rank >= 3 },
 ];
 
@@ -425,7 +425,7 @@ export default function GuideTab({ me }) {
 
   const [openId, setOpenId] = useState(SECTIONS[0].id);
   const [view, setView] = useState("guide"); // "guide" | "new"
-  const weeks = useMemo(() => weeklyChanges({ features: F, rank }), [rank]);
+  const weeks = useMemo(() => weeklyChanges({ features: F, rank, wide }), [rank, wide]);
   const [showOlder, setShowOlder] = useState(false); // earlier weeks stay hidden until asked for
   const [openWeek, setOpenWeek] = useState(null);
   const [query, setQuery] = useState("");

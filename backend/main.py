@@ -29,19 +29,21 @@ import db
 import storage
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
-    METRIC_KEYS, OLD_ROUTE_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
+    METRIC_KEYS, OLD_ROUTE_ROWS_CAP, RDO_ROWS_CAP, ROUTED_STATION_KEYS, RPU_PIVOT_KEYS, RPU_ROWS_CAP, RPU_STAGE_LABELS,
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
-    build_missing_details, build_old_route, build_pending_yesterday_route, build_routed_view, build_rpu,
-    build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure, merge_routed_into_station_metrics,
-    rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_routed, rollup_routed_by_driver_type,
-    rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
+    build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
+    build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
+    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL,
+    merge_routed_into_station_metrics,
+    rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
+    rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 from auth import CurrentUser, get_current_user, parse_scope_values
 from redash_client import (
-    QUERY_ACTIVE_MISSING, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
-    QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP, QUERY_ZALORA_NXD,
-    RedashError, fetch_query_results,
+    QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
+    QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
+    QUERY_ZALORA_NXD, RedashError, fetch_query_results,
 )
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
@@ -85,6 +87,8 @@ _QUERY_LABELS = {
     QUERY_RESTOCK_NXD: "Restock NXD (Shipper Watch)",
     QUERY_OLD_ROUTE: "Old Route / Aging OVFD",
     QUERY_RPU: "RPU Monitoring",
+    QUERY_RDO_PUSH_OFF: "RDO Push Off (B2B Document Compliance)",
+    QUERY_COLD_CHAIN: "Cold Chain Daily Orders",
 }
 
 
@@ -107,10 +111,11 @@ _tn_cache_captured_at: str | None = None
 _shipment_tn_cache: dict[str, dict[str, list]] = {}
 _shipment_tn_cache_captured_at: str | None = None
 
-# Shipment Details' nationwide sweep-time-of-day histogram (24 hourly buckets) for
-# the timeline chart -- nationwide, not per-station, so it doesn't fit the
-# shipment_details table; rebuilt every refresh like the drilldown caches above.
-_sweep_timeline: list[int] = [0] * 24
+# Shipment Details' per-station hour-of-day histograms (sweep / 1st attempt / success,
+# 24 buckets each) for the timeline chart, so it can follow the region/zone/station
+# filters. Doesn't fit the shipment_details table; rebuilt every refresh like the
+# drilldown caches above.
+_shipment_timelines: dict[str, dict[str, list[int]]] = {}
 
 # Routed View's driver-level rows. Not persisted -- rebuilt every refresh, like the
 # drilldown caches (a daily driver roster has no need for hourly history).
@@ -136,6 +141,22 @@ _old_route_captured_at: str | None = None
 # filtering all happens at request time (see /api/rpu, /api/rpu-aging).
 _rpu_rows_cache: list[dict] = []
 _rpu_rows_captured_at: str | None = None
+
+# B2B Document Compliance's RDO station rows + TN-level rows, same in-memory
+# pattern as _old_route_rows.
+_rdo_stations: list[dict] = []
+_rdo_tn_rows: list[dict] = []
+_rdo_captured_at: str | None = None
+
+# Cold Chain tab (query 1410's tracking numbers joined to query 78) and the Restock
+# bundle list / On Hold view (query 1585 grouped per bundle), same in-memory pattern.
+_cold_chain_stations: list[dict] = []
+_cold_chain_rows: list[dict] = []
+_cold_chain_captured_at: str | None = None
+_cold_chain_source_count = 0
+_cold_chain_matched_count = 0
+_restock_bundles: list[dict] = []
+_restock_bundles_captured_at: str | None = None
 
 # Recovery tab's Missing Details, same in-memory pattern as _old_route_rows.
 _missing_details_stations: list[dict] = []
@@ -221,15 +242,33 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
 
         tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
         lh_rows = await _fetch(QUERY_LH_TIMING)
-        shipment_by_station, shipment_tn_details, sweep_timeline = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
+        shipment_by_station, shipment_tn_details, shipment_timelines = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
         del shipment_rows, tracker_rows, lh_rows
 
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
         restock_rows = await _fetch(QUERY_RESTOCK_NXD)
         shipper_by_station, shipper_tn_details = build_shipper_watch(health_rows, zalora_rows, restock_rows)
+        restock_piece_tns = {r.get('tracking_id') for r in restock_rows}
+        restock_bundle_rows = build_restock_bundles(
+            restock_rows,
+            {r['tracking_id']: r.get('delivery_attempts') for r in health_rows if r.get('tracking_id') in restock_piece_tns},
+        )
         del zalora_rows, restock_rows
 
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
+
+        # Cold Chain: only query 1410's tracking_id column matters; isolated so a
+        # problem with that one query can't fail the whole refresh -- the tab just
+        # keeps its previous numbers.
+        cold_chain_result = None
+        try:
+            cc_raw_rows = await _fetch(QUERY_COLD_CHAIN)
+            cc_tns = {r.get("tracking_id") for r in cc_raw_rows if r.get("tracking_id")}
+            del cc_raw_rows
+            cc_stations, cc_tn_rows, cc_matched = build_cold_chain(health_rows, cc_tns)
+            cold_chain_result = (cc_stations, cc_tn_rows, len(cc_tns), cc_matched)
+        except Exception:  # noqa: BLE001
+            log.exception("Cold Chain refresh failed -- keeping the previous data")
 
         old_route_raw_rows = await _fetch(QUERY_OLD_ROUTE)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
@@ -238,6 +277,10 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         rpu_raw_rows = await _fetch(QUERY_RPU)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
         del rpu_raw_rows
+
+        rdo_raw_rows = await _fetch(QUERY_RDO_PUSH_OFF)
+        rdo_by_station, rdo_tn_rows = build_rdo_compliance(rdo_raw_rows)
+        del rdo_raw_rows
 
         # microsecond=0: station_metrics/etc.'s captured_at column is a plain
         # DATETIME (whole-second precision) -- MySQL silently truncates the
@@ -252,8 +295,11 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         global _missing_details_stations, _missing_details_tn_rows, _missing_details_captured_at
         global _missing_details_cod_threshold, _missing_details_item_keywords
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
-        global _sweep_timeline
-        _sweep_timeline = sweep_timeline
+        global _shipment_timelines
+        global _rdo_stations, _rdo_tn_rows, _rdo_captured_at
+        global _cold_chain_stations, _cold_chain_rows, _cold_chain_captured_at
+        global _cold_chain_source_count, _cold_chain_matched_count, _restock_bundles, _restock_bundles_captured_at
+        _shipment_timelines = shipment_timelines
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -273,6 +319,14 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         _old_route_captured_at = captured_at.isoformat()
         _rpu_rows_cache = rpu_rows_flat
         _rpu_rows_captured_at = captured_at.isoformat()
+        _rdo_stations = list(rdo_by_station.values())
+        _rdo_tn_rows = rdo_tn_rows
+        _rdo_captured_at = captured_at.isoformat()
+        _restock_bundles = restock_bundle_rows
+        _restock_bundles_captured_at = captured_at.isoformat()
+        if cold_chain_result is not None:
+            _cold_chain_stations, _cold_chain_rows, _cold_chain_source_count, _cold_chain_matched_count = cold_chain_result
+            _cold_chain_captured_at = captured_at.isoformat()
         _missing_details_stations = list(missing_details_by_station.values())
         _missing_details_tn_rows = missing_details_tn_rows
         _missing_details_cod_threshold = cod_threshold
@@ -537,18 +591,10 @@ class Me(BaseModel):
     scope_type: str | None = None
     scope_values: list[str] = []
     display_name: str | None = None
-    is_impersonating: bool = False
-    real_role: str | None = None
 
 
 @app.get("/api/me", response_model=Me)
-async def me(
-    x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email"),
-    x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
-    x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
-    x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
-    x_view_as_email: str | None = Header(default=None, alias="X-View-As-Email"),
-):
+async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email")):
     if not x_forwarded_email:
         return {"email": None, "provisioned": False}
     row = await db.fetch_one(
@@ -558,31 +604,9 @@ async def me(
     if row is None:
         return {"email": x_forwarded_email, "provisioned": False}
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
-    real_role = row[1]
-    # Same "View As" override as auth.get_current_user -- gated on real_role
-    # from the DB, never on the override headers themselves.
-    if real_role == "admin" and x_view_as_email:
-        target = await db.fetch_one(
-            "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE LOWER(email) = %s",
-            (x_view_as_email.strip().lower(),),
-        )
-        if target is None:
-            raise HTTPException(status_code=422, detail="That user isn't in the user list")
-        return {
-            "email": target[0], "provisioned": True, "role": target[1], "scope_type": target[2],
-            "scope_values": parse_scope_values(target[3]), "display_name": target[4],
-            "is_impersonating": True, "real_role": real_role,
-        }
-    if real_role == "admin" and x_view_as_role:
-        return {
-            "email": row[0], "provisioned": True, "role": x_view_as_role,
-            "scope_type": x_view_as_scope_type or "all",
-            "scope_values": [v for v in (x_view_as_scope_values or "").split(",") if v],
-            "display_name": row[4], "is_impersonating": True, "real_role": real_role,
-        }
     return {
         "email": row[0], "provisioned": True, "role": row[1], "scope_type": row[2],
-        "scope_values": parse_scope_values(row[3]), "display_name": row[4], "real_role": real_role,
+        "scope_values": parse_scope_values(row[3]), "display_name": row[4],
     }
 
 
@@ -788,12 +812,19 @@ class ShipmentGroupRow(ShipmentDetailFields):
     station_count: int
 
 
+class ShipmentTimelineRow(BaseModel):
+    station_code: str
+    sweep: list[int]
+    attempt: list[int]
+    success: list[int]
+
+
 class ShipmentDetailsResponse(BaseModel):
     captured_at: str | None
     stations: list[ShipmentStationRow]
     zones: list[ShipmentGroupRow]
     regions: list[ShipmentGroupRow]
-    sweep_timeline: list[int]
+    timelines: list[ShipmentTimelineRow]
 
 
 async def _fetch_shipment_rows(captured_at) -> list[dict]:
@@ -826,7 +857,7 @@ async def shipment_details(user: CurrentUser = Depends(get_current_user)):
     latest = await db.fetch_one("SELECT MAX(captured_at) FROM shipment_details")
     captured_at = latest[0] if latest else None
     if captured_at is None:
-        return {"captured_at": None, "stations": [], "zones": [], "regions": [], "sweep_timeline": [0] * 24}
+        return {"captured_at": None, "stations": [], "zones": [], "regions": [], "timelines": []}
 
     all_rows = await _fetch_shipment_rows(captured_at)
     scoped = _scope_filter_stations(all_rows, user)
@@ -841,7 +872,12 @@ async def shipment_details(user: CurrentUser = Depends(get_current_user)):
         "stations": scoped,
         "zones": [g for g in zone_groups if g["station_count"] > 0],
         "regions": [g for g in region_groups if g["station_count"] > 0],
-        "sweep_timeline": _sweep_timeline,
+        # Only the stations this user can see -- the chart sums whichever of these the
+        # region/zone/station filters leave selected.
+        "timelines": [
+            {"station_code": s["station_code"], **_shipment_timelines[s["station_code"]]}
+            for s in scoped if s["station_code"] in _shipment_timelines
+        ],
     }
 
 
@@ -1297,6 +1333,145 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
 
 
 # ---------------------------------------------------------------------------
+# Cold Chain (query 1410's tracking numbers joined to query 78) -- same response
+# shape as Aging Details plus how many of the source TNs were found in query 78.
+# ---------------------------------------------------------------------------
+
+class ColdChainResponse(AgingDetailsResponse):
+    source_tn_count: int
+    matched_tn_count: int
+
+
+COLD_CHAIN_ROWS_CAP = 3000
+
+
+@app.get("/api/cold-chain", response_model=ColdChainResponse)
+async def cold_chain(user: CurrentUser = Depends(get_current_user)):
+    empty = {
+        "captured_at": None, "type": "cold_chain", "type_label": "Cold Chain",
+        "buckets": list(AGING_BUCKET_LABELS.values()), "stations": [], "zones": [], "regions": [], "tn_rows": [],
+        "tn_rows_total": 0, "tn_rows_truncated": False, "source_tn_count": 0, "matched_tn_count": 0,
+    }
+    if _cold_chain_captured_at is None:
+        return empty
+
+    scoped = _scope_filter_stations(_cold_chain_stations, user)
+    scoped_codes = {r["station_code"] for r in scoped}
+
+    def to_group(rows, key):
+        return [
+            {**{k: g[k] for k in _AGING_COLUMNS}, "key": g[key], "region": g["region"], "station_count": g["station_count"]}
+            for g in rows if g["station_count"] > 0
+        ]
+
+    tn_rows = [r for r in _cold_chain_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows)
+    tn_rows_truncated = tn_rows_total > COLD_CHAIN_ROWS_CAP
+    if tn_rows_truncated:
+        tn_rows = sorted(tn_rows, key=lambda r: r["age"], reverse=True)[:COLD_CHAIN_ROWS_CAP]
+    return {
+        **empty,
+        "captured_at": _cold_chain_captured_at,
+        "stations": scoped,
+        "zones": to_group(rollup_aging(scoped, "zone"), "zone"),
+        "regions": to_group(rollup_aging(scoped, "region"), "region"),
+        "tn_rows": tn_rows, "tn_rows_total": tn_rows_total, "tn_rows_truncated": tn_rows_truncated,
+        "source_tn_count": _cold_chain_source_count, "matched_tn_count": _cold_chain_matched_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Restock bundles: one row per bundle (query 1585), for the Restock tab's bundle
+# list (view=all) and the On Hold / MPS Incomplete sub-tab (view=attention: any
+# bundle that is on hold or missing pieces). See aggregate.build_restock_bundles.
+# ---------------------------------------------------------------------------
+
+RESTOCK_BUNDLES_ROWS_CAP = 3000
+
+
+class RestockBundleRow(BaseModel):
+    bundle_tracking_number: str
+    shipper_name: str | None
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    piece_count: int
+    pieces_seen: int
+    missing_count: int
+    attempts: int | None = None
+    missing_pieces: str | None
+    on_hold_pieces: int
+    statuses: str
+    days_group: str | None
+    aging_days: int
+    hold_details: str | None
+    bundle_class: str
+    tracking_numbers: list[str]
+
+
+class RestockStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    bundles: int
+    on_hold_bundles: int
+    mps_incomplete: int
+    complete_on_hold: int
+    single_on_hold: int
+    missing_pieces_total: int
+
+
+class RestockBundlesResponse(BaseModel):
+    captured_at: str | None
+    view: str
+    stations: list[RestockStationRow]
+    bundles: list[RestockBundleRow]
+    bundles_total: int
+    bundles_truncated: bool
+
+
+@app.get("/api/restock-bundles", response_model=RestockBundlesResponse)
+async def restock_bundles(view: str = "all", user: CurrentUser = Depends(get_current_user)):
+    if view not in ("all", "attention"):
+        raise HTTPException(status_code=422, detail="view must be 'all' or 'attention'")
+    if _restock_bundles_captured_at is None:
+        return {"captured_at": None, "view": view, "stations": [], "bundles": [], "bundles_total": 0, "bundles_truncated": False}
+
+    scoped = _scope_filter_stations(_restock_bundles, user)
+    if view == "attention":
+        scoped = [b for b in scoped if b["bundle_class"] != "ok"]
+
+    stations: dict[str, dict] = {}
+    for b in scoped:
+        s = stations.setdefault(b["station_code"], {
+            "station_code": b["station_code"], "station_name": b["station_name"], "zone": b["zone"], "region": b["region"],
+            "bundles": 0, "on_hold_bundles": 0, "mps_incomplete": 0, "complete_on_hold": 0, "single_on_hold": 0,
+            "missing_pieces_total": 0,
+        })
+        s["bundles"] += 1
+        if b["on_hold_pieces"] > 0:
+            s["on_hold_bundles"] += 1
+        if b["bundle_class"] == "mps_incomplete":
+            s["mps_incomplete"] += 1
+        elif b["bundle_class"] == "complete_on_hold":
+            s["complete_on_hold"] += 1
+        elif b["bundle_class"] == "single_on_hold":
+            s["single_on_hold"] += 1
+        s["missing_pieces_total"] += b["missing_count"]
+
+    total = len(scoped)
+    rows = sorted(scoped, key=lambda b: (b["bundle_class"] == "ok", -b["aging_days"], b["bundle_tracking_number"]))
+    truncated = total > RESTOCK_BUNDLES_ROWS_CAP
+    return {
+        "captured_at": _restock_bundles_captured_at, "view": view,
+        "stations": list(stations.values()), "bundles": rows[:RESTOCK_BUNDLES_ROWS_CAP],
+        "bundles_total": total, "bundles_truncated": truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Old Route (query 1451) -- tracking numbers stuck on their original Route ID/date.
 # ---------------------------------------------------------------------------
 
@@ -1398,6 +1573,137 @@ async def old_route(user: CurrentUser = Depends(get_current_user)):
         "tn_rows": tn_rows,
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
+# B2B Document Compliance (query 1293, RDO type only so far -- GRN/PSO/
+# Reattempt aren't wired up yet). document_type is accepted now so the
+# frontend's multi-select filter has something real to send, even though
+# only "rdo" currently does anything.
+# ---------------------------------------------------------------------------
+
+class RdoStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    total_tn: int
+    pending_pickup: int
+    van_enroute: int
+    enroute_sorting: int
+    pickup_fail: int
+
+
+class RdoGroupRow(BaseModel):
+    key: str
+    region: str
+    station_count: int
+    total_tn: int
+    pending_pickup: int
+    van_enroute: int
+    enroute_sorting: int
+    pickup_fail: int
+
+
+class RdoTnRow(BaseModel):
+    tracking_number: str | None
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    rdo_status: str | None
+    status_key: str | None = None
+    bundle_last_sweep_hub: str | None = None
+    age: int | None = None
+    rdo_created_at: str | None
+    rdo_latest_start_date: str | None
+    bundle_tracking_number: str | None
+    bundle_status: str | None
+    bundle_last_sweep_at: str | None
+    bundle_delivered_at: str | None
+
+
+class RdoComplianceResponse(BaseModel):
+    captured_at: str | None
+    document_types: list[str]
+    stations: list[RdoStationRow]
+    zones: list[RdoGroupRow]
+    regions: list[RdoGroupRow]
+    tn_rows: list[RdoTnRow]
+    tn_rows_total: int
+    tn_rows_truncated: bool
+
+
+@app.get("/api/b2b-compliance", response_model=RdoComplianceResponse)
+async def b2b_compliance(document_type: str = "rdo", user: CurrentUser = Depends(get_current_user)):
+    document_types = [t for t in document_type.split(",") if t] or ["rdo"]
+    if any(t not in ("rdo",) for t in document_types):
+        raise HTTPException(status_code=422, detail="document_type must be 'rdo' (the only type wired up so far)")
+    if _rdo_captured_at is None or "rdo" not in document_types:
+        return {
+            "captured_at": None, "document_types": ["rdo"], "stations": [], "zones": [], "regions": [],
+            "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
+        }
+
+    scoped = _scope_filter_stations(_rdo_stations, user)
+    scoped_codes = {r["station_code"] for r in scoped}
+
+    def to_group(rows, key):
+        return [
+            {"key": g[key], "region": g["region"], "station_count": g["station_count"],
+             **{k: g[k] for k in RDO_COMPLIANCE_KEYS}}
+            for g in rows if g["station_count"] > 0
+        ]
+
+    tn_rows = [r for r in _rdo_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows_total = len(tn_rows)
+    tn_rows_truncated = tn_rows_total > RDO_ROWS_CAP
+    if tn_rows_truncated:
+        tn_rows = sorted(tn_rows, key=lambda r: r["rdo_created_at"] or "", reverse=True)[:RDO_ROWS_CAP]
+
+    return {
+        "captured_at": _rdo_captured_at,
+        "document_types": ["rdo"],
+        "stations": scoped,
+        "zones": to_group(rollup_rdo_compliance(scoped, "zone"), "zone"),
+        "regions": to_group(rollup_rdo_compliance(scoped, "region"), "region"),
+        "tn_rows": tn_rows,
+        "tn_rows_total": tn_rows_total,
+        "tn_rows_truncated": tn_rows_truncated,
+    }
+
+
+class RdoTnListResponse(BaseModel):
+    captured_at: str | None
+    station_code: str
+    station_name: str
+    status: str
+    tn_rows: list[RdoTnRow]
+
+
+@app.get("/api/b2b-compliance/tns", response_model=RdoTnListResponse)
+async def b2b_compliance_tns(station_code: str, status: str = "all", user: CurrentUser = Depends(get_current_user)):
+    """Every RDO tracking number behind one station row's count (all of them --
+    unlike the main table this isn't capped), with the bundle details, for the
+    click-a-number modal and its CSV export. status: 'all' (Total TN) or one of
+    the per-status columns."""
+    valid = ("all",) + tuple(RDO_STATUS_COLUMNS.values())
+    if status not in valid:
+        raise HTTPException(status_code=422, detail=f"status must be one of {list(valid)}")
+    station = next((s for s in _rdo_stations if s["station_code"] == station_code), None)
+    if station is None:
+        raise HTTPException(status_code=404, detail="Unknown station")
+    if not _scope_filter_stations([station], user):
+        raise HTTPException(status_code=403, detail="That station isn't in your scope")
+    rows = [
+        r for r in _rdo_tn_rows
+        if r["station_code"] == station_code and (status == "all" or r["status_key"] == status)
+    ]
+    rows.sort(key=lambda r: r["rdo_created_at"] or "", reverse=True)
+    return {
+        "captured_at": _rdo_captured_at, "station_code": station_code, "station_name": station["station_name"],
+        "status": status, "tn_rows": rows,
     }
 
 

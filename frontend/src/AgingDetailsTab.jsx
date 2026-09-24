@@ -61,7 +61,11 @@ function localRollup(rows, groupKey) {
   return Object.values(groups);
 }
 
-export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
+// source="coldchain" (2026-09-25) reuses this whole view for the Cold Chain tab: the same
+// station x age-bucket pivot and TN table, but only for the tracking numbers in Redash
+// query 1410 (joined to query 78 by the backend) -- so no sub-view picker.
+export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, source = "aging" }) {
+  const isCold = source === "coldchain";
   const [agingType, setAgingType] = useState("overall");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -77,18 +81,18 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const hideZoneCol =
     zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
-  // Blink fix (2026-09-25): only a real change of sub-view resets to the loading skeleton. The
-  // 60-second auto-refresh tick just re-fetches in place -- resetting on every tick collapsed
-  // the page for a moment and snapped the scroll position back to the top.
+  // Blink fix (2026-09-25): only a real change of what's being shown (a filter / sub-view)
+  // resets to the loading skeleton. The 60-second auto-refresh tick just re-fetches in
+  // place -- resetting on every tick collapsed the page for a moment and snapped the
+  // scroll position back to the top.
   useEffect(() => {
     setData(null);
-  }, [agingType]);
+  }, [agingType, isCold]);
   useEffect(() => {
-    api
-      .agingDetails(agingType)
+    (isCold ? api.coldChain() : api.agingDetails(agingType))
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [agingType, refreshTick]);
+  }, [agingType, refreshTick, isCold]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -181,7 +185,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
 
   return (
     <div className="space-y-3">
-      <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />
+      {!isCold && <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />}
 
       {!data && <Skeleton />}
 
@@ -218,7 +222,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
               <button
                 onClick={() =>
                   exportCsv(
-                    `daily-ops-aging-${agingType}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    `daily-ops-${isCold ? "cold-chain" : `aging-${agingType}`}-${new Date().toISOString().slice(0, 10)}.csv`,
                     ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label)],
                     filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key])])
                   )
@@ -252,7 +256,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                 <button
                 onClick={() =>
                   exportCsv(
-                    `daily-ops-aging-${agingType}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                    `daily-ops-${isCold ? "cold-chain" : `aging-${agingType}`}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
                     ["Station", ...TN_COLUMNS.map((c) => c.label)],
                     filteredTnRows.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
                   )
@@ -274,6 +278,13 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             footer={
               <>
                 {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by last_scan_hub_name, not dest_hub
+                {isCold && (
+                  <>
+                    {" "}· {data.matched_tn_count.toLocaleString()} of {data.source_tn_count.toLocaleString()} cold-chain
+                    tracking numbers are in the active dataset (the rest are already completed or added to a shipment);
+                    parcels sitting at a non-station hub such as CC-GLE appear as their own "Other hubs" rows
+                  </>
+                )}
                 {data.tn_rows_truncated && (
                   <span className="ml-1 font-medium text-status-critical">
                     · showing the oldest {AGING_TN_ROWS_CAP.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
