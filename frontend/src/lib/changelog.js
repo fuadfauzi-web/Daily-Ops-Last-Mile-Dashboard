@@ -15,6 +15,15 @@
 export const CHANGELOG = [
   {
     date: "2026-09-25",
+    title: "Station Health follows your scope",
+    feature: "stationHealthCombined",
+    points: [
+      "The table starts at your own level: a station-scoped user sees just their stations, a zone-scoped user their zones and stations, a region-scoped user their regions, zones and stations.",
+      "Region and zone-scoped users can switch the region / zone rows on or off with \"Show region rows\" / \"Show zone rows\" (remembered for next time).",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "Summary cards removed",
     feature: "hideSummaryCards",
     points: [

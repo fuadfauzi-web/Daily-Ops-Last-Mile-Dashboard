@@ -149,19 +149,38 @@ function sortSiblings(rows, sortKey, sortDir, nameField) {
 // column header re-sorts region rows against each other, zone rows within
 // their own region against each other, and so on, without breaking the
 // region -> zone -> station nesting itself.
-function buildCombinedRows(stations, expandedRegions, expandedZones, sortKey, sortDir) {
+//
+// 2026-09-25: the table starts at the viewer's own scope level (a station-scoped user sees
+// stations only, a zone-scoped user zone rows + stations, ...), and a region/zone-scoped
+// user can hide the region/zone rows -- `levels` says which of the two grouping levels to
+// draw (showRegion / showZone); with both off it is a flat list of stations. regionOpen /
+// zoneOpen say whether a shown row is expanded.
+function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sortDir) {
+  const { showRegion, showZone } = levels;
   const rows = [];
+  const pushStations = (list) =>
+    sortSiblings(list, sortKey, sortDir, "station_name").forEach((s) =>
+      rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name })
+    );
+  const emitZones = (inScope) => {
+    if (!showZone) {
+      pushStations(inScope);
+      return;
+    }
+    sortSiblings(localRollup(inScope, "zone"), sortKey, sortDir, "key").forEach((z) => {
+      rows.push({ ...z, type: "zone", id: `zone:${z.key}`, displayName: z.key });
+      if (!zoneOpen(z.key)) return;
+      pushStations(inScope.filter((s) => s.zone === z.key));
+    });
+  };
+  if (!showRegion) {
+    emitZones(stations);
+    return rows;
+  }
   sortSiblings(localRollup(stations, "region"), sortKey, sortDir, "key").forEach((r) => {
     rows.push({ ...r, type: "region", id: `region:${r.key}`, displayName: r.key });
-    if (!expandedRegions.has(r.key)) return;
-    const stationsInRegion = stations.filter((s) => s.region === r.key);
-    sortSiblings(localRollup(stationsInRegion, "zone"), sortKey, sortDir, "key").forEach((z) => {
-      rows.push({ ...z, type: "zone", id: `zone:${z.key}`, displayName: z.key });
-      if (!expandedZones.has(z.key)) return;
-      sortSiblings(stationsInRegion.filter((s) => s.zone === z.key), sortKey, sortDir, "station_name").forEach((s) =>
-        rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name })
-      );
-    });
+    if (!regionOpen(r.key)) return;
+    emitZones(stations.filter((s) => s.region === r.key));
   });
   return rows;
 }
@@ -214,6 +233,27 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
   const [expandedZones, setExpandedZones] = useState(() => new Set());
   const [combinedSortKey, setCombinedSortKey] = useState(null);
   const [combinedSortDir, setCombinedSortDir] = useState("asc");
+  // Region / zone-scoped users can hide the region / zone grouping rows (remembered per person).
+  const levelsKey = `station-health-levels-${me.email}`;
+  const [levelPrefs, setLevelPrefs] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(levelsKey) || "null");
+      if (saved && typeof saved === "object") return { region: saved.region !== false, zone: saved.zone !== false };
+    } catch {
+      /* storage blocked / bad JSON -- default to showing both */
+    }
+    return { region: true, zone: true };
+  });
+  const setLevelPref = (level, value) =>
+    setLevelPrefs((prev) => {
+      const next = { ...prev, [level]: value };
+      try {
+        localStorage.setItem(levelsKey, JSON.stringify(next));
+      } catch {
+        /* private browsing / storage blocked -- the choice just won't persist */
+      }
+      return next;
+    });
   const toggleCombinedSort = (key) => {
     if (key === combinedSortKey) setCombinedSortDir(combinedSortDir === "asc" ? "desc" : "asc");
     else {
@@ -441,6 +481,21 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
   // Distinct banding per level (region darkest, zone lighter, station plain
   // white) so the three row types are unmistakable at a glance, not just from
   // the name column's own indentation/weight -- per 2026-09-20 feedback.
+  // Which grouping levels this viewer sees (2026-09-25 feedback): nationwide viewers get
+  // region -> zone -> station; a region-scoped user starts at region; a zone-scoped user at
+  // zone; a station-scoped user sees stations only. Region / zone-scoped users can also switch
+  // the region / zone rows off. Nationwide viewers keep the click-to-expand behaviour (rows
+  // start collapsed); scoped viewers' rows start expanded (the Sets then hold the COLLAPSED
+  // ones), since they only have a few of them.
+  const scopeType = me.scope_type;
+  const canHideRegionRows = scopeType === "region";
+  const canHideZoneRows = scopeType === "region" || scopeType === "zone";
+  const showRegionRows = (scopeType === "all" || scopeType === "region") && (scopeType === "all" || levelPrefs.region);
+  const showZoneRows = scopeType !== "station" && (scopeType === "all" || levelPrefs.zone);
+  const startsExpanded = scopeType !== "all";
+  const isRegionOpen = (key) => (startsExpanded ? !expandedRegions.has(key) : expandedRegions.has(key));
+  const isZoneOpen = (key) => (startsExpanded ? !expandedZones.has(key) : expandedZones.has(key));
+
   const combinedRowClassName = (row) => {
     if (row.type === "region") return "bg-slate-100";
     if (row.type === "zone") return "bg-slate-50";
@@ -449,13 +504,13 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
   const combinedColumns = [
     {
       key: "name",
-      label: "Region / Zone / Station",
+      label: [showRegionRows && "Region", showZoneRows && "Zone", "Station"].filter(Boolean).join(" / "),
       sticky: true,
       align: "left",
       render: (row) => {
         const caret = row.type !== "station" ? (
           <span className="text-slate-400">
-            {(row.type === "region" ? expandedRegions : expandedZones).has(row.key) ? "▾" : "▸"}
+            {(row.type === "region" ? isRegionOpen(row.key) : isZoneOpen(row.key)) ? "▾" : "▸"}
           </span>
         ) : null;
         if (row.type === "region") {
@@ -521,18 +576,14 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
       };
     }),
   ];
-  // A station-scoped user only ever has one region/zone/station to show --
-  // always-expand for them instead of making them click through empty nesting.
-  const combinedRows =
-    me.scope_type === "station"
-      ? buildCombinedRows(
-          filteredStations,
-          new Set(filteredStations.map((s) => s.region)),
-          new Set(filteredStations.map((s) => s.zone)),
-          combinedSortKey,
-          combinedSortDir
-        )
-      : buildCombinedRows(filteredStations, expandedRegions, expandedZones, combinedSortKey, combinedSortDir);
+  const combinedRows = buildCombinedRows(
+    filteredStations,
+    { showRegion: showRegionRows, showZone: showZoneRows },
+    isRegionOpen,
+    isZoneOpen,
+    combinedSortKey,
+    combinedSortDir
+  );
   const handleCombinedRowClick = (row) => {
     if (row.type === "station") {
       setDetailRow(row);
@@ -657,19 +708,33 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
               <>
                 Station Health{" "}
                 <span className="font-normal text-slate-400">
-                  — click a region/zone row to expand it, click a station row for detail, click a number for tracking
-                  IDs, click a column header to sort (sorts what's currently shown within its own region/zone, doesn't
-                  change what's expanded)
+                  — {showRegionRows || showZoneRows ? "click a region/zone row to expand or collapse it, " : ""}click a station
+                  row for detail, click a number for tracking IDs, click a column header to sort
+                  {showRegionRows || showZoneRows ? " (sorts within each group without changing what's expanded)" : ""}
                 </span>
               </>
             }
             titleExtra={
-              <button
-                onClick={() => exportStationHealthCsv(combinedRows.filter((r) => r.type === "station"))}
-                className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Export CSV
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                {canHideRegionRows && (
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={levelPrefs.region} onChange={(e) => setLevelPref("region", e.target.checked)} />
+                    Show region rows
+                  </label>
+                )}
+                {canHideZoneRows && (
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={levelPrefs.zone} onChange={(e) => setLevelPref("zone", e.target.checked)} />
+                    Show zone rows
+                  </label>
+                )}
+                <button
+                  onClick={() => exportStationHealthCsv(combinedRows.filter((r) => r.type === "station"))}
+                  className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Export CSV
+                </button>
+              </div>
             }
             maxHeight="75vh"
             columns={combinedColumns}
