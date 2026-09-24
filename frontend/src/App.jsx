@@ -4,6 +4,7 @@ import Dashboard from "./Dashboard";
 import SettingsPanel from "./SettingsPanel";
 import AdminPanel from "./AdminPanel";
 import Logo from "./components/Logo";
+import RoleTester from "./components/RoleTester";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
 
@@ -16,12 +17,13 @@ export default function App() {
   // the instant the app opens, regardless of which tab/sub-tab is active.
   const [freshness, setFreshness] = useState(null);
 
-  useEffect(() => {
+  const loadMe = () =>
     api
       .me()
       .then(setMe)
       .catch(() => setMe(null));
-  }, []);
+
+  useEffect(loadMe, []);
 
   if (me === undefined) {
     return (
@@ -116,6 +118,13 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            <RoleTester
+              me={me}
+              onChanged={() => {
+                setTab("dashboard");
+                loadMe();
+              }}
+            />
             <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                 {initials}

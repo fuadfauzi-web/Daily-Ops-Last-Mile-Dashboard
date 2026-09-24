@@ -1,8 +1,28 @@
+// "View As" (Settings -> Role Tester, admin-only): once set, every request
+// carries the override so the whole app -- not just /api/me -- renders as
+// that role/scope would see it. The backend only honours this for a real
+// admin (checked server-side from the SSO email, see auth.get_current_user),
+// so setting it client-side can't itself grant access to anything.
+let viewAs = null; // { role, scopeType, scopeValues } | null
+function setViewAs(next) {
+  viewAs = next;
+}
+function getViewAs() {
+  return viewAs;
+}
+
 // Always same-origin relative paths — the ingress routes /api to the backend.
 async function request(path, opts = {}) {
+  const viewAsHeaders = viewAs
+    ? {
+        "X-View-As-Role": viewAs.role,
+        "X-View-As-Scope-Type": viewAs.scopeType || "all",
+        "X-View-As-Scope-Values": (viewAs.scopeValues || []).join(","),
+      }
+    : {};
   const res = await fetch(path, {
     ...opts,
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    headers: { "Content-Type": "application/json", ...viewAsHeaders, ...(opts.headers || {}) },
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -22,6 +42,7 @@ async function request(path, opts = {}) {
 
 export const api = {
   me: () => request("/api/me"),
+  viewAs: { set: setViewAs, get: getViewAs },
   dashboard: () => request("/api/dashboard"),
   stations: () => request("/api/stations"),
   regions: () => request("/api/regions"),

@@ -533,10 +533,17 @@ class Me(BaseModel):
     scope_type: str | None = None
     scope_values: list[str] = []
     display_name: str | None = None
+    is_impersonating: bool = False
+    real_role: str | None = None
 
 
 @app.get("/api/me", response_model=Me)
-async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email")):
+async def me(
+    x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email"),
+    x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
+    x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
+    x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
+):
     if not x_forwarded_email:
         return {"email": None, "provisioned": False}
     row = await db.fetch_one(
@@ -546,9 +553,19 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
     if row is None:
         return {"email": x_forwarded_email, "provisioned": False}
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
+    real_role = row[1]
+    # Same "View As" override as auth.get_current_user -- gated on real_role
+    # from the DB, never on the override headers themselves.
+    if real_role == "admin" and x_view_as_role:
+        return {
+            "email": row[0], "provisioned": True, "role": x_view_as_role,
+            "scope_type": x_view_as_scope_type or "all",
+            "scope_values": [v for v in (x_view_as_scope_values or "").split(",") if v],
+            "display_name": row[4], "is_impersonating": True, "real_role": real_role,
+        }
     return {
         "email": row[0], "provisioned": True, "role": row[1], "scope_type": row[2],
-        "scope_values": parse_scope_values(row[3]), "display_name": row[4],
+        "scope_values": parse_scope_values(row[3]), "display_name": row[4], "real_role": real_role,
     }
 
 

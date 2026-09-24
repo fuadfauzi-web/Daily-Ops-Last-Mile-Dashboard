@@ -23,6 +23,12 @@ class CurrentUser:
     # region/zone/station (see V23 migration) -- always [] when scope_type='all'.
     scope_values: list[str]
     display_name: str | None
+    # 2026-09-24: "View As" -- an admin previewing a different role/scope's view
+    # without changing their own account (see get_current_user). role/scope_type/
+    # scope_values above are already the VIEWED-AS ones once this is true; real_role
+    # is what the signed-in person's account actually is, for the frontend's banner.
+    is_impersonating: bool = False
+    real_role: str = ""
 
 
 def parse_scope_values(raw) -> list[str]:
@@ -33,8 +39,14 @@ def parse_scope_values(raw) -> list[str]:
     return json.loads(raw)  # asyncmy returns JSON columns as a raw string
 
 
+_VIEW_AS_ROLES = ("admin", "manager", "region", "station")
+
+
 async def get_current_user(
     x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email"),
+    x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
+    x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
+    x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
 ) -> CurrentUser:
     if not x_forwarded_email:
         raise HTTPException(status_code=401, detail="Not signed in")
@@ -47,8 +59,26 @@ async def get_current_user(
             status_code=403,
             detail="Your account isn't set up yet. Ask your admin to add you.",
         )
+    real_role = row[1]
+    # "View As": an admin can preview a different role/scope's view (Settings ->
+    # Role Tester) without changing their own account -- gated on real_role read
+    # from the DB via the unspoofable SSO email above, never on the override
+    # headers themselves, so only a real admin can ever trigger this.
+    if real_role == "admin" and x_view_as_role:
+        if x_view_as_role not in _VIEW_AS_ROLES:
+            raise HTTPException(status_code=422, detail=f"view-as role must be one of {_VIEW_AS_ROLES}")
+        return CurrentUser(
+            email=row[0],
+            role=x_view_as_role,
+            scope_type=x_view_as_scope_type or "all",
+            scope_values=[v for v in (x_view_as_scope_values or "").split(",") if v],
+            display_name=row[4],
+            is_impersonating=True,
+            real_role=real_role,
+        )
     return CurrentUser(
-        email=row[0], role=row[1], scope_type=row[2], scope_values=parse_scope_values(row[3]), display_name=row[4]
+        email=row[0], role=real_role, scope_type=row[2], scope_values=parse_scope_values(row[3]),
+        display_name=row[4], real_role=real_role,
     )
 
 
