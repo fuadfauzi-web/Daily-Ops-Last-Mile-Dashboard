@@ -14,23 +14,27 @@ export function bundleStatusText(r) {
   return r.bundle_status ?? "—";
 }
 
+// `sort` is the raw value a column sorts by (dates by their ISO text, not the pretty label).
 const COLUMNS = [
-  { label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "" },
-  { label: "RDO Status", text: (r) => r.rdo_status ?? "" },
-  { label: "RDO Created", text: (r) => formatLocalDateTime(r.rdo_created_at) },
-  { label: "Age (days)", text: (r) => (r.age ?? "") },
-  { label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "" },
-  { label: "Bundle Status", text: bundleStatusText },
-  { label: "Bundle Last Sweep Hub", text: (r) => r.bundle_last_sweep_hub ?? "" },
-  { label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at) },
+  { label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "", sort: (r) => r.tracking_number },
+  { label: "RDO Status", text: (r) => r.rdo_status ?? "", sort: (r) => r.rdo_status },
+  { label: "RDO Created", text: (r) => formatLocalDateTime(r.rdo_created_at), sort: (r) => r.rdo_created_at },
+  { label: "Age (days)", text: (r) => (r.age ?? ""), sort: (r) => r.age },
+  { label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "", sort: (r) => r.bundle_tracking_number },
+  { label: "Bundle Status", text: bundleStatusText, sort: (r) => r.bundle_delivered_at || r.bundle_status },
+  { label: "Bundle Last Sweep Hub", text: (r) => r.bundle_last_sweep_hub ?? "", sort: (r) => r.bundle_last_sweep_hub },
+  { label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at), sort: (r) => r.bundle_last_sweep_at },
 ];
 
 export default function RdoTnModal({ state, onClose }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [sortIdx, setSortIdx] = useState(null);
+  const [sortDir, setSortDir] = useState("asc");
 
   useEffect(() => {
+    setSortIdx(null);
     if (!state) return;
     setData(null);
     setError(null);
@@ -42,7 +46,27 @@ export default function RdoTnModal({ state, onClose }) {
   }, [state]);
 
   if (!state) return null;
-  const rows = data?.tn_rows || [];
+  const rawRows = data?.tn_rows || [];
+  // Click a header to sort; empty values always sort last.
+  const rows =
+    sortIdx === null
+      ? rawRows
+      : [...rawRows].sort((a, b) => {
+          const av = COLUMNS[sortIdx].sort(a);
+          const bv = COLUMNS[sortIdx].sort(b);
+          const aEmpty = av == null || av === "";
+          const bEmpty = bv == null || bv === "";
+          if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
+          const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+          return sortDir === "asc" ? cmp : -cmp;
+        });
+  const toggleSort = (i) => {
+    if (sortIdx === i) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortIdx(i);
+      setSortDir("asc");
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-3 pt-[6vh]" onClick={onClose}>
@@ -98,9 +122,12 @@ export default function RdoTnModal({ state, onClose }) {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
                     <tr>
-                      {COLUMNS.map((c) => (
+                      {COLUMNS.map((c, i) => (
                         <th key={c.label} className="whitespace-nowrap px-3 py-2 font-medium">
-                          {c.label}
+                          <button onClick={() => toggleSort(i)} className="flex items-center gap-1 font-medium hover:text-brand">
+                            {c.label}
+                            <span className="text-[10px]">{sortIdx === i ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
+                          </button>
                         </th>
                       ))}
                     </tr>

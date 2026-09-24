@@ -38,6 +38,15 @@ const STATION_COUNT_COLUMNS = [
 ];
 
 // `preset` lets a parent (the Restock NXD station table) narrow this list: { station, classes, nonce }.
+// Sort helper for every column: empty values always sort last, whichever direction.
+function compareValues(av, bv, dir) {
+  const aEmpty = av == null || av === "";
+  const bEmpty = bv == null || bv === "";
+  if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
+  const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+  return dir === "asc" ? cmp : -cmp;
+}
+
 // Long text kept to one short line (full text on hover) so the table stays compact.
 function Clip({ text, width }) {
   if (!text) return <span className="text-slate-300">—</span>;
@@ -118,13 +127,7 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
     let out = baseRows;
     if (stationFilter.length) out = out.filter((r) => stationFilter.includes(r.station_name));
     if (classFilter.length) out = out.filter((r) => classFilter.includes(r.bundle_class) || (classFilter.includes("on_hold") && r.on_hold_pieces > 0));
-    return [...out].sort((a, b) => {
-      const av = a[tnSortKey];
-      const bv = b[tnSortKey];
-      if (av == null || bv == null) return 0;
-      if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      return tnSortDir === "asc" ? av - bv : bv - av;
-    });
+    return [...out].sort((a, b) => compareValues(a[tnSortKey], b[tnSortKey], tnSortDir));
   }, [baseRows, stationFilter, classFilter, tnSortKey, tnSortDir]);
 
   const toggle = (key, curKey, curDir, setKey, setDir) => {
@@ -175,7 +178,7 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
     },
     { key: "on_hold_pieces", label: "On Hold", render: (r) => r.on_hold_pieces || "—", className: (r) => (r.on_hold_pieces > 0 ? "font-semibold text-status-warning" : "text-slate-400") },
     { key: "attempts", label: "Attempt", render: (r) => r.attempts ?? "—" },
-    { key: "statuses", label: "Piece statuses", align: "left", sortable: false, className: () => "text-xs text-slate-600", render: (r) => <Clip text={r.statuses} width="max-w-[130px]" /> },
+    { key: "statuses", label: "Piece statuses", align: "left", className: () => "text-xs text-slate-600", render: (r) => <Clip text={r.statuses} width="max-w-[130px]" /> },
     { key: "aging_days", label: "Aging (days)", render: (r) => r.aging_days },
     { key: "days_group", label: "Days group", align: "left", className: () => "text-xs text-slate-500", render: (r) => <Clip text={r.days_group} width="max-w-[110px]" /> },
     {
@@ -187,7 +190,7 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
         </span>
       ),
     },
-    { key: "hold_details", label: "Hold details", align: "left", sortable: false, className: () => "text-xs text-slate-500", render: (r) => <Clip text={r.hold_details} width="max-w-[140px]" /> },
+    { key: "hold_details", label: "Hold details", align: "left", className: () => "text-xs text-slate-500", render: (r) => <Clip text={r.hold_details} width="max-w-[140px]" /> },
   ];
 
   const csvHeaders = [

@@ -12,5 +12,7 @@ export const FEATURES = {
   coldChain: true, // Cold Chain tab / sub-tab
   restockBundles: true, // Restock bundle list, Restock On Hold Details, B2B Document Compliance (RDO)
   // People / tools
-  roleTesterUser: true, // Role Tester can also view as one specific user
+  hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
+  roleTester: true, // admin Role Tester in the header (preview a role / scope)
+  roleTesterUser: true, // ...and view as one specific user
 };

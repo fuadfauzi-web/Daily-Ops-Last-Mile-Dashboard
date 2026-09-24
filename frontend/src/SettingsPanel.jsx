@@ -562,7 +562,8 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const [userSortKey, setUserSortKey] = useState("email");
   const [userSortDir, setUserSortDir] = useState("asc");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [scopeFilter, setScopeFilter] = useState("all");
+  const [scopeTypeFilter, setScopeTypeFilter] = useState("all"); // all | all-scope ("Everything") | region | zone | station
+  const [scopeValuesFilter, setScopeValuesFilter] = useState([]); // searchable pick of specific regions / zones / stations
   const [neverOpenedOnly, setNeverOpenedOnly] = useState(false);
   const [error, setError] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
@@ -586,10 +587,20 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
-  // Every distinct region/zone/station value any listed user is scoped to, for the Scope filter.
+  // Every distinct region/zone/station any listed user is scoped to (narrowed to the chosen
+  // scope type), for the searchable Scope filter.
   const scopeOptions = useMemo(
-    () => Array.from(new Set((users || []).flatMap((u) => u.scope_values || []))).sort(),
-    [users]
+    () =>
+      Array.from(
+        new Set(
+          (users || [])
+            .filter((u) => scopeTypeFilter === "all" || u.scope_type === scopeTypeFilter)
+            .flatMap((u) => u.scope_values || [])
+        )
+      )
+        .sort()
+        .map((v) => ({ value: v, label: v })),
+    [users, scopeTypeFilter]
   );
 
   const scopeText = (u) => (u.scope_type === "all" ? "Everything" : (u.scope_values || []).join(", "));
@@ -605,8 +616,9 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       );
     }
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter);
-    if (scopeFilter === "everything") list = list.filter((u) => u.scope_type === "all");
-    else if (scopeFilter !== "all") list = list.filter((u) => (u.scope_values || []).includes(scopeFilter));
+    if (scopeTypeFilter === "everything") list = list.filter((u) => u.scope_type === "all");
+    else if (scopeTypeFilter !== "all") list = list.filter((u) => u.scope_type === scopeTypeFilter);
+    if (scopeValuesFilter.length) list = list.filter((u) => (u.scope_values || []).some((v) => scopeValuesFilter.includes(v)));
     if (neverOpenedOnly) list = list.filter((u) => !u.last_seen_at);
 
     const dir = userSortDir === "asc" ? 1 : -1;
@@ -623,7 +635,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
       return cmp * dir || a.email.localeCompare(b.email);
     });
-  }, [users, userSearch, roleFilter, scopeFilter, neverOpenedOnly, userSortKey, userSortDir]);
+  }, [users, userSearch, roleFilter, scopeTypeFilter, scopeValuesFilter, neverOpenedOnly, userSortKey, userSortDir]);
 
   const toggleUserSort = (key) => {
     if (key === userSortKey) setUserSortDir(userSortDir === "asc" ? "desc" : "asc");
@@ -993,19 +1005,30 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 ))}
               </select>
               <select
-                value={scopeFilter}
-                onChange={(e) => setScopeFilter(e.target.value)}
-                aria-label="Filter by scope"
-                className="h-8 max-w-[11rem] rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+                value={scopeTypeFilter}
+                onChange={(e) => {
+                  setScopeTypeFilter(e.target.value);
+                  setScopeValuesFilter([]);
+                }}
+                aria-label="Filter by scope type"
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
               >
-                <option value="all">All scopes</option>
+                <option value="all">All scope types</option>
                 <option value="everything">Everything (nationwide)</option>
-                {scopeOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
+                <option value="region">Region</option>
+                <option value="zone">Zone</option>
+                <option value="station">Station</option>
               </select>
+              {scopeTypeFilter !== "everything" && (
+                <div className="w-52">
+                  <MultiSelect
+                    options={scopeOptions}
+                    value={scopeValuesFilter}
+                    onChange={setScopeValuesFilter}
+                    placeholder="Search scope…"
+                  />
+                </div>
+              )}
               <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
                 <input type="checkbox" checked={neverOpenedOnly} onChange={(e) => setNeverOpenedOnly(e.target.checked)} />
                 Never opened

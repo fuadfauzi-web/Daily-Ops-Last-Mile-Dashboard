@@ -5,6 +5,7 @@ import { ALL_COLUMNS } from "./lib/metrics";
 import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
+import { FEATURES } from "./lib/features";
 import DataTable from "./components/DataTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
@@ -65,7 +66,6 @@ const TABS = [
   { key: "health", label: "Station Health" },
   { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
-  { key: "coldchain", label: "Cold Chain" },
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Shipper Radar" },
@@ -574,11 +574,11 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
 
       <div className="text-sm text-slate-500">{filteredStations.length} stations in scope</div>
 
-      {showTotalCard && (
+      {!FEATURES.hideSummaryCards && showTotalCard && (
         <SummaryCard label="TOTAL LAST MILE" active={false} clickable={false} emphasis stats={cardStats(sumMetrics(scopedStations))} />
       )}
 
-      {cards.length > 0 && (
+      {!FEATURES.hideSummaryCards && cards.length > 0 && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {cards.map((c) => (
             <SummaryCard
@@ -729,15 +729,6 @@ export default function Dashboard({ me, onCapturedAt, notifCounts }) {
 
       {tab === "aging" && (
         <AgingDetailsTab
-          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
-          refreshTick={refreshTick}
-        />
-      )}
-
-      {tab === "coldchain" && (
-        <AgingDetailsTab
-          source="coldchain"
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}

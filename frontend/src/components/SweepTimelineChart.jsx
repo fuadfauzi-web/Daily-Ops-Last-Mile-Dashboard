@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MultiSelect from "./MultiSelect";
 
 // Hour-of-day trend of three events on one chart: when parcels were first
@@ -65,6 +65,18 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
   const [stationCodes, setStationCodes] = useState([]);
   const [hidden, setHidden] = useState({});
   const [hover, setHover] = useState(null);
+  // The SVG is drawn at its real pixel width (measured), not scaled from a fixed viewBox --
+  // scaling made the axis text bigger than every other label on the page (2026-09-25 feedback).
+  const [wrapEl, setWrapEl] = useState(null);
+  const [width, setWidth] = useState(720);
+  useEffect(() => {
+    if (!wrapEl) return undefined;
+    const measure = () => setWidth(Math.max(320, Math.round(wrapEl.clientWidth)));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrapEl);
+    return () => ro.disconnect();
+  }, [wrapEl]);
 
   const overriding = region !== "all" || zone !== "all" || stationCodes.length > 0;
 
@@ -125,12 +137,11 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
   const grand = SERIES.reduce((a, s) => a + totals[s.key].reduce((x, y) => x + y, 0), 0);
   const visible = SERIES.filter((s) => !hidden[s.key]);
 
-  const width = 720;
-  const height = 100;
-  const padLeft = 30;
+  const height = 108;
+  const padLeft = 36;
   const padRight = 10;
-  const padBottom = 17;
-  const padTop = 9;
+  const padBottom = 22;
+  const padTop = 10;
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
   const baseline = padTop + plotH;
@@ -227,10 +238,11 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
       {grand === 0 ? (
         <div className="p-6 text-center text-sm text-slate-400">No timing data for this selection.</div>
       ) : (
-        <div className="relative">
+        <div className="relative" ref={setWrapEl}>
           <svg
-            viewBox={`0 0 ${width} ${height}`}
-            className="w-full"
+            width={width}
+            height={height}
+            className="block"
             role="img"
             aria-label="Scan-in, first attempt and success by hour of day"
             onMouseMove={onMove}
@@ -256,14 +268,14 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
                   strokeWidth="1"
                   strokeDasharray={f === 0 ? undefined : "3 3"}
                 />
-                <text x={padLeft - 5} y={y(yMax * f) + 3} textAnchor="end" className="fill-slate-400 text-[9px]">
+                <text x={padLeft - 5} y={y(yMax * f) + 3} textAnchor="end" className="fill-slate-500 text-xs">
                   {compact(Math.round(yMax * f))}
                 </text>
               </g>
             ))}
             {Array.from({ length: 24 }, (_, h) =>
               h % 3 === 0 ? (
-                <text key={h} x={x(h)} y={height - 5} textAnchor="middle" className="fill-slate-400 text-[9px]">
+                <text key={h} x={x(h)} y={height - 5} textAnchor="middle" className="fill-slate-500 text-xs">
                   {formatHour(h)}
                 </text>
               ) : null

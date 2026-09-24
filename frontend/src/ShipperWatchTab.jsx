@@ -17,7 +17,7 @@ import AgingDetailsTab from "./AgingDetailsTab";
 const RADAR_SUB_TABS = [
   { key: "sla", label: "Shipper SLA" },
   { key: "restock", label: "Restock" },
-  { key: "cold", label: "Cold Chain" }, // 2026-09-25: also reachable here, next to the top-level Cold Chain tab
+  { key: "cold", label: "Cold Chain" }, // 2026-09-25: lives here only (its own top-level tab was removed)
 ];
 
 // Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt

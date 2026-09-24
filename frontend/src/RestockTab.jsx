@@ -258,12 +258,15 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
     if (tnStationFilter.length) rows = rows.filter((r) => tnStationFilter.includes(r.station_name));
     if (tnStatusFilter.length) rows = rows.filter((r) => r.rdo_status && tnStatusFilter.includes(r.rdo_status));
     if (tnBundleFilter.length) rows = rows.filter((r) => r.bundle_status && tnBundleFilter.includes(r.bundle_status));
+    // Empty values always sort last, whichever direction.
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
-      if (av == null || bv == null) return 0;
-      if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      return tnSortDir === "asc" ? av - bv : bv - av;
+      const aEmpty = av == null || av === "";
+      const bEmpty = bv == null || bv === "";
+      if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
+      const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+      return tnSortDir === "asc" ? cmp : -cmp;
     });
   }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter, tnBundleFilter]);
 
