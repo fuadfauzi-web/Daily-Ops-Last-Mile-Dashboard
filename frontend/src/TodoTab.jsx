@@ -234,7 +234,7 @@ export default function TodoTab({ refreshTick }) {
           sortDir={sortDir}
           onSort={toggle}
           emptyMessage={view === "done" ? "Nothing finished yet." : "Nothing on your list -- add something above."}
-          footer={<>{rows.length} item{rows.length === 1 ? "" : "s"} · private to you · a reminder rings the Task List bell once its time has come, until you dismiss it or finish the item; 100% counts as done.</>}
+          footer={<>{rows.length} item{rows.length === 1 ? "" : "s"} · private to you · a reminder rings the Task List bell once its time has come, until you dismiss it or finish the item; an amber dot means something is due within 2 days; 100% counts as done.</>}
         />
       )}
     </div>

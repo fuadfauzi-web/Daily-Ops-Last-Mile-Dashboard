@@ -38,9 +38,10 @@ export const CHANGELOG = [
     feature: "taskList",
     points: [
       "The Urgent TN tab is now the Task List, with four sub-tabs: Urgent TN, Email / Gchat, To Do List and Task Assigned. Each has its own bell.",
-      "Email / Gchat: list the emails and chats you want to follow up, with a due date, and ask another user to help reply or remind you.",
-      "To Do List: your own tracker with due dates, progress and optional reminders.",
+      "Email / Gchat: list the emails and chats you want to follow up, with a due date, and assign a PIC (another user, picked from suggestions as you type) to help reply or remind you.",
       "Task Assigned: give a task to another user; they update its status and reply.",
+      "To Do List: your own tracker with due dates, progress and optional reminders.",
+      "A small amber dot on the tab and sub-tab shows when something of yours is due within 2 days or overdue.",
     ],
   },
   {

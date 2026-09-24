@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import BellBadge from "./BellBadge";
+import DueDot from "./DueDot";
 
 // Level-2 navigation: an underlined tab bar (Ninja Black text, brand-red
 // underline on the active tab -- not filled pills, which are Level 1's look
@@ -7,7 +8,7 @@ import BellBadge from "./BellBadge";
 // fit into a right-aligned "More ▾" menu -- built to scale as more
 // top-level views get added, rather than a left sidebar (these tables run
 // to 19 columns wide and need every pixel).
-function TabButton({ label, active, onClick, className = "", badge = 0 }) {
+function TabButton({ label, active, onClick, className = "", badge = 0, dot = 0 }) {
   return (
     <button
       onClick={onClick}
@@ -17,6 +18,7 @@ function TabButton({ label, active, onClick, className = "", badge = 0 }) {
     >
       {label}
       {badge > 0 && <BellBadge count={badge} />}
+      {dot > 0 && <DueDot count={dot} />}
     </button>
   );
 }
@@ -82,13 +84,13 @@ export default function TabBar({ tabs, activeKey, onSelect }) {
           read natural widths so we know how many fit before rendering. */}
       <div ref={measureRef} className="pointer-events-none invisible absolute left-0 top-0 flex" aria-hidden="true">
         {tabs.map((t) => (
-          <TabButton key={t.key} label={t.label} active={t.key === activeKey} badge={t.badge} />
+          <TabButton key={t.key} label={t.label} active={t.key === activeKey} badge={t.badge} dot={t.dot} />
         ))}
       </div>
 
       <div className="flex flex-1 overflow-x-auto">
         {visible.map((t) => (
-          <TabButton key={t.key} label={t.label} active={t.key === activeKey} onClick={() => onSelect(t.key)} badge={t.badge} />
+          <TabButton key={t.key} label={t.label} active={t.key === activeKey} onClick={() => onSelect(t.key)} badge={t.badge} dot={t.dot} />
         ))}
       </div>
 
@@ -110,6 +112,7 @@ export default function TabBar({ tabs, activeKey, onSelect }) {
                 >
                   {t.label}
                   {t.badge > 0 && <BellBadge count={t.badge} />}
+                  {t.dot > 0 && <DueDot count={t.dot} />}
                 </button>
               ))}
             </div>

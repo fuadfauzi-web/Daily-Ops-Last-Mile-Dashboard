@@ -248,7 +248,7 @@ export default function TaskAssignedTab({ refreshTick }) {
           sortDir={sortDir}
           onSort={toggle}
           emptyMessage={view === "mine" ? "Nothing is assigned to you." : view === "byme" ? "You haven't assigned anything." : "Nothing done yet."}
-          footer={<>{rows.length} task{rows.length === 1 ? "" : "s"} · the Task List bell rings for a task assigned to you that you haven't picked a status for (and while it's due or overdue), and for a reply or status change on one you assigned.</>}
+          footer={<>{rows.length} task{rows.length === 1 ? "" : "s"} · the Task List bell rings for a task assigned to you that you haven't picked a status for (and while it's due or overdue), and for a reply or status change on one you assigned; an amber dot means one of yours is due within 2 days.</>}
         />
       )}
     </div>

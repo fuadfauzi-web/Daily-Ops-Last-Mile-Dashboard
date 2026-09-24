@@ -2813,6 +2813,9 @@ class Notifications(BaseModel):
     followups_notify: int
     todos_notify: int
     tasks_notify: int
+    followups_due_soon: int
+    todos_due_soon: int
+    tasks_due_soon: int
 
 
 @app.get("/api/notifications", response_model=Notifications)

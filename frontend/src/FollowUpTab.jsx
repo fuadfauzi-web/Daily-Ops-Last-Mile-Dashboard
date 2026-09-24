@@ -126,11 +126,11 @@ export default function FollowUpTab({ me, refreshTick }) {
         </div>
       ),
     },
-    { key: "contact", label: "With", render: (r) => r.contact || "—", className: () => "text-slate-700" },
+    { key: "contact", label: "Contact", render: (r) => r.contact || "—", className: () => "text-slate-700" },
     { key: "due_date", label: "Due", render: dueLabel, className: dueClass },
     {
       key: "helper",
-      label: "Helper",
+      label: "PIC",
       render: (r) =>
         r.helper_email ? (
           <>
@@ -146,7 +146,7 @@ export default function FollowUpTab({ me, refreshTick }) {
     },
     {
       key: "helper_reply",
-      label: "Helper Reply",
+      label: "PIC Reply",
       align: "left",
       render: (r) =>
         r.helper_reply ? (
@@ -213,7 +213,7 @@ export default function FollowUpTab({ me, refreshTick }) {
             <option value="gchat">Gchat</option>
           </select>
           <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Subject / what it's about" value={form.subject} onChange={(e) => set("subject")(e.target.value)} maxLength={255} />
-          <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="With whom (name or email)" value={form.contact} onChange={(e) => set("contact")(e.target.value)} maxLength={255} />
+          <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Contact — who is it with? (the sender or recipient)" value={form.contact} onChange={(e) => set("contact")(e.target.value)} maxLength={255} />
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           <label className="block text-xs text-slate-500">
@@ -225,7 +225,7 @@ export default function FollowUpTab({ me, refreshTick }) {
             <input className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="https://…" value={form.link} onChange={(e) => set("link")(e.target.value)} maxLength={500} />
           </label>
           <label className="block text-xs text-slate-500">
-            Ask someone to help reply / remind you (optional)
+            Assign a PIC (optional) — they help reply or remind you
             <PicInput className="mt-1" placeholder="Start typing a name or email…" value={form.helper} onChange={set("helper")} />
           </label>
         </div>
@@ -237,7 +237,7 @@ export default function FollowUpTab({ me, refreshTick }) {
           {rows.length > 0 && (
             <button
               onClick={() =>
-                exportCsv(`daily-ops-followups-${new Date().toISOString().slice(0, 10)}.csv`, ["Channel", "Subject", "With", "Due", "Status", "Helper", "Helper reply", "Note"],
+                exportCsv(`daily-ops-followups-${new Date().toISOString().slice(0, 10)}.csv`, ["Channel", "Subject", "Contact", "Due", "Status", "PIC", "PIC reply", "Note"],
                   rows.map((r) => [CHANNEL_LABEL[r.channel] || r.channel, r.subject, r.contact ?? "", r.due_date ?? "", r.status, r.helper_email ?? "", r.helper_reply ?? "", r.note ?? ""]))
               }
               className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600"
@@ -256,10 +256,10 @@ export default function FollowUpTab({ me, refreshTick }) {
           <div className="font-display text-xs font-semibold text-slate-700">Edit — {editing.subject}</div>
           <div className="grid gap-2 sm:grid-cols-3">
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} placeholder="Subject" />
-            <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.contact} onChange={(e) => setEdit({ ...edit, contact: e.target.value })} placeholder="With whom" />
+            <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.contact} onChange={(e) => setEdit({ ...edit, contact: e.target.value })} placeholder="Contact (sender / recipient)" />
             <input type="date" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.due_date} onChange={(e) => setEdit({ ...edit, due_date: e.target.value })} />
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.link} onChange={(e) => setEdit({ ...edit, link: e.target.value })} placeholder="Link" />
-            <PicInput placeholder="Helper (blank for none)" value={edit.helper} onChange={(v) => setEdit({ ...edit, helper: v })} />
+            <PicInput placeholder="PIC (blank for none)" value={edit.helper} onChange={(v) => setEdit({ ...edit, helper: v })} />
             <input className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} placeholder="Note" />
           </div>
           <div className="flex gap-2">
@@ -283,7 +283,7 @@ export default function FollowUpTab({ me, refreshTick }) {
       <SegmentedControl
         options={[
           { key: "open", label: `My follow-ups (${counts.open})` },
-          { key: "helping", label: `Helping me (${counts.helping})` },
+          { key: "helping", label: `Assigned to me (${counts.helping})` },
           { key: "done", label: `Done (${counts.done})` },
         ]}
         value={view}
@@ -302,11 +302,11 @@ export default function FollowUpTab({ me, refreshTick }) {
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={toggle}
-          emptyMessage={view === "helping" ? "Nobody has asked you to help with a follow-up." : view === "done" ? "Nothing done yet." : "Nothing to follow up -- add an email or Gchat above."}
+          emptyMessage={view === "helping" ? "No follow-up has been assigned to you." : view === "done" ? "Nothing done yet." : "Nothing to follow up -- add an email or Gchat above."}
           footer={
             <>
               {rows.length} follow-up{rows.length === 1 ? "" : "s"} · the Task List bell rings for follow-ups due today or overdue, for a reply from
-              your helper, and (for a helper) until you acknowledge one. Only you and your helper can see a follow-up.
+              your PIC, and (for a PIC) until you acknowledge one; an amber dot means something is due within 2 days. Only you and your PIC can see a follow-up.
             </>
           }
         />

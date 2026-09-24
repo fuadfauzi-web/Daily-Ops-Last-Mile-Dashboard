@@ -361,17 +361,19 @@ const SECTIONS = [
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          The Task List tab keeps everything you have to chase in one place, in four sub-tabs. Each sub-tab has its own red bell, and the tab shows
-          them added up.
+          The Task List tab keeps everything you have to chase in one place, in four sub-tabs (Urgent TN, Email / Gchat, Task Assigned, To Do List).
+          Each sub-tab has its own red bell, and the tab shows them added up. A small <strong>amber dot</strong> on the tab and the sub-tab means one of
+          your follow-ups, tasks or to-dos is due within 2 days (or is overdue).
         </p>
         <Bullets
           items={[
             <><strong>Urgent TN</strong>: tracking numbers you want to keep an eye on, optionally assigned to a PIC (see the Urgent TN section).</>,
             <>
-              <strong>Email / Gchat</strong>: emails or chats you want to follow up again. Give each a due date, the person it's with and, if you
-              like, a link. You can ask another dashboard user to help reply or to remind you: they see it under <em>Helping me</em>, can
-              <em> Acknowledge</em> it and type back what they did. You mark it Done. The bell rings for follow-ups due today or overdue, and for
-              a helper until they acknowledge.
+              <strong>Email / Gchat</strong>: emails or chats you want to follow up again. Give each a due date, the <em>contact</em> (the person
+              the email or chat is with -- the sender or recipient) and, if you like, a link. You can assign a <em>PIC</em> -- another dashboard
+              user (start typing their name or email and pick them) -- to help reply or to remind you: they see it under <em>Assigned to me</em>,
+              can <em>Acknowledge</em> it and type back what they did. You mark it Done. The bell rings for follow-ups due today or overdue, and
+              for a PIC until they acknowledge.
             </>,
             <>
               <strong>To Do List</strong>: your own private tracker. Add what you need to do with a due date and a progress (0–100%; 100% counts as

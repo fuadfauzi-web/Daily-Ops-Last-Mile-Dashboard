@@ -25,6 +25,9 @@ router = APIRouter()
 
 _MYT = timezone(timedelta(hours=8))
 CHANNELS = ("email", "gchat")
+# "Approaching": due within this many days (or already overdue) puts an amber dot on the Task List
+# tab and the sub-tab (2026-09-25 feedback).
+DUE_SOON_DAYS = 2
 
 
 class Ok(BaseModel):
@@ -617,7 +620,8 @@ async def notification_counts(user: CurrentUser) -> dict:
                         follow-ups someone asked me to help with that I haven't acknowledged
       todos_notify      my to-dos whose reminder time has come (until dismissed)
       tasks_notify      tasks assigned to me that are unacknowledged or due/overdue, plus tasks I
-                        assigned where the assignee replied / changed the status"""
+                        assigned where the assignee replied / changed the status
+      *_due_soon        open items of mine due within DUE_SOON_DAYS (or overdue) -- the amber dots"""
     me = user.email.lower()
     today = _today()
     followups = await db.fetch_one(
@@ -636,10 +640,26 @@ async def notification_counts(user: CurrentUser) -> dict:
               OR (LOWER(created_by) = %s AND owner_unseen = 1)""",
         (me, today, me),
     )
+    soon = today + timedelta(days=DUE_SOON_DAYS)
+    fu_soon = await db.fetch_one(
+        "SELECT COUNT(*) FROM followups WHERE LOWER(created_by) = %s AND status <> 'done' AND due_date IS NOT NULL AND due_date <= %s",
+        (me, soon),
+    )
+    td_soon = await db.fetch_one(
+        "SELECT COUNT(*) FROM todos WHERE LOWER(owner) = %s AND progress < 100 AND due_date IS NOT NULL AND due_date <= %s",
+        (me, soon),
+    )
+    tk_soon = await db.fetch_one(
+        "SELECT COUNT(*) FROM assigned_tasks WHERE LOWER(assignee_email) = %s AND status <> 'done' AND due_date IS NOT NULL AND due_date <= %s",
+        (me, soon),
+    )
     return {
         "followups_notify": int(followups[0] or 0),
         "todos_notify": sum(1 for r in todo_rows if _reminder_due(r[0], r[1], r[2])),
         "tasks_notify": int(tasks[0] or 0),
+        "followups_due_soon": int(fu_soon[0] or 0),
+        "todos_due_soon": int(td_soon[0] or 0),
+        "tasks_due_soon": int(tk_soon[0] or 0),
     }
 
 

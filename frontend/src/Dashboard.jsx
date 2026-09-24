@@ -690,6 +690,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
                 ...t,
                 // With the Task List flag on, this tab is the Task List and its bell adds up all four sub-tabs.
                 label: FEATURES.taskList ? "Task List" : t.label,
+                dot: FEATURES.taskList ? (notifCounts?.followups_due_soon || 0) + (notifCounts?.todos_due_soon || 0) + (notifCounts?.tasks_due_soon || 0) : 0,
                 badge:
                   (notifCounts?.urgent_notify || 0) +
                   (notifCounts?.urgent_owner_updates || 0) +

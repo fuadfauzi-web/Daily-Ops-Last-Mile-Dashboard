@@ -1,5 +1,6 @@
 import { useState } from "react";
 import BellBadge from "./components/BellBadge";
+import DueDot from "./components/DueDot";
 import SegmentedControl from "./components/SegmentedControl";
 import UrgentTnTab from "./UrgentTnTab";
 import FollowUpTab from "./FollowUpTab";
@@ -30,10 +31,12 @@ export default function TaskListTab({ me, refreshTick, notifCounts }) {
   };
 
   const n = notifCounts || {};
-  const label = (text, count) => (
+  // Red bell = needs an answer / reminder rang; amber dot = something is due within 2 days or overdue.
+  const label = (text, count, dueSoon = 0) => (
     <>
       {text}
       <BellBadge count={count} />
+      <DueDot count={dueSoon} />
     </>
   );
 
@@ -42,17 +45,17 @@ export default function TaskListTab({ me, refreshTick, notifCounts }) {
       <SegmentedControl
         options={[
           { key: "urgent", label: label("Urgent TN", (n.urgent_notify || 0) + (n.urgent_owner_updates || 0)) },
-          { key: "followups", label: label("Email / Gchat", n.followups_notify || 0) },
-          { key: "todos", label: label("To Do List", n.todos_notify || 0) },
-          { key: "tasks", label: label("Task Assigned", n.tasks_notify || 0) },
+          { key: "followups", label: label("Email / Gchat", n.followups_notify || 0, n.followups_due_soon || 0) },
+          { key: "tasks", label: label("Task Assigned", n.tasks_notify || 0, n.tasks_due_soon || 0) },
+          { key: "todos", label: label("To Do List", n.todos_notify || 0, n.todos_due_soon || 0) },
         ]}
         value={sub}
         onChange={setSub}
       />
       {sub === "urgent" && <UrgentTnTab me={me} refreshTick={refreshTick} />}
       {sub === "followups" && <FollowUpTab me={me} refreshTick={refreshTick} />}
-      {sub === "todos" && <TodoTab me={me} refreshTick={refreshTick} />}
       {sub === "tasks" && <TaskAssignedTab me={me} refreshTick={refreshTick} />}
+      {sub === "todos" && <TodoTab me={me} refreshTick={refreshTick} />}
     </div>
   );
 }
