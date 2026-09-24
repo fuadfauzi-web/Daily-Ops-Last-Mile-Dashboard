@@ -32,15 +32,27 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [items, setItems] = useState(null);
   const [asOf, setAsOf] = useState(null);
   const [view, setView] = useState("open");
+  // 2026-09-25 feedback: every header sorts; newest entry first by default.
+  const [sortKey, setSortKey] = useState("created_at");
+  const [sortDir, setSortDir] = useState("desc");
+  const toggleSort = (key) => {
+    if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir(key === "created_at" || key === "age" ? "desc" : "asc");
+    }
+  };
   const [input, setInput] = useState("");
   const [assignee, setAssignee] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
-  const [editing, setEditing] = useState(null); // owner: item being re-assigned / re-noted
-  const [editAssignee, setEditAssignee] = useState("");
-  const [editNote, setEditNote] = useState("");
+  // "Assign to another PIC": adds one more PIC for a tracking number without touching the PICs who
+  // already have it (the owner can add several, and a PIC can pass it on while keeping their copy).
+  const [delegating, setDelegating] = useState(null);
+  const [delegateAssignee, setDelegateAssignee] = useState("");
+  const [delegateNote, setDelegateNote] = useState("");
   const [replying, setReplying] = useState(null); // PIC: item being replied to
   const [replyText, setReplyText] = useState("");
   // Items that were NEW / UPDATED when this tab was opened stay highlighted for the visit,
@@ -117,17 +129,20 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const setStatus = (item, status) => run(() => api.urgentTn.update(item.id, { status }));
   // No "are you sure?" pop-up (2026-09-25 feedback): Close / remove deletes it straight away.
   const closeOrRemove = (item) => run(() => api.urgentTn.remove(item.id), `Removed ${item.tracking_number}`);
-  const startEdit = (item) => {
-    setEditing(item);
-    setEditAssignee(item.assignee_email || "");
-    setEditNote(item.note || "");
+  const startDelegate = (item) => {
+    setDelegating(item);
+    setDelegateAssignee("");
+    setDelegateNote(item.note || "");
   };
-  const saveEdit = async () => {
-    const payload = { note: editNote };
-    if (editAssignee.trim()) payload.assignee_email = editAssignee.trim();
-    else payload.clear_assignee = true;
-    const ok = await run(() => api.urgentTn.update(editing.id, payload));
-    if (ok) setEditing(null);
+  const saveDelegate = async () => {
+    const ok = await run(() =>
+      api.urgentTn.create({
+        tracking_numbers: [delegating.tracking_number],
+        assignee_email: delegateAssignee.trim(),
+        note: delegateNote.trim() || null,
+      })
+    );
+    if (ok) setDelegating(null);
   };
   const startReply = (item) => {
     setReplying(item);
@@ -151,10 +166,45 @@ export default function UrgentTnTab({ me, refreshTick }) {
 
   const rows = useMemo(() => {
     const list = items || [];
-    if (view === "closed") return list.filter((i) => i.status === "closed");
-    if (view === "mine") return list.filter((i) => i.assigned_to_me && !i.created_by_me);
-    return list.filter((i) => i.status === "in_progress");
-  }, [items, view]);
+    const base =
+      view === "closed"
+        ? list.filter((i) => i.status === "closed")
+        : view === "mine"
+          ? list.filter((i) => i.assigned_to_me && !i.created_by_me)
+          : list.filter((i) => i.status === "in_progress");
+    // The value each column sorts by (what the cell shows, not the raw field where they differ).
+    const valueOf = (r) => {
+      switch (sortKey) {
+        case "pic":
+          return r.assignee_email ? (r.assigned_to_me ? "you" : (r.assignee_name || r.assignee_email).toLowerCase()) : "";
+        case "status":
+          return r.assignee_email ? r.status : "";
+        case "tn_status":
+          return r.found ? r.tn_status || "" : "Not found";
+        case "created_by":
+          return r.created_by_me ? "you" : r.created_by.toLowerCase();
+        case "note":
+        case "pic_reply":
+        case "dest_hub":
+        case "last_sweep_hub":
+        case "cod":
+        case "tracking_number":
+          return (r[sortKey] || "").toString().toLowerCase();
+        default:
+          return r[sortKey]; // created_at (ISO text sorts correctly), age, attempts
+      }
+    };
+    // Empty values always sort last, whichever direction.
+    return [...base].sort((a, b) => {
+      const av = valueOf(a);
+      const bv = valueOf(b);
+      const aEmpty = av == null || av === "";
+      const bEmpty = bv == null || bv === "";
+      if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
+      const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [items, view, sortKey, sortDir]);
 
   const picLabel = (r) => {
     if (!r.assignee_email) return "—";
@@ -180,19 +230,20 @@ export default function UrgentTnTab({ me, refreshTick }) {
         </>
       ),
     },
-    { key: "pic", label: "PIC", sortable: false, render: picLabel, className: (r) => (r.assigned_to_me ? "font-semibold text-brand" : "text-slate-700") },
+    { key: "created_at", label: "Entry Time", render: (r) => formatTime(r.created_at), className: () => "whitespace-nowrap text-xs text-slate-600" },
+    { key: "pic", label: "PIC", render: picLabel, className: (r) => (r.assigned_to_me ? "font-semibold text-brand" : "text-slate-700") },
     {
       key: "note",
       label: "Note",
-      sortable: false,
       align: "left",
-      render: (r) => r.note || "—",
-      className: () => "max-w-[220px] whitespace-normal text-xs text-slate-600",
+      // The cell itself is no-wrap, so a long note ran on into the next column (the "double text"
+      // bug): give the text its own fixed-width block that wraps.
+      render: (r) => (r.note ? <div className="w-[220px] whitespace-normal break-words text-left">{r.note}</div> : "—"),
+      className: () => "text-xs text-slate-600",
     },
     {
       key: "status",
       label: "PIC Status",
-      sortable: false,
       render: (r) => {
         if (!r.assignee_email) return "—";
         if (r.status === "closed") return `Closed${r.closed_by && r.closed_by.toLowerCase() !== me.email.toLowerCase() ? ` by ${r.closed_by.split("@")[0]}` : ""}`;
@@ -208,23 +259,21 @@ export default function UrgentTnTab({ me, refreshTick }) {
     {
       key: "pic_reply",
       label: "PIC Reply",
-      sortable: false,
       align: "left",
       render: (r) =>
         r.pic_reply ? (
-          <>
+          <div className="w-[240px] whitespace-normal break-words text-left">
             {r.pic_reply}
             {r.pic_replied_at && <div className="text-[10px] text-slate-400">{formatTime(r.pic_replied_at)}</div>}
-          </>
+          </div>
         ) : (
           "—"
         ),
-      className: () => "max-w-[240px] whitespace-normal text-xs text-slate-600",
+      className: () => "text-xs text-slate-600",
     },
     {
       key: "tn_status",
       label: "Parcel Status",
-      sortable: false,
       render: (r) =>
         r.found ? (
           r.tn_status ?? "—"
@@ -240,15 +289,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
         ),
       className: (r) => (r.found ? "text-slate-700" : "font-medium text-status-critical"),
     },
-    { key: "dest_hub", label: "Dest Hub", sortable: false, render: (r) => r.dest_hub ?? "—" },
-    { key: "last_sweep_hub", label: "Last Sweep Hub", sortable: false, render: (r) => r.last_sweep_hub ?? "—" },
-    { key: "age", label: "Age", sortable: false, render: (r) => (r.age != null ? r.age.toFixed(1) : "—") },
-    { key: "attempts", label: "Attempt", sortable: false, render: (r) => r.attempts ?? "—" },
-    { key: "cod", label: "COD", sortable: false, render: (r) => r.cod ?? "—" },
+    { key: "dest_hub", label: "Dest Hub", render: (r) => r.dest_hub ?? "—" },
+    { key: "last_sweep_hub", label: "Last Sweep Hub", render: (r) => r.last_sweep_hub ?? "—" },
+    { key: "age", label: "Age", render: (r) => (r.age != null ? r.age.toFixed(1) : "—") },
+    { key: "attempts", label: "Attempt", render: (r) => r.attempts ?? "—" },
+    { key: "cod", label: "COD", render: (r) => r.cod ?? "—" },
     {
       key: "created_by",
       label: "Added by",
-      sortable: false,
       render: (r) => (r.created_by_me ? "You" : r.created_by),
       className: () => "text-xs text-slate-500",
     },
@@ -281,6 +329,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
               <button onClick={() => startReply(r)} className="text-xs font-medium text-slate-500 hover:text-brand">
                 Reply
               </button>
+              <button
+                onClick={() => startDelegate(r)}
+                disabled={!r.found}
+                title={r.found ? "Also assign it to someone else -- you keep it on your list" : "No status, so it can't be assigned"}
+                className="text-xs font-medium text-slate-500 hover:text-brand disabled:opacity-40"
+              >
+                Assign to another PIC
+              </button>
             </>
           )}
           {r.created_by_me && (
@@ -290,8 +346,13 @@ export default function UrgentTnTab({ me, refreshTick }) {
                   Reopen
                 </button>
               )}
-              <button onClick={() => startEdit(r)} className="text-xs font-medium text-slate-500 hover:text-brand">
-                Edit PIC
+              <button
+                onClick={() => startDelegate(r)}
+                disabled={!r.found}
+                title={r.found ? "Also assign it to another PIC -- the current PIC keeps it" : "No status, so it can't be assigned"}
+                className="text-xs font-medium text-slate-500 hover:text-brand disabled:opacity-40"
+              >
+                Assign another PIC
               </button>
               <button onClick={() => closeOrRemove(r)} disabled={busy} className="text-xs font-semibold text-status-good hover:underline" title="Deletes it from your list and the PIC's">
                 Close / remove
@@ -353,9 +414,9 @@ export default function UrgentTnTab({ me, refreshTick }) {
               onClick={() =>
                 exportCsv(
                   `daily-ops-urgent-tn-${new Date().toISOString().slice(0, 10)}.csv`,
-                  ["Tracking Number", "PIC", "Note", "PIC Status", "PIC Reply", "Parcel Status", "Dest Hub", "Last Sweep Hub", "Age", "Attempt", "COD", "Added by"],
+                  ["Tracking Number", "Entry Time", "PIC", "Note", "PIC Status", "PIC Reply", "Parcel Status", "Dest Hub", "Last Sweep Hub", "Age", "Attempt", "COD", "Added by"],
                   rows.map((r) => [
-                    r.tracking_number, r.assignee_email ?? "", r.note ?? "", r.assignee_email ? (r.status === "closed" ? "Closed" : "In progress") : "",
+                    r.tracking_number, r.created_at ? formatTime(r.created_at) : "", r.assignee_email ?? "", r.note ?? "", r.assignee_email ? (r.status === "closed" ? "Closed" : "In progress") : "",
                     r.pic_reply ?? "", r.found ? r.tn_status ?? "" : "Not found", r.dest_hub ?? "", r.last_sweep_hub ?? "", r.age ?? "",
                     r.attempts ?? "", r.cod ?? "", r.created_by,
                   ])
@@ -373,27 +434,36 @@ export default function UrgentTnTab({ me, refreshTick }) {
       {error && <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>}
       {info && !error && <div className="rounded-xl bg-white p-3 text-sm text-slate-600 ring-1 ring-slate-200">{info}</div>}
 
-      {editing && (
+      {delegating && (
         <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
           <div className="font-display text-xs font-semibold text-slate-700">
-            Edit PIC / note — <span className="font-mono">{editing.tracking_number}</span>
+            Assign to another PIC — <span className="font-mono">{delegating.tracking_number}</span>
+          </div>
+          <div className="text-xs text-slate-500">
+            {delegating.created_by_me
+              ? "The current PIC keeps this tracking number; this adds one more person."
+              : "You keep this tracking number on your list; this also gives it to someone else, who reports back to you."}
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <PicInput placeholder="PIC name or email (leave blank to unassign)" value={editAssignee} onChange={setEditAssignee} />
+            <PicInput placeholder="PIC name or email" value={delegateAssignee} onChange={setDelegateAssignee} />
             <input
               type="text"
               maxLength={500}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-              placeholder="Note"
-              value={editNote}
-              onChange={(e) => setEditNote(e.target.value)}
+              placeholder="Note for this PIC"
+              value={delegateNote}
+              onChange={(e) => setDelegateNote(e.target.value)}
             />
           </div>
           <div className="flex gap-2">
-            <button onClick={saveEdit} disabled={busy} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
-              Save
+            <button
+              onClick={saveDelegate}
+              disabled={busy || !delegateAssignee.trim()}
+              className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40"
+            >
+              Assign
             </button>
-            <button onClick={() => setEditing(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">
+            <button onClick={() => setDelegating(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">
               Cancel
             </button>
           </div>
@@ -445,6 +515,9 @@ export default function UrgentTnTab({ me, refreshTick }) {
           columns={columns}
           rows={rows}
           rowKey={(r) => r.id}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
           emptyMessage={
             view === "closed"
               ? "Nothing closed."
