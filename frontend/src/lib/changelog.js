@@ -12,6 +12,9 @@
 //    station-scoped user is never told about region / zone level features they can't use).
 //  So "What's new" only ever lists what applies to the viewer's role AND scope.
 //  * Write for the people using the dashboard: what changed and where to find it.
+//  * IMPORTANT CHANGES ONLY (2026-09-25 feedback): new features, changed behaviour, things that
+//    affect what someone sees or can do. Do NOT log cosmetic tweaks -- a moved box, spacing, text
+//    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
     date: "2026-09-25",
@@ -19,11 +22,6 @@ export const CHANGELOG = [
     points: [
       "A red bell shows on Settings (and on Guide → What's new) when there are updates you haven't read. It clears as soon as you open What's new, and updates you haven't seen yet are tagged NEW.",
     ],
-  },
-  {
-    date: "2026-09-25",
-    title: "Stations in scope: now in the header",
-    points: ["The \"N stations in scope\" count moved from the top of the page to a small footnote after \"Data as of\" in the header."],
   },
   {
     date: "2026-09-25",
@@ -96,13 +94,6 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-25",
-    title: "No more page blink every minute",
-    points: [
-      "Aging Details, RPU and the Restock views used to flash and jump back to the top on each automatic refresh. They now refresh quietly in place.",
-    ],
-  },
-  {
-    date: "2026-09-25",
     title: "Role Tester: view as one specific user",
     minRank: 3,
     feature: "roleTesterUser",
@@ -125,12 +116,6 @@ export const CHANGELOG = [
       "Restock On Hold Details lists bundles that are on hold or missing pieces, with a column for every flag.",
       "B2B Document Compliance (RDO) has Pickup Fail and Age, and every count opens its tracking numbers with a CSV. Only the 143 stations are counted.",
     ],
-  },
-  {
-    date: "2026-09-25",
-    title: "Restock: every table sorts",
-    feature: "restockBundles",
-    points: ["Click any column header in the Restock, Restock On Hold Details and B2B Document Compliance tables (and the tracking-number pop-up) to sort; empty values always go last."],
   },
   {
     date: "2026-09-25",
@@ -165,11 +150,6 @@ export const CHANGELOG = [
     minRank: 3,
     feature: "roleTester",
     points: ["Admins can preview the app as any role and scope from the header, without changing their own account."],
-  },
-  {
-    date: "2026-09-24",
-    title: "Filters: clear buttons",
-    points: ["Multi-select filters no longer show the picked values below the box, and have an always-visible × to clear them."],
   },
   {
     date: "2026-09-24",

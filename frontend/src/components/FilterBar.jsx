@@ -76,7 +76,7 @@ function FilterControls({
         </button>
       )}
       <input
-        className={`min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${stacked ? "w-full" : "ml-auto"}`}
+        className={`min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${stacked ? "w-full" : "w-56"}`}
         placeholder="Search station…"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
