@@ -2643,17 +2643,21 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
     now = datetime.now(timezone.utc).replace(microsecond=0)
     added, skipped, no_status, not_assigned = 0, 0, 0, 0
     for tn in tns:
-        existing = await db.fetch_one(
-            "SELECT id FROM urgent_tn_items WHERE tracking_number = %s AND LOWER(created_by) = %s",
-            (tn, user.email.lower()),
-        )
-        if existing:
-            skipped += 1
-            continue
         # A TN with no status isn't urgent, so it is NOT assigned to the PIC -- it just goes on
         # your own list and expires in 3 days if it still has no status.
         has_status = tn in _health_v3_by_tn
         tn_assignee = assignee if has_status else None
+        # 2026-09-25 feedback: the same tracking number can go to several PICs -- each assignment is
+        # its own row (owner = whoever assigned it), so adding a PIC never touches the ones already
+        # holding it, and a PIC can pass it on while keeping their own copy. Only an exact repeat
+        # (same TN, same person adding it, same PIC) is skipped.
+        same = await db.fetch_all(
+            "SELECT assignee_email FROM urgent_tn_items WHERE tracking_number = %s AND LOWER(created_by) = %s",
+            (tn, user.email.lower()),
+        )
+        if any((r[0] or "").lower() == (tn_assignee or "").lower() for r in same):
+            skipped += 1
+            continue
         if not has_status:
             no_status += 1
             if assignee is not None and assignee.lower() != user.email.lower():
@@ -2673,7 +2677,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         added += 1
     detail = f"Added {added}"
     if skipped:
-        detail += f", skipped {skipped} already on your list"
+        detail += f", skipped {skipped} already on your list{' for that PIC' if assignee else ''}"
     if no_status:
         detail += (
             f". {no_status} {'has' if no_status == 1 else 'have'} no status (not found)"

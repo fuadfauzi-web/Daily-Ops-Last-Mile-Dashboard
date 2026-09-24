@@ -343,6 +343,11 @@ const SECTIONS = [
               A tracking number with <strong>no status</strong> ("Not found") is never assigned to a PIC -- it isn't urgent. It stays on
               your own list, and is removed automatically after 3 days if it still has no status (the list shows how many days are left).
             </>,
+            <>
+              <strong>More than one PIC</strong>: use <strong>Assign another PIC</strong> to give the same tracking number to additional people -- the
+              current PIC keeps it. A PIC can also use <strong>Assign to another PIC</strong> to pass it on while keeping their own copy; whoever
+              they pick reports back to them. Each assignment is a separate row, and closing or removing one only removes that row.
+            </>,
             <>You see the tracking numbers you added and the ones assigned to you.</>,
           ]}
         />
