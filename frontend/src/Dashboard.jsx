@@ -21,6 +21,7 @@ import AgingDetailsTab from "./AgingDetailsTab";
 import RpuTab from "./RpuTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
+import TaskListTab from "./TaskListTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -685,7 +686,16 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       <TabBar
         tabs={TABS.map((t) =>
           t.key === "urgent"
-            ? { ...t, badge: (notifCounts?.urgent_notify || 0) + (notifCounts?.urgent_owner_updates || 0) }
+            ? {
+                ...t,
+                // With the Task List flag on, this tab is the Task List and its bell adds up all four sub-tabs.
+                label: FEATURES.taskList ? "Task List" : t.label,
+                dot: FEATURES.taskList ? (notifCounts?.followups_due_soon || 0) + (notifCounts?.todos_due_soon || 0) + (notifCounts?.tasks_due_soon || 0) : 0,
+                badge:
+                  (notifCounts?.urgent_notify || 0) +
+                  (notifCounts?.urgent_owner_updates || 0) +
+                  (FEATURES.taskList ? (notifCounts?.followups_notify || 0) + (notifCounts?.todos_notify || 0) + (notifCounts?.tasks_notify || 0) : 0),
+              }
             : t
         )}
         activeKey={tab}
@@ -818,7 +828,12 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         />
       )}
 
-      {tab === "urgent" && <UrgentTnTab me={me} refreshTick={refreshTick} />}
+      {tab === "urgent" &&
+        (FEATURES.taskList ? (
+          <TaskListTab me={me} refreshTick={refreshTick} notifCounts={notifCounts} />
+        ) : (
+          <UrgentTnTab me={me} refreshTick={refreshTick} />
+        ))}
     </div>
   );
 }

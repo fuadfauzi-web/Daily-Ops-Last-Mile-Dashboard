@@ -34,6 +34,20 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-25",
+    title: "Task List: Email / Gchat, To Do List and Task Assigned",
+    feature: "taskList",
+    points: [
+      "The Urgent TN tab is now the Task List, with four sub-tabs: Urgent TN, Email / Gchat, To Do List and Task Assigned. Each has its own bell.",
+      "Email / Gchat: list the emails and chats you want to follow up, with a due date, and assign a PIC (another user, picked from suggestions as you type) to help reply or remind you.",
+      "Task Assigned: give a task to one or more other users; each updates their own status and replies.",
+      "Due dates can have an optional time, and an EOD button sets \"before 7pm today\".",
+      "Reminders: an open item due within 2 days (or overdue) rings the bell at 10am, 2pm and 5pm every day; later ones ring once a day at 2pm. Press \"got it\" to quiet one until the next time.",
+      "To Do List: your own tracker with due dates, progress and optional reminders.",
+      "A small amber dot on the tab and sub-tab shows when something of yours -- including tasks you assigned to others -- is due within 2 days or overdue.",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "Summary cards removed",
     feature: "hideSummaryCards",
     points: [

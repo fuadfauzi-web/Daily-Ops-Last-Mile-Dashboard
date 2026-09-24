@@ -12,6 +12,7 @@ export const FEATURES = {
   coldChain: true, // Cold Chain tab / sub-tab
   restockBundles: true, // Restock bundle list, Restock On Hold Details, B2B Document Compliance (RDO)
   // People / tools
+  taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + Task Assigned + To Do List
   hideSummaryCards: false, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
   roleTester: false, // admin Role Tester in the header (preview a role / scope)
   roleTesterUser: false, // ...and view as one specific user

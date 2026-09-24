@@ -7,7 +7,7 @@ const ROLE_LABEL = { station: "Station staff", region: "Region staff", manager: 
 // pick a dashboard user from the list (2026-09-25 feedback -- no more copying emails from the
 // Users page). Still a plain text box: an email typed in full works too, and the server checks
 // it against the user list either way.
-export default function PicInput({ value, onChange, placeholder, className = "" }) {
+export default function PicInput({ value, onChange, placeholder, className = "", onPick, onEnter }) {
   const [options, setOptions] = useState([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -56,11 +56,19 @@ export default function PicInput({ value, onChange, placeholder, className = "" 
   const pick = (o) => {
     justPicked.current = true;
     onChange(o.email);
+    onPick?.(o); // lets a multi-person picker turn the choice into a chip
     setOpen(false);
     setOptions([]);
   };
 
   const onKeyDown = (e) => {
+    if (e.key === "Enter" && !(open && options.length > 0 && active >= 0)) {
+      if (onEnter) {
+        e.preventDefault();
+        onEnter();
+      }
+      return;
+    }
     if (!open || options.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
