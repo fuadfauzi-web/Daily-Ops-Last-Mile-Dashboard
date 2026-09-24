@@ -24,6 +24,12 @@ export default function App() {
 
   useEffect(loadMe, []);
 
+  // Bumped whenever the Role Tester applies / exits a view, and used as a React key below so
+  // every screen remounts and re-fetches as the new role/scope. Without it the tab you were
+  // on kept showing the data it had already loaded as the real admin (2026-09-25 bug: a
+  // Manager / East Coast preview still listed every region on Station Health).
+  const [viewKey, setViewKey] = useState(0);
+
   // Header bell + dashboard banner (2026-09-25): Urgent TNs assigned to this user
   // and unread admin replies to their feedback. Polled every minute, and
   // refreshed at once when other parts of the app fire "notifications-changed".
@@ -144,6 +150,7 @@ export default function App() {
               me={me}
               onChanged={() => {
                 setTab("dashboard");
+                setViewKey((k) => k + 1);
                 loadMe();
               }}
             />
@@ -224,9 +231,9 @@ export default function App() {
         )}
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" && <Dashboard me={me} onCapturedAt={setFreshness} notifCounts={notifCounts} />}
-        {tab === "settings" && <SettingsPanel key="settings" me={me} mode="settings" notifCounts={notifCounts} />}
-        {tab === "admin" && me.role === "admin" && <SettingsPanel key="admin" me={me} mode="admin" />}
+        {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} notifCounts={notifCounts} />}
+        {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
+        {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
       </main>
     </div>
   );
