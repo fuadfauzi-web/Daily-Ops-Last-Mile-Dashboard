@@ -230,11 +230,11 @@ const SECTIONS = [
   {
     id: "dod",
     title: "DoD",
-    show: ({ rank }) => F.dod && rank >= 2,
+    show: () => F.dod,
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          The <strong>DoD</strong> tab (<em>Beta</em> -- still being built; after Shipper Radar; managers and admins only for now) is the dashboard looking back: one snapshot per station per day --
+          The <strong>DoD</strong> tab (<em>Beta</em> -- still being built; after Shipper Radar; everyone can open it, limited to their own region / zone / station) is the dashboard looking back: one snapshot per station per day --
           the last refresh of the day, the run just before midnight -- kept for this week and last week only. It follows your scope and the filters above the tabs.
           History starts from the first refresh after it went live, so the first days have only a few dots, and today's numbers are still moving.
         </p>

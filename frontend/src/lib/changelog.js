@@ -71,9 +71,8 @@ export const CHANGELOG = [
     date: "2026-09-26",
     title: "DoD (Beta): the dashboard, day by day",
     feature: "dod",
-    minRank: 2,
     points: [
-      "A new DoD tab, marked Beta because it is still being built (after Shipper Radar, managers and admins only for now), keeps one snapshot per station per day -- the last refresh before midnight -- for this week and last week, so you can look back at yesterday and compare it with the day before.",
+      "A new DoD tab, marked Beta because it is still being built (after Shipper Radar; everyone can open it, limited to their own region / zone / station), keeps one snapshot per station per day -- the last refresh before midnight -- for this week and last week, so you can look back at yesterday and compare it with the day before.",
       "Daily View: pick a day and see every region / zone / station with Total Fresh, Fresh Unscan, Latlong, Total 0 Attempt, In Hub, Age >3, Attendance, Total Routed, Success Rate and Pending in Apps, with the change from the day before. Weekly Overview: pick one or more measures and see them across Mon-Sun for this week, last week or both, with one details table that you switch between the measures you picked.",
       "History starts from the first refresh after it went live.",
     ],
