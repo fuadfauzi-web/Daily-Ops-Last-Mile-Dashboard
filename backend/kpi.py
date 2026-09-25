@@ -65,6 +65,11 @@ def _pct(value) -> float:
     return v * 100 if 0 < v <= 1 else v
 
 
+def _name(value) -> str:
+    """A driver's name with runs of spaces collapsed, so the same driver matches across the weekly / daily / driver-list files."""
+    return " ".join(str(value or "").split())
+
+
 def _position(name: str) -> str:
     upper = name.upper()
     return "HD" if "- HD -" in upper else "HR" if "- HR -" in upper else ""
@@ -88,10 +93,10 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
     hub_of: dict[str, str] = {}
     for r in hybrid_rows:
         idx = _index(r)
-        name = str(_get(idx, "displayname") or "").strip()
+        name = _name(_get(idx, "displayname"))
         if not name:
             continue
-        starts[name] = str(_get(idx, "employmentstartdate") or "")[:10]
+        starts[name] = kd.to_iso_day(_get(idx, "employmentstartdate"))
         hub = _get(idx, "hubname")
         if hub:
             hub_of[name] = str(hub)
@@ -112,7 +117,7 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
     rows = []
     for r in perf_rows:
         idx = _index(r)
-        name = str(_get(idx, "courierdisplayname") or "").strip()
+        name = _name(_get(idx, "courierdisplayname"))
         period = _get(idx, "routeweek", "routemonth", "routeperiod")
         if not name or period is None:
             continue
@@ -124,7 +129,7 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
     daily = []
     for r in daily_rows:
         idx = _index(r)
-        name = str(_get(idx, "courierdisplayname") or "").strip()
+        name = _name(_get(idx, "courierdisplayname"))
         day = kd.to_iso_day(_get(idx, "routedate"))
         if not name or not day:
             continue
@@ -258,6 +263,7 @@ class UploadInfo(BaseModel):
     kpi: str
     label: str
     hint: str
+    link: str | None = None  # where to download the file (the Metabase question)
     filename: str | None = None
     row_count: int | None = None
     uploaded_by: str | None = None
@@ -268,7 +274,10 @@ class UploadInfo(BaseModel):
 async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
     """Which datasets have an uploaded file (for the KPI page's Data upload panel)."""
     current = await kd.list_uploads()
-    return [{"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], **current.get(name, {})} for name, spec in kd.DATASETS.items()]
+    return [
+        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], "link": spec.get("link"), **current.get(name, {})}
+        for name, spec in kd.DATASETS.items()
+    ]
 
 
 class UploadResult(BaseModel):

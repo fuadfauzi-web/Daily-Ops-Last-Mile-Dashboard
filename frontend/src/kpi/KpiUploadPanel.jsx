@@ -66,7 +66,14 @@ export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data uploa
           {items.map((u) => (
             <div key={u.dataset} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
               <div className="min-w-[200px] flex-1">
-                <div className="text-sm font-semibold text-slate-800">{u.label}</div>
+                <div className="flex flex-wrap items-center gap-x-2">
+                  <span className="text-sm font-semibold text-slate-800">{u.label}</span>
+                  {u.link && (
+                    <a href={u.link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-sky-700 underline hover:text-sky-900">
+                      Open in Metabase ↗
+                    </a>
+                  )}
+                </div>
                 <div className="text-[11px] text-slate-400">{u.hint}</div>
               </div>
               <div className="min-w-[200px] flex-1 text-xs text-slate-600">

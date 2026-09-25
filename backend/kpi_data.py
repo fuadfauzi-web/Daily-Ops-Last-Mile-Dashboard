@@ -65,31 +65,39 @@ def to_iso_day(value) -> str:
 # dataset -> what it is, which KPI page it feeds, which sheet of a workbook to read, and the columns it must have (normalised).
 DATASETS: dict[str, dict] = {
     "hybrid_weekly": {
-        "kpi": "hybrid", "label": "Hybrid weekly", "hint": "Metabase question 127194 (Hybrid Weekly Apps - All Regions) exported as CSV",
+        "kpi": "hybrid", "label": "Hybrid weekly", "hint": "Metabase question 127194 (Hybrid Weekly Apps - All Regions) -- Download results as .csv",
+        "link": "https://metabase.ninjavan.co/question/127194",
         "sheet": "Weekly Raw", "required": ["courierdisplayname", "routeweek"],
     },
     "hybrid_monthly": {
-        "kpi": "hybrid", "label": "Hybrid monthly", "hint": "Metabase question 127195 (Hybrid Monthly Apps - All Regions) exported as CSV",
+        "kpi": "hybrid", "label": "Hybrid monthly", "hint": "Metabase question 127195 (Hybrid Monthly Apps - All Regions) -- Download results as .csv",
+        "link": "https://metabase.ninjavan.co/question/127195",
         "sheet": "Monthly Raw", "required": ["courierdisplayname", "routemonth"],
     },
     "hybrid_daily": {
-        "kpi": "hybrid", "label": "Hybrid daily", "hint": "Metabase question 127196 (Hybrid Daily Apps - All Regions) exported as CSV",
+        "kpi": "hybrid", "label": "Hybrid daily", "hint": "Metabase question 127196 (Hybrid Daily Apps - All Regions, current month) -- Download results as .csv",
+        "link": "https://metabase.ninjavan.co/question/127196",
         "sheet": "Daily Raw", "required": ["courierdisplayname", "routedate"],
     },
     "hybrid_data": {
-        "kpi": "hybrid", "label": "Hybrid driver list", "hint": "Metabase question 127193 (Hybrid Data Current Year - All Regions) exported as CSV -- gives each driver's start date",
+        "kpi": "hybrid", "label": "Hybrid driver list", "hint": "Metabase question 127193 (Hybrid Data Current Year - All Regions) -- Download results as .csv; gives each driver's start date (Service Duration)",
+        "link": "https://metabase.ninjavan.co/question/127193",
         "sheet": "Hybrid Data", "required": ["displayname"],
     },
     "invalid_pod_raw": {
-        "kpi": "invalid_pod", "label": "POD validation (raw)", "hint": "the Raw sheet of the POD Validation Analysis file (or its CSV)",
+        "kpi": "invalid_pod", "label": "POD validation (raw)",
+        "hint": "Metabase question 69573 (POP/POD Validation Tasks Raw Data): leave Hub Region empty for all regions, pick Date Type and Start / End date, then Download results as .csv -- or the Raw sheet of the POD Validation Analysis file",
+        "link": "https://metabase.ninjavan.co/question/69573?transaction_type=DELIVERY&hub_region=&shipper_id=&date_type=&parent_id_coalesce=&start_date=&end_date=&driver_type=",
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
     },
     "cod_rts_cod": {
-        "kpi": "cod_rts", "label": "COD RTS (raw COD)", "hint": "the RAW COD sheet of the RTS Analysis file (or its CSV)",
+        "kpi": "cod_rts", "label": "COD RTS (raw COD)", "link": "https://metabase.ninjavan.co/question/80865",
+        "hint": "Metabase question 80865 (COD RTS Rate Southern) -- Southern hubs and a fixed week for now: change the date filter, then Download results as .csv -- or the RAW COD sheet of the RTS Analysis file",
         "sheet": "RAW COD", "required": ["desthubname", "rtsflag"],
     },
     "cod_rts_overall": {
-        "kpi": "cod_rts", "label": "RTS overall (raw)", "hint": "the RAW Overal sheet of the RTS Analysis file (or its CSV) -- optional",
+        "kpi": "cod_rts", "label": "RTS overall (raw)", "link": "https://metabase.ninjavan.co/question/76508",
+        "hint": "Metabase question 76508 (RTS Overall Southern) -- Southern hubs and a fixed week for now: change the date filter, then Download results as .csv -- or the RAW Overal sheet; optional",
         "sheet": "RAW Overal", "required": ["trackingid", "rtsreason"],
     },
     "weekly_kpi": {

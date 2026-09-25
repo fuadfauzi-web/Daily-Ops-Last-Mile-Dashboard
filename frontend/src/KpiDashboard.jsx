@@ -170,7 +170,10 @@ function HybridProductivity({ me }) {
   );
   const dailyRecs = useMemo(
     () =>
-      (data?.daily || []).map(([day, di, delivered, onRoute, succ]) => ({ day, name: drivers[di].name, station: drivers[di].station, zone: drivers[di].zone, region: drivers[di].region, delivered, onRoute, succ })),
+      (data?.daily || []).map(([day, di, delivered, onRoute, succ]) => ({
+        day, name: drivers[di].name, station: drivers[di].station, zone: drivers[di].zone, region: drivers[di].region,
+        position: drivers[di].position, start: drivers[di].start, delivered, onRoute, succ,
+      })),
     [data] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
@@ -191,6 +194,38 @@ function HybridProductivity({ me }) {
   const filtered = useMemo(() => recs.filter(match), [recs, region, zone, station, s]); // eslint-disable-line react-hooks/exhaustive-deps
   const filteredDaily = useMemo(() => dailyRecs.filter(match), [dailyRecs, region, zone, station, s]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Daily Data (Current Month) has a view of its own: the month of the newest daily row, whatever View / Period are set to above
+  // (region / zone / station / search still apply). A driver's row adds up their days: attendance = days worked, productivity =
+  // Delivered + PU per day worked, success % weighted by parcels on route.
+  const latestDay = useMemo(() => dailyRecs.reduce((m, r) => (r.day > m ? r.day : m), ""), [dailyRecs]);
+  const monthKey = latestDay.slice(0, 7);
+  const monthRows = useMemo(() => {
+    const by = new Map();
+    filteredDaily
+      .filter((r) => monthKey && r.day.startsWith(monthKey))
+      .forEach((r) => {
+        if (!by.has(r.name)) by.set(r.name, []);
+        by.get(r.name).push(r);
+      });
+    return [...by.values()].map((list) => {
+      const onRoute = list.reduce((a, r) => a + r.onRoute, 0);
+      const delivered = list.reduce((a, r) => a + r.delivered, 0);
+      const f = list[0];
+      return {
+        name: f.name, station: f.station, zone: f.zone, region: f.region, position: f.position, start: f.start,
+        onRoute, delivered, att: list.length, prod: delivered / list.length,
+        succ: onRoute ? list.reduce((a, r) => a + r.succ * r.onRoute, 0) / onRoute : avg(list, "succ"),
+      };
+    });
+  }, [filteredDaily, monthKey]);
+  // Days a driver should have worked by the newest day (26 a month, pro-rated) -- below that the attendance goes red.
+  const monthTarget = useMemo(() => {
+    if (!latestDay) return 26;
+    const [y, m, d] = latestDay.split("-").map(Number);
+    return Math.max(1, Math.round((26 * d) / new Date(y, m, 0).getDate()));
+  }, [latestDay]);
+  const monthLabel = latestDay ? `${MONTHS[Number(latestDay.slice(5, 7)) - 1]} ${latestDay.slice(0, 4)}` : "-";
+
   const periods = useMemo(() => [...new Set(recs.map((r) => r.period))].sort((a, b) => b - a), [recs]);
   const targetPeriod = period === "latest" ? periods[0] : Number(period);
   const current = useMemo(() => {
@@ -204,7 +239,7 @@ function HybridProductivity({ me }) {
   }, [filtered, latestPeriod]);
 
   const withTenure = (rows) => rows.map((r) => ({ ...r, tenure: tenureText(r.start), tenureDays: tenureDays(r.start) }));
-  const attClass = (v) => (Math.round(v) < target ? "font-bold text-status-critical" : "text-slate-700");
+  const attClass = (v, tgt = target) => (Math.round(v) < tgt ? "font-bold text-status-critical" : "text-slate-700");
 
   const groupBy = (rows, keyFn) => {
     const m = new Map();
@@ -232,7 +267,7 @@ function HybridProductivity({ me }) {
   };
 
   // ---- KPI cards
-  const cards = (
+  const cardsFor = (current) => (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
       {[
         ["Active Drivers", <>{int(current.length)} <span className="text-[11px] font-normal text-slate-500">({current.filter((r) => r.position === "HD").length} HD / {current.filter((r) => r.position === "HR").length} HR)</span></>],
@@ -259,7 +294,7 @@ function HybridProductivity({ me }) {
     { key: "onRoute", label: "On Route", render: (r) => int(r.onRoute) },
     { key: "delivered", label: "Del + PU", render: (r) => int(r.delivered) },
     { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
-    { key: "att", label: "Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att) },
+    { key: "att", label: "Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att, opts.attTarget) },
     { key: "prod", label: "Productivity", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
   ];
 
@@ -420,7 +455,7 @@ function HybridProductivity({ me }) {
   // -------------------------------------------------------------------------------- Daily Data (latest period)
   const dailySort = useSort("prod");
   const DailyData = () => {
-    const ranked = sortBy(withTenure(latestRows), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 }));
+    const ranked = sortBy(withTenure(monthRows), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 }));
     const rows = dailySort.key === "rank" ? sortBy(ranked, "prod", dailySort.dir) : sortBy(ranked, dailySort.key, dailySort.dir);
     const chosen = ranked.find((r) => r.name === pickedDaily) || ranked[0];
     const logs = chosen ? filteredDaily.filter((r) => r.name === chosen.name).sort((a, b) => b.day.localeCompare(a.day)) : [];
@@ -428,10 +463,10 @@ function HybridProductivity({ me }) {
     return (
       <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
         <DataTable
-          title={`Current ${view === "monthly" ? "month" : "week"} driver leaderboard (${prefix}${latestPeriod ?? "-"})`}
-          titleExtra={<span className="text-[10px] text-slate-400">always the latest period · click headers to sort</span>}
+          title={`Current month driver leaderboard (${monthLabel})`}
+          titleExtra={<span className="text-[10px] text-slate-400">always the current month, whatever View / Period say · attendance = days worked · click headers to sort</span>}
           maxHeight="520px"
-          columns={driverColumns({ rank: true, tenureLabel: "Service Duration" })}
+          columns={driverColumns({ rank: true, tenureLabel: "Service Duration", attTarget: monthTarget })}
           rows={rows}
           rowKey={(r) => r.name}
           rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-brand/10" : "")}
@@ -476,14 +511,14 @@ function HybridProductivity({ me }) {
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
       <label className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-500">
         View
-        <select className={selectClass} value={view} onChange={(e) => setView(e.target.value)}>
+        <select className={selectClass} value={view} onChange={(e) => setView(e.target.value)} disabled={sub === "daily"} title={sub === "daily" ? "Daily Data always shows the current month" : undefined}>
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
         </select>
       </label>
       <label className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-500">
         Period
-        <select className={selectClass} value={period} onChange={(e) => setPeriod(e.target.value)}>
+        <select className={selectClass} value={period} onChange={(e) => setPeriod(e.target.value)} disabled={sub === "daily"} title={sub === "daily" ? "Daily Data always shows the current month" : undefined}>
           <option value="latest">Latest</option>
           {periods.map((p) => (
             <option key={p} value={p}>
@@ -533,12 +568,12 @@ function HybridProductivity({ me }) {
       <button
         onClick={() =>
           exportCsv(
-            `daily-ops-kpi-hybrid-${view}-${prefix}${targetPeriod ?? ""}.csv`,
+            sub === "daily" ? `daily-ops-kpi-hybrid-month-${monthKey}.csv` : `daily-ops-kpi-hybrid-${view}-${prefix}${targetPeriod ?? ""}.csv`,
             ["Driver", "Station", "Zone", "Region", "Start date", "On Route", "Delivered + PU", "Success %", "Attendance (days)", "Productivity"],
-            current.map((r) => [r.name, r.station, r.zone, r.region, r.start || "", r.onRoute, r.delivered, r.succ.toFixed(2), r.att, r.prod.toFixed(2)])
+            (sub === "daily" ? monthRows : current).map((r) => [r.name, r.station, r.zone, r.region, r.start || "", r.onRoute, r.delivered, r.succ.toFixed(2), r.att, r.prod.toFixed(2)])
           )
         }
-        disabled={!current.length}
+        disabled={!(sub === "daily" ? monthRows : current).length}
         className="ml-auto h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
       >
         Export CSV
@@ -587,7 +622,7 @@ function HybridProductivity({ me }) {
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">No hybrid data for your scope yet.</div>
       ) : (
         <>
-          {cards}
+          {cardsFor(sub === "daily" ? monthRows : current)}
           <SegmentedControl
             options={[
               { key: "driver", label: "Driver Performance" },
