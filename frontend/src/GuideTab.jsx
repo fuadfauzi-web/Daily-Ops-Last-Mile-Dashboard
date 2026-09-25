@@ -199,6 +199,39 @@ const SECTIONS = [
     ),
   },
   {
+    id: "kpi",
+    title: "KPI",
+    show: () => F.kpiDashboard,
+    body: ({ rank }) => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p className="rounded-lg bg-amber-50 p-2 text-amber-900 ring-1 ring-amber-200">
+          <strong>Beta -- preview only.</strong> The KPI page is not in use yet: its data is not up to date and it is here to show how it will look. Please wait for the green light
+          before you use it or rely on a number in it.
+        </p>
+        <p>
+          The <strong>KPI</strong> page (next to Dashboard in the header) is the <strong>RCA side of the KPIs</strong>: the OPEX team's dashboard shows the result (a %),
+          this page shows <em>why</em> -- by hub, reason, driver and shipper, with the tracking numbers behind every number. The menu on the left has two parts.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Results</strong> -- <strong>Weekly Dashboard</strong>: pick a region, zone or station and see every KPI (Success Rate, D-0, FIFO D0, D-3, T-7, COD RTS, Sweep, Prior, Invalid POD, Complaint, Lost, Shipment Inbound, RPU) for the past 4 weeks against its target (green on target, red ▲ missing), a trend line per KPI, and the stations underneath for the chosen week. <strong>OPEX Result</strong> shows the OPEX dashboard's result: every hub (or area / region) with each KPI's rate against its target, green when met and red when missed, and how many KPIs it missed; admins load it from the OPEX dashboard's <em>Download CSV</em>. It gets merged into the Weekly Dashboard later. <strong>Access</strong>: OPEX Result is open to everyone in full; the Weekly Dashboard and every RCA page follow your own region / zone / station.</>,
+            <><strong>RCA details</strong> -- <strong>Hybrid Productivity</strong> (driver leaderboard, station and zone roll-ups, trends, daily log; attendance below the target -- 6 days a week, 26 a month -- is red; <em>Daily Data (Current Month)</em> always adds up the current month, whatever View and Period say, and Service Duration comes from the driver list's start date), <strong>Invalid POD</strong> (sub-tabs: <em>Overview</em> -- invalid % by station against the 25% target, the reasons behind it, the drivers with the most, the tracking numbers; <em>Drivers &amp; reasons</em> -- every driver with invalid POD and their top invalid reason, and the day-by-day trend of a picked driver; <em>Date trend</em> -- invalid % / count per day for a region, zone, station or driver; <em>Reasons</em> -- each reason and which stations it comes from; and, for managers and admins only, <em>LM performance</em> -- the weekly LM POD Performance view: zones, stations, drivers and OPS routes on the final result after the audit) and <strong>COD RTS</strong> (COD parcels returned to the shipper; sub-tabs: <em>Overview</em>, <em>Reasons</em>, <em>Shippers</em> with the cumulative share and the parent-shipper roll-up, <em>Drivers</em> with their top reason, <em>Timing &amp; attempts</em>, <em>Parcels</em> by size / driver type / status / FIFO, <em>Date trend</em>, and the <em>Tracking numbers</em>). In these tables a column that shows a count with a % sorts by the %. Prior KPI, FIFO D0, Terminal T7 and Completion D0 / D3 are marked <em>soon</em>.</>,
+            <>Click a station, reason or driver to filter the rest of the page; <strong>Show tracking numbers</strong> lists them and <strong>Export CSV</strong> downloads them all.</>,
+            rank >= 3 ? (
+              <><strong>Data upload</strong> (admins only): each page has a Data upload button. Every slot has an <em>Open in Metabase</em> link (or, for the OPEX result, a link to the OPEX dashboard): click it, download the results as CSV, then choose the file -- CSV or Excel; for a workbook the right sheet is picked for you -- and it is loaded straight away. One current file per slot; uploading again replaces it. For Hybrid Productivity an uploaded file is used instead of Metabase until you remove it.</>
+            ) : (
+              <>Admins upload the data behind these pages.</>
+            ),
+            rank >= 3 && (
+              <>Hybrid Productivity can also read Metabase directly. If it shows a 401 error, open that page's <strong>Check Metabase connection</strong> for a plain-English reason. The app reads four <em>All Regions</em> copies of the team's saved Metabase questions (same columns, the Southern filter removed), so it covers every station once the connection works.</>
+            ),
+            <>A driver's station comes from the station code in their name (for example "LKN - HD - ...").</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "dod",
     title: "DoD",
     show: () => F.dod,

@@ -10,7 +10,8 @@ export const FEATURES = {
   bucketDetails: true, // Shipment Details buckets show % of Total Fresh and open their tracking numbers
   timingChart: true, // Shipment Details hourly timing chart
   coldChain: true, // Cold Chain tab / sub-tab
-  dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; managers and admins only
+  kpiDashboard: true, // "KPI" page (Beta -- preview only, not to be used until the green light): weekly results, OPEX result, RCA for Hybrid / Invalid POD / COD RTS
+  dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; every role, limited to its own scope
   restockBundles: true, // Restock bundle list, Restock On Hold Details, B2B Document Compliance (RDO)
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + Task Assigned + To Do List
