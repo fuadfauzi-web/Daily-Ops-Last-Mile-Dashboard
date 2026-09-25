@@ -155,7 +155,9 @@ const SECTIONS = [
           </>,
           F.timingChart && (
             <>
-              The <strong>timing chart</strong> under the table plots scan-in, first-attempt and success times by hour of day.
+              The <strong>timing chart</strong> under the table plots scan-in, first-attempt and success times by hour of day. Hover an hour for its
+              count and its <strong>% share</strong> of that line's total, or switch <strong>Count / % share</strong> above the chart to plot each line as a %
+              of its own total.
               It follows the table's filters until you pick its own Region / Zone / Station filter, which then overrides them.
             </>
           ),

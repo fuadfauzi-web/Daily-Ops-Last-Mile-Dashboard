@@ -36,6 +36,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-25",
+    title: "Timing chart: % share",
+    feature: "timingChart",
+    points: [
+      "Hover an hour on the Shipment Details timing chart to see its % share as well as the count, and switch Count / % share above the chart to plot each line as a % of its own total.",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "A bell for What's new",
     points: [
       "A red bell shows on Settings (and on Guide → What's new) when there are updates you haven't read. It clears as soon as you open What's new, and updates you haven't seen yet are tagged NEW.",

@@ -65,6 +65,9 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
   const [stationCodes, setStationCodes] = useState([]);
   const [hidden, setHidden] = useState({});
   const [hover, setHover] = useState(null);
+  // "count": parcels per hour. "pct": each hour as a % of that line's own total, so lines (and stations) of very different
+  // size can be compared by shape (2026-09-25 feedback: show % values).
+  const [mode, setMode] = useState("count");
   // The SVG is drawn at its real pixel width (measured), not scaled from a fixed viewBox --
   // scaling made the axis text bigger than every other label on the page (2026-09-25 feedback).
   const [wrapEl, setWrapEl] = useState(null);
@@ -116,6 +119,11 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
     return out;
   }, [timelines, selectedCodes]);
 
+  const sums = useMemo(() => Object.fromEntries(SERIES.map((s) => [s.key, totals[s.key].reduce((a, b) => a + b, 0)])), [totals]);
+  const share = (key, v) => (sums[key] ? (v / sums[key]) * 100 : 0); // this hour's % of the line's total
+  const fmtPct = (p) => `${p.toFixed(1)}%`;
+  const plotted = (key, h) => (mode === "pct" ? share(key, totals[key][h]) : totals[key][h]);
+
   const reset = () => {
     setRegion("all");
     setZone("all");
@@ -145,7 +153,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
   const baseline = padTop + plotH;
-  const dataMax = Math.max(1, ...visible.flatMap((s) => totals[s.key]));
+  const dataMax = Math.max(1, ...visible.flatMap((s) => totals[s.key].map((_, h) => plotted(s.key, h))));
   const yMax = niceMax(dataMax);
   const x = (h) => padLeft + ((h + 0.5) / 24) * plotW;
   const y = (v) => padTop + plotH - (v / yMax) * plotH;
@@ -209,6 +217,23 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
             Use table filters
           </button>
         )}
+        <div className="ml-auto flex overflow-hidden rounded-lg border border-slate-300 text-xs font-medium" role="group" aria-label="Chart values">
+          {[
+            ["count", "Count", "Parcels per hour"],
+            ["pct", "% share", "Each hour as a % of that line's total"],
+          ].map(([k, label, tip]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setMode(k)}
+              aria-pressed={mode === k}
+              title={tip}
+              className={`h-8 px-2.5 ${mode === k ? "bg-brand text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Legend doubles as the show/hide toggles */}
@@ -229,7 +254,11 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
               <span className={`inline-block h-2 w-2 rounded-full ${s.dot}`} />
               <span className="font-semibold text-slate-700">{s.label}</span>
               <span className="tabular-nums text-slate-500">{st.total.toLocaleString()}</span>
-              {st.peak !== null && <span className="text-slate-400">· peak {formatHour(st.peak)}</span>}
+              {st.peak !== null && (
+                <span className="text-slate-400">
+                  · peak {formatHour(st.peak)} ({fmtPct(share(s.key, st.peakCount))})
+                </span>
+              )}
             </button>
           );
         })}
@@ -269,7 +298,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
                   strokeDasharray={f === 0 ? undefined : "3 3"}
                 />
                 <text x={padLeft - 5} y={y(yMax * f) + 3} textAnchor="end" className="fill-slate-500 text-xs">
-                  {compact(Math.round(yMax * f))}
+                  {mode === "pct" ? `${Math.round(yMax * f)}%` : compact(Math.round(yMax * f))}
                 </text>
               </g>
             ))}
@@ -282,7 +311,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
             )}
 
             {visible.map((s) => {
-              const pts = totals[s.key].map((v, h) => [x(h), y(v)]);
+              const pts = totals[s.key].map((_, h) => [x(h), y(plotted(s.key, h))]);
               const line = smoothPath(pts, padTop, baseline);
               const st = stats(s.key);
               return (
@@ -299,7 +328,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
                     className={s.stroke}
                   />
                   {st.peak !== null && (
-                    <circle cx={x(st.peak)} cy={y(st.peakCount)} r="3.5" className={`${s.fill} stroke-white`} strokeWidth="1.5" />
+                    <circle cx={x(st.peak)} cy={y(plotted(s.key, st.peak))} r="3.5" className={`${s.fill} stroke-white`} strokeWidth="1.5" />
                   )}
                 </g>
               );
@@ -309,7 +338,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
               <g>
                 <line x1={x(hover)} x2={x(hover)} y1={padTop} y2={baseline} className="stroke-slate-400" strokeWidth="1" strokeDasharray="2 3" />
                 {visible.map((s) => (
-                  <circle key={s.key} cx={x(hover)} cy={y(totals[s.key][hover])} r="3" className={`${s.fill} stroke-white`} strokeWidth="1.5" />
+                  <circle key={s.key} cx={x(hover)} cy={y(plotted(s.key, hover))} r="3" className={`${s.fill} stroke-white`} strokeWidth="1.5" />
                 ))}
               </g>
             )}
@@ -328,7 +357,10 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
                 <div key={s.key} className="flex items-center gap-1.5">
                   <span className={`inline-block h-1.5 w-1.5 rounded-full ${s.dot}`} />
                   <span className="text-slate-300">{s.label}</span>
-                  <span className="ml-auto pl-3 font-semibold tabular-nums">{totals[s.key][hover].toLocaleString()}</span>
+                  <span className="ml-auto pl-3 font-semibold tabular-nums">
+                    {totals[s.key][hover].toLocaleString()}
+                    <span className="font-normal text-slate-300"> · {fmtPct(share(s.key, totals[s.key][hover]))}</span>
+                  </span>
                 </div>
               ))}
             </div>
