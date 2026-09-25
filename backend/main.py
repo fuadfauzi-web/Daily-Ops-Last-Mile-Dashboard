@@ -844,8 +844,7 @@ class DodResponse(BaseModel):
 
 @app.get("/api/dod", response_model=DodResponse)
 async def dod(user: CurrentUser = Depends(get_current_user)):
-    if user.role not in ("manager", "admin"):
-        raise HTTPException(status_code=403, detail="The DoD Dashboard is for managers and admins")
+    # Every role can open it (2026-09-26); _scope_filter_stations below limits each user to their own region / zone / station.
     today = datetime.now(_MYT).date()
     week_start = today - timedelta(days=today.weekday())
     db_rows = await db.fetch_all(

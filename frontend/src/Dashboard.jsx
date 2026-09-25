@@ -84,7 +84,7 @@ const TABS = [
           ),
         },
       ]
-    : []), // managers + admins only, see canSeeDod
+    : []), // every role, limited to its own scope (the backend filters)
   { key: "urgent", label: "Urgent TN" },
 ];
 
@@ -232,9 +232,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const [sortDir, setSortDir] = useState("desc");
   // Remembers the last tab this user had open, per Phase 5 -- a first-ever
   // visit (nothing saved yet) lands on the Action Board, per Phase 6.
-  // DoD is for managers and admins only for now (2026-09-26 feedback).
-  const canSeeDod = me.role === "manager" || me.role === "admin";
-  const tabs = TABS.filter((t) => t.key !== "dod" || canSeeDod);
+  const tabs = TABS;
   const tabStorageKey = `dashboard-tab-${me.email}`;
   const [tab, setTabState] = useState(() => {
     try {
@@ -817,7 +815,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         </>
       )}
 
-      {FEATURES.dod && canSeeDod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}
+      {FEATURES.dod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}
 
       {tab === "shipment" && (
         <ShipmentDetailsTab

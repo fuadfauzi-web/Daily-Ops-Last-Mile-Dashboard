@@ -8,10 +8,12 @@ import TrendChart, { TONE_ORDER } from "./components/TrendChart";
 import { exportCsv } from "./lib/csv";
 import { ALL_COLUMNS } from "./lib/metrics";
 
-// DoD Dashboard (staging; managers and admins only for now): past numbers for management -- one snapshot per station per day (the
+// DoD Dashboard (Beta; every role, limited to their own scope): past numbers -- one snapshot per station per day (the
 // last refresh of the day, i.e. the run before midnight, after 11:30pm), kept for this week and last week. Two ways to read it:
 //   * Daily View      pick a day, see every region / zone / station with the numbers below, and the change from the day before.
 //   * Weekly Overview pick one or more measures and see them across Mon-Sun -- this week, last week, or both.
+// PLANNED (Fleet Manager, 2026-09-26): once the Metabase API key is in place the data source moves to Metabase, instead of the last run
+// before 12am kept in dod_daily.
 // Everything follows the filters above the tabs.
 //
 // Where each Daily View number comes from (2026-09-26 feedback):
