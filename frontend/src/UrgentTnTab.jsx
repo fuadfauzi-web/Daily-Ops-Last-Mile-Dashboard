@@ -187,7 +187,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
   const saveReply = async () => {
     const field = replying.created_by_me ? "owner_reply" : "pic_reply";
-    const ok = await run(() => api.urgentTn.update(replying.id, { [field]: replyText }), "Reply sent");
+    // (an owner's reply says what happened itself: sent / no change)
+    const ok = await run(() => api.urgentTn.update(replying.id, { [field]: replyText }), replying.created_by_me ? undefined : "Reply sent");
     if (ok) setReplying(null);
   };
   // Owner: a forgotten / corrected / updated note. Sending it again brings the row back to the PIC's attention.
@@ -198,7 +199,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
     setNoteText(item.note || "");
   };
   const saveNote = async () => {
-    const ok = await run(() => api.urgentTn.update(noting.id, { note: noteText }), noteText.trim() ? "Note sent to the PIC" : "Note cleared");
+    const ok = await run(() => api.urgentTn.update(noting.id, { note: noteText }));
     if (ok) setNoting(null);
   };
 
@@ -684,7 +685,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
             Note for {noting.assignee_name || noting.assignee_email} — <span className="font-mono">{noting.tracking_number}</span>
           </div>
           <div className="text-xs text-slate-500">
-            Sending it puts this tracking number back in front of the PIC (bell and an UPDATED tag), even if you only fix a typo.
+            Sending a changed note puts this tracking number back in front of the PIC (bell and an UPDATED tag). If nothing changed, nothing is sent.
           </div>
           <textarea
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -696,7 +697,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
             autoFocus
           />
           <div className="flex gap-2">
-            <button onClick={saveNote} disabled={busy} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
+            <button onClick={saveNote} disabled={busy || noteText.trim() === (noting.note || "")} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
               Send note
             </button>
             <button onClick={() => setNoting(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">
@@ -724,7 +725,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
             autoFocus
           />
           <div className="flex gap-2">
-            <button onClick={saveReply} disabled={busy} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
+            <button onClick={saveReply} disabled={busy || (replying.created_by_me && replyText.trim() === (replying.owner_reply || ""))} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
               Send reply
             </button>
             <button onClick={() => setReplying(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">

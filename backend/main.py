@@ -2727,6 +2727,7 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
     now = datetime.now(timezone.utc).replace(microsecond=0)
     # column -> new value (None = NULL); a later change to the same column wins.
     cols: dict[str, object] = {"updated_at": now}
+    detail = None  # what the app tells the person after a note / reply
     notify_pic = False  # the owner sent a note / reply: put the row back in front of the PIC (UPDATED tag + bell)
 
     if payload.pic_reply is not None:
@@ -2748,9 +2749,11 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
         reply = payload.owner_reply.strip()
         if len(reply) > 1000:
             raise HTTPException(status_code=422, detail="Reply is too long (max 1000 characters)")
-        cols["owner_reply"] = reply or None
-        cols["owner_replied_at"] = now if reply else None
-        notify_pic = notify_pic or bool(reply)
+        if (reply or None) != row[17]:  # the same text again is not an update: no tag, no bell
+            cols["owner_reply"] = reply or None
+            cols["owner_replied_at"] = now if reply else None
+            notify_pic = notify_pic or bool(reply)
+            detail = "Reply sent" if reply else "Reply cleared"
 
     if payload.status is not None:
         if payload.status not in URGENT_STATUSES:
@@ -2787,16 +2790,18 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
             cols.update(
                 assignee_email=assignee, assignee_seen_at=now if self_assigned else None,
                 assignee_ack_at=now if self_assigned else None, pic_reply=None, pic_replied_at=None,
-                owner_reply=None, owner_replied_at=None,
+                owner_reply=None, owner_replied_at=None, note_sent_at=None,
             )
         if payload.note is not None:
             note = payload.note.strip() or None
             if note and len(note) > 500:
                 raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
-            cols["note"] = note
-            cols["note_sent_at"] = now if note else None
-            # Sending a note again (a forgotten one, or an update) reaches the PIC even if the text is the same.
-            notify_pic = notify_pic or bool(note)
+            if note != (row[4] or None):  # the same text again is not an update: no UPDATED tag, no bell
+                cols["note"] = note
+                # "sent" time only for a note sent on its own -- a note that comes with a brand-new PIC is just part of the assignment.
+                cols["note_sent_at"] = now if note and payload.assignee_email is None else None
+                notify_pic = notify_pic or bool(note)
+                detail = ("Note sent to the PIC" if has_pic else "Note saved") if note else "Note cleared"
 
     # A note / reply from the owner: NEW / UPDATED tag for the PIC, and the bell rings again if the row is in progress.
     # (Assigning a PIC in the same request already does this.)
@@ -2805,10 +2810,12 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
         cols["assignee_seen_at"] = None
         if cols.get("status", row[5]) == "in_progress":
             cols["assignee_ack_at"] = None
+    if len(cols) == 1 and (payload.note is not None or payload.owner_reply is not None):
+        return {"ok": True, "detail": "No change -- it is the same text, so nothing was sent"}
     await db.execute(
         f"UPDATE urgent_tn_items SET {', '.join(f'{c} = %s' for c in cols)} WHERE id = %s", (*cols.values(), item_id)
     )
-    return {"ok": True}
+    return {"ok": True, "detail": detail}
 
 
 @app.delete("/api/urgent-tn/items/{item_id}", response_model=OkResult)

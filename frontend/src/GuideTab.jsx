@@ -353,7 +353,7 @@ const SECTIONS = [
             </>,
             <>
               <strong>Note and replies</strong>: forgot the note, or something changed? As the owner use <strong>Edit note</strong> (or <strong>Add note</strong>) on
-              the row and press <strong>Send note</strong> -- the PIC's bell rings again and the row is tagged UPDATED. When the PIC writes back you can answer with
+              the row and press <strong>Send note</strong> -- the PIC's bell rings again and the row is tagged UPDATED (only when the text actually changed). When the PIC writes back you can answer with
               <strong> Reply to PIC</strong>; it shows in the <strong>Owner Reply</strong> column.
             </>,
             <>
@@ -474,7 +474,7 @@ const FAQS = [
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
   { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
   { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed -- hourly from 8am to 8pm, never overnight) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
-  { q: "I forgot the note when I assigned a tracking number -- can I add it later?", a: "Urgent TN tab -> Add note (or Edit note) on the row -> Send note. The PIC's bell rings again and the row is tagged UPDATED. You can also answer what they wrote with Reply to PIC." },
+  { q: "I forgot the note when I assigned a tracking number -- can I add it later?", a: "Urgent TN tab -> Add note (or Edit note) on the row -> Send note. The PIC's bell rings again and the row is tagged UPDATED (only if the note actually changed). You can also answer what they wrote with Reply to PIC." },
   { q: "How do I get reminded to follow up an email or Gchat?", a: "Task List -> Email / Gchat: add it with a due date (and a helper if you want someone to remind you or reply for you). The bell rings when it's due or overdue.", show: () => F.taskList },
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
