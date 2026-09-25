@@ -73,6 +73,12 @@ const TABS = [
   { key: "urgent", label: "Urgent TN" },
 ];
 
+// Attendance shows "12 (2 Rescue)" when some of the drivers are rescue, same as Route Monitoring (2026-09-26 feedback).
+function attendanceText(row) {
+  const n = (row.attendance || 0).toLocaleString();
+  return row.attendance_rescue > 0 ? `${n} (${row.attendance_rescue} Rescue)` : n;
+}
+
 function fmt(key, value) {
   if (key === "routed_pct") return `${value.toFixed(2)}%`;
   if (PERCENT_METRICS.has(key)) return `${value.toFixed(1)}%`;
@@ -106,6 +112,7 @@ function sumMetrics(rows) {
   });
   const routedDenom = withPctNumerators.total_routed + withPctNumerators.total_in_hub;
   withPctNumerators.routed_pct = routedDenom ? Math.round((withPctNumerators.total_routed / routedDenom) * 10000) / 100 : 0;
+  withPctNumerators.attendance_rescue = rows.reduce((sum, r) => sum + (r.attendance_rescue || 0), 0);
   return withPctNumerators;
 }
 
@@ -187,8 +194,14 @@ function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sort
 }
 
 function exportStationHealthCsv(rows) {
-  const headers = ["Region", "Zone", "Station", ...ALL_COLUMNS.map((c) => c.label)];
-  const values = rows.map((r) => [r.region, r.zone, r.station_name, ...ALL_COLUMNS.map((c) => r[c.key])]);
+  const headers = [
+    "Region", "Zone", "Station",
+    ...ALL_COLUMNS.flatMap((c) => (c.key === "attendance" ? [c.label, "Rescue Attendance"] : [c.label])),
+  ];
+  const values = rows.map((r) => [
+    r.region, r.zone, r.station_name,
+    ...ALL_COLUMNS.flatMap((c) => (c.key === "attendance" ? [r.attendance, r.attendance_rescue || 0] : [r[c.key]])),
+  ]);
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
@@ -553,7 +566,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         return {
           key: c.key,
           label,
-          render: (row) => fmt(c.key, row[c.key]),
+          render: (row) => (c.key === "attendance" ? attendanceText(row) : fmt(c.key, row[c.key])),
           className: () => "text-slate-700",
           onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
           clickable,
@@ -608,7 +621,10 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         const percentOfLabel = t.percent_of ? ALL_COLUMNS.find((col) => col.key === t.percent_of)?.label : null;
         return {
           label: c.label,
-          value: `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, detailRow[c.key], detailRow, t)}`,
+          value:
+            c.key === "attendance"
+              ? attendanceText(detailRow)
+              : `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, detailRow[c.key], detailRow, t)}`,
           className: SEVERITY_CLASS[sev],
           target: hasTarget
             ? `target ${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${

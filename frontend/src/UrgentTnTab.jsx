@@ -156,6 +156,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
   // An owner's row with nobody on it yet (or only themselves): "Assign PIC" EDITS that row. Every other case -- adding one
   // more PIC, or a PIC passing it on -- is a NEW row, because that PIC has to close the loop with their own owner.
+  const noteHasPic = !!noting && !!noting.assignee_email && !noting.assigned_to_me; // a note for a PIC is SENT; without one it is just saved
   const assignEdit = !!delegating && delegating.created_by_me && (!delegating.assignee_email || delegating.assigned_to_me);
   const startDelegate = (item) => {
     setNoting(null);
@@ -204,6 +205,21 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
 
   const isPic = (r) => r.assigned_to_me && !r.created_by_me;
+
+  // Double-click to act (2026-09-26 feedback), instead of buttons at the end of the row. Enter does the same from the keyboard.
+  const dblProps = (onOpen, title) => ({
+    role: "button",
+    tabIndex: 0,
+    title,
+    onDoubleClick: () => {
+      window.getSelection?.()?.removeAllRanges();
+      onOpen();
+    },
+    onKeyDown: (e) => {
+      if (e.key === "Enter") onOpen();
+    },
+    className: "-m-1 cursor-pointer rounded p-1 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none",
+  });
 
   // Drop ticks for rows that are gone (removed, or expired) so "Remove selected (N)" never lies.
   useEffect(() => {
@@ -363,15 +379,22 @@ export default function UrgentTnTab({ me, refreshTick }) {
       align: "left",
       // The cell itself is no-wrap, so a long note ran on into the next column (the "double text"
       // bug): give the text its own fixed-width block that wraps.
-      render: (r) =>
-        r.note ? (
+      render: (r) => {
+        const body = (
           <div className="w-[220px] whitespace-normal break-words text-left">
-            {r.note}
-            {r.assignee_email && r.note_sent_at && <div className="text-[10px] text-slate-400">sent {formatTime(r.note_sent_at)}</div>}
+            {r.note ? (
+              <>
+                {r.note}
+                {r.assignee_email && r.note_sent_at && <div className="text-[10px] text-slate-400">sent {formatTime(r.note_sent_at)}</div>}
+              </>
+            ) : (
+              "—"
+            )}
           </div>
-        ) : (
-          "—"
-        ),
+        );
+        // Owner: double-click the note to add / edit / re-send it (no button at the end of the row).
+        return r.created_by_me ? <div {...dblProps(() => startNote(r), r.note ? "Double-click to edit the note" : "Double-click to add a note")}>{body}</div> : body;
+      },
       className: () => "text-xs text-slate-600",
     },
     {
@@ -393,15 +416,25 @@ export default function UrgentTnTab({ me, refreshTick }) {
       key: "pic_reply",
       label: "PIC Reply",
       align: "left",
-      render: (r) =>
-        r.pic_reply ? (
+      render: (r) => {
+        const body = (
           <div className="w-[240px] whitespace-normal break-words text-left">
-            {r.pic_reply}
-            {r.pic_replied_at && <div className="text-[10px] text-slate-400">{formatTime(r.pic_replied_at)}</div>}
+            {r.pic_reply ? (
+              <>
+                {r.pic_reply}
+                {r.pic_replied_at && <div className="text-[10px] text-slate-400">{formatTime(r.pic_replied_at)}</div>}
+              </>
+            ) : (
+              "—"
+            )}
           </div>
-        ) : (
-          "—"
-        ),
+        );
+        // Owner: double-click the PIC's reply to answer it. PIC: double-click your own reply to write / edit it.
+        if (isPic(r)) return <div {...dblProps(() => startReply(r), "Double-click to reply")}>{body}</div>;
+        if (r.created_by_me && r.assignee_email && !r.assigned_to_me && (r.pic_reply || r.owner_reply))
+          return <div {...dblProps(() => startReply(r), "Double-click to reply to the PIC")}>{body}</div>;
+        return body;
+      },
       className: () => "text-xs text-slate-600",
     },
     {
@@ -450,7 +483,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
     },
     {
       key: "actions",
-      label: "",
+      label: "Action Taken",
       sortable: false,
       render: (r) => (
         <div className="flex items-center justify-end gap-3 whitespace-nowrap">
@@ -493,22 +526,6 @@ export default function UrgentTnTab({ me, refreshTick }) {
                 <button onClick={() => setStatus(r, "in_progress")} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-brand">
                   Reopen
                 </button>
-              )}
-              {r.assignee_email && !r.assigned_to_me && (
-                <>
-                  <button
-                    onClick={() => startNote(r)}
-                    title="Fix, add or update the note and send it to the PIC again"
-                    className="text-xs font-medium text-slate-500 hover:text-brand"
-                  >
-                    {r.note ? "Edit note" : "Add note"}
-                  </button>
-                  {(r.pic_reply || r.owner_reply) && (
-                    <button onClick={() => startReply(r)} title="Reply to what the PIC wrote" className="text-xs font-medium text-slate-500 hover:text-brand">
-                      Reply to PIC
-                    </button>
-                  )}
-                </>
               )}
               <button
                 onClick={() => startDelegate(r)}
@@ -682,10 +699,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
       {noting && (
         <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
           <div className="font-display text-xs font-semibold text-slate-700">
-            Note for {noting.assignee_name || noting.assignee_email} — <span className="font-mono">{noting.tracking_number}</span>
+            Note{noteHasPic ? ` for ${noting.assignee_name || noting.assignee_email}` : ""} — <span className="font-mono">{noting.tracking_number}</span>
           </div>
           <div className="text-xs text-slate-500">
-            Sending a changed note puts this tracking number back in front of the PIC (bell and an UPDATED tag). If nothing changed, nothing is sent.
+            {noteHasPic
+              ? "Sending a changed note puts this tracking number back in front of the PIC (bell and an UPDATED tag). If nothing changed, nothing is sent."
+              : "Nobody is assigned yet, so the note is just saved with the tracking number."}
           </div>
           <textarea
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -698,7 +717,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           />
           <div className="flex gap-2">
             <button onClick={saveNote} disabled={busy || noteText.trim() === (noting.note || "")} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
-              Send note
+              {noteHasPic ? "Send note" : "Save note"}
             </button>
             <button onClick={() => setNoting(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">
               Cancel
@@ -768,7 +787,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           footer={
             <>
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
-              to you. A tracking number on several rows (one per PIC) is kept together and shares a colour. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
+              to you. A tracking number on several rows (one per PIC) is kept together and shares a colour. Double-click a Note to edit / re-send it, and a PIC Reply to answer it. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
               marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
               Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
               search; "Not found" means the parcel is already completed or added to a shipment.

@@ -15,6 +15,9 @@ export const EXTRA_METRICS = [
   { key: "zalora_ovfd", label: "Zalora NXD OVFD" },
   { key: "routed_current_ovfd", label: "Route Monitoring OVFD" },
   { key: "fresh_unscan", label: "Fresh Unscan" },
+  // Amway / Watson / Orca / Cold Chain parcels still at the station: older than 0 days = warning, older than 1 day = breach.
+  { key: "shipper_sla_warning", label: "Shipper SLA Warning" },
+  { key: "shipper_sla_breach", label: "Shipper SLA Breach" },
 ];
 
 export const NO_DRILLDOWN_METRICS = new Set(["routed_current_ovfd"]);

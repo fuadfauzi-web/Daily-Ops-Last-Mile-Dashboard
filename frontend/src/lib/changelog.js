@@ -20,8 +20,8 @@ export const CHANGELOG = [
     date: "2026-09-25",
     title: "Urgent TN: re-send a note, reply to your PIC",
     points: [
-      "Forgot a note when you assigned a tracking number, or something changed? Use Edit note (or Add note) on the row and press Send note -- the PIC's bell rings again and the row is tagged UPDATED (only when the text actually changed).",
-      "You can reply to what your PIC wrote (Reply to PIC); it shows in the new Owner Reply column.",
+      "Forgot a note when you assigned a tracking number, or something changed? Double-click the Note on the row, edit it and press Send note -- the PIC's bell rings again and the row is tagged UPDATED (only when the text actually changed).",
+      "Double-click a PIC Reply to answer it; your answer shows in the new Owner Reply column.",
       "Assign PIC on a tracking number with nobody on it yet fills in that same row. When a PIC passes it on to someone else it is still a new row, so that PIC closes it with the person who passed it on.",
       "The same tracking number on several rows now sits together by default and is colour-coded.",
     ],
@@ -32,6 +32,20 @@ export const CHANGELOG = [
     points: [
       "PIC: after you pick In progress the bell stays quiet for an hour, then rings again until you close it -- now only between 8am and 8pm, so nothing rings overnight. Each row shows when the next reminder is.",
       "Whoever added the tracking number now gets a reminder bell at 10am, 2pm and 5pm while any of them is still open (not closed by the PIC, not removed by you). Press Got it on the banner in the Urgent TN tab to quiet it until the next one.",
+    ],
+  },
+  {
+    date: "2026-09-26",
+    title: "Action Board: Shipper SLA",
+    points: [
+      "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels still at the station: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",
+    ],
+  },
+  {
+    date: "2026-09-26",
+    title: "Station Health: rescue attendance",
+    points: [
+      "Attendance now shows how many of the drivers are rescue, like Route Monitoring -- for example \"12 (2 Rescue)\". Region and zone rows add their stations up, and Export CSV has a Rescue Attendance column.",
     ],
   },
   {
