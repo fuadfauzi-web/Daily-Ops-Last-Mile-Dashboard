@@ -71,7 +71,20 @@ const TABS = [
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Shipper Radar" },
-  ...(FEATURES.dod ? [{ key: "dod", label: "DoD" }] : []), // managers + admins only, see canSeeDod
+  ...(FEATURES.dod
+    ? [
+        {
+          key: "dod",
+          // Beta (2026-09-26): still being built -- managers and admins see it, and are told so.
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              DoD
+              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+            </span>
+          ),
+        },
+      ]
+    : []), // managers + admins only, see canSeeDod
   { key: "urgent", label: "Urgent TN" },
 ];
 

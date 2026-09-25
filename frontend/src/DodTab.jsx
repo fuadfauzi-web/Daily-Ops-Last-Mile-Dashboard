@@ -164,13 +164,22 @@ export default function DodTab({ stationCodes }) {
   }, [rows, level]);
   const totalDays = useMemo(() => new Map(Array.from(byDay, ([d, rs]) => [d, summarize(rs)])), [byDay]);
 
+  const betaNote = (
+    <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+      <span className="mt-px rounded bg-amber-200 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide">Beta</span>
+      <span>This tab is still being built -- numbers, measures and layout may change. History starts from the day it went live.</span>
+    </div>
+  );
   if (error) return <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>;
   if (!data) return <Skeleton />;
   if (!days.length) {
     return (
-      <div className="rounded-xl bg-white p-6 text-slate-600 ring-1 ring-slate-200">
-        No history yet. The DoD Dashboard keeps one snapshot per station per day (the last refresh of the day) for this week and last week, starting from the
-        first refresh after it went live.
+      <div className="space-y-3">
+        {betaNote}
+        <div className="rounded-xl bg-white p-6 text-slate-600 ring-1 ring-slate-200">
+          No history yet. The DoD Dashboard keeps one snapshot per station per day (the last refresh of the day) for this week and last week, starting from the
+          first refresh after it went live.
+        </div>
       </div>
     );
   }
@@ -487,6 +496,7 @@ export default function DodTab({ stationCodes }) {
 
   return (
     <div className="space-y-3">
+      {betaNote}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentedControl
           options={[
