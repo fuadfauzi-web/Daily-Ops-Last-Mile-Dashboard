@@ -1,8 +1,8 @@
 """KPI Dashboard (staging, 2026-09-26): the Hybrid Productivity module.
 
 Ported from the Fleet Manager's Google Sheet + Apps Script web app ("Southern Region Hybrid Performance"): driver-level Weekly /
-Monthly / Daily rows from Metabase (questions 126389 / 126392 / 126393) plus the hybrid driver list (126216) for tenure, now for
-ALL stations, not only Southern. A driver's station comes from the station code in their name ("LKN - HD - FAUZI" -> Larkin, the
+Monthly / Daily rows from Metabase (the All-Regions copies 127194 / 127195 / 127196) plus the hybrid driver list (127193) for tenure,
+now for ALL stations, not only Southern. A driver's station comes from the station code in their name ("LKN - HD - FAUZI" -> Larkin, the
 same rule Route Monitoring uses), so the sheet's Control tab is not needed.
 
 Data source per dataset: an UPLOADED file (Data upload, kpi_data.py) wins -- an explicit, newer act -- otherwise Metabase. So the page
@@ -249,8 +249,8 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
 # ------------------------------------------------------------------------------------------------ data uploads
 
 def _require_uploader(user: CurrentUser) -> None:
-    if user.role not in ("admin", "manager"):
-        raise HTTPException(status_code=403, detail="Only managers and admins can upload KPI data")
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can upload KPI data")
 
 
 class UploadInfo(BaseModel):

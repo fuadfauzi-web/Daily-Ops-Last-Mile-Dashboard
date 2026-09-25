@@ -18,7 +18,7 @@ import CodRtsRca from "./kpi/CodRtsRca";
 // shows WHY -- with the numbers and the tracking numbers behind them. Three parts:
 //   Results       Weekly Dashboard (the team's WoW dashboard) and OPEX Result (the OPEX team's results, merged in later)
 //   RCA details   one page per KPI: Hybrid Productivity, Invalid POD, COD RTS (others listed as "soon")
-// Data: uploaded files (managers / admins, "Data upload") or Metabase where a question exists -- see backend/kpi.py, kpi_rca.py.
+// Data: uploaded files (admins, "Data upload") or Metabase where a question exists -- see backend/kpi.py, kpi_rca.py.
 
 const MODULES = [
   { key: "weekly", label: "Weekly Dashboard", group: "Results", live: true },
@@ -138,6 +138,7 @@ function HybridProductivity({ me }) {
   const [showUpload, setShowUpload] = useState(false);
 
   const canRefresh = me.role === "admin" || me.role === "manager";
+  const canUpload = me.role === "admin";
   const load = (refresh = false) => {
     setLoading(true);
     setError(null);
@@ -524,7 +525,7 @@ function HybridProductivity({ me }) {
           {data.fetched_at ? ` · ${formatTime(data.fetched_at)}` : ""}
         </span>
       )}
-      {canRefresh && (
+      {canUpload && (
         <button onClick={() => setShowUpload((v) => !v)} className="h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
           {showUpload ? "Hide data upload" : "Data upload"}
         </button>
@@ -553,8 +554,8 @@ function HybridProductivity({ me }) {
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
           <div className="font-display text-base font-semibold text-ink">No Hybrid Productivity data yet</div>
           <p className="mt-2">
-            The data comes from Metabase questions 126389 (weekly), 126392 (monthly), 126393 (daily) and 126216 (hybrid driver list). While the app's own Metabase link is being
-            sorted out, a manager or admin can <strong>upload the downloaded files</strong> below -- that works today and is used instead of Metabase until removed.
+            The data comes from the Metabase questions "Hybrid Weekly / Monthly / Daily Apps - All Regions" (127194, 127195, 127196) and "Hybrid Data Current Year - All Regions" (127193). While the app's own Metabase link is being
+            sorted out, an admin can <strong>upload the downloaded files</strong> below -- that works today and is used instead of Metabase until removed.
           </p>
           {data.error && <p className="mt-2 rounded-lg bg-red-50 p-2 text-status-critical">Metabase said: {data.error}</p>}
         </div>
@@ -567,8 +568,8 @@ function HybridProductivity({ me }) {
               for a plain-English reason.
             </p>
             <p className="text-xs text-slate-500">
-              Note: the four saved questions are filtered to <strong>depot region = South</strong>, so even a working key returns Southern only. For all stations, duplicate each question in
-              Metabase without that filter (and keep the same columns).
+              Note: the app reads the four <strong>All Regions</strong> copies of the team's saved questions (the Southern filter removed, everything else the same). They sit in a personal Metabase collection,
+              so the API key's user needs access to it -- or move the four questions to a shared collection the key's group can see.
             </p>
             <MetabaseCheck />
           </div>

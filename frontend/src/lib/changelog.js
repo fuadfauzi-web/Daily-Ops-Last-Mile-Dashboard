@@ -61,7 +61,7 @@ export const CHANGELOG = [
     feature: "kpiDashboard",
     points: [
       "A new KPI page next to Dashboard, built as the RCA side of the KPIs: Weekly Dashboard (every KPI against its target for the past 4 weeks, by region / zone / station), OPEX Result (the OPEX team's result file, to be merged in), and RCA pages for Hybrid Productivity, Invalid POD and COD RTS with the numbers and tracking numbers behind them. The other KPIs are listed as soon.",
-      "Managers and admins load the data with Data upload (CSV or Excel -- the right sheet is picked automatically). An uploaded Hybrid file is used instead of Metabase until it is removed.",
+      "Admins load the data with Data upload (CSV or Excel -- the right sheet is picked automatically). An uploaded Hybrid file is used instead of Metabase until it is removed.",
     ],
   },
   {
@@ -71,7 +71,7 @@ export const CHANGELOG = [
     minRank: 2,
     points: [
       "A new DoD tab (after Shipper Radar, managers and admins only for now) keeps one snapshot per station per day -- the last refresh before midnight -- for this week and last week, so you can look back at yesterday and compare it with the day before.",
-      "Daily View: pick a day and see every region / zone / station with Total Fresh, Fresh Unscan, Latlong, Total 0 Attempt, In Hub, Age >3, Attendance, Total Routed, Success Rate and Pending in Apps, with the change from the day before. Weekly Overview: pick one or more measures and see them across Mon-Sun for this week, last week or both, with a details table for the measures you choose.",
+      "Daily View: pick a day and see every region / zone / station with Total Fresh, Fresh Unscan, Latlong, Total 0 Attempt, In Hub, Age >3, Attendance, Total Routed, Success Rate and Pending in Apps, with the change from the day before. Weekly Overview: pick one or more measures and see them across Mon-Sun for this week, last week or both, with one details table that you switch between the measures you picked.",
       "History starts from the first refresh after it went live.",
     ],
   },

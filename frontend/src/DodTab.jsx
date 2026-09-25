@@ -120,7 +120,7 @@ export default function DodTab({ stationCodes }) {
   const [day, setDay] = useState(null);
   const [measureKeys, setMeasureKeys] = useState(["successRate"]);
   const [weeks, setWeeks] = useState("both"); // "both" | "this" | "last"
-  const [tableKeys, setTableKeys] = useState(null); // measures whose detail tables are shown; null = all picked
+  const [tableKey, setTableKey] = useState(null); // which picked measure the details table shows; null = the first picked
   const [picked, setPicked] = useState("__total");
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
@@ -327,7 +327,7 @@ export default function DodTab({ stationCodes }) {
       }))
     );
 
-    const tableMeasures = picks.filter((m) => (tableKeys ? tableKeys.includes(m.key) : true));
+    const tableMeasure = picks.find((m) => m.key === tableKey) || picks[0];
     const sk = sortKey && ["name", "avg"].includes(sortKey) ? sortKey : null;
     const measureTable = (m) => {
       const withAvg = entries.map((e) => ({ ...e, avg: avgOf(m, e.dayMap, shownDays) }));
@@ -419,10 +419,7 @@ export default function DodTab({ stationCodes }) {
               <MultiSelect
                 options={MEASURE_OPTIONS}
                 value={measureKeys}
-                onChange={(next) => {
-                  setMeasureKeys(next);
-                  setTableKeys(null);
-                }}
+                onChange={setMeasureKeys}
                 placeholder="Pick measures"
               />
             </div>
@@ -433,10 +430,7 @@ export default function DodTab({ stationCodes }) {
                   {m.label}
                   <button
                     type="button"
-                    onClick={() => {
-                      setMeasureKeys(measureKeys.filter((k) => k !== m.key));
-                      setTableKeys(null);
-                    }}
+                    onClick={() => setMeasureKeys(measureKeys.filter((k) => k !== m.key))}
                     className="text-white/70 hover:text-white"
                     aria-label={`Remove ${m.label}`}
                   >
@@ -456,27 +450,6 @@ export default function DodTab({ stationCodes }) {
               value={weeks}
               onChange={setWeeks}
             />
-            {picks.length > 1 && (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                <span className="font-display font-semibold text-slate-700">Show tables for:</span>
-                {picks.map((m) => {
-                  const on = tableKeys ? tableKeys.includes(m.key) : true;
-                  return (
-                    <label key={m.key} className="flex min-h-[36px] items-center gap-1">
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() => {
-                          const cur = tableKeys || picks.map((p) => p.key);
-                          setTableKeys(on ? cur.filter((k) => k !== m.key) : [...cur, m.key]);
-                        }}
-                      />
-                      {m.label}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
 
@@ -497,7 +470,15 @@ export default function DodTab({ stationCodes }) {
                 height={picks.length > 1 ? 240 : 200}
               />
             </div>
-            {tableMeasures.map(measureTable)}
+            {picks.length > 1 && (
+              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                <span className="font-display text-xs font-semibold text-slate-700">Details table for:</span>
+                <div className="min-w-0 max-w-full">
+                  <SegmentedControl options={picks.map((m) => ({ key: m.key, label: m.label }))} value={tableMeasure.key} onChange={setTableKey} />
+                </div>
+              </div>
+            )}
+            {measureTable(tableMeasure)}
           </>
         )}
       </div>

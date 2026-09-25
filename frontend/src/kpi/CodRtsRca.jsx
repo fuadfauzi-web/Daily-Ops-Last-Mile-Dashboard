@@ -26,7 +26,7 @@ export default function CodRtsRca({ me }) {
   const [tnBusy, setTnBusy] = useState(false);
   const [sort, setSort] = useState({ key: "rts", dir: "desc" });
   const [showUpload, setShowUpload] = useState(false);
-  const canUpload = me.role === "admin" || me.role === "manager";
+  const canUpload = me.role === "admin";
 
   const load = () =>
     api

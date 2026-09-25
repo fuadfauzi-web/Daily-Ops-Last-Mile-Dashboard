@@ -16,7 +16,7 @@ export default function OpexResult({ me }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ col: null, dir: "asc" });
   const [showUpload, setShowUpload] = useState(false);
-  const canUpload = me.role === "admin" || me.role === "manager";
+  const canUpload = me.role === "admin";
 
   const load = () =>
     api

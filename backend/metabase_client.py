@@ -23,11 +23,13 @@ def _clean(value: str) -> str:
 METABASE_BASE_URL = _clean(os.getenv("METABASE_BASE_URL", "https://metabase.ninjavan.co")).rstrip("/")
 METABASE_API_KEY = _clean(os.getenv("METABASE_API_KEY", ""))
 
-# Metabase question ids the KPI Dashboard's Hybrid Productivity module reads (the same questions that used to be emailed as CSV).
-QUESTION_HYBRID_DAILY = 126393  # staging hybrid daily apps
-QUESTION_HYBRID_WEEKLY = 126389  # staging hybrid weekly apps
-QUESTION_HYBRID_MONTHLY = 126392  # staging hybrid monthly apps
-QUESTION_HYBRID_DATA = 126216  # hybrid data (current year) -- driver details incl. employment start date
+# Metabase question ids the KPI Dashboard's Hybrid Productivity module reads. These are the ALL-REGIONS copies (2026-09-26) of the
+# Southern questions the team used to download as CSV: identical columns / aggregations / other filters, only the
+# depot_region (hub_region for the driver list) = South filter removed. Originals: 126393 daily, 126389 weekly, 126392 monthly, 126216 data.
+QUESTION_HYBRID_DAILY = 127196  # Hybrid Daily Apps - All Regions (current month)
+QUESTION_HYBRID_WEEKLY = 127194  # Hybrid Weekly Apps - All Regions (current year)
+QUESTION_HYBRID_MONTHLY = 127195  # Hybrid Monthly Apps - All Regions (current year)
+QUESTION_HYBRID_DATA = 127193  # Hybrid Data Current Year - All Regions -- driver details incl. employment start date
 
 _TIMEOUT_SECONDS = 240
 

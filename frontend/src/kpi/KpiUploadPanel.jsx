@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { formatTime } from "../lib/format";
 
-// Data upload for one KPI (managers and admins upload; everyone sees what is loaded). One current file per dataset -- uploading
+// Data upload for one KPI (admins upload; everyone sees what is loaded). One current file per dataset -- uploading
 // again replaces it. Excel workbooks are fine: the right sheet is picked automatically. An uploaded file is used instead of Metabase
 // until it is removed. (2026-09-26: the way to feed the KPI page while the Metabase link is being sorted out, and for RCA files that
 // are pasted by hand today.)
 export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data upload" }) {
-  const canUpload = me.role === "admin" || me.role === "manager";
+  const canUpload = me.role === "admin";
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -56,7 +56,7 @@ export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data uploa
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="font-display text-sm font-semibold text-ink">{title}</div>
         <div className="text-[11px] text-slate-400">
-          {canUpload ? "CSV or Excel. An uploaded file is used instead of Metabase until you remove it." : "Managers and admins upload the data."}
+          {canUpload ? "CSV or Excel. An uploaded file is used instead of Metabase until you remove it." : "Admins upload the data."}
         </div>
       </div>
       {items === null ? (

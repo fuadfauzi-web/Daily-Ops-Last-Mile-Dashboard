@@ -28,7 +28,7 @@ export default function WeeklyDashboard({ me }) {
   const [sortKey, setSortKey] = useState("success_rate");
   const [sortDir, setSortDir] = useState("asc");
   const [showUpload, setShowUpload] = useState(false);
-  const canUpload = me.role === "admin" || me.role === "manager";
+  const canUpload = me.role === "admin";
 
   const load = () =>
     api

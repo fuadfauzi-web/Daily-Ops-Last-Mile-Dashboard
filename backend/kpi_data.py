@@ -34,19 +34,19 @@ def norm(name) -> str:
 # dataset -> what it is, which KPI page it feeds, which sheet of a workbook to read, and the columns it must have (normalised).
 DATASETS: dict[str, dict] = {
     "hybrid_weekly": {
-        "kpi": "hybrid", "label": "Hybrid weekly", "hint": "Metabase question 126389 (Staging Hybrid Weekly Apps) exported as CSV",
+        "kpi": "hybrid", "label": "Hybrid weekly", "hint": "Metabase question 127194 (Hybrid Weekly Apps - All Regions) exported as CSV",
         "sheet": "Weekly Raw", "required": ["courierdisplayname", "routeweek"],
     },
     "hybrid_monthly": {
-        "kpi": "hybrid", "label": "Hybrid monthly", "hint": "Metabase question 126392 (Staging Hybrid Monthly Apps) exported as CSV",
+        "kpi": "hybrid", "label": "Hybrid monthly", "hint": "Metabase question 127195 (Hybrid Monthly Apps - All Regions) exported as CSV",
         "sheet": "Monthly Raw", "required": ["courierdisplayname", "routemonth"],
     },
     "hybrid_daily": {
-        "kpi": "hybrid", "label": "Hybrid daily", "hint": "Metabase question 126393 (Staging Hybrid Daily Apps) exported as CSV",
+        "kpi": "hybrid", "label": "Hybrid daily", "hint": "Metabase question 127196 (Hybrid Daily Apps - All Regions) exported as CSV",
         "sheet": "Daily Raw", "required": ["courierdisplayname", "routedate"],
     },
     "hybrid_data": {
-        "kpi": "hybrid", "label": "Hybrid driver list", "hint": "Metabase question 126216 (Hybrid Data Current Year) exported as CSV -- gives each driver's start date",
+        "kpi": "hybrid", "label": "Hybrid driver list", "hint": "Metabase question 127193 (Hybrid Data Current Year - All Regions) exported as CSV -- gives each driver's start date",
         "sheet": "Hybrid Data", "required": ["displayname"],
     },
     "invalid_pod_raw": {

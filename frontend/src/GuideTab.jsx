@@ -213,13 +213,13 @@ const SECTIONS = [
             <><strong>Results</strong> -- <strong>Weekly Dashboard</strong>: pick a region, zone or station and see every KPI (Success Rate, D-0, FIFO D0, D-3, T-7, COD RTS, Sweep, Prior, Invalid POD, Complaint, Lost, Shipment Inbound, RPU) for the past 4 weeks against its target (green on target, red ▲ missing), a trend line per KPI, and the stations underneath for the chosen week. <strong>OPEX Result</strong> shows the OPEX team's result file as uploaded until its layout is agreed; it gets merged into the Weekly Dashboard later.</>,
             <><strong>RCA details</strong> -- <strong>Hybrid Productivity</strong> (driver leaderboard, station and zone roll-ups, trends, daily log; attendance below the target -- 6 days a week, 26 a month -- is red), <strong>Invalid POD</strong> (invalid % by station against the 25% target, the reasons behind it, the drivers with the most, and the tracking numbers) and <strong>COD RTS</strong> (COD parcels returned to the shipper: by station, reason, shipper, driver, how many before a first attempt, and the tracking numbers). Prior KPI, FIFO D0, Terminal T7 and Completion D0 / D3 are marked <em>soon</em>.</>,
             <>Click a station, reason or driver to filter the rest of the page; <strong>Show tracking numbers</strong> lists them and <strong>Export CSV</strong> downloads them all.</>,
-            rank >= 2 ? (
-              <><strong>Data upload</strong> (managers and admins): each page has a Data upload button. Download the data (from Metabase, or use the team's RCA files), choose the file -- CSV or Excel; for a workbook the right sheet is picked for you -- and it is loaded straight away. One current file per slot; uploading again replaces it. For Hybrid Productivity an uploaded file is used instead of Metabase until you remove it.</>
+            rank >= 3 ? (
+              <><strong>Data upload</strong> (admins only): each page has a Data upload button. Download the data (from Metabase, or use the team's RCA files), choose the file -- CSV or Excel; for a workbook the right sheet is picked for you -- and it is loaded straight away. One current file per slot; uploading again replaces it. For Hybrid Productivity an uploaded file is used instead of Metabase until you remove it.</>
             ) : (
-              <>Managers and admins upload the data behind these pages.</>
+              <>Admins upload the data behind these pages.</>
             ),
             rank >= 3 && (
-              <>Hybrid Productivity can also read Metabase directly. If it shows a 401 error, open that page's <strong>Check Metabase connection</strong> for a plain-English reason. The four saved Metabase questions are filtered to the Southern region, so for all stations they need copies without that filter.</>
+              <>Hybrid Productivity can also read Metabase directly. If it shows a 401 error, open that page's <strong>Check Metabase connection</strong> for a plain-English reason. The app reads four <em>All Regions</em> copies of the team's saved Metabase questions (same columns, the Southern filter removed), so it covers every station once the connection works.</>
             ),
             <>A driver's station comes from the station code in their name (for example "LKN - HD - ...").</>,
           ]}
@@ -241,7 +241,7 @@ const SECTIONS = [
         <Bullets
           items={[
             <><strong>Daily View</strong>: pick a day and see every region / zone / station with <em>Shipment Details</em> (Total Fresh, Fresh Unscan, Latlong), <em>Station Health</em> (Total 0 Attempt, In Hub, Age &gt;3) and <em>Route Monitoring</em> (Attendance with rescue in brackets, Total Routed, Success Rate, and Pending in Apps -- the Current OVFD, parcels still on a vehicle). The small ▲ / ▼ is the change from the day before, green when it is an improvement. Export CSV gives the day.</>,
-            <><strong>Weekly Overview</strong>: pick <strong>one or more measures</strong> and see them across Mon–Sun -- this week, last week, or both. With several measures the chart draws them all (each on its own scale; hover a day for the real numbers), and you choose which of the picked measures get a details table below. Click a row of a table to draw that row.</>,
+            <><strong>Weekly Overview</strong>: pick <strong>one or more measures</strong> and see them across Mon–Sun -- this week, last week, or both. With several measures the chart draws them all (each on its own scale; hover a day for the real numbers), and the details table below shows <strong>one measure at a time</strong> -- switch it with the <em>Details table for</em> buttons. Click a row of the table to draw that row.</>,
             <>Success Rate = Total Success ÷ Total Routed; Productivity (in the measure list) = Total Routed ÷ Attendance.</>,
           ]}
         />
