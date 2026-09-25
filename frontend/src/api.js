@@ -21,6 +21,7 @@ async function request(path, opts = {}) {
 }
 
 export const api = {
+  dod: () => request("/api/dod"), // DoD Dashboard: Station Health per day, this week + last week
   me: () => request("/api/me"),
   dashboard: () => request("/api/dashboard"),
   stations: (opts) => request("/api/stations", opts),

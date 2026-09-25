@@ -199,6 +199,27 @@ const SECTIONS = [
     ),
   },
   {
+    id: "dod",
+    title: "DoD",
+    show: ({ rank }) => F.dod && rank >= 2,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>DoD</strong> tab (<em>Beta</em> -- still being built; after Shipper Radar; managers and admins only for now) is the dashboard looking back: one snapshot per station per day --
+          the last refresh of the day, the run just before midnight -- kept for this week and last week only. It follows your scope and the filters above the tabs.
+          History starts from the first refresh after it went live, so the first days have only a few dots, and today's numbers are still moving.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Daily View</strong>: pick a day and see every region / zone / station with <em>Shipment Details</em> (Total Fresh, Fresh Unscan, Latlong), <em>Station Health</em> (Total 0 Attempt, In Hub, Age &gt;3) and <em>Route Monitoring</em> (Attendance with rescue in brackets, Total Routed, Success Rate, and Pending in Apps -- the Current OVFD, parcels still on a vehicle). The small ▲ / ▼ is the change from the day before, green when it is an improvement. Export CSV gives the day.</>,
+            <><strong>Weekly Overview</strong>: pick <strong>one or more measures</strong> and see them across Mon–Sun -- this week, last week, or both. With several measures the chart draws them all (each on its own scale; hover a day for the real numbers), and the details table below shows <strong>one measure at a time</strong> -- switch it with the <em>Details table for</em> buttons. Click a row of the table to draw that row.</>,
+            <>Success Rate = Total Success ÷ Total Routed; Productivity (in the measure list) = Total Routed ÷ Attendance.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "routed",
     title: "Route Monitoring",
     body: () => (

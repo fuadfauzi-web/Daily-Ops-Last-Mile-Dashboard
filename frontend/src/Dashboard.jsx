@@ -22,6 +22,7 @@ import RpuTab from "./RpuTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
 import TaskListTab from "./TaskListTab";
+import DodTab from "./DodTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -70,6 +71,20 @@ const TABS = [
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Shipper Radar" },
+  ...(FEATURES.dod
+    ? [
+        {
+          key: "dod",
+          // Beta (2026-09-26): still being built -- managers and admins see it, and are told so.
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              DoD
+              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+            </span>
+          ),
+        },
+      ]
+    : []), // managers + admins only, see canSeeDod
   { key: "urgent", label: "Urgent TN" },
 ];
 
@@ -217,11 +232,14 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const [sortDir, setSortDir] = useState("desc");
   // Remembers the last tab this user had open, per Phase 5 -- a first-ever
   // visit (nothing saved yet) lands on the Action Board, per Phase 6.
+  // DoD is for managers and admins only for now (2026-09-26 feedback).
+  const canSeeDod = me.role === "manager" || me.role === "admin";
+  const tabs = TABS.filter((t) => t.key !== "dod" || canSeeDod);
   const tabStorageKey = `dashboard-tab-${me.email}`;
   const [tab, setTabState] = useState(() => {
     try {
       const saved = localStorage.getItem(tabStorageKey);
-      if (saved && TABS.some((t) => t.key === saved)) return saved;
+      if (saved && tabs.some((t) => t.key === saved)) return saved;
     } catch {
       /* private browsing / storage blocked -- just use the default */
     }
@@ -387,6 +405,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       return sortDir === "asc" ? av - bv : bv - av;
     });
   }, [scopedStations, regionFilter, zoneFilter, search, sortKey, sortDir]);
+  // The stations the filters above leave in view -- the DoD tab follows them.
+  const filteredStationCodes = useMemo(() => new Set(filteredStations.map((s) => s.station_code)), [filteredStations]);
 
   // The "N stations in scope" count now lives in the header, as a small footnote after "Data as of"
   // (2026-09-25 feedback) -- reported up here the same way the freshness timestamp is.
@@ -700,7 +720,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       )}
 
       <TabBar
-        tabs={TABS.map((t) =>
+        tabs={tabs.map((t) =>
           t.key === "urgent"
             ? {
                 ...t,
@@ -796,6 +816,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           </p>
         </>
       )}
+
+      {FEATURES.dod && canSeeDod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}
 
       {tab === "shipment" && (
         <ShipmentDetailsTab
