@@ -35,7 +35,7 @@ _lock = asyncio.Lock()
 # ------------------------------------------------------------------------------------------------ parsing
 
 def _norm(name: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+    return kd.norm(name)
 
 
 def _index(row: dict) -> dict:
@@ -125,7 +125,7 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
     for r in daily_rows:
         idx = _index(r)
         name = str(_get(idx, "courierdisplayname") or "").strip()
-        day = str(_get(idx, "routedate") or "")[:10]
+        day = kd.to_iso_day(_get(idx, "routedate"))
         if not name or not day:
             continue
         daily.append([day, driver_idx(name), _num(_get(idx, "deliveredpickup")), _num(_get(idx, "sumofparcelsonroute")), _pct(_get(idx, "successrate"))])

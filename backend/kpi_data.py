@@ -27,8 +27,39 @@ MAX_UPLOAD_BYTES = 40 * 1024 * 1024
 MAX_ROWS = 400_000
 
 
+# Metabase names a date column that is grouped by a time unit "Route Date: Day" / "Route Week: Month" -- the unit is not part of what the
+# column means, so it is dropped before matching (2026-09-26: the Hybrid daily export was refused for "missing routedate").
+_UNIT_SUFFIX = re.compile(r":\s*(minute|hour|day|week|month|quarter|year)\s*$", re.I)
+
+
 def norm(name) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+    return re.sub(r"[^a-z0-9]", "", _UNIT_SUFFIX.sub("", str(name)).lower())
+
+
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+
+
+def to_iso_day(value) -> str:
+    """A day as yyyy-mm-dd from what an export holds: an ISO date / timestamp (Metabase JSON, Excel cells), "September 25, 2026"
+    (Metabase's formatted CSV), "25 Sep 2026" or 25/09/2026 (day first). "" when it is not a date."""
+    s = str(value or "").strip()
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.search(r"([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})", s)  # September 25, 2026
+    if m and m.group(1)[:3].lower() in _MONTHS:
+        return f"{m.group(3)}-{_MONTHS[m.group(1)[:3].lower()]:02d}-{int(m.group(2)):02d}"
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})", s)  # 25 Sep 2026
+    if m and m.group(2)[:3].lower() in _MONTHS:
+        return f"{m.group(3)}-{_MONTHS[m.group(2)[:3].lower()]:02d}-{int(m.group(1)):02d}"
+    m = re.match(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", s)  # 25/09/2026 -- day first, like the team's sheets
+    if m:
+        d, mo = int(m.group(1)), int(m.group(2))
+        if mo > 12 >= d:
+            d, mo = mo, d
+        if 1 <= mo <= 12 and 1 <= d <= 31:
+            return f"{m.group(3)}-{mo:02d}-{d:02d}"
+    return ""
 
 
 # dataset -> what it is, which KPI page it feeds, which sheet of a workbook to read, and the columns it must have (normalised).

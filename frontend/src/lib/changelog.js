@@ -62,6 +62,7 @@ export const CHANGELOG = [
     points: [
       "A new KPI page next to Dashboard, built as the RCA side of the KPIs: Weekly Dashboard (every KPI against its target for the past 4 weeks, by region / zone / station), OPEX Result (the OPEX team's result file, to be merged in), and RCA pages for Hybrid Productivity, Invalid POD and COD RTS with the numbers and tracking numbers behind them. The other KPIs are listed as soon.",
       "Admins load the data with Data upload (CSV or Excel -- the right sheet is picked automatically). An uploaded Hybrid file is used instead of Metabase until it is removed.",
+      "Trend and bar charts with many points (39 weeks, a month of days) now thin their axis labels and turn crowded bar numbers upright, so nothing overlaps. The Hybrid daily export from Metabase (Route Date: Day) is accepted by Data upload.",
     ],
   },
   {

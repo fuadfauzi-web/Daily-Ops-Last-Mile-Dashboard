@@ -24,6 +24,13 @@ const TONES = {
 };
 export const TONE_ORDER = ["brand", "sky", "amber", "violet", "teal", "good", "indigo", "slate"];
 
+// How many points to step over between labels so neighbours never touch: a label needs about `chars` x `px` pixels plus a gap, a point
+// gets plotW / (count - 1). Labels are counted from the LAST point back, so the latest value is always the one that is shown.
+const labelStride = (count, plotW, chars, px = 6.6, gap = 10) => {
+  if (count <= 1) return 1;
+  return Math.max(1, Math.ceil((chars * px + gap) / ((plotW - 28) / (count - 1))));
+};
+
 function niceStep(range, ticks) {
   const raw = range / ticks;
   const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
@@ -88,7 +95,8 @@ export default function TrendChart({ labels, series, format = (v) => String(Math
   if (![...scales.values()].some(Boolean)) return <div className="p-6 text-center text-sm text-slate-400">No data for this selection yet.</div>;
 
   const n = labels.length;
-  const x = (i) => padLeft + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const inset = n <= 1 ? 0 : 14; // keeps the first / last point (and its label) off the axis and the edge
+  const x = (i) => padLeft + (n <= 1 ? plotW / 2 : inset + (i / (n - 1)) * (plotW - 2 * inset));
   const scaleOf = (s) => scales.get(independent ? s.group : null);
   const y = (s, v) => {
     const sc = scaleOf(s);
@@ -111,11 +119,15 @@ export default function TrendChart({ labels, series, format = (v) => String(Math
     return d.trim();
   };
   const showLabels = series.length <= 3;
+  const xStride = labelStride(n, plotW, Math.max(1, ...labels.map((l) => String(l).length)));
+  const valueChars = Math.max(1, ...series.flatMap((s) => s.values.map((v) => (v == null || !Number.isFinite(v) ? 0 : fmt(s, v).length))));
+  const vStride = labelStride(n, plotW, valueChars, 7, 6);
+  const shownAt = (i, stride) => (n - 1 - i) % stride === 0;
 
   const onMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const px = e.clientX - rect.left;
-    setHover(Math.min(n - 1, Math.max(0, Math.round(((px - padLeft) / plotW) * (n - 1)))));
+    setHover(Math.min(n - 1, Math.max(0, Math.round(((px - padLeft - inset) / (plotW - 2 * inset)) * (n - 1)))));
   };
 
   return (
@@ -145,11 +157,13 @@ export default function TrendChart({ labels, series, format = (v) => String(Math
                   </g>
                 );
               })}
-          {labels.map((l, i) => (
-            <text key={`${l}-${i}`} x={x(i)} y={height - 6} textAnchor="middle" className="fill-slate-500 text-xs">
-              {l}
-            </text>
-          ))}
+          {labels.map((l, i) =>
+            shownAt(i, xStride) ? (
+              <text key={`${l}-${i}`} x={x(i)} y={height - 6} textAnchor="middle" className="fill-slate-500 text-xs">
+                {l}
+              </text>
+            ) : null
+          )}
           {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={padTop} y2={padTop + plotH} className="stroke-slate-300" strokeWidth="1" strokeDasharray="2 3" />}
           {series.map((s, si) => {
             const tone = TONES[s.tone] || TONES.brand;
@@ -162,7 +176,7 @@ export default function TrendChart({ labels, series, format = (v) => String(Math
                   v == null || !Number.isFinite(v) || !scaleOf(s) ? null : (
                     <g key={i}>
                       <circle cx={x(i)} cy={y(s, v)} r={hover === i ? 4.5 : 3.5} className={`${tone.fill} stroke-white`} strokeWidth="1.5" />
-                      {showLabels && (
+                      {showLabels && shownAt(i, vStride) && (
                         <text x={x(i)} y={below ? y(s, v) + 16 : y(s, v) - 8} textAnchor="middle" className={`${tone.text} text-xs font-semibold`}>
                           {fmt(s, v)}
                         </text>
