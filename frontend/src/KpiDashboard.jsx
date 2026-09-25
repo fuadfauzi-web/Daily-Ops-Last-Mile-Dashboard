@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import BarChart from "./components/BarChart";
 import DataTable from "./components/DataTable";
@@ -239,6 +239,9 @@ function HybridProductivity({ me }) {
   }, [filtered, latestPeriod]);
 
   const withTenure = (rows) => rows.map((r) => ({ ...r, tenure: tenureText(r.start), tenureDays: tenureDays(r.start) }));
+  // The two big leaderboards are ranked once per data / filter change, not on every keystroke or sort click.
+  const rankedCurrent = useMemo(() => sortBy(withTenure(current), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 })), [current]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rankedMonth = useMemo(() => sortBy(withTenure(monthRows), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 })), [monthRows]); // eslint-disable-line react-hooks/exhaustive-deps
   const attClass = (v, tgt = target) => (Math.round(v) < tgt ? "font-bold text-status-critical" : "text-slate-700");
 
   const groupBy = (rows, keyFn) => {
@@ -301,7 +304,7 @@ function HybridProductivity({ me }) {
   // -------------------------------------------------------------------------------- Driver Performance
   const driverSort = useSort("prod");
   const DriverPerformance = () => {
-    const ranked = sortBy(withTenure(current), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 }));
+    const ranked = rankedCurrent;
     const rows = driverSort.key === "rank" ? sortBy(ranked, "prod", driverSort.dir) : sortBy(ranked, driverSort.key, driverSort.dir);
     const chosen = ranked.find((r) => r.name === pickedDriver) || ranked[0];
     const history = chosen ? filtered.filter((r) => r.name === chosen.name).sort((a, b) => a.period - b.period) : [];
@@ -312,6 +315,7 @@ function HybridProductivity({ me }) {
           title="Driver Leaderboard"
           titleExtra={<span className="text-[10px] text-slate-400">click headers to sort · row for trends</span>}
           maxHeight="480px"
+          pageSize={100}
           columns={driverColumns({ rank: true })}
           rows={rows}
           rowKey={(r) => r.name}
@@ -455,7 +459,7 @@ function HybridProductivity({ me }) {
   // -------------------------------------------------------------------------------- Daily Data (latest period)
   const dailySort = useSort("prod");
   const DailyData = () => {
-    const ranked = sortBy(withTenure(monthRows), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 }));
+    const ranked = rankedMonth;
     const rows = dailySort.key === "rank" ? sortBy(ranked, "prod", dailySort.dir) : sortBy(ranked, dailySort.key, dailySort.dir);
     const chosen = ranked.find((r) => r.name === pickedDaily) || ranked[0];
     const logs = chosen ? filteredDaily.filter((r) => r.name === chosen.name).sort((a, b) => b.day.localeCompare(a.day)) : [];
@@ -466,6 +470,7 @@ function HybridProductivity({ me }) {
           title={`Current month driver leaderboard (${monthLabel})`}
           titleExtra={<span className="text-[10px] text-slate-400">always the current month, whatever View / Period say · attendance = days worked · click headers to sort</span>}
           maxHeight="520px"
+          pageSize={100}
           columns={driverColumns({ rank: true, tenureLabel: "Service Duration", attTarget: monthTarget })}
           rows={rows}
           rowKey={(r) => r.name}
@@ -633,18 +638,33 @@ function HybridProductivity({ me }) {
             value={sub}
             onChange={setSub}
           />
-          {sub === "driver" && <DriverPerformance />}
-          {sub === "station" && <StationPerformance />}
-          {sub === "regional" && <RegionalBreakdown />}
-          {sub === "daily" && <DailyData />}
+          {sub === "driver" && DriverPerformance()}
+          {sub === "station" && StationPerformance()}
+          {sub === "regional" && RegionalBreakdown()}
+          {sub === "daily" && DailyData()}
         </>
       )}
     </div>
   );
 }
 
+// memo: opening another page must not re-render the ones that are hidden (their props never change).
+const WeeklyPane = memo(WeeklyDashboard);
+const OpexPane = memo(OpexResult);
+const HybridPane = memo(HybridProductivity);
+const InvalidPodPane = memo(InvalidPodRca);
+const CodRtsPane = memo(CodRtsRca);
+
 export default function KpiDashboard({ me }) {
   const [module, setModule] = useState("weekly");
+  // Pages that have been opened stay mounted (just hidden) -- switching back to one is instant, with its filters and data as you left them,
+  // instead of fetching and building the page again (that was the lag when moving between Hybrid, Invalid POD and COD RTS).
+  const [visited, setVisited] = useState(() => new Set(["weekly"]));
+  const openModule = (key) => {
+    setModule(key);
+    setVisited((v) => (v.has(key) ? v : new Set(v).add(key)));
+  };
+  const pane = (key, node) => (visited.has(key) ? <div key={key} hidden={module !== key}>{node}</div> : null);
   const active = MODULES.find((m) => m.key === module);
   return (
     <div className="flex flex-col gap-4 md:flex-row">
@@ -658,7 +678,7 @@ export default function KpiDashboard({ me }) {
                   <div className="hidden px-4 pb-1 pt-3 text-[9px] font-bold uppercase tracking-widest text-slate-500 md:block">{m.group}</div>
                 )}
               <button
-                onClick={() => setModule(m.key)}
+                onClick={() => openModule(m.key)}
                 className={`flex min-h-[44px] w-full shrink-0 items-center justify-between gap-2 whitespace-nowrap border-l-4 px-4 py-2 text-left font-display text-[11px] font-bold uppercase ${
                   module === m.key ? "border-brand bg-white/10 text-white" : "border-transparent text-slate-300 hover:bg-white/5"
                 }`}
@@ -672,20 +692,22 @@ export default function KpiDashboard({ me }) {
         </div>
       </aside>
       <section className="min-w-0 flex-1 space-y-3">
+        <div role="alert" className="rounded-xl border-l-4 border-amber-500 bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          <div className="flex flex-wrap items-center gap-2 font-display font-bold uppercase tracking-wide">
+            <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] leading-none">Beta</span>
+            Preview only -- please do not use the KPI page yet
+          </div>
+          <p className="mt-1">
+            The data on this page is not up to date. It is here only to show you how the KPI page will look. Please wait for the green light before you use it or rely on any number in it.
+          </p>
+        </div>
         <h2 className="font-display text-lg font-black uppercase tracking-wide text-brand">{active.label}</h2>
-        {module === "weekly" ? (
-          <WeeklyDashboard me={me} />
-        ) : module === "opex" ? (
-          <OpexResult me={me} />
-        ) : module === "hybrid" ? (
-          <HybridProductivity me={me} />
-        ) : module === "invalidPod" ? (
-          <InvalidPodRca me={me} />
-        ) : module === "codRts" ? (
-          <CodRtsRca me={me} />
-        ) : (
-          <ComingSoon label={active.label} />
-        )}
+        {pane("weekly", <WeeklyPane me={me} />)}
+        {pane("opex", <OpexPane me={me} />)}
+        {pane("hybrid", <HybridPane me={me} />)}
+        {pane("invalidPod", <InvalidPodPane me={me} />)}
+        {pane("codRts", <CodRtsPane me={me} />)}
+        {!active.live && <ComingSoon label={active.label} />}
       </section>
     </div>
   );

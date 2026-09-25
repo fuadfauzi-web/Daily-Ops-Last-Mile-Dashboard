@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // Shared shell for every sortable, sticky-header table in the app. Callers own
 // their data/sort state and hand over a fully resolved column list -- this
@@ -29,8 +29,17 @@ export default function DataTable({
   // differently in a combined hierarchical table) -- (row) => a bg-* class,
   // or "" for no override. Left undefined, every row stays plain white.
   rowClassName,
+  // Optional: draw only the first `pageSize` rows (with a "Show more" bar under the table) -- for tables of thousands of rows, where drawing
+  // every row is what makes a page slow to open. Sorting / filtering still works on ALL rows; the window resets to the top when they change.
+  pageSize,
 }) {
   const [scrolled, setScrolled] = useState(false);
+  const [shown, setShown] = useState(pageSize || Infinity);
+  useEffect(() => {
+    setShown(pageSize || Infinity);
+  }, [pageSize, sortKey, sortDir, rows.length]);
+  const visibleRows = pageSize && rows.length > shown ? rows.slice(0, shown) : rows;
+  const hiddenCount = rows.length - visibleRows.length;
   const dark = variant === "dark";
   const headBg = dark ? "bg-ink text-white" : "bg-slate-50 text-slate-500";
   const headHover = dark ? "hover:bg-brand" : "hover:bg-slate-200";
@@ -88,7 +97,7 @@ export default function DataTable({
             )}
           </thead>
           <tbody>
-            {rows.map((row, i) => {
+            {visibleRows.map((row, i) => {
               const rowBg = rowClassName ? rowClassName(row) : "";
               return (
               <tr
@@ -149,6 +158,19 @@ export default function DataTable({
           </tbody>
         </table>
       </div>
+      {hiddenCount > 0 && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+          <span>
+            Showing {visibleRows.length.toLocaleString()} of {rows.length.toLocaleString()}
+          </span>
+          <button onClick={() => setShown((n) => n + pageSize)} className="rounded border border-slate-300 bg-white px-2 py-1 font-display font-medium hover:bg-slate-100">
+            Show {Math.min(pageSize, hiddenCount).toLocaleString()} more
+          </button>
+          <button onClick={() => setShown(Infinity)} className="font-medium underline hover:text-brand">
+            Show all
+          </button>
+        </div>
+      )}
       {footer && <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">{footer}</div>}
     </div>
   );

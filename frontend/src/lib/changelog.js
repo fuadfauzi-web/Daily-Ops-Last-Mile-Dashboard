@@ -57,9 +57,12 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-26",
-    title: "KPI page: weekly results and RCA for each KPI",
+    title: "KPI page (Beta): weekly results and RCA for each KPI",
     feature: "kpiDashboard",
     points: [
+      "The KPI page is marked Beta and is a preview only: please do not use it yet -- its data is not up to date and it shows how the page will look. Wait for the green light.",
+      "Invalid POD has sub-tabs: Overview, Drivers & reasons (each driver's top invalid reason and their day-by-day trend), Date trend (invalid % / count per day for a region, zone, station or driver) and Reasons; managers and admins also get LM performance (the weekly LM POD Performance view after the audit). COD RTS has sub-tabs too: Overview, Reasons, Shippers (cumulative share, parent shippers), Drivers, Timing & attempts, Parcels, Date trend and Tracking numbers.",
+      "A table column that shows a count with a % now sorts by the %. Opening the KPI pages is much quicker: pages you have opened stay ready, big tables draw 100 rows at a time, and the data is prepared once per upload.",
       "A new KPI page next to Dashboard, built as the RCA side of the KPIs: Weekly Dashboard (every KPI against its target for the past 4 weeks, by region / zone / station), OPEX Result (the OPEX team's result file, to be merged in), and RCA pages for Hybrid Productivity, Invalid POD and COD RTS with the numbers and tracking numbers behind them. The other KPIs are listed as soon.",
       "Admins load the data with Data upload (CSV or Excel -- the right sheet is picked automatically). An uploaded Hybrid file is used instead of Metabase until it is removed.",
       "Trend and bar charts with many points (39 weeks, a month of days) now thin their axis labels and turn crowded bar numbers upright, so nothing overlaps. The Hybrid daily export from Metabase (Route Date: Day) is accepted by Data upload.",

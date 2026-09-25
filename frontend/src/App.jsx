@@ -105,7 +105,15 @@ export default function App() {
   // admin-only (Documents, Data Refresh) -- 2026-09-25 feedback. Each tab inside applies its
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
   const navTabs = ["dashboard", ...(FEATURES.kpiDashboard ? ["kpi"] : []), "settings", ...(me.role === "admin" ? ["admin"] : [])];
-  const navLabel = (t) => (t === "kpi" ? "KPI" : t);
+  const navLabel = (t) =>
+    t === "kpi" ? (
+      <span className="inline-flex items-center gap-1.5">
+        KPI
+        <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+      </span>
+    ) : (
+      t
+    );
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -9,13 +9,16 @@ Accepted: .csv, or an .xlsx (the dataset's `sheet` is picked, else the only shee
 Column names are matched loosely (case, spaces and punctuation ignored), so "Courier Display Name" and "courier_display_name" both work.
 """
 import asyncio
+from functools import lru_cache
 import csv
 import io
 import logging
 import re
+import sys
 import uuid
 from datetime import date, datetime, timezone
 
+import xlsx_fast
 from starlette.concurrency import run_in_threadpool
 
 import db
@@ -32,8 +35,14 @@ MAX_ROWS = 400_000
 _UNIT_SUFFIX = re.compile(r":\s*(minute|hour|day|week|month|quarter|year)\s*$", re.I)
 
 
+@lru_cache(maxsize=8192)
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", _UNIT_SUFFIX.sub("", text).lower())
+
+
 def norm(name) -> str:
-    return re.sub(r"[^a-z0-9]", "", _UNIT_SUFFIX.sub("", str(name)).lower())
+    """Column names are normalised for every cell of every row on every request -- the same few dozen strings -- so it is cached."""
+    return _norm(str(name))
 
 
 _MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
@@ -89,6 +98,13 @@ DATASETS: dict[str, dict] = {
         "hint": "Metabase question 69573 (POP/POD Validation Tasks Raw Data): leave Hub Region empty for all regions, pick Date Type and Start / End date, then Download results as .csv -- or the Raw sheet of the POD Validation Analysis file",
         "link": "https://metabase.ninjavan.co/question/69573?transaction_type=DELIVERY&hub_region=&shipper_id=&date_type=&parent_id_coalesce=&start_date=&end_date=&driver_type=",
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
+        "keep": ["hubshortname", "couriername", "trackingid", "transactionfailurereason", "validationresult", "invalidpodreason", "attempteddatetime", "validationdatetime", "validationusername"],
+    },
+    "pod_performance": {
+        "kpi": "invalid_pod", "label": "LM POD performance (managers + admins)", "link": None,
+        "hint": "the RAW DATA sheet of the LM POD Performance workbook (adds the audit result, final result / reason, zone and route type) -- only managers and admins see this view",
+        "sheet": "RAW DATA", "required": ["hubshortname", "couriername", "result"],
+        "keep": ["week", "hubshortname", "couriername", "transactionfailurereason", "validationdatetime", "validationresult", "invalidpodreason", "auditresult", "result", "finalreason", "hubzone", "routetype"],
     },
     "cod_rts_cod": {
         "kpi": "cod_rts", "label": "COD RTS (raw COD)", "link": "https://metabase.ninjavan.co/question/127198",
@@ -131,25 +147,38 @@ def _cell(v):
         return v.isoformat()
     if isinstance(v, float) and v.is_integer() and abs(v) < 1e15:
         return int(v)
+    if isinstance(v, str) and len(v) < 80:
+        return sys.intern(v)  # hub / reason / driver names repeat on thousands of rows -- one copy in memory
     return v
 
 
-def _parse_csv(data: bytes) -> tuple[list[str], list[dict]]:
+def _keep_fn(keep):
+    if not keep:
+        return None
+    wanted = set(keep)
+    return lambda header_text: norm(header_text) in wanted
+
+
+def _parse_csv(data: bytes, keep=None) -> tuple[list[str], list[dict]]:
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = data.decode("latin-1")
     reader = csv.reader(io.StringIO(text))
     header = None
+    positions: list[tuple[int, str]] = []
+    keep_fn = _keep_fn(keep)
     rows: list[dict] = []
     for raw in reader:
         if header is None:
             if sum(1 for c in raw if str(c).strip()) >= 2 or len(raw) == 1 and str(raw[0]).strip():
-                header = [_clean_header(c, i) for i, c in enumerate(raw)]
+                full = [_clean_header(c, i) for i, c in enumerate(raw)]
+                positions = [(i, h) for i, h in enumerate(full) if keep_fn is None or keep_fn(h)]
+                header = [h for _i, h in positions]
             continue
         if not any(str(c).strip() for c in raw):
             continue
-        rows.append({h: (raw[i] if i < len(raw) else "") for i, h in enumerate(header)})
+        rows.append({h: (sys.intern(raw[i]) if i < len(raw) and len(raw[i]) < 80 else (raw[i] if i < len(raw) else "")) for i, h in positions})
         if len(rows) > MAX_ROWS:
             raise UploadError(f"More than {MAX_ROWS:,} rows -- split the file")
     if header is None:
@@ -170,8 +199,40 @@ def _pick_sheet(names: list[str], wanted: str | None, has_required) -> str | Non
     return None
 
 
-def _parse_xlsx(data: bytes, sheet: str | None, required: list[str]) -> tuple[list[str], list[dict]]:
-    import openpyxl  # heavy import, only when an Excel file is uploaded
+def _parse_xlsx_fast(data: bytes, sheet: str | None, required: list[str], keep_fn) -> tuple[list[str], list[dict]]:
+    """Same sheet choice as the openpyxl path below, read with xlsx_fast (about 4x quicker, only the wanted columns)."""
+    names = xlsx_fast.sheet_names(data)
+    chosen = _pick_sheet(names, sheet, None)
+    candidates = [chosen] if chosen else names
+
+    def read(name: str):
+        try:
+            return xlsx_fast.read_sheet(data, name, keep_fn, _clean_header, _cell, MAX_ROWS)
+        except ValueError as exc:
+            if "too many rows" in str(exc):
+                raise UploadError(f"More than {MAX_ROWS:,} rows -- split the file") from exc
+            raise
+
+    for name in candidates:
+        got = read(name)
+        if got and all(r in {norm(h) for h in got[0]} for r in required):
+            return got
+    if chosen is None and required:
+        raise UploadError(f"Couldn't find a sheet with the columns this needs. Sheets in the file: {', '.join(names)}")
+    got = read(chosen) if chosen else None
+    if got:
+        return got
+    raise UploadError("The sheet is empty")
+
+
+def _parse_xlsx(data: bytes, sheet: str | None, required: list[str], keep=None) -> tuple[list[str], list[dict]]:
+    try:
+        return _parse_xlsx_fast(data, sheet, required, _keep_fn(keep))
+    except UploadError:
+        raise
+    except Exception:  # noqa: BLE001 - an unusual workbook: fall back to openpyxl (slower, reads everything)
+        log.warning("Fast xlsx reader failed -- falling back to openpyxl", exc_info=True)
+    import openpyxl  # heavy import, only when the fast reader could not handle the file
 
     wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     try:
@@ -211,12 +272,14 @@ def _parse_xlsx(data: bytes, sheet: str | None, required: list[str]) -> tuple[li
         wb.close()
 
 
-def parse_table(filename: str, data: bytes, sheet: str | None, required: list[str]) -> tuple[list[str], list[dict]]:
+def parse_table(filename: str, data: bytes, sheet: str | None, required: list[str], keep=None) -> tuple[list[str], list[dict]]:
+    """keep = normalised column names to retain (the required ones are always kept) -- a big file only costs memory for what is used."""
     name = (filename or "").lower()
+    keep = list(dict.fromkeys([*keep, *required])) if keep else None
     if name.endswith(".csv"):
-        header, rows = _parse_csv(data)
+        header, rows = _parse_csv(data, keep)
     elif name.endswith((".xlsx", ".xlsm")):
-        header, rows = _parse_xlsx(data, sheet, required)
+        header, rows = _parse_xlsx(data, sheet, required, keep)
     else:
         raise UploadError("Upload a .csv or .xlsx file")
     have = {norm(h) for h in header}
@@ -259,7 +322,7 @@ async def save_upload(dataset: str, filename: str, data: bytes, user_email: str)
         raise UploadError("The file is empty")
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadError(f"The file is too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
-    header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"])
+    header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"], spec.get("keep"))
     ext = ".xlsx" if filename.lower().endswith((".xlsx", ".xlsm")) else ".csv"
     key = storage.safe_key("kpi", f"{dataset}-{uuid.uuid4().hex}{ext}")
     content_type = "application/octet-stream" if ext == ".xlsx" else "text/csv"
@@ -276,8 +339,15 @@ async def save_upload(dataset: str, filename: str, data: bytes, user_email: str)
             await run_in_threadpool(storage.delete, old[0])
         except Exception:  # noqa: BLE001 - a leftover blob is harmless
             log.warning("Could not delete the previous %s upload", dataset)
-    async with _lock(dataset):
-        _cache[dataset] = {"stamp": _stamp(now), "rows": rows, "header": header}
+    builder = _builders.get(dataset)
+    if builder is not None:
+        # big datasets keep only a compact, pre-aggregated structure in memory (built once per upload), not thousands of row dicts
+        compact = await run_in_threadpool(builder, rows)
+        async with _lock(dataset):
+            _compact[dataset] = {"stamp": _stamp(now), "data": compact}
+    else:
+        async with _lock(dataset):
+            _cache[dataset] = {"stamp": _stamp(now), "rows": rows, "header": header}
     return {"row_count": len(rows), "columns": header}
 
 
@@ -285,11 +355,42 @@ async def delete_upload(dataset: str) -> None:
     old = await db.fetch_one("SELECT storage_key FROM kpi_uploads WHERE dataset = %s", (dataset,))
     await db.execute("DELETE FROM kpi_uploads WHERE dataset = %s", (dataset,))
     _cache.pop(dataset, None)
+    _compact.pop(dataset, None)
     if old and old[0]:
         try:
             await run_in_threadpool(storage.delete, old[0])
         except Exception:  # noqa: BLE001
             log.warning("Could not delete the %s upload file", dataset)
+
+
+_compact: dict[str, dict] = {}  # dataset -> {"stamp", "data"}: the compact structure a dataset's builder made from its rows
+_builders: dict[str, object] = {}
+
+
+def register_compact(dataset: str, builder) -> None:
+    """A dataset with a compact builder never keeps its row dicts: rows -> builder(rows) once per upload, and only that is cached."""
+    _builders[dataset] = builder
+
+
+async def load_compact(dataset: str) -> tuple[dict, object] | None:
+    """(meta, compact structure) of the current upload, parsed and built once per upload; None if nothing was uploaded."""
+    meta_row = await db.fetch_one("SELECT storage_key, filename, row_count, uploaded_by, uploaded_at FROM kpi_uploads WHERE dataset = %s", (dataset,))
+    if meta_row is None:
+        _compact.pop(dataset, None)
+        return None
+    key, filename, row_count, uploaded_by, uploaded_at = meta_row
+    stamp = _stamp(uploaded_at)
+    meta = {"filename": filename, "row_count": row_count, "uploaded_by": uploaded_by, "uploaded_at": uploaded_at.isoformat() if hasattr(uploaded_at, "isoformat") else str(uploaded_at)}
+    async with _lock(dataset):
+        hit = _compact.get(dataset)
+        if hit and hit["stamp"] == stamp:
+            return meta, hit["data"]
+        spec = DATASETS[dataset]
+        data = await run_in_threadpool(storage.get_bytes, key)
+        _header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"], spec.get("keep"))
+        compact = await run_in_threadpool(_builders[dataset], rows)
+        _compact[dataset] = {"stamp": stamp, "data": compact}
+        return meta, compact
 
 
 async def load_rows(dataset: str) -> tuple[dict, list[dict]] | None:
@@ -307,6 +408,6 @@ async def load_rows(dataset: str) -> tuple[dict, list[dict]] | None:
             return meta, hit["rows"]
         spec = DATASETS[dataset]
         data = await run_in_threadpool(storage.get_bytes, key)
-        header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"])
+        header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"], spec.get("keep"))
         _cache[dataset] = {"stamp": stamp, "rows": rows, "header": header}
         return meta, rows

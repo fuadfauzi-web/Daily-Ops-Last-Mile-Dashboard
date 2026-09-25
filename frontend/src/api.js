@@ -49,6 +49,16 @@ async function request(path, opts = {}) {
   return res.json();
 }
 
+// Query string from an object: empty / null values are left out, an array becomes a repeated parameter (?keys=a&keys=b).
+function qs(obj) {
+  const p = new URLSearchParams();
+  Object.entries(obj).forEach(([k, v]) => {
+    if (v == null || v === "" || (Array.isArray(v) && !v.length)) return;
+    (Array.isArray(v) ? v : [v]).forEach((x) => p.append(k, x));
+  });
+  return p.toString();
+}
+
 export const api = {
   me: () => request("/api/me"),
   viewAs: { set: setViewAs, get: getViewAs },
@@ -175,7 +185,10 @@ export const api = {
   kpiWeekly: () => request("/api/kpi/weekly"),
   kpiInvalidPod: () => request("/api/kpi/invalid-pod"),
   kpiInvalidPodTns: (q) => request(`/api/kpi/invalid-pod/tns?${new URLSearchParams(q)}`),
-  kpiCodRts: () => request("/api/kpi/cod-rts"),
+  kpiInvalidPodDrivers: (q) => request(`/api/kpi/invalid-pod/drivers?${qs(q)}`),
+  kpiInvalidPodTrend: (q) => request(`/api/kpi/invalid-pod/trend?${qs(q)}`),
+  kpiPodPerformance: () => request("/api/kpi/pod-performance"),
+  kpiCodRtsView: (q) => request(`/api/kpi/cod-rts/view?${qs(q)}`),
   kpiCodRtsTns: (q) => request(`/api/kpi/cod-rts/tns?${new URLSearchParams(q)}`),
   kpiTable: (name) => request(`/api/kpi/table/${name}`),
   // Task List (backend/tasklist.py)

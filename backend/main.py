@@ -22,12 +22,15 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 import db
 import storage
 from kpi import router as kpi_router
+from kpi_cod import router as kpi_cod_router
+from kpi_pod import router as kpi_pod_router
 from kpi_rca import router as kpi_rca_router
 from tasklist import (
     next_owner_slot_label as tasklist_next_owner_slot,
@@ -631,6 +634,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Daily Ops Last Mile Dashboard", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1024)  # the KPI payloads are large JSON (hundreds of KB) -- ~5-8x smaller on the wire
+app.include_router(kpi_cod_router)  # KPI Dashboard: COD RTS RCA views (kpi_cod.py, staging)
+app.include_router(kpi_pod_router)  # KPI Dashboard: Invalid POD RCA + LM POD Performance (kpi_pod.py, staging)
 app.include_router(kpi_rca_router)  # KPI Dashboard RCA views: Invalid POD, COD RTS, Weekly KPI results (kpi_rca.py, staging)
 app.include_router(kpi_router)  # KPI Dashboard: Hybrid Productivity from Metabase (kpi.py, staging)
 app.include_router(tasklist_router)  # Task List: Email / Gchat follow-ups, To Do List, Task Assigned (tasklist.py)
