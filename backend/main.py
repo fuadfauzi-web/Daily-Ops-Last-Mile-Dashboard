@@ -44,7 +44,7 @@ from aggregate import (
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
     build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
     build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
-    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL,
+    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla,
     merge_routed_into_station_metrics,
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
@@ -271,14 +271,20 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         # problem with that one query can't fail the whole refresh -- the tab just
         # keeps its previous numbers.
         cold_chain_result = None
+        cc_tns_for_sla: set[str] = set()
         try:
             cc_raw_rows = await _fetch(QUERY_COLD_CHAIN)
             cc_tns = {r.get("tracking_id") for r in cc_raw_rows if r.get("tracking_id")}
             del cc_raw_rows
             cc_stations, cc_tn_rows, cc_matched = build_cold_chain(health_rows, cc_tns)
             cold_chain_result = (cc_stations, cc_tn_rows, len(cc_tns), cc_matched)
+            cc_tns_for_sla = cc_tns
         except Exception:  # noqa: BLE001
             log.exception("Cold Chain refresh failed -- keeping the previous data")
+        try:
+            apply_shipper_sla(shipper_by_station, shipper_tn_details, health_rows, cc_tns_for_sla)
+        except Exception:  # noqa: BLE001 - Action Board's Shipper SLA is isolated from the rest of the refresh
+            log.exception("Shipper SLA failed -- its counts stay at 0 this cycle")
 
         old_route_raw_rows = await _fetch(QUERY_OLD_ROUTE)
         old_route_by_station, old_route_tn_rows, old_route_driver_rows = build_old_route(old_route_raw_rows)
@@ -700,6 +706,7 @@ class MetricFields(BaseModel):
 
 
 class StationRow(MetricFields):
+    attendance_rescue: int = 0  # of Attendance: drivers routing away from their home station (Route Monitoring's snapshot)
     station_code: str
     station_name: str
     zone: str
@@ -758,6 +765,18 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
 
     all_rows = await _fetch_station_rows(captured_at)
     scoped = _scope_filter_stations(all_rows, user)
+    # Attendance's rescue split (2026-09-26 feedback: like Route Monitoring) comes from the routed_stations snapshot.
+    rescue_by_code: dict[str, int] = {}
+    routed_latest = await db.fetch_one("SELECT MAX(captured_at) FROM routed_stations")
+    if routed_latest and routed_latest[0] is not None:
+        rescue_by_code = {
+            r[0]: int(r[1] or 0)
+            for r in await db.fetch_all(
+                "SELECT station_code, attendance_rescue FROM routed_stations WHERE captured_at = %s", (routed_latest[0],)
+            )
+        }
+    for r in scoped:
+        r["attendance_rescue"] = rescue_by_code.get(r["station_code"], 0)
 
     zone_groups = rollup(scoped, "zone")
     region_groups = rollup(scoped, "region")
@@ -1184,6 +1203,8 @@ class ShipperFields(BaseModel):
     restock_pieces: int
     restock_potential_breach: int
     restock_breach: int
+    shipper_sla_warning: int = 0
+    shipper_sla_breach: int = 0
 
 
 class ShipperStationRow(ShipperFields):
@@ -3381,6 +3402,7 @@ _SLA_METRIC_KEYS = (
     # Action Board's own metrics (frontend/src/lib/actionMetrics.js's EXTRA_METRICS)
     # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).
     "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "fresh_unscan", "productivity_pct",
+    "shipper_sla_warning", "shipper_sla_breach",
 )
 _SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
 # Productivity is scored per driver position instead of per region -- these are

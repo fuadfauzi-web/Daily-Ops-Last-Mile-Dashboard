@@ -6,7 +6,7 @@ export const METRIC_NOTES = {
   total_fresh: "Total parcels expected in at this station today (query 653). Reference only -- not evaluated.",
   total_routed: "Total parcels routed out to a driver/rider today (Route Monitoring's own total).",
   routed_pct: "Total Routed ÷ (Total Routed + In Hub) -- how much of what's sitting in-hub has actually gone out.",
-  attendance: "Unique Hybrid/Independent drivers (HD/HR/ID/IR) who had a route today. OPS and unparsed names aren't counted here.",
+  attendance: "Unique Hybrid/Independent drivers (HD/HR/ID/IR) who had a route today. OPS and unparsed names aren't counted here. In brackets: how many of them are rescue drivers (routing away from their home station), same as Route Monitoring.",
   zero_attempt_total: "At its own dest hub, status \"Arrived at Sorting Hub\", 0 delivery attempts, age known. Sum of 0 Attempt D0 + 0 Attempt >D0. Action: route to a driver/rider to attempt delivery.",
   zero_attempt: "Zero Attempt parcels aged D0 (today). Action: route today.",
   zero_attempt_gt_d0: "Zero Attempt parcels aged more than D0 -- already sitting past today. Action: prioritise, these are overdue.",

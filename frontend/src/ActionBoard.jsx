@@ -194,6 +194,8 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         zalora_ovfd: shipperByStation.get(s.station_code)?.zalora_ovfd || 0,
         routed_current_ovfd: routedByStation.get(s.station_code)?.current_ovfd || 0,
         fresh_unscan: shipmentByStation.get(s.station_code)?.fresh_unscan || 0,
+        shipper_sla_warning: shipperByStation.get(s.station_code)?.shipper_sla_warning || 0,
+        shipper_sla_breach: shipperByStation.get(s.station_code)?.shipper_sla_breach || 0,
       })),
     [stations, oldRouteByStation, shipperByStation, routedByStation, shipmentByStation]
   );
@@ -320,7 +322,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         .map((row) => row.tracking_number);
       return Promise.resolve({ tracking_numbers: list, as_of: oldRouteData?.captured_at });
     }
-    if (metricKey === "zalora_zero_attempt" || metricKey === "zalora_ovfd") {
+    if (["zalora_zero_attempt", "zalora_ovfd", "shipper_sla_warning", "shipper_sla_breach"].includes(metricKey)) {
       return api.shipperDrilldown(stationCode, metricKey);
     }
     if (metricKey === "fresh_unscan") {

@@ -932,6 +932,7 @@ SHIPPER_WATCH_KEYS = (
     "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_pieces", "restock_potential_breach", "restock_breach",
+    "shipper_sla_warning", "shipper_sla_breach",
 )
 
 SHIPPER_DRILLDOWN_METRICS = (
@@ -939,6 +940,7 @@ SHIPPER_DRILLDOWN_METRICS = (
     "orca_ovfd", "orca_other", "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
+    "shipper_sla_warning", "shipper_sla_breach",
 )
 
 
@@ -1074,6 +1076,45 @@ def build_shipper_watch(
             tn_details[hub]["restock_breach"].append(bundle)
 
     return by_station, tn_details
+
+
+# Action Board "Shipper SLA" (2026-09-26): Amway, Watson, Orca and Cold Chain parcels still with a station. Older than
+# SHIPPER_SLA_WARN_DAYS days = warning, older than SHIPPER_SLA_BREACH_DAYS days = breach (each parcel counts once: a parcel
+# that is already a breach is not also counted as a warning). Age = days since the parcel's first sweep at its current hub
+# (query 78's days_since_current_hub_first_sweep, the same age the rest of the app uses). A parcel still on its way to the
+# hub (En-route to Sorting Hub) isn't the station's yet, so it is left out. Counted at the hub that last scanned it, and
+# only for the 143 stations. ASSUMPTIONS to confirm with the Fleet Manager: which statuses count, and Orca's ORCA pattern.
+SHIPPER_SLA_WARN_DAYS = 0
+SHIPPER_SLA_BREACH_DAYS = 1
+_SHIPPER_SLA_EXCLUDED_STATUSES = {"En-route to Sorting Hub"}
+
+
+def apply_shipper_sla(
+    by_station: dict[str, dict], tn_details: dict[str, dict], health_v3_rows: list[dict], cold_chain_tns: set[str]
+) -> None:
+    """Adds shipper_sla_warning / shipper_sla_breach counts (and their tracking numbers) to the Shipper Watch rows in place."""
+    for r in health_v3_rows:
+        hub = r.get("last_scan_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+        if r.get("granular_status") in _SHIPPER_SLA_EXCLUDED_STATUSES:
+            continue
+        tn = r.get("tracking_id")
+        if not (tn in cold_chain_tns or _ORCA_PATTERN.search(tn or "") or _classify_shipper(tn) in ("Amway", "Watson")):
+            continue
+        try:
+            age = int(r.get("days_since_current_hub_first_sweep") or 0)
+        except (TypeError, ValueError):
+            age = 0
+        if age > SHIPPER_SLA_BREACH_DAYS:
+            key = "shipper_sla_breach"
+        elif age > SHIPPER_SLA_WARN_DAYS:
+            key = "shipper_sla_warning"
+        else:
+            continue
+        row[key] += 1
+        tn_details[hub][key].append(tn)
 
 
 def rollup_shipper_watch(station_rows: list[dict], group_key: str) -> list[dict]:

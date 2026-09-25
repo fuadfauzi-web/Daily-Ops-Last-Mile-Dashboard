@@ -127,7 +127,8 @@ const SECTIONS = [
         <p>
           The "what do I act on today" tab. Pick the metrics you care about from the searchable picker at the top -- it
           draws from Station Health plus a few extras (Old Route's stuck count, Zalora NXD 0 Attempt/OVFD, Fresh Unscan and
-          Route Monitoring's Current OVFD).
+          Route Monitoring's Current OVFD), plus <strong>Shipper SLA Warning / Breach</strong>: Amway, Watson, Orca and Cold Chain
+          parcels still at the station -- older than 0 days is a warning, older than 1 day is a breach.
         </p>
         <p>
           The heatmap groups by Region / Zone / Station and colours each cell by whether it breaches the Warning / Critical
@@ -180,6 +181,7 @@ const SECTIONS = [
             <><strong>Age &gt;3</strong> is parcels sitting in-hub more than 3 days, scored as a count or as a % of Total In Hub.</>,
             <><strong>Missing (Hub / Driver-Rider / Ship-in)</strong>: open missing-parcel tickets split by who is on the hook. <strong>Pending ATS</strong> is parcels pending Add To Shipment.</>,
             <><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub).</>,
+            <><strong>Attendance</strong>: unique Hybrid / Independent drivers with a route today. "12 (2 Rescue)" means 2 of the 12 are routing away from their home station, same as Route Monitoring.</>,
             F.stationHealthCombined ? (
               <>One expandable table that starts at your own scope: a nationwide view opens Region → Zone → Station, a station-scoped view is just your stations. Anyone who sees region / zone rows can hide them with the "Show region rows" / "Show zone rows" checkboxes beside Export CSV (both off = a flat list of stations). Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for what's shown.</>
             ) : (
@@ -352,9 +354,10 @@ const SECTIONS = [
               they pick reports back to them. Each assignment is a separate row, and closing or removing one only removes that row. Rows with the same tracking number sit together by default and share a colour (with a ×2 chip), so duplicates are easy to spot; the <strong>Default order</strong> button brings that order back after you sort by a column.
             </>,
             <>
-              <strong>Note and replies</strong>: forgot the note, or something changed? As the owner use <strong>Edit note</strong> (or <strong>Add note</strong>) on
-              the row and press <strong>Send note</strong> -- the PIC's bell rings again and the row is tagged UPDATED (only when the text actually changed). When the PIC writes back you can answer with
-              <strong> Reply to PIC</strong>; it shows in the <strong>Owner Reply</strong> column.
+              <strong>Note and replies</strong>: forgot the note, or something changed? As the owner <strong>double-click the Note</strong> on the row, edit it and press
+              <strong> Send note</strong> -- the PIC's bell rings again and the row is tagged UPDATED (only when the text actually changed). When the PIC writes back,
+              <strong> double-click their PIC Reply</strong> to answer; your answer shows in the <strong>Owner Reply</strong> column. The last column, <strong>Action Taken</strong>,
+              holds the status buttons and Close / remove.
             </>,
             <>
               <strong>Assign PIC</strong> on a tracking number that has nobody on it yet fills in <em>that same row</em>. A PIC passing it on
@@ -474,7 +477,7 @@ const FAQS = [
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
   { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
   { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed -- hourly from 8am to 8pm, never overnight) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
-  { q: "I forgot the note when I assigned a tracking number -- can I add it later?", a: "Urgent TN tab -> Add note (or Edit note) on the row -> Send note. The PIC's bell rings again and the row is tagged UPDATED (only if the note actually changed). You can also answer what they wrote with Reply to PIC." },
+  { q: "I forgot the note when I assigned a tracking number -- can I add it later?", a: "Urgent TN tab -> double-click the row's Note -> Send note. The PIC's bell rings again and the row is tagged UPDATED (only if the note actually changed). Double-click a PIC Reply to answer what they wrote." },
   { q: "How do I get reminded to follow up an email or Gchat?", a: "Task List -> Email / Gchat: add it with a due date (and a helper if you want someone to remind you or reply for you). The bell rings when it's due or overdue.", show: () => F.taskList },
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
