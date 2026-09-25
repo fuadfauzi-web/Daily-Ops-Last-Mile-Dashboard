@@ -128,7 +128,7 @@ const SECTIONS = [
           The "what do I act on today" tab. Pick the metrics you care about from the searchable picker at the top -- it
           draws from Station Health plus a few extras (Old Route's stuck count, Zalora NXD 0 Attempt/OVFD, Fresh Unscan and
           Route Monitoring's Current OVFD), plus <strong>Shipper SLA Warning / Breach</strong>: Amway, Watson, Orca and Cold Chain
-          parcels still at the station -- older than 0 days is a warning, older than 1 day is a breach.
+          parcels at the station or still on their way to it -- older than 0 days is a warning, older than 1 day is a breach.
         </p>
         <p>
           Every heatmap column has a small <strong>i</strong>: click it for what the metric counts, <strong>which parcels or shippers it covers</strong> (for
@@ -138,7 +138,8 @@ const SECTIONS = [
           The heatmap groups by Region / Zone / Station and colours each cell by whether it breaches the Warning / Critical
           target set in SLA Targets; every column sorts, and "Breaches only" is on by default. "Act on these today" lists the
           worst stations first, each with <strong>Copy TNs</strong> and <strong>Export CSV</strong> grouped by which metric
-          flagged them.
+          flagged them. With more than one metric picked, <strong>drag the metric chips</strong> next to the picker (or use their ‹ › arrows) to arrange the
+          heatmap's columns -- the order is remembered.
         </p>
       </div>
     ),

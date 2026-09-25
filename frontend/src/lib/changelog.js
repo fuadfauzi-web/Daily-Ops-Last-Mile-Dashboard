@@ -36,6 +36,13 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-26",
+    title: "Action Board: arrange the columns",
+    points: [
+      "With more than one metric picked, drag the metric chips next to the picker (or use their ‹ › arrows) to put the heatmap's columns in the order you want. The order is remembered. Shipper SLA now also counts parcels that are still en-route to the station.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Action Board: notes on every metric",
     points: [
       "Each heatmap column now has a small i: click it for what the metric counts, which parcels it covers, the direction and target, and what to do. Metrics that only cover some parcels -- like Shipper SLA (Amway, Watson, Orca and Cold Chain only) -- say so under the column name.",
@@ -70,7 +77,7 @@ export const CHANGELOG = [
     date: "2026-09-26",
     title: "Action Board: Shipper SLA",
     points: [
-      "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels still at the station: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",
+      "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels at the station or still on their way to it: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",
     ],
   },
   {

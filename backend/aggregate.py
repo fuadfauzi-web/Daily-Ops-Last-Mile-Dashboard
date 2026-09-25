@@ -1084,11 +1084,11 @@ def build_shipper_watch(
 # SHIPPER_SLA_WARN_DAYS days = warning, older than SHIPPER_SLA_BREACH_DAYS days = breach (each parcel counts once: a parcel
 # that is already a breach is not also counted as a warning). Age = days since the parcel's first sweep at its current hub
 # (query 78's days_since_current_hub_first_sweep, the same age the rest of the app uses). A parcel still on its way to the
-# hub (En-route to Sorting Hub) isn't the station's yet, so it is left out. Counted at the hub that last scanned it, and
+# hub (En-route to Sorting Hub) counts too (2026-09-26 feedback). Counted at the hub that last scanned it, and
 # only for the 143 stations. ASSUMPTIONS to confirm with the Fleet Manager: which statuses count, and Orca's ORCA pattern.
 SHIPPER_SLA_WARN_DAYS = 0
 SHIPPER_SLA_BREACH_DAYS = 1
-_SHIPPER_SLA_EXCLUDED_STATUSES = {"En-route to Sorting Hub"}
+_SHIPPER_SLA_EXCLUDED_STATUSES: set[str] = set()  # no status is left out any more (en-route parcels count)
 
 
 def apply_shipper_sla(
