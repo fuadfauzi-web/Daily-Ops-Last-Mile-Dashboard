@@ -198,6 +198,51 @@ const SECTIONS = [
     ),
   },
   {
+    id: "kpi",
+    title: "KPI",
+    show: () => F.kpiDashboard,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>KPI</strong> page (next to Dashboard in the header) is the Hybrid Performance app moved into the dashboard, for every station you can see.
+          The menu on the left lists the KPI modules; <strong>Hybrid Productivity</strong> is live, the others (Prior KPI, FIFO D0, Invalid POD, Terminal T7,
+          Completion D0 / D3, COD RTS) are marked <em>soon</em> and get built as their Metabase data is set up.
+        </p>
+        <Bullets
+          items={[
+            <>Top bar: <strong>View</strong> (Weekly / Monthly), <strong>Period</strong> (Latest by default), Region / Zone / Station, and a driver search. <strong>Refresh data</strong> re-reads Metabase (admins and managers; everyone else reloads what is cached for half an hour).</>,
+            <>Cards: active drivers (HD / HR), parcels on route, delivered + pickup, average success %, average attendance and average productivity for the period.</>,
+            <><strong>Driver Performance</strong>: the leaderboard (click headers to sort, click a driver for their productivity trend and last 2 weeks of daily volume). Attendance below the target (6 days a week, 26 a month) is red.</>,
+            <><strong>Station Performance</strong> and <strong>Regional Breakdown</strong> (by zone): the same numbers rolled up, with trends, the station leaderboard and the ten lowest performers (productivity under 80).</>,
+            <><strong>Daily Data</strong>: the latest period's leaderboard with the selected driver's daily log and delivery-volume trend.</>,
+            <>A driver's station comes from the station code in their name (for example "LKN - HD - ...").</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "dod",
+    title: "DoD",
+    show: () => F.dod,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>DoD</strong> tab is Station Health looking back: one snapshot per station per day (the last refresh of the day), kept for this week and
+          last week only. It follows your scope and the filters above the tabs. History starts from the first refresh after it went live, so the first days
+          have only a few dots.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Daily View</strong>: pick a day (last week and this week are one click each) and see every region / zone / station with Current Backlogged, Total Fresh, Attendance (rescue in brackets), Total Routed, Success Rate, Productivity and Total Success. The small ▲ / ▼ is the change from the day before, green when it is an improvement. Export CSV gives the day in the same layout as the Daily View sheet.</>,
+            <><strong>Weekly Overview</strong>: choose a measure and see it for every row across Mon–Sun of last week and of this week, plus the averages and the change. Click a row to draw it as two lines (last week vs this week) above the table.</>,
+            <>Current Backlogged is In Hub at the day's last refresh; Success Rate = Total Success ÷ Total Routed; Productivity = Total Routed ÷ Attendance.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "routed",
     title: "Route Monitoring",
     body: () => (

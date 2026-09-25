@@ -8,6 +8,8 @@ import { useWhatsNewUnread } from "./lib/whatsNew";
 import RoleTester from "./components/RoleTester";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
+import { FEATURES } from "./lib/features";
+import KpiDashboard from "./KpiDashboard";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
@@ -102,7 +104,8 @@ export default function App() {
   // Recovery Settings for admin/manager, plus Feedback and Guide for everyone); Admin is
   // admin-only (Documents, Data Refresh) -- 2026-09-25 feedback. Each tab inside applies its
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
-  const navTabs = ["dashboard", "settings", ...(me.role === "admin" ? ["admin"] : [])];
+  const navTabs = ["dashboard", ...(FEATURES.kpiDashboard ? ["kpi"] : []), "settings", ...(me.role === "admin" ? ["admin"] : [])];
+  const navLabel = (t) => (t === "kpi" ? "KPI" : t);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -150,7 +153,7 @@ export default function App() {
                     tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
                   }`}
                 >
-                  {t}
+                  {navLabel(t)}
                   {t === "settings" && (
                     <BellBadge
                       count={(notifCounts?.feedback_replies_unread || 0) + whatsNewUnread}
@@ -225,7 +228,7 @@ export default function App() {
                     tab === t ? "bg-brand font-medium text-white shadow-sm" : "text-slate-500"
                   }`}
                 >
-                  {t}
+                  {navLabel(t)}
                   {t === "settings" && (
                     <BellBadge
                       count={(notifCounts?.feedback_replies_unread || 0) + whatsNewUnread}
@@ -254,6 +257,7 @@ export default function App() {
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
         {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
+        {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
       </main>

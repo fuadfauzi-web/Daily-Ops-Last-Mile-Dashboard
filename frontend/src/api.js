@@ -150,6 +150,9 @@ export const api = {
     suggest: (q) => request(`/api/urgent-tn/pic-suggestions?q=${encodeURIComponent(q)}`),
   },
   notifications: () => request("/api/notifications"),
+  dod: () => request("/api/dod"), // DoD Dashboard: Station Health per day, this week + last week
+  // KPI Dashboard -> Hybrid Productivity (Metabase): view "weekly" | "monthly"; refresh re-runs the questions (admin / manager only)
+  kpiHybrid: (view, refresh = false) => request(`/api/kpi/hybrid?view=${view}${refresh ? "&refresh=true" : ""}`),
   // Task List (backend/tasklist.py)
   reminders: { ack: (kind, id) => request("/api/reminders/ack", { method: "POST", body: JSON.stringify({ kind, id }) }) },
   followups: {

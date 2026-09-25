@@ -22,6 +22,7 @@ import RpuTab from "./RpuTab";
 import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
 import TaskListTab from "./TaskListTab";
+import DodTab from "./DodTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -65,6 +66,7 @@ const TABS = [
   { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
+  ...(FEATURES.dod ? [{ key: "dod", label: "DoD" }] : []),
   { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
@@ -387,6 +389,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       return sortDir === "asc" ? av - bv : bv - av;
     });
   }, [scopedStations, regionFilter, zoneFilter, search, sortKey, sortDir]);
+  // The stations the filters above leave in view -- the DoD tab follows them.
+  const filteredStationCodes = useMemo(() => new Set(filteredStations.map((s) => s.station_code)), [filteredStations]);
 
   // The "N stations in scope" count now lives in the header, as a small footnote after "Data as of"
   // (2026-09-25 feedback) -- reported up here the same way the freshness timestamp is.
@@ -796,6 +800,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           </p>
         </>
       )}
+
+      {FEATURES.dod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}
 
       {tab === "shipment" && (
         <ShipmentDetailsTab

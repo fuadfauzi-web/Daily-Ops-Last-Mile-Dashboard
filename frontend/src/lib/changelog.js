@@ -50,6 +50,24 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-26",
+    title: "KPI: Hybrid Productivity for all stations",
+    feature: "kpiDashboard",
+    points: [
+      "A new KPI page next to Dashboard: the Hybrid Performance app (driver leaderboard, station and zone roll-ups, trends, daily log) for every station you can see, read from Metabase. The other KPI modules are listed and marked soon.",
+    ],
+  },
+  {
+    date: "2026-09-26",
+    title: "DoD: Station Health, day by day",
+    feature: "dod",
+    points: [
+      "A new DoD tab keeps one Station Health snapshot per station per day (the last refresh of the day) for this week and last week, so you can look back at yesterday and compare it with the day before.",
+      "Daily View: pick a day and see every region / zone / station with Current Backlogged, Total Fresh, Attendance, Total Routed, Success Rate, Productivity and Total Success, with the change from the day before. Weekly Overview: one measure across Mon-Sun of both weeks, with a last-week vs this-week line for the row you pick.",
+      "History starts from the first refresh after it went live.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Action Board: Shipper SLA",
     points: [
       "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels still at the station: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",
