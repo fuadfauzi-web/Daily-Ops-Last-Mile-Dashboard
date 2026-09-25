@@ -234,7 +234,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const [expandedZones, setExpandedZones] = useState(() => new Set());
   const [combinedSortKey, setCombinedSortKey] = useState(null);
   const [combinedSortDir, setCombinedSortDir] = useState("asc");
-  // Region / zone-scoped users can hide the region / zone grouping rows (remembered per person).
+  // Anyone who sees region / zone grouping rows can hide them (remembered per person).
   const levelsKey = `station-health-levels-${me.email}`;
   const [levelPrefs, setLevelPrefs] = useState(() => {
     try {
@@ -490,15 +490,15 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   // the name column's own indentation/weight -- per 2026-09-20 feedback.
   // Which grouping levels this viewer sees (2026-09-25 feedback): nationwide viewers get
   // region -> zone -> station; a region-scoped user starts at region; a zone-scoped user at
-  // zone; a station-scoped user sees stations only. Region / zone-scoped users can also switch
-  // the region / zone rows off. Nationwide viewers keep the click-to-expand behaviour (rows
+  // zone; a station-scoped user sees stations only. Everyone who sees region / zone rows can
+  // also switch them off (2026-09-25: nationwide viewers too). Nationwide viewers keep the click-to-expand behaviour (rows
   // start collapsed); scoped viewers' rows start expanded (the Sets then hold the COLLAPSED
   // ones), since they only have a few of them.
   const scopeType = me.scope_type;
-  const canHideRegionRows = scopeType === "region";
-  const canHideZoneRows = scopeType === "region" || scopeType === "zone";
-  const showRegionRows = (scopeType === "all" || scopeType === "region") && (scopeType === "all" || levelPrefs.region);
-  const showZoneRows = scopeType !== "station" && (scopeType === "all" || levelPrefs.zone);
+  const canHideRegionRows = scopeType === "all" || scopeType === "region";
+  const canHideZoneRows = scopeType !== "station";
+  const showRegionRows = canHideRegionRows && levelPrefs.region;
+  const showZoneRows = canHideZoneRows && levelPrefs.zone;
   const startsExpanded = scopeType !== "all";
   const isRegionOpen = (key) => (startsExpanded ? !expandedRegions.has(key) : expandedRegions.has(key));
   const isZoneOpen = (key) => (startsExpanded ? !expandedZones.has(key) : expandedZones.has(key));

@@ -179,7 +179,7 @@ const SECTIONS = [
             <><strong>Missing (Hub / Driver-Rider / Ship-in)</strong>: open missing-parcel tickets split by who is on the hook. <strong>Pending ATS</strong> is parcels pending Add To Shipment.</>,
             <><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub).</>,
             F.stationHealthCombined ? (
-              <>One expandable table that starts at your own scope: a nationwide view opens Region → Zone → Station, a station-scoped view is just your stations. Region and zone-scoped users can hide the region / zone rows with the checkboxes above the table. Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for what's shown.</>
+              <>One expandable table that starts at your own scope: a nationwide view opens Region → Zone → Station, a station-scoped view is just your stations. Anyone who sees region / zone rows can hide them with the "Show region rows" / "Show zone rows" checkboxes beside Export CSV (both off = a flat list of stations). Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for what's shown.</>
             ) : (
               <>Coloured cells (▲ critical / ■ warning) are metrics with an SLA target. Cells without a target are shaded on a relative scale instead -- a ranking, never a pass/fail judgement.</>
             ),

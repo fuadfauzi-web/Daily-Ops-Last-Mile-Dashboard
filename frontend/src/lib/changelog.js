@@ -29,7 +29,7 @@ export const CHANGELOG = [
     feature: "stationHealthCombined",
     points: [
       "The table starts at your own level: a station-scoped user sees just their stations, a zone-scoped user their zones and stations, a region-scoped user their regions, zones and stations.",
-      "Region and zone-scoped users can switch the region / zone rows on or off with \"Show region rows\" / \"Show zone rows\" (remembered for next time).",
+      "Everyone who sees region / zone rows -- nationwide, region and zone-scoped users -- can switch them on or off with \"Show region rows\" / \"Show zone rows\" beside Export CSV (remembered for next time; both off gives a flat list of stations).",
     ],
   },
   {
