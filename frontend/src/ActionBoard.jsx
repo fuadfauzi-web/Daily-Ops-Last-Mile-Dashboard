@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { resolveThreshold, classify, SEVERITY_MARK } from "./lib/thresholds";
 import { EXTRA_METRICS, NO_DRILLDOWN_METRICS, BOARD_COLUMNS, findBoardColumn as findColumn } from "./lib/actionMetrics";
+import { BOARD_NOTES, BOARD_SCOPE, targetText } from "./lib/boardNotes";
+import { METRIC_NOTES } from "./lib/metricNotes";
+import HeaderNote from "./components/HeaderNote";
 import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
 import MultiSelect from "./components/MultiSelect";
@@ -394,6 +397,15 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         label: (
           <>
             {col.label}
+            {(BOARD_NOTES[metricKey] || METRIC_NOTES[metricKey]) && (
+              <HeaderNote>
+                {BOARD_NOTES[metricKey] || METRIC_NOTES[metricKey]}
+                <div className="mt-2 border-t border-slate-100 pt-2">
+                  <strong>Target:</strong> {targetText(natThreshold, findColumn)}
+                </div>
+              </HeaderNote>
+            )}
+            {BOARD_SCOPE[metricKey] && <div className="text-[10px] font-semibold normal-case text-amber-300">{BOARD_SCOPE[metricKey]}</div>}
             <div className="text-[10px] font-normal normal-case text-slate-300">
               {natThreshold.direction === "lower-is-worse" ? "≥" : "≤"} {natThreshold.warning_at}
               {percentOfLabel ? `% of ${percentOfLabel}` : ""}
@@ -443,7 +455,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
             <>
               <div className="w-64">
                 <MultiSelect
-                  options={scoredMetrics.map((c) => ({ value: c.key, label: c.label }))}
+                  options={scoredMetrics.map((c) => ({ value: c.key, label: BOARD_SCOPE[c.key] ? `${c.label} (${BOARD_SCOPE[c.key]})` : c.label }))}
                   value={selectedMetrics}
                   onChange={setMetrics}
                   placeholder="Select metrics"
@@ -548,6 +560,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                       return (
                         <span
                           key={b.metricKey}
+                          title={BOARD_SCOPE[b.metricKey] || undefined}
                           className={`whitespace-nowrap rounded px-2 py-1 text-xs ${
                             b.sev === "critical" ? "bg-status-critical/10 text-status-critical" : "bg-status-warning/10 text-status-warning"
                           }`}

@@ -933,6 +933,7 @@ SHIPPER_WATCH_KEYS = (
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_pieces", "restock_potential_breach", "restock_breach",
     "shipper_sla_warning", "shipper_sla_breach",
+    "cold_chain_zero_attempt", "cold_chain_aging",
 )
 
 SHIPPER_DRILLDOWN_METRICS = (
@@ -941,6 +942,7 @@ SHIPPER_DRILLDOWN_METRICS = (
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
     "shipper_sla_warning", "shipper_sla_breach",
+    "cold_chain_zero_attempt", "cold_chain_aging",
 )
 
 
@@ -1092,21 +1094,34 @@ _SHIPPER_SLA_EXCLUDED_STATUSES = {"En-route to Sorting Hub"}
 def apply_shipper_sla(
     by_station: dict[str, dict], tn_details: dict[str, dict], health_v3_rows: list[dict], cold_chain_tns: set[str]
 ) -> None:
-    """Adds shipper_sla_warning / shipper_sla_breach counts (and their tracking numbers) to the Shipper Watch rows in place."""
+    """Adds, to the Shipper Watch rows in place:
+      * Action Board's shipper_sla_warning / shipper_sla_breach (Amway, Watson, Orca and Cold Chain parcels by age), and
+      * Shipper Radar's Cold Chain columns cold_chain_zero_attempt / cold_chain_aging (2026-09-26: the same 0-Attempt and
+        Aging >D0 rule as Amway and Watson -- Arrived at Sorting Hub, 0 attempts; aging = older than 0 days).
+    Cold Chain parcels are recognised by tracking number (query 1410); only the 143 stations are counted here -- parcels sitting
+    at CC-* hubs are in the Cold Chain sub-tab."""
     for r in health_v3_rows:
         hub = r.get("last_scan_hub_name")
         row = by_station.get(hub)
         if row is None:
             continue
-        if r.get("granular_status") in _SHIPPER_SLA_EXCLUDED_STATUSES:
-            continue
+        status = r.get("granular_status")
         tn = r.get("tracking_id")
-        if not (tn in cold_chain_tns or _ORCA_PATTERN.search(tn or "") or _classify_shipper(tn) in ("Amway", "Watson")):
-            continue
+        is_cold = tn in cold_chain_tns
         try:
             age = int(r.get("days_since_current_hub_first_sweep") or 0)
         except (TypeError, ValueError):
             age = 0
+        if is_cold and status == "Arrived at Sorting Hub" and (r.get("delivery_attempts") or 0) == 0:
+            row["cold_chain_zero_attempt"] += 1
+            tn_details[hub]["cold_chain_zero_attempt"].append(tn)
+            if age > 0:
+                row["cold_chain_aging"] += 1
+                tn_details[hub]["cold_chain_aging"].append(tn)
+        if status in _SHIPPER_SLA_EXCLUDED_STATUSES:
+            continue
+        if not (is_cold or _ORCA_PATTERN.search(tn or "") or _classify_shipper(tn) in ("Amway", "Watson")):
+            continue
         if age > SHIPPER_SLA_BREACH_DAYS:
             key = "shipper_sla_breach"
         elif age > SHIPPER_SLA_WARN_DAYS:

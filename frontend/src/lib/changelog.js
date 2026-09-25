@@ -36,6 +36,20 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-26",
+    title: "Action Board: notes on every metric",
+    points: [
+      "Each heatmap column now has a small i: click it for what the metric counts, which parcels it covers, the direction and target, and what to do. Metrics that only cover some parcels -- like Shipper SLA (Amway, Watson, Orca and Cold Chain only) -- say so under the column name.",
+    ],
+  },
+  {
+    date: "2026-09-26",
+    title: "Shipper Radar: Cold Chain in Shipper SLA",
+    points: [
+      "Shipper SLA has a new Cold Chain shipper with 0 Attempt and Aging >D0, the same rule as Amway and Watson. Click a number for its tracking numbers.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Action Board: Shipper SLA",
     points: [
       "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels still at the station: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",

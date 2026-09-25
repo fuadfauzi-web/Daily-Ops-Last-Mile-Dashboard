@@ -54,6 +54,15 @@ const SHIPPERS = [
     ],
   },
   {
+    // 2026-09-26: same rule as Amway / Watson (0 Attempt, Aging >D0); parcels are picked by the Cold Chain tracking-number list.
+    key: "coldchain",
+    label: "Cold Chain",
+    columns: [
+      { key: "cold_chain_zero_attempt", label: "Cold Chain 0 Attempt" },
+      { key: "cold_chain_aging", label: "Cold Chain Aging >D0" },
+    ],
+  },
+  {
     key: "orca",
     label: "Orca",
     columns: [
@@ -74,10 +83,21 @@ const ALL_SHIPPER_KEYS = SHIPPERS.map((s) => s.key);
 
 function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const storageKey = `shipper-watch-shippers-${me.email}`;
+  const seenKey = `shipper-watch-seen-${me.email}`;
   const [selectedShippers, setSelectedShippers] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
-      if (Array.isArray(saved) && saved.length) return saved;
+      if (Array.isArray(saved) && saved.length) {
+        // A shipper added after this person saved their picks (Cold Chain, 2026-09-26) is switched on once so it doesn't stay
+        // hidden; after that their own choice wins.
+        const seen = JSON.parse(localStorage.getItem(seenKey) || "null");
+        const known = Array.isArray(seen) ? seen : ALL_SHIPPER_KEYS.filter((k) => k !== "coldchain");
+        const fresh = ALL_SHIPPER_KEYS.filter((k) => !known.includes(k));
+        const next = fresh.length ? [...saved, ...fresh] : saved;
+        localStorage.setItem(seenKey, JSON.stringify(ALL_SHIPPER_KEYS));
+        if (fresh.length) localStorage.setItem(storageKey, JSON.stringify(next));
+        return next;
+      }
     } catch {
       /* private browsing / storage blocked / bad JSON -- default to everything */
     }

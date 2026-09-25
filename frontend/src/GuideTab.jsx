@@ -131,6 +131,10 @@ const SECTIONS = [
           parcels still at the station -- older than 0 days is a warning, older than 1 day is a breach.
         </p>
         <p>
+          Every heatmap column has a small <strong>i</strong>: click it for what the metric counts, <strong>which parcels or shippers it covers</strong> (for
+          example Shipper SLA is only Amway, Watson, Orca and Cold Chain -- also written under the column name), the direction and target, and what to do about it.
+        </p>
+        <p>
           The heatmap groups by Region / Zone / Station and colours each cell by whether it breaches the Warning / Critical
           target set in SLA Targets; every column sorts, and "Breaches only" is on by default. "Act on these today" lists the
           worst stations first, each with <strong>Copy TNs</strong> and <strong>Export CSV</strong> grouped by which metric
@@ -274,8 +278,9 @@ const SECTIONS = [
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          {F.shipperRadar ? "Shipper SLA is the first sub-tab: " : ""}hypercare metrics for shippers with their own SLA -- Zalora NXD (0 Attempt / OVFD / Other), Amway and Watson
-          (0 Attempt, Aging &gt;D0: attempt day 0, succeed before day 3), Orca and Sodaxpress (OVFD vs everything else). Pick the
+          {F.shipperRadar ? "Shipper SLA is the first sub-tab: " : ""}hypercare metrics for shippers with their own SLA -- Zalora NXD (0 Attempt / OVFD / Other), Amway, Watson and Cold Chain
+          (0 Attempt, Aging &gt;D0: attempt day 0, succeed before day 3), Orca and Sodaxpress (OVFD vs everything else). Cold Chain here counts the
+          Cold Chain parcels sitting at a station; the ones at Cold Chain hubs are in the Cold Chain sub-tab. Pick the
           shippers at the top; a station with nothing flagged is hidden, and if none is flagged the table says "all clear".
         </p>
         {F.shipperRadar && (
