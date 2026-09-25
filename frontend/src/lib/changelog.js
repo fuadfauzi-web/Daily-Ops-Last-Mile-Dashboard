@@ -64,6 +64,7 @@ export const CHANGELOG = [
       "Admins load the data with Data upload (CSV or Excel -- the right sheet is picked automatically). An uploaded Hybrid file is used instead of Metabase until it is removed.",
       "Trend and bar charts with many points (39 weeks, a month of days) now thin their axis labels and turn crowded bar numbers upright, so nothing overlaps. The Hybrid daily export from Metabase (Route Date: Day) is accepted by Data upload.",
       "Hybrid Productivity: Daily Data (Current Month) always shows the current month whatever View / Period say, Service Duration is filled from the driver list's start date, and every Data upload slot has an Open in Metabase link to download the newest file.",
+      "OPEX Result now reads the OPEX dashboard's own Download CSV: every hub / area / region with each KPI's rate against its target (green met, red missed) and how many KPIs it missed. Every Data upload slot for the RCA pages (Invalid POD, COD RTS) links to its Metabase question too; the OPEX slot links to the OPEX dashboard.",
       "Access: OPEX Result is open to every user in full; the Weekly Dashboard and the RCA pages follow each user's region / zone / station.",
     ],
   },

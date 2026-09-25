@@ -8,6 +8,7 @@ Scope: a hub / station outside the viewer's scope is never returned. Anything th
 is only visible to a nationwide viewer.
 """
 import logging
+import re
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -395,13 +396,73 @@ async def kpi_weekly(user: CurrentUser = Depends(get_current_user)):
     return {"has_data": True, "meta": meta, **build_weekly_kpi(rows, user)}
 
 
+# ------------------------------------------------------------------------------------------------ OPEX result
+
+_OPEX_LABELS = {"fifo": "FIFO", "d0_d2": "D0/D2", "d3": "D3", "d7": "D7", "prior": "Priority", "invalid_pod": "Invalid POD", "lost": "Lost", "cod_rts": "COD RTS"}
+_OPEX_FILE = re.compile(r"last-mile-(?P<scope>.+?)-(?P<grain>daily|weekly)-(?P<from>\d{4}-\d{2}-\d{2})-to-(?P<to>\d{4}-\d{2}-\d{2})", re.I)
+
+
+def _opex_num(value) -> float | None:
+    try:
+        return float(str(value).replace(",", "").replace("%", "")) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _decimals(value) -> int:
+    s = str(value or "")
+    return len(s.split(".")[1]) if "." in s else 0
+
+
+def build_opex_result(columns: list[str], rows: list[dict], filename: str) -> dict | None:
+    """The OPEX "Last Mile Performance" dashboard's Download CSV: one row per child of the chosen scope (regions -> areas -> hubs) with
+    <kpi>_rate_pct, <kpi>_target_pct and <kpi>_met per KPI plus kpis_missed. None when the file is some other table. Everyone sees
+    all of it -- the OPEX result is open to every user (Fleet Manager, 2026-09-26), unlike the RCA pages."""
+    if not columns or not rows:
+        return None
+    first = columns[0]
+    if kd.norm(first) not in ("hub", "area", "region", "zone"):
+        return None
+    kpis = [c[: -len("_rate_pct")] for c in columns if c.endswith("_rate_pct")]
+    if not kpis:
+        return None
+    out = []
+    for r in rows:
+        name = str(r.get(first) or "").strip()
+        if not name:
+            continue
+        code = _hub_code_from_code(name) if kd.norm(first) == "hub" else None
+        values = {}
+        for k in kpis:
+            met = str(r.get(f"{k}_met") or "").strip().lower()
+            values[k] = {"rate": _opex_num(r.get(f"{k}_rate_pct")), "target": _opex_num(r.get(f"{k}_target_pct")), "met": True if met == "met" else False if met == "missed" else None}
+        missed = _opex_num(r.get("kpis_missed"))
+        out.append({"name": name, "station": HUBS[code][0] if code and code in HUBS else None, "zone": HUBS[code][2] if code and code in HUBS else None,
+                    "missed": int(missed) if missed is not None else sum(1 for v in values.values() if v["met"] is False), "values": values})
+    sample = rows[0]
+    m = _OPEX_FILE.search(filename or "")
+    return {
+        "level": kd.norm(first),
+        "kpis": [{"key": k, "label": _OPEX_LABELS.get(k, k.replace("_", " ").title()), "decimals": _decimals(sample.get(f"{k}_rate_pct"))} for k in kpis],
+        "rows": out,
+        "scope": m.group("scope").replace("-", " ").upper() if m else None,
+        "grain": m.group("grain").lower() if m else None,
+        "from": m.group("from") if m else None,
+        "to": m.group("to") if m else None,
+    }
+
+
 @router.get("/api/kpi/table/{dataset}")
 async def kpi_table(dataset: str, user: CurrentUser = Depends(get_current_user)):
-    """A generic uploaded table (the OPEX result for now) -- columns + up to 5,000 rows, shown as-is until its layout is agreed."""
+    """The uploaded OPEX result: the OPEX dashboard's own CSV gets a structured view (`opex`); any other table is shown as it is
+    (columns + up to 5,000 rows). Open to every user -- no scope filter."""
     if dataset != "opex_result":
         raise HTTPException(status_code=404, detail="Unknown table")
     meta, rows = await _rows(dataset)
     if meta is None:
         return {"has_data": False}
     columns = list(rows[0].keys()) if rows else []
-    return {"has_data": True, "meta": meta, "columns": columns, "rows": [[r.get(c) for c in columns] for r in rows[:5000]], "capped": len(rows) > 5000}
+    return {
+        "has_data": True, "meta": meta, "columns": columns, "rows": [[r.get(c) for c in columns] for r in rows[:5000]], "capped": len(rows) > 5000,
+        "opex": build_opex_result(columns, rows, meta.get("filename", "")),
+    }

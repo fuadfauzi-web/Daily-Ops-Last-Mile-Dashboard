@@ -105,7 +105,8 @@ DATASETS: dict[str, dict] = {
         "sheet": "Station KPI W0W", "required": ["week", "station"],
     },
     "opex_result": {
-        "kpi": "opex", "label": "OPEX dashboard result", "hint": "the OPEX KPI dashboard result as CSV / Excel (first sheet) -- layout to be confirmed",
+        "kpi": "opex", "label": "OPEX dashboard result", "link": "https://last-mile-dashboard.ninjavan.apps.substrait.build/",
+        "hint": "the OPEX Last Mile Performance dashboard: pick the region / area and the dates, press Download CSV, then upload that file (any other table is shown as it is)",
         "sheet": None, "required": [],
     },
 }
