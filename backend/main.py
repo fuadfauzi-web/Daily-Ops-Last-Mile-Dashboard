@@ -110,16 +110,21 @@ async def _fetch(query_id: int) -> list[dict]:
 
 _METRIC_COLUMNS = METRIC_KEYS
 # DoD Dashboard: the Station Health metrics plus what the daily view needs from Route Monitoring.
-_DOD_COLUMNS = METRIC_KEYS + ("attendance_rescue", "current_ovfd", "current_success")
+_DOD_COLUMNS = METRIC_KEYS + ("attendance_rescue", "current_ovfd", "current_success", "fresh_unscan", "latlong")
 
-async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_station: dict) -> None:
+async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_station: dict, shipment_by_station: dict) -> None:
     """DoD Dashboard (2026-09-26): store today's (Malaysia date) Station Health numbers per station, replacing what an earlier
     refresh today stored -- so the last refresh of the day is the day's number. Keeps the current week + last week only."""
     today = captured_at.astimezone(_MYT).date()
     params = []
     for hub, row in by_station.items():
         routed = routed_by_station.get(hub) or {}
-        values = [row.get(k) or 0 for k in METRIC_KEYS] + [routed.get(k) or 0 for k in ("attendance_rescue", "current_ovfd", "current_success")]
+        shipment = shipment_by_station.get(hub) or {}
+        values = (
+            [row.get(k) or 0 for k in METRIC_KEYS]
+            + [routed.get(k) or 0 for k in ("attendance_rescue", "current_ovfd", "current_success")]
+            + [shipment.get(k) or 0 for k in ("fresh_unscan", "latlong")]
+        )
         params.append((today, hub, captured_at, *values))
     await db.execute("DELETE FROM dod_daily WHERE snap_date = %s", (today,))
     await db.execute_many(
@@ -490,7 +495,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         )
 
         try:
-            await _capture_dod(captured_at, by_station, routed_by_station)
+            await _capture_dod(captured_at, by_station, routed_by_station, shipment_by_station)
         except Exception:  # noqa: BLE001 - the DoD history is isolated from the rest of the refresh
             log.exception("DoD snapshot failed")
 
@@ -863,6 +868,7 @@ class DodRow(BaseModel):
 
 
 class DodResponse(BaseModel):
+    today: str  # today's Malaysia date -- that day's numbers are still moving (final after the last refresh before midnight)
     week_start: str  # Monday of the current week (Malaysia date)
     days: list[str]  # every day that has data, oldest first
     rows: list[DodRow]
@@ -871,6 +877,8 @@ class DodResponse(BaseModel):
 
 @app.get("/api/dod", response_model=DodResponse)
 async def dod(user: CurrentUser = Depends(get_current_user)):
+    if user.role not in ("manager", "admin"):
+        raise HTTPException(status_code=403, detail="The DoD Dashboard is for managers and admins")
     today = datetime.now(_MYT).date()
     week_start = today - timedelta(days=today.weekday())
     db_rows = await db.fetch_all(
@@ -893,6 +901,7 @@ async def dod(user: CurrentUser = Depends(get_current_user)):
         default=None,
     )
     return {
+        "today": today.isoformat(),
         "week_start": week_start.isoformat(),
         "days": sorted({s["day"] for s in scoped}),
         "rows": [{k: v for k, v in s.items() if k != "captured_at"} for s in scoped],

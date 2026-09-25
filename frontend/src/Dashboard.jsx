@@ -66,12 +66,12 @@ const TABS = [
   { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
-  ...(FEATURES.dod ? [{ key: "dod", label: "DoD" }] : []),
   { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Shipper Radar" },
+  ...(FEATURES.dod ? [{ key: "dod", label: "DoD" }] : []), // managers + admins only, see canSeeDod
   { key: "urgent", label: "Urgent TN" },
 ];
 
@@ -219,11 +219,14 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const [sortDir, setSortDir] = useState("desc");
   // Remembers the last tab this user had open, per Phase 5 -- a first-ever
   // visit (nothing saved yet) lands on the Action Board, per Phase 6.
+  // DoD is for managers and admins only for now (2026-09-26 feedback).
+  const canSeeDod = me.role === "manager" || me.role === "admin";
+  const tabs = TABS.filter((t) => t.key !== "dod" || canSeeDod);
   const tabStorageKey = `dashboard-tab-${me.email}`;
   const [tab, setTabState] = useState(() => {
     try {
       const saved = localStorage.getItem(tabStorageKey);
-      if (saved && TABS.some((t) => t.key === saved)) return saved;
+      if (saved && tabs.some((t) => t.key === saved)) return saved;
     } catch {
       /* private browsing / storage blocked -- just use the default */
     }
@@ -704,7 +707,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       )}
 
       <TabBar
-        tabs={TABS.map((t) =>
+        tabs={tabs.map((t) =>
           t.key === "urgent"
             ? {
                 ...t,
@@ -801,7 +804,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         </>
       )}
 
-      {FEATURES.dod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}
+      {FEATURES.dod && canSeeDod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}
 
       {tab === "shipment" && (
         <ShipmentDetailsTab

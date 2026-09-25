@@ -225,19 +225,19 @@ const SECTIONS = [
   {
     id: "dod",
     title: "DoD",
-    show: () => F.dod,
+    show: ({ rank }) => F.dod && rank >= 2,
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          The <strong>DoD</strong> tab is Station Health looking back: one snapshot per station per day (the last refresh of the day), kept for this week and
-          last week only. It follows your scope and the filters above the tabs. History starts from the first refresh after it went live, so the first days
-          have only a few dots.
+          The <strong>DoD</strong> tab (after Shipper Radar; managers and admins only for now) is the dashboard looking back: one snapshot per station per day --
+          the last refresh of the day, the run just before midnight -- kept for this week and last week only. It follows your scope and the filters above the tabs.
+          History starts from the first refresh after it went live, so the first days have only a few dots, and today's numbers are still moving.
         </p>
         <Bullets
           items={[
-            <><strong>Daily View</strong>: pick a day (last week and this week are one click each) and see every region / zone / station with Current Backlogged, Total Fresh, Attendance (rescue in brackets), Total Routed, Success Rate, Productivity and Total Success. The small ▲ / ▼ is the change from the day before, green when it is an improvement. Export CSV gives the day in the same layout as the Daily View sheet.</>,
-            <><strong>Weekly Overview</strong>: choose a measure and see it for every row across Mon–Sun of last week and of this week, plus the averages and the change. Click a row to draw it as two lines (last week vs this week) above the table.</>,
-            <>Current Backlogged is In Hub at the day's last refresh; Success Rate = Total Success ÷ Total Routed; Productivity = Total Routed ÷ Attendance.</>,
+            <><strong>Daily View</strong>: pick a day and see every region / zone / station with <em>Shipment Details</em> (Total Fresh, Fresh Unscan, Latlong), <em>Station Health</em> (Total 0 Attempt, In Hub, Age &gt;3) and <em>Route Monitoring</em> (Attendance with rescue in brackets, Total Routed, Success Rate, and Pending in Apps -- the Current OVFD, parcels still on a vehicle). The small ▲ / ▼ is the change from the day before, green when it is an improvement. Export CSV gives the day.</>,
+            <><strong>Weekly Overview</strong>: pick <strong>one or more measures</strong> and see them across Mon–Sun -- this week, last week, or both. With several measures the chart draws them all (each on its own scale; hover a day for the real numbers), and you choose which of the picked measures get a details table below. Click a row of a table to draw that row.</>,
+            <>Success Rate = Total Success ÷ Total Routed; Productivity (in the measure list) = Total Routed ÷ Attendance.</>,
           ]}
         />
       </div>
