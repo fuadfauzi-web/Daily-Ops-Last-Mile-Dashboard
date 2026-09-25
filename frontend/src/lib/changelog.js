@@ -18,6 +18,16 @@
 export const CHANGELOG = [
   {
     date: "2026-09-25",
+    title: "Urgent TN: re-send a note, reply to your PIC",
+    points: [
+      "Forgot a note when you assigned a tracking number, or something changed? Use Edit note (or Add note) on the row and press Send note -- the PIC's bell rings again and the row is tagged UPDATED.",
+      "You can reply to what your PIC wrote (Reply to PIC); it shows in the new Owner Reply column.",
+      "Assign PIC on a tracking number with nobody on it yet fills in that same row. When a PIC passes it on to someone else it is still a new row, so that PIC closes it with the person who passed it on.",
+      "The same tracking number on several rows now sits together by default and is colour-coded.",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "Urgent TN reminders",
     points: [
       "PIC: after you pick In progress the bell stays quiet for an hour, then rings again until you close it -- now only between 8am and 8pm, so nothing rings overnight. Each row shows when the next reminder is.",

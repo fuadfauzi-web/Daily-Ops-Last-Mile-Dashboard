@@ -12,6 +12,16 @@ function parseTns(text) {
   return Array.from(new Set(text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)));
 }
 
+// The same tracking number on several rows (one row per PIC): each such group gets its own tint so the rows read as
+// one group. The "x2" chip beside the number means colour is never the only signal.
+const DUP_STYLES = [
+  { row: "bg-amber-50", chip: "bg-amber-200 text-amber-900" },
+  { row: "bg-sky-50", chip: "bg-sky-200 text-sky-900" },
+  { row: "bg-violet-50", chip: "bg-violet-200 text-violet-900" },
+  { row: "bg-emerald-50", chip: "bg-emerald-200 text-emerald-900" },
+  { row: "bg-rose-50", chip: "bg-rose-200 text-rose-900" },
+];
+
 // Tells the app shell (the Urgent TN tab's bell, the Admin badge) to re-fetch its
 // counts now instead of waiting for its next poll.
 function notifyChanged() {
@@ -36,8 +46,9 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [view, setView] = useState("open");
   // Tick several of your own rows and remove them in one go (2026-09-25 feedback).
   const [selected, setSelected] = useState(() => new Set());
-  // 2026-09-25 feedback: every header sorts; newest entry first by default.
-  const [sortKey, setSortKey] = useState("created_at");
+  // 2026-09-25 feedback: every header sorts. The default (sortKey null) keeps rows of the same tracking number
+  // together, newest tracking number first; clicking a header sorts by that column instead.
+  const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -59,6 +70,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [delegateNote, setDelegateNote] = useState("");
   const [replying, setReplying] = useState(null); // PIC: item being replied to
   const [replyText, setReplyText] = useState("");
+  const [noting, setNoting] = useState(null); // owner: the row whose note is being edited / re-sent
+  const [noteText, setNoteText] = useState("");
   // Items that were NEW / UPDATED when this tab was opened stay highlighted for the visit,
   // even though opening the tab marks them as seen.
   const [newIds, setNewIds] = useState(() => new Set());
@@ -141,28 +154,52 @@ export default function UrgentTnTab({ me, refreshTick }) {
     const ok = await run(() => api.urgentTn.removeMany(ids));
     if (ok) setSelected(new Set());
   };
+  // An owner's row with nobody on it yet (or only themselves): "Assign PIC" EDITS that row. Every other case -- adding one
+  // more PIC, or a PIC passing it on -- is a NEW row, because that PIC has to close the loop with their own owner.
+  const assignEdit = !!delegating && delegating.created_by_me && (!delegating.assignee_email || delegating.assigned_to_me);
   const startDelegate = (item) => {
+    setNoting(null);
+    setReplying(null);
     setDelegating(item);
     setDelegateAssignee("");
     setDelegateNote(item.note || "");
   };
   const saveDelegate = async () => {
-    const ok = await run(() =>
-      api.urgentTn.create({
-        tracking_numbers: [delegating.tracking_number],
-        assignee_email: delegateAssignee.trim(),
-        note: delegateNote.trim() || null,
-      })
+    const ok = await run(
+      () =>
+        assignEdit
+          ? api.urgentTn.update(delegating.id, { assignee_email: delegateAssignee.trim(), note: delegateNote.trim() || null })
+          : api.urgentTn.create({
+              tracking_numbers: [delegating.tracking_number],
+              assignee_email: delegateAssignee.trim(),
+              note: delegateNote.trim() || null,
+            }),
+      assignEdit ? "PIC assigned" : undefined
     );
     if (ok) setDelegating(null);
   };
+  // A PIC replies to the owner (pic_reply); the owner replies back to the PIC (owner_reply).
   const startReply = (item) => {
+    setNoting(null); // one small form open at a time
+    setDelegating(null);
     setReplying(item);
-    setReplyText(item.pic_reply || "");
+    setReplyText((item.created_by_me ? item.owner_reply : item.pic_reply) || "");
   };
   const saveReply = async () => {
-    const ok = await run(() => api.urgentTn.update(replying.id, { pic_reply: replyText }), "Reply sent");
+    const field = replying.created_by_me ? "owner_reply" : "pic_reply";
+    const ok = await run(() => api.urgentTn.update(replying.id, { [field]: replyText }), "Reply sent");
     if (ok) setReplying(null);
+  };
+  // Owner: a forgotten / corrected / updated note. Sending it again brings the row back to the PIC's attention.
+  const startNote = (item) => {
+    setReplying(null);
+    setDelegating(null);
+    setNoting(item);
+    setNoteText(item.note || "");
+  };
+  const saveNote = async () => {
+    const ok = await run(() => api.urgentTn.update(noting.id, { note: noteText }), noteText.trim() ? "Note sent to the PIC" : "Note cleared");
+    if (ok) setNoting(null);
   };
 
   const isPic = (r) => r.assigned_to_me && !r.created_by_me;
@@ -194,6 +231,20 @@ export default function UrgentTnTab({ me, refreshTick }) {
         : view === "mine"
           ? list.filter((i) => i.assigned_to_me && !i.created_by_me)
           : list.filter((i) => i.status === "in_progress");
+    if (sortKey == null) {
+      // Default order: one tracking number's rows sit together (the original assignment first, then the extra PICs).
+      const newest = new Map();
+      base.forEach((r) => {
+        const t = r.created_at || "";
+        if (!newest.has(r.tracking_number) || t > newest.get(r.tracking_number)) newest.set(r.tracking_number, t);
+      });
+      return [...base].sort((a, b) => {
+        if (a.tracking_number !== b.tracking_number) {
+          return newest.get(b.tracking_number).localeCompare(newest.get(a.tracking_number)) || a.tracking_number.localeCompare(b.tracking_number);
+        }
+        return (a.created_at || "").localeCompare(b.created_at || "");
+      });
+    }
     // The value each column sorts by (what the cell shows, not the raw field where they differ).
     const valueOf = (r) => {
       switch (sortKey) {
@@ -207,6 +258,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           return r.created_by_me ? "you" : r.created_by.toLowerCase();
         case "note":
         case "pic_reply":
+        case "owner_reply":
         case "dest_hub":
         case "last_sweep_hub":
         case "cod":
@@ -227,6 +279,18 @@ export default function UrgentTnTab({ me, refreshTick }) {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [items, view, sortKey, sortDir]);
+
+  // Tracking numbers that appear on more than one row of this list: how many rows, and which tint (by order of appearance,
+  // so neighbouring groups never share one).
+  const dupOf = useMemo(() => {
+    const counts = new Map();
+    rows.forEach((r) => counts.set(r.tracking_number, (counts.get(r.tracking_number) || 0) + 1));
+    const styleFor = new Map();
+    rows.forEach((r) => {
+      if (counts.get(r.tracking_number) > 1 && !styleFor.has(r.tracking_number)) styleFor.set(r.tracking_number, styleFor.size % DUP_STYLES.length);
+    });
+    return { counts, styleFor };
+  }, [rows]);
 
   // Only rows you added can be removed, so only those get a tick box.
   const selectableIds = rows.filter((r) => r.created_by_me).map((r) => r.id);
@@ -256,9 +320,17 @@ export default function UrgentTnTab({ me, refreshTick }) {
       render: (r) => (
         <>
           {r.tracking_number}
+          {dupOf.styleFor.has(r.tracking_number) && (
+            <span
+              title="This tracking number is on more than one row (one per PIC)"
+              className={`ml-2 rounded px-1.5 py-0.5 font-display text-[10px] font-semibold ${DUP_STYLES[dupOf.styleFor.get(r.tracking_number)].chip}`}
+            >
+              ×{dupOf.counts.get(r.tracking_number)}
+            </span>
+          )}
           {newIds.has(r.id) && (
             <span className="ml-2 rounded bg-status-critical px-1.5 py-0.5 font-display text-[10px] font-semibold text-white">
-              {r.created_by_me ? "UPDATED" : "NEW"}
+              {r.created_by_me || r.note_sent_at || r.owner_replied_at ? "UPDATED" : "NEW"}
             </span>
           )}
         </>
@@ -290,7 +362,15 @@ export default function UrgentTnTab({ me, refreshTick }) {
       align: "left",
       // The cell itself is no-wrap, so a long note ran on into the next column (the "double text"
       // bug): give the text its own fixed-width block that wraps.
-      render: (r) => (r.note ? <div className="w-[220px] whitespace-normal break-words text-left">{r.note}</div> : "—"),
+      render: (r) =>
+        r.note ? (
+          <div className="w-[220px] whitespace-normal break-words text-left">
+            {r.note}
+            {r.assignee_email && r.note_sent_at && <div className="text-[10px] text-slate-400">sent {formatTime(r.note_sent_at)}</div>}
+          </div>
+        ) : (
+          "—"
+        ),
       className: () => "text-xs text-slate-600",
     },
     {
@@ -317,6 +397,21 @@ export default function UrgentTnTab({ me, refreshTick }) {
           <div className="w-[240px] whitespace-normal break-words text-left">
             {r.pic_reply}
             {r.pic_replied_at && <div className="text-[10px] text-slate-400">{formatTime(r.pic_replied_at)}</div>}
+          </div>
+        ) : (
+          "—"
+        ),
+      className: () => "text-xs text-slate-600",
+    },
+    {
+      key: "owner_reply",
+      label: "Owner Reply",
+      align: "left",
+      render: (r) =>
+        r.owner_reply ? (
+          <div className="w-[240px] whitespace-normal break-words text-left">
+            {r.owner_reply}
+            {r.owner_replied_at && <div className="text-[10px] text-slate-400">{formatTime(r.owner_replied_at)}</div>}
           </div>
         ) : (
           "—"
@@ -398,13 +493,35 @@ export default function UrgentTnTab({ me, refreshTick }) {
                   Reopen
                 </button>
               )}
+              {r.assignee_email && !r.assigned_to_me && (
+                <>
+                  <button
+                    onClick={() => startNote(r)}
+                    title="Fix, add or update the note and send it to the PIC again"
+                    className="text-xs font-medium text-slate-500 hover:text-brand"
+                  >
+                    {r.note ? "Edit note" : "Add note"}
+                  </button>
+                  {(r.pic_reply || r.owner_reply) && (
+                    <button onClick={() => startReply(r)} title="Reply to what the PIC wrote" className="text-xs font-medium text-slate-500 hover:text-brand">
+                      Reply to PIC
+                    </button>
+                  )}
+                </>
+              )}
               <button
                 onClick={() => startDelegate(r)}
                 disabled={!r.found}
-                title={r.found ? "Also assign it to another PIC -- the current PIC keeps it" : "No status, so it can't be assigned"}
+                title={
+                  !r.found
+                    ? "No status, so it can't be assigned"
+                    : r.assignee_email && !r.assigned_to_me
+                      ? "Also assign it to another PIC -- the current PIC keeps it (a new row)"
+                      : "Put a PIC on this row"
+                }
                 className="text-xs font-medium text-slate-500 hover:text-brand disabled:opacity-40"
               >
-                Assign another PIC
+                {r.assignee_email && !r.assigned_to_me ? "Assign another PIC" : "Assign PIC"}
               </button>
               <button onClick={() => closeOrRemove(r)} disabled={busy} className="text-xs font-semibold text-status-good hover:underline" title="Deletes it from your list and the PIC's">
                 Close / remove
@@ -461,6 +578,18 @@ export default function UrgentTnTab({ me, refreshTick }) {
           >
             Refresh
           </button>
+          {sortKey != null && (
+            <button
+              onClick={() => {
+                setSortKey(null);
+                setSortDir("desc");
+              }}
+              title="Same tracking numbers together, newest first"
+              className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600"
+            >
+              Default order
+            </button>
+          )}
           {selected.size > 0 && (
             <button
               onClick={removeSelected}
@@ -475,10 +604,10 @@ export default function UrgentTnTab({ me, refreshTick }) {
               onClick={() =>
                 exportCsv(
                   `daily-ops-urgent-tn-${new Date().toISOString().slice(0, 10)}.csv`,
-                  ["Tracking Number", "Entry Time", "PIC", "Note", "PIC Status", "PIC Reply", "Parcel Status", "Dest Hub", "Last Sweep Hub", "Age", "Attempt", "COD", "Added by"],
+                  ["Tracking Number", "Entry Time", "PIC", "Note", "PIC Status", "PIC Reply", "Owner Reply", "Parcel Status", "Dest Hub", "Last Sweep Hub", "Age", "Attempt", "COD", "Added by"],
                   rows.map((r) => [
                     r.tracking_number, r.created_at ? formatTime(r.created_at) : "", r.assignee_email ?? "", r.note ?? "", r.assignee_email ? (r.status === "closed" ? "Closed" : "In progress") : "",
-                    r.pic_reply ?? "", r.found ? r.tn_status ?? "" : "Not found", r.dest_hub ?? "", r.last_sweep_hub ?? "", r.age ?? "",
+                    r.pic_reply ?? "", r.owner_reply ?? "", r.found ? r.tn_status ?? "" : "Not found", r.dest_hub ?? "", r.last_sweep_hub ?? "", r.age ?? "",
                     r.attempts ?? "", r.cod ?? "", r.created_by,
                   ])
                 )
@@ -514,12 +643,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
       {delegating && (
         <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
           <div className="font-display text-xs font-semibold text-slate-700">
-            Assign to another PIC — <span className="font-mono">{delegating.tracking_number}</span>
+            {assignEdit ? "Assign a PIC" : "Assign to another PIC"} — <span className="font-mono">{delegating.tracking_number}</span>
           </div>
           <div className="text-xs text-slate-500">
-            {delegating.created_by_me
-              ? "The current PIC keeps this tracking number; this adds one more person."
-              : "You keep this tracking number on your list; this also gives it to someone else, who reports back to you."}
+            {assignEdit
+              ? "This puts the PIC on this row -- no new row."
+              : delegating.created_by_me
+                ? "The current PIC keeps this tracking number; this adds one more person (a new row)."
+                : "You keep this tracking number on your list; this also gives it to someone else, who reports back to you (a new row, so they close it with you)."}
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <PicInput placeholder="PIC name or email" value={delegateAssignee} onChange={setDelegateAssignee} />
@@ -547,12 +678,42 @@ export default function UrgentTnTab({ me, refreshTick }) {
         </div>
       )}
 
+      {noting && (
+        <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
+          <div className="font-display text-xs font-semibold text-slate-700">
+            Note for {noting.assignee_name || noting.assignee_email} — <span className="font-mono">{noting.tracking_number}</span>
+          </div>
+          <div className="text-xs text-slate-500">
+            Sending it puts this tracking number back in front of the PIC (bell and an UPDATED tag), even if you only fix a typo.
+          </div>
+          <textarea
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            rows={3}
+            maxLength={500}
+            placeholder="Type the note…"
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button onClick={saveNote} disabled={busy} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
+              Send note
+            </button>
+            <button onClick={() => setNoting(null)} className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {replying && (
         <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
           <div className="font-display text-xs font-semibold text-slate-700">
-            Reply to {replying.created_by} — <span className="font-mono">{replying.tracking_number}</span>
+            Reply to {replying.created_by_me ? replying.assignee_name || replying.assignee_email : replying.created_by} — <span className="font-mono">{replying.tracking_number}</span>
           </div>
-          {replying.note && <div className="text-xs text-slate-500">Their note: {replying.note}</div>}
+          {replying.created_by_me
+            ? replying.pic_reply && <div className="text-xs text-slate-500">Their reply: {replying.pic_reply}</div>
+            : replying.note && <div className="text-xs text-slate-500">Their note: {replying.note}</div>}
           <textarea
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             rows={3}
@@ -592,6 +753,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           columns={columns}
           rows={rows}
           rowKey={(r) => r.id}
+          rowClassName={(r) => (dupOf.styleFor.has(r.tracking_number) ? DUP_STYLES[dupOf.styleFor.get(r.tracking_number)].row : "")}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={toggleSort}
@@ -605,7 +767,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           footer={
             <>
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
-              to you. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
+              to you. A tracking number on several rows (one per PIC) is kept together and shares a colour. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
               marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
               Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
               search; "Not found" means the parcel is already completed or added to a shipment.

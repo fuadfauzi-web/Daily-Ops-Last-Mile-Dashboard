@@ -345,9 +345,18 @@ const SECTIONS = [
               your own list, and is removed automatically after 1 day if it still has no status (the list shows how many hours are left). Tick several rows and use <strong>Remove selected</strong> to clear them in one go.
             </>,
             <>
-              <strong>More than one PIC</strong>: use <strong>Assign another PIC</strong> to give the same tracking number to additional people -- the
+              <strong>More than one PIC</strong>: on a row that already has a PIC, use <strong>Assign another PIC</strong> to give the same tracking number to additional people -- the
               current PIC keeps it. A PIC can also use <strong>Assign to another PIC</strong> to pass it on while keeping their own copy; whoever
-              they pick reports back to them. Each assignment is a separate row, and closing or removing one only removes that row.
+              they pick reports back to them. Each assignment is a separate row, and closing or removing one only removes that row. Rows with the same tracking number sit together by default and share a colour (with a ×2 chip), so duplicates are easy to spot; the <strong>Default order</strong> button brings that order back after you sort by a column.
+            </>,
+            <>
+              <strong>Note and replies</strong>: forgot the note, or something changed? As the owner use <strong>Edit note</strong> (or <strong>Add note</strong>) on
+              the row and press <strong>Send note</strong> -- the PIC's bell rings again and the row is tagged UPDATED. When the PIC writes back you can answer with
+              <strong> Reply to PIC</strong>; it shows in the <strong>Owner Reply</strong> column.
+            </>,
+            <>
+              <strong>Assign PIC</strong> on a tracking number that has nobody on it yet fills in <em>that same row</em>. A PIC passing it on
+              (<strong>Assign to another PIC</strong>) always makes a <em>new row</em>, so the new PIC closes it with the person who passed it on, and that person still closes it with you.
             </>,
             <>You see the tracking numbers you added and the ones assigned to you.</>,
           ]}
@@ -463,6 +472,7 @@ const FAQS = [
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
   { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
   { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed -- hourly from 8am to 8pm, never overnight) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
+  { q: "I forgot the note when I assigned a tracking number -- can I add it later?", a: "Urgent TN tab -> Add note (or Edit note) on the row -> Send note. The PIC's bell rings again and the row is tagged UPDATED. You can also answer what they wrote with Reply to PIC." },
   { q: "How do I get reminded to follow up an email or Gchat?", a: "Task List -> Email / Gchat: add it with a due date (and a helper if you want someone to remind you or reply for you). The bell rings when it's due or overdue.", show: () => F.taskList },
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },

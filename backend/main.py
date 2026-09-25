@@ -2488,6 +2488,7 @@ class UrgentItemUpdate(BaseModel):
     clear_assignee: bool = False
     note: str | None = None
     pic_reply: str | None = None
+    owner_reply: str | None = None
 
 
 class UrgentItem(BaseModel):
@@ -2505,6 +2506,9 @@ class UrgentItem(BaseModel):
     pic_reply: str | None
     pic_replied_at: str | None
     next_reminder: str | None = None
+    note_sent_at: str | None = None
+    owner_reply: str | None = None
+    owner_replied_at: str | None = None
     no_status_hours_left: int | None = None
     created_by_me: bool
     assigned_to_me: bool
@@ -2533,7 +2537,8 @@ def _iso(value) -> str | None:
 
 _URGENT_COLUMNS = (
     "id, tracking_number, created_by, assignee_email, note, status, created_at, updated_at, closed_at, closed_by, "
-    "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen, no_status_since"
+    "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen, no_status_since, "
+    "note_sent_at, owner_reply, owner_replied_at"
 )
 
 
@@ -2559,7 +2564,7 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     items = []
     for r in rows:
         (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by,
-         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since) = r
+         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since, note_sent_at, owner_reply, owner_replied_at) = r
         found = _health_v3_by_tn.get(tn)
         created_by_me = created_by.lower() == me
         assigned_to_me = bool(assignee) and assignee.lower() == me
@@ -2576,6 +2581,7 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
             "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
             "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
             "closed_by": closed_by, "pic_reply": pic_reply, "pic_replied_at": _iso(pic_replied_at),
+            "note_sent_at": _iso(note_sent_at), "owner_reply": owner_reply, "owner_replied_at": _iso(owner_replied_at),
             "next_reminder": next_reminder, "created_by_me": created_by_me, "assigned_to_me": assigned_to_me,
             "is_new": assigned_to_me and not created_by_me and seen_at is None and status == "in_progress",
             "owner_unseen": created_by_me and bool(owner_unseen),
@@ -2747,8 +2753,11 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
     me = user.email.lower()
     is_owner = row[2].lower() == me
     is_pic = bool(row[3]) and row[3].lower() == me and not is_owner
+    has_pic = bool(row[3]) and row[3].lower() != row[2].lower()  # somebody other than the owner holds it
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    sets, params = ["updated_at = %s"], [now]
+    # column -> new value (None = NULL); a later change to the same column wins.
+    cols: dict[str, object] = {"updated_at": now}
+    notify_pic = False  # the owner sent a note / reply: put the row back in front of the PIC (UPDATED tag + bell)
 
     if payload.pic_reply is not None:
         if not (is_pic or (bool(row[3]) and row[3].lower() == me)):
@@ -2756,8 +2765,22 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
         reply = payload.pic_reply.strip()
         if len(reply) > 1000:
             raise HTTPException(status_code=422, detail="Reply is too long (max 1000 characters)")
-        sets += ["pic_reply = %s", "pic_replied_at = %s", "owner_unseen = %s"]
-        params += [reply or None, now if reply else None, 1 if (reply and not is_owner) else row[14]]
+        cols["pic_reply"] = reply or None
+        cols["pic_replied_at"] = now if reply else None
+        cols["owner_unseen"] = 1 if (reply and not is_owner) else row[14]
+
+    if payload.owner_reply is not None:
+        # 2026-09-25 feedback: the owner can answer what the PIC wrote.
+        if not is_owner:
+            raise HTTPException(status_code=403, detail="Only the person who added this can reply to the PIC here")
+        if not has_pic:
+            raise HTTPException(status_code=422, detail="Assign a PIC first -- there is nobody to reply to")
+        reply = payload.owner_reply.strip()
+        if len(reply) > 1000:
+            raise HTTPException(status_code=422, detail="Reply is too long (max 1000 characters)")
+        cols["owner_reply"] = reply or None
+        cols["owner_replied_at"] = now if reply else None
+        notify_pic = notify_pic or bool(reply)
 
     if payload.status is not None:
         if payload.status not in URGENT_STATUSES:
@@ -2769,20 +2792,18 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
         if is_pic and payload.status == "in_progress":
             # "In progress" acknowledges it: the bell stays quiet for an hour, then comes back (08:00-20:00 only)
             # if it still isn't closed. (Also reopens an item the PIC had closed.)
-            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = %s", "owner_unseen = 1"]
-            params.append(now)
+            cols.update(status="in_progress", closed_at=None, closed_by=None, assignee_ack_at=now, owner_unseen=1)
         elif is_pic and payload.status == "closed":
-            sets += ["status = 'closed'", "closed_at = %s", "closed_by = %s", "owner_unseen = 1"]
-            params += [now, user.email]
+            cols.update(status="closed", closed_at=now, closed_by=user.email, owner_unseen=1)
         elif is_owner and payload.status == "in_progress":
             # Owner reopens an item the PIC closed: the PIC is notified again.
-            sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = NULL", "assignee_seen_at = NULL"]
+            cols.update(status="in_progress", closed_at=None, closed_by=None, assignee_ack_at=None, assignee_seen_at=None)
 
     if payload.assignee_email is not None or payload.clear_assignee or payload.note is not None:
         if not is_owner:
             raise HTTPException(status_code=403, detail="Only the person who added this can change its PIC or note")
         if payload.clear_assignee:
-            sets += ["assignee_email = NULL", "assignee_seen_at = NULL", "assignee_ack_at = NULL"]
+            cols.update(assignee_email=None, assignee_seen_at=None, assignee_ack_at=None)
         elif payload.assignee_email is not None:
             assignee = await _resolve_assignee(payload.assignee_email)
             if assignee is None:
@@ -2792,16 +2813,31 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
                     status_code=422, detail=f"{row[1]} has no status (not found), so it isn't urgent and can't be assigned to a PIC"
                 )
             self_assigned = assignee.lower() == me
-            sets += ["assignee_email = %s", "assignee_seen_at = %s", "assignee_ack_at = %s", "pic_reply = NULL", "pic_replied_at = NULL"]
-            params += [assignee, now if self_assigned else None, now if self_assigned else None]
+            # A different PIC starts a fresh conversation: their reply / your reply to the previous one are cleared.
+            cols.update(
+                assignee_email=assignee, assignee_seen_at=now if self_assigned else None,
+                assignee_ack_at=now if self_assigned else None, pic_reply=None, pic_replied_at=None,
+                owner_reply=None, owner_replied_at=None,
+            )
         if payload.note is not None:
             note = payload.note.strip() or None
             if note and len(note) > 500:
                 raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
-            sets.append("note = %s")
-            params.append(note)
-    params.append(item_id)
-    await db.execute(f"UPDATE urgent_tn_items SET {', '.join(sets)} WHERE id = %s", tuple(params))
+            cols["note"] = note
+            cols["note_sent_at"] = now if note else None
+            # Sending a note again (a forgotten one, or an update) reaches the PIC even if the text is the same.
+            notify_pic = notify_pic or bool(note)
+
+    # A note / reply from the owner: NEW / UPDATED tag for the PIC, and the bell rings again if the row is in progress.
+    # (Assigning a PIC in the same request already does this.)
+    final_pic = cols.get("assignee_email", row[3])
+    if notify_pic and "assignee_email" not in cols and final_pic and str(final_pic).lower() != row[2].lower():
+        cols["assignee_seen_at"] = None
+        if cols.get("status", row[5]) == "in_progress":
+            cols["assignee_ack_at"] = None
+    await db.execute(
+        f"UPDATE urgent_tn_items SET {', '.join(f'{c} = %s' for c in cols)} WHERE id = %s", (*cols.values(), item_id)
+    )
     return {"ok": True}
 
 
