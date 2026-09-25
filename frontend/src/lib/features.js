@@ -11,8 +11,8 @@ export const FEATURES = {
   timingChart: true, // Shipment Details hourly timing chart
   coldChain: true, // Cold Chain tab / sub-tab
   restockBundles: true, // Restock bundle list, Restock On Hold Details, B2B Document Compliance (RDO)
-  kpiDashboard: true, // "KPI" page (Hybrid Productivity from Metabase; the other KPI modules are placeholders) -- staging only until approved
-  dod: true, // "DoD" tab: Station Health day by day for this week + last week (staging only until approved)
+  kpiDashboard: true, // "KPI" page (Beta -- preview only, not to be used until the green light): weekly results, OPEX result, RCA for Hybrid / Invalid POD / COD RTS
+  dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; every role, limited to its own scope
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + To Do List + Task Assigned
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
