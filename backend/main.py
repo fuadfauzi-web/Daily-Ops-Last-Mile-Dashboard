@@ -1205,6 +1205,8 @@ class ShipperFields(BaseModel):
     restock_breach: int
     shipper_sla_warning: int = 0
     shipper_sla_breach: int = 0
+    cold_chain_zero_attempt: int = 0
+    cold_chain_aging: int = 0
 
 
 class ShipperStationRow(ShipperFields):
