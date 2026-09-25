@@ -44,7 +44,7 @@ export default function TaskListTab({ me, refreshTick, notifCounts }) {
     <div className="space-y-3">
       <SegmentedControl
         options={[
-          { key: "urgent", label: label("Urgent TN", (n.urgent_notify || 0) + (n.urgent_owner_updates || 0)) },
+          { key: "urgent", label: label("Urgent TN", (n.urgent_notify || 0) + (n.urgent_owner_updates || 0) + (n.urgent_owner_reminder || 0)) },
           { key: "followups", label: label("Email / Gchat", n.followups_notify || 0, n.followups_due_soon || 0) },
           { key: "tasks", label: label("Task Assigned", n.tasks_notify || 0, n.tasks_due_soon || 0) },
           { key: "todos", label: label("To Do List", n.todos_notify || 0, n.todos_due_soon || 0) },

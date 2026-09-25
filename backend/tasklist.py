@@ -198,6 +198,76 @@ def _reminder_active(due_s: str | None, created_at, is_open: bool, acked_at) -> 
     return acked_at is None or _aware(acked_at) < slot_utc
 
 
+# ---- Urgent TN reminders (main.py owns the Urgent TN table; the reminder rules live here with the others).
+# Two rhythms, both in Malaysia time (2026-09-25 feedback):
+#   PIC   (assigned a tracking number): repeats every hour until they close it -- but only 08:00-20:00, so
+#         nothing rings overnight.
+#   Owner (added it): rings at the NEAR_SLOTS (10am / 2pm / 5pm) while any tracking number they added is still
+#         open (not closed by the PIC, not removed by them) until they press "Got it".
+URGENT_PIC_EVERY = timedelta(hours=1)
+URGENT_PIC_FROM, URGENT_PIC_TO = 8, 20  # the hourly reminder runs from 08:00 up to (not including) 20:00
+URGENT_OWNER_KIND = "urgent_owner"  # due_reminder_acks.kind; item_id 0 = one "Got it" for the whole list
+
+
+def _hour_label(hour: int) -> str:
+    return f"{hour % 12 or 12}{'am' if hour < 12 else 'pm'}"
+
+
+def urgent_pic_ringing(acked_at) -> bool:
+    """PIC side (used by main.py): is the bell ringing for an In-progress item? It rings when the PIC has never
+    acknowledged it (picked In progress) or last did over an hour ago -- but only between 08:00 and 20:00."""
+    now = _now_myt()
+    if not (URGENT_PIC_FROM <= now.hour < URGENT_PIC_TO):
+        return False
+    return acked_at is None or _aware(acked_at) + URGENT_PIC_EVERY <= now.astimezone(timezone.utc)
+
+
+def urgent_pic_next_reminder(acked_at) -> str | None:
+    """When the PIC's bell will next ring, for the row: 'in 25 min', 'at 8am' or 'tomorrow 8am'.
+    None while it is ringing right now."""
+    now = _now_myt()
+    due = now if acked_at is None else max(_aware(acked_at).astimezone(_MYT) + URGENT_PIC_EVERY, now)
+    if not (URGENT_PIC_FROM <= due.hour < URGENT_PIC_TO):  # overnight: it resumes when the window opens
+        day = due.date() if due.hour < URGENT_PIC_FROM else due.date() + timedelta(days=1)
+        due = datetime(day.year, day.month, day.day, URGENT_PIC_FROM, 0, tzinfo=_MYT)
+    if due <= now:
+        return None
+    if due.date() > now.date():
+        return f"tomorrow {_hour_label(due.hour)}"
+    minutes = -(-int((due - now).total_seconds()) // 60)
+    return f"in {minutes} min" if minutes <= 60 else f"at {_hour_label(due.hour)}"
+
+
+async def urgent_owner_slot(email: str) -> datetime | None:
+    """Owner side: the scheduled slot (UTC) whose reminder is ringing for this person, or None when it is quiet
+    (no slot has passed yet, or they pressed "Got it" since the latest one)."""
+    slot = _latest_slot(_now_myt(), near=True)
+    if slot is None:
+        return None
+    slot_utc = slot.astimezone(timezone.utc)
+    ack = (await _acks_for(email)).get((URGENT_OWNER_KIND, 0))
+    return None if ack is not None and _aware(ack) >= slot_utc else slot_utc
+
+
+async def urgent_owner_ack(email: str) -> None:
+    """"Got it": quiet the owner reminder until the next slot."""
+    await db.execute("DELETE FROM due_reminder_acks WHERE LOWER(user_email) = %s AND kind = %s AND item_id = 0", (email.lower(), URGENT_OWNER_KIND))
+    await db.execute(
+        "INSERT INTO due_reminder_acks (user_email, kind, item_id, acked_at) VALUES (%s, %s, 0, %s)", (email, URGENT_OWNER_KIND, _now())
+    )
+
+
+def next_owner_slot_label() -> str:
+    """When the next owner reminder rings, for display: '2pm' or 'tomorrow 10am'."""
+    now = _now_myt()
+    for ahead in (0, 1):
+        d = now.date() + timedelta(days=ahead)
+        for h in sorted(NEAR_SLOTS):
+            if datetime(d.year, d.month, d.day, h, 0, tzinfo=_MYT) > now:
+                return _hour_label(h) if ahead == 0 else f"tomorrow {_hour_label(h)}"
+    return ""
+
+
 async def _acks_for(user_email: str) -> dict[tuple[str, int], datetime]:
     rows = await db.fetch_all("SELECT kind, item_id, acked_at FROM due_reminder_acks WHERE LOWER(user_email) = %s", (user_email.lower(),))
     return {(r[0], r[1]): r[2] for r in rows}

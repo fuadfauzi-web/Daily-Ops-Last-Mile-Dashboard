@@ -694,6 +694,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
                 badge:
                   (notifCounts?.urgent_notify || 0) +
                   (notifCounts?.urgent_owner_updates || 0) +
+                  (notifCounts?.urgent_owner_reminder || 0) +
                   (FEATURES.taskList ? (notifCounts?.followups_notify || 0) + (notifCounts?.todos_notify || 0) + (notifCounts?.tasks_notify || 0) : 0),
               }
             : t

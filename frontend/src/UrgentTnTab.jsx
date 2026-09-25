@@ -22,7 +22,7 @@ function notifyChanged() {
 // tracking number can be assigned to a PIC -- another user, by email, who must
 // already be in the user list. Two roles on each item:
 //   * the PIC (assignee) picks a status -- "In progress" (acknowledges it: the tab's bell
-//     goes quiet and comes back after an hour if it still isn't closed) or "Closed" (bell
+//     goes quiet for an hour and comes back -- 8am to 8pm only -- if it still isn't closed) or "Closed" (bell
 //     gone; the item stays in the PIC's list, marked closed) -- and can type a reply the
 //     owner sees;
 //   * the owner (whoever added it) can edit the PIC / note, reopen an item the PIC
@@ -31,6 +31,8 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const legacyKey = `urgent-tn-list-${me.email}`;
   const [items, setItems] = useState(null);
   const [asOf, setAsOf] = useState(null);
+  // Owner reminder (10am / 2pm / 5pm): how many of my tracking numbers are still open while it is ringing.
+  const [ownerReminder, setOwnerReminder] = useState(0);
   const [view, setView] = useState("open");
   // Tick several of your own rows and remove them in one go (2026-09-25 feedback).
   const [selected, setSelected] = useState(() => new Set());
@@ -67,6 +69,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
       const res = await api.urgentTn.items();
       setItems(res.items);
       setAsOf(res.captured_at);
+      setOwnerReminder(res.owner_reminder_count || 0);
       const fresh = res.items.filter((i) => i.is_new || i.owner_unseen).map((i) => i.id);
       if (fresh.length) {
         setNewIds((prev) => new Set([...prev, ...fresh]));
@@ -129,6 +132,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
   };
 
   const setStatus = (item, status) => run(() => api.urgentTn.update(item.id, { status }));
+  const ackOwnerReminder = () => run(() => api.urgentTn.reminderAck());
   // No "are you sure?" pop-up (2026-09-25 feedback): Close / remove deletes it straight away.
   const closeOrRemove = (item) => run(() => api.urgentTn.remove(item.id), `Removed ${item.tracking_number}`);
   const removeSelected = async () => {
@@ -298,7 +302,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
         return (
           <>
             In progress
-            {r.reminder_in_minutes ? <div className="text-[10px] font-normal text-slate-400">reminder in {r.reminder_in_minutes} min</div> : null}
+            {r.next_reminder ? <div className="text-[10px] font-normal text-slate-400">reminder {r.next_reminder}</div> : null}
           </>
         );
       },
@@ -360,7 +364,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
                 <button
                   onClick={() => setStatus(r, "in_progress")}
                   disabled={busy}
-                  title="Acknowledge: silences the bell for 1 hour, then it reminds you again if it isn't closed"
+                  title="Acknowledge: silences the bell for 1 hour, then it reminds you again (8am to 8pm) if it isn't closed"
                   className={`px-2 py-1 ${r.status === "in_progress" ? "bg-status-warning/15 text-status-warning" : "text-slate-500 hover:bg-slate-50"}`}
                 >
                   In progress
@@ -491,6 +495,22 @@ export default function UrgentTnTab({ me, refreshTick }) {
       {error && <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>}
       {info && !error && <div className="rounded-xl bg-white p-3 text-sm text-slate-600 ring-1 ring-slate-200">{info}</div>}
 
+      {ownerReminder > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 p-3 text-sm text-slate-700 ring-1 ring-amber-300">
+          <span>
+            Reminder: {ownerReminder} tracking number{ownerReminder === 1 ? "" : "s"} you added {ownerReminder === 1 ? "is" : "are"} still open (not closed
+            yet). It comes back at 10am, 2pm and 5pm until you press Got it.
+          </span>
+          <button
+            onClick={ackOwnerReminder}
+            disabled={busy}
+            className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40"
+          >
+            Got it
+          </button>
+        </div>
+      )}
+
       {delegating && (
         <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-brand/40">
           <div className="font-display text-xs font-semibold text-slate-700">
@@ -585,7 +605,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           footer={
             <>
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
-              to you. A PIC picks In progress (quiets the tab's bell for an hour) or Closed (bell off; it stays on their list
+              to you. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
               marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
               Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
               search; "Not found" means the parcel is already completed or added to a shipment.

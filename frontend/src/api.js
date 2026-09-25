@@ -115,6 +115,7 @@ export const api = {
     update: (id, payload) => request(`/api/urgent-tn/items/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     remove: (id) => request(`/api/urgent-tn/items/${id}`, { method: "DELETE" }),
     markSeen: () => request("/api/urgent-tn/mark-seen", { method: "POST" }),
+    reminderAck: () => request("/api/urgent-tn/reminder-ack", { method: "POST" }),
     removeMany: (ids) => request("/api/urgent-tn/items/bulk-remove", { method: "POST", body: JSON.stringify({ ids }) }),
     suggest: (q) => request(`/api/urgent-tn/pic-suggestions?q=${encodeURIComponent(q)}`),
   },
