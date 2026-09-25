@@ -91,13 +91,13 @@ DATASETS: dict[str, dict] = {
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
     },
     "cod_rts_cod": {
-        "kpi": "cod_rts", "label": "COD RTS (raw COD)", "link": "https://metabase.ninjavan.co/question/80865",
-        "hint": "Metabase question 80865 (COD RTS Rate Southern) -- Southern hubs and a fixed week for now: change the date filter, then Download results as .csv -- or the RAW COD sheet of the RTS Analysis file",
+        "kpi": "cod_rts", "label": "COD RTS (raw COD)", "link": "https://metabase.ninjavan.co/question/127198",
+        "hint": "Metabase question 127198 (COD RTS Rate - All Regions, previous week): change the date filter for another week, then Download results as .csv -- or the RAW COD sheet of the RTS Analysis file",
         "sheet": "RAW COD", "required": ["desthubname", "rtsflag"],
     },
     "cod_rts_overall": {
-        "kpi": "cod_rts", "label": "RTS overall (raw)", "link": "https://metabase.ninjavan.co/question/76508",
-        "hint": "Metabase question 76508 (RTS Overall Southern) -- Southern hubs and a fixed week for now: change the date filter, then Download results as .csv -- or the RAW Overal sheet; optional",
+        "kpi": "cod_rts", "label": "RTS overall (raw)", "link": "https://metabase.ninjavan.co/question/127197",
+        "hint": "Metabase question 127197 (RTS Overall - All Regions, previous week): use the same week as the COD file, then Download results as .csv -- or the RAW Overal sheet; optional",
         "sheet": "RAW Overal", "required": ["trackingid", "rtsreason"],
     },
     "weekly_kpi": {
