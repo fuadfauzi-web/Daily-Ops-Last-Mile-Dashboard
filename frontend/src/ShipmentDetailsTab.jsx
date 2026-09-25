@@ -247,7 +247,8 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
         <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
           <div className="font-display text-sm font-medium text-slate-700">Timing trend by hour of day</div>
           <div className="text-xs text-slate-400">
-            Scan-in, first attempt and success. Follows the filters above until you pick a chart filter.
+            Scan-in, first attempt and success. Follows the filters above until you pick a chart filter. Hover an hour for its count
+            and % share, or switch to % share to plot each line as a % of its own total.
           </div>
         </div>
         <SweepTimelineChart
