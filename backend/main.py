@@ -28,11 +28,14 @@ from pydantic import BaseModel
 import db
 import storage
 from tasklist import (
-    next_reminder_label as tasklist_next_reminder,
+    next_owner_slot_label as tasklist_next_owner_slot,
     notification_counts as tasklist_counts,
     on_user_deleted as tasklist_user_deleted,
     router as tasklist_router,
-    urgent_reminder_ringing as tasklist_urgent_ringing,
+    urgent_owner_ack as tasklist_urgent_owner_ack,
+    urgent_owner_slot as tasklist_urgent_owner_slot,
+    urgent_pic_next_reminder as tasklist_urgent_pic_next,
+    urgent_pic_ringing as tasklist_urgent_pic_ringing,
 )
 from aggregate import (
     AGING_BUCKET_LABELS, AGING_KEYS, AGING_TYPES, AGING_TYPE_LABELS, DRILLDOWN_METRICS, DRIVER_TYPE_KEYS, driver_type_bucket,
@@ -2449,21 +2452,23 @@ async def _prune_closed_feedback(now: datetime) -> None:
 # reply + status workflow (see V27 / V30 migrations). An item is visible to whoever
 # created it (the OWNER) and to its assignee (the PIC).
 #
-#   PIC:    picks "In progress" (acknowledges it -- the tab's bell goes quiet until the next
-#           scheduled reminder, 10am / 2pm / 5pm Malaysia time, if it still isn't closed) or
-#           "Closed" (bell gone for good,
+#   PIC:    picks "In progress" (acknowledges it -- the tab's bell goes quiet for 1 hour, then
+#           comes back if it still isn't closed; the hourly reminder only runs 08:00-20:00
+#           Malaysia time) or "Closed" (bell gone for good,
 #           but the item stays in the PIC's list marked closed), and can type a reply the
 #           owner sees.
 #   Owner:  can edit the PIC/note, reopen an item the PIC closed, and CLOSE or REMOVE it
 #           -- both delete it, so it disappears from the PIC's list too, whatever its
 #           status. The assignee's email must already exist in `users`.
+# Reminders (2026-09-25): the PIC's bell repeats hourly (08:00-20:00 Malaysia time only); the OWNER's rings at
+# 10am / 2pm / 5pm while a tracking number they added is still open, until they press "Got it" (tasklist.py, urgent_*).
 # Deleting a user deletes the items they created and unassigns items assigned to them
 # (delete_user below).
 
 URGENT_TN_MAX_PER_REQUEST = 200
 URGENT_STATUSES = ("in_progress", "closed")
-# The PIC's bell for an In-progress item follows the Task List reminder schedule (10am / 2pm / 5pm
-# Malaysia time -- tasklist.urgent_reminder_ringing); a fresh assignment still rings at once.
+# The reminder rules (PIC hourly 08:00-20:00, owner 10am / 2pm / 5pm) live in tasklist.py -- urgent_pic_ringing,
+# urgent_owner_slot.
 # 2026-09-25 feedback: a tracking number with no status in the active data (not found: already
 # completed / added to a shipment) isn't urgent -- nothing to chase. It is never assigned to a
 # PIC, and if it still has no status 1 day after we first noticed, it is removed automatically
@@ -2517,6 +2522,7 @@ class UrgentItem(BaseModel):
 class UrgentItemsResponse(BaseModel):
     captured_at: str | None
     items: list[UrgentItem]
+    owner_reminder_count: int = 0  # owner reminder ringing: how many of my tracking numbers are still open
 
 
 def _iso(value) -> str | None:
@@ -2558,11 +2564,8 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
         created_by_me = created_by.lower() == me
         assigned_to_me = bool(assignee) and assignee.lower() == me
         next_reminder = None
-        if (
-            assigned_to_me and not created_by_me and status == "in_progress" and found is not None
-            and not tasklist_urgent_ringing(ack_at)
-        ):
-            next_reminder = tasklist_next_reminder()  # acknowledged: quiet until the next scheduled slot
+        if assigned_to_me and not created_by_me and status == "in_progress" and found is not None:
+            next_reminder = tasklist_urgent_pic_next(ack_at)  # None while the bell is ringing
         hours_left = None
         if found is None and no_status_since is not None:
             left = _utc_naive(no_status_since) + URGENT_NO_STATUS_TTL - now
@@ -2587,9 +2590,41 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     return items
 
 
+async def _urgent_owner_reminder_count(email: str) -> int:
+    """Owner reminder (10am / 2pm / 5pm): while it is ringing (until "Got it"), how many of the tracking numbers I added
+    are still open -- not closed by the PIC (removing one deletes it) and still with a parcel status. Ones added after
+    the latest slot wait for the next one."""
+    slot = await tasklist_urgent_owner_slot(email)
+    if slot is None:
+        return 0
+    rows = await db.fetch_all(
+        "SELECT tracking_number, created_at FROM urgent_tn_items WHERE LOWER(created_by) = %s AND status <> 'closed'",
+        (email.lower(),),
+    )
+    count = 0
+    for tn, created_at in rows:
+        if created_at is not None and _utc_naive(created_at) >= slot:
+            continue
+        if _health_v3_by_tn_captured_at is not None and tn not in _health_v3_by_tn:
+            continue
+        count += 1
+    return count
+
+
 @app.get("/api/urgent-tn/items", response_model=UrgentItemsResponse)
 async def urgent_tn_items(user: CurrentUser = Depends(get_current_user)):
-    return {"captured_at": _health_v3_by_tn_captured_at, "items": await _urgent_items_for(user)}
+    return {
+        "captured_at": _health_v3_by_tn_captured_at,
+        "items": await _urgent_items_for(user),
+        "owner_reminder_count": await _urgent_owner_reminder_count(user.email),
+    }
+
+
+@app.post("/api/urgent-tn/reminder-ack", response_model=OkResult)
+async def urgent_tn_reminder_ack(user: CurrentUser = Depends(get_current_user)):
+    """"Got it" on the owner reminder banner: quiet it until the next 10am / 2pm / 5pm slot."""
+    await tasklist_urgent_owner_ack(user.email)
+    return {"ok": True, "detail": f"Got it -- next reminder {tasklist_next_owner_slot()}"}
 
 
 async def _resolve_assignee(email: str | None) -> str | None:
@@ -2732,8 +2767,8 @@ async def urgent_tn_update(item_id: int, payload: UrgentItemUpdate, user: Curren
             await db.execute("DELETE FROM urgent_tn_items WHERE id = %s", (item_id,))
             return {"ok": True, "detail": "Closed and removed"}
         if is_pic and payload.status == "in_progress":
-            # "In progress" acknowledges it: the bell stays quiet until the next scheduled reminder
-            # (10am / 2pm / 5pm), then comes back if it still isn't closed. (Also reopens an item the PIC had closed.)
+            # "In progress" acknowledges it: the bell stays quiet for an hour, then comes back (08:00-20:00 only)
+            # if it still isn't closed. (Also reopens an item the PIC had closed.)
             sets += ["status = 'in_progress'", "closed_at = NULL", "closed_by = NULL", "assignee_ack_at = %s", "owner_unseen = 1"]
             params.append(now)
         elif is_pic and payload.status == "closed":
@@ -2818,6 +2853,7 @@ async def urgent_tn_mark_seen(user: CurrentUser = Depends(get_current_user)):
 class Notifications(BaseModel):
     urgent_notify: int
     urgent_owner_updates: int
+    urgent_owner_reminder: int
     feedback_replies_unread: int
     followups_notify: int
     todos_notify: int
@@ -2831,8 +2867,10 @@ class Notifications(BaseModel):
 async def notifications(user: CurrentUser = Depends(get_current_user)):
     """Counts behind the Urgent TN tab's bell and the Admin/Feedback badge.
     urgent_notify: items assigned to me by someone else that are still in progress and
-    either never acknowledged or not acknowledged since the last scheduled reminder
-    (10am / 2pm / 5pm Malaysia time).
+    either never acknowledged or last acknowledged over an hour ago -- only between 08:00 and
+    20:00 Malaysia time, so nothing rings overnight.
+    urgent_owner_reminder: how many tracking numbers I added are still open, while the 10am / 2pm / 5pm
+    reminder is ringing (until I press Got it).
     urgent_owner_updates: items I added where the PIC replied / changed the status."""
     me = user.email.lower()
     notify_rows = await db.fetch_all(
@@ -2840,7 +2878,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
            WHERE LOWER(assignee_email) = %s AND LOWER(created_by) <> %s AND status = 'in_progress'""",
         (me, me),
     )
-    ringing = [r for r in notify_rows if tasklist_urgent_ringing(r[1])]
+    ringing = [r for r in notify_rows if tasklist_urgent_pic_ringing(r[1])]
     # A TN with no status any more (completed / added to a shipment) isn't worth a bell.
     notify = (
         sum(1 for r in ringing if r[0] in _health_v3_by_tn)
@@ -2855,6 +2893,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
     )
     return {
         "urgent_notify": notify,
+        "urgent_owner_reminder": await _urgent_owner_reminder_count(user.email),
         "urgent_owner_updates": int(owner[0] or 0),
         "feedback_replies_unread": int(unread[0] or 0),
         **await tasklist_counts(user),
