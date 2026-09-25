@@ -26,9 +26,9 @@ export const BOARD_NOTES = {
     "Route Monitoring's Current OVFD: parcels still on a vehicle across today's routes. It is route level, so there is no tracking-number list behind it. Action: follow up with the drivers who haven't cleared their route.",
   fresh_unscan: SHIPMENT_NOTES.fresh_unscan,
   shipper_sla_warning:
-    "Amway, Watson, Orca and Cold Chain parcels ONLY -- not every shipper. Parcels still at the station that are older than 0 days (1 day since their first sweep here). Parcels still en-route to the hub aren't counted. Action: attempt or deliver them today, before they become a breach.",
+    "Amway, Watson, Orca and Cold Chain parcels ONLY -- not every shipper. Parcels older than 0 days (1 day since their first sweep at the hub), including ones still en-route to the station. Action: attempt or deliver them today, before they become a breach.",
   shipper_sla_breach:
-    "Amway, Watson, Orca and Cold Chain parcels ONLY -- not every shipper. Parcels still at the station that are older than 1 day since their first sweep here: the SLA is missed. Action: clear these first and escalate the cause.",
+    "Amway, Watson, Orca and Cold Chain parcels ONLY -- not every shipper. Parcels older than 1 day since their first sweep at the hub, including ones still en-route to the station: the SLA is missed. Action: clear these first and escalate the cause.",
 };
 
 // "Higher is worse. Warning at >= 5, critical at >= 10." -- from the metric's target in Settings -> SLA Targets.

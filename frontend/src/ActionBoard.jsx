@@ -149,6 +149,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
   const [tnByStation, setTnByStation] = useState({});
+  const [dragMetric, setDragMetric] = useState(null); // the chip being dragged to a new column position
 
   // EXTRA_METRICS' own data -- fetched independently of the stations prop (which
   // only carries Station Health), same pattern each of those tabs already uses.
@@ -224,6 +225,16 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     () => selectedMetrics.filter((m) => scoredMetrics.some((c) => c.key === m)),
     [selectedMetrics, scoredMetrics]
   );
+
+  // Column order (2026-09-26 feedback): the chips next to the picker can be dragged (or nudged with the arrows) to arrange the
+  // heatmap's columns; the order is remembered with the selection.
+  const reorderMetrics = (from, to) => {
+    if (from < 0 || to < 0 || from >= activeMetrics.length || to >= activeMetrics.length || from === to) return;
+    const next = [...activeMetrics];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setMetrics([...next, ...selectedMetrics.filter((k) => !activeMetrics.includes(k))]);
+  };
 
   // Station-level breach evaluation, independent of the heatmap's own level --
   // used so a region/zone heatmap row can name WHICH of its stations are
@@ -465,12 +476,52 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                   below it -- bold like the old toggle-button style, just
                   smaller (2026-09-24 feedback). */}
               <div className="flex flex-wrap items-center gap-1">
-                {activeMetrics.map((m) => (
+                {activeMetrics.map((m, i) => (
                   <span
                     key={m}
-                    className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 font-display text-[11px] font-semibold text-white"
+                    draggable={activeMetrics.length > 1}
+                    onDragStart={(e) => {
+                      setDragMetric(m);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", m);
+                    }}
+                    onDragOver={(e) => {
+                      if (dragMetric) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (dragMetric) reorderMetrics(activeMetrics.indexOf(dragMetric), i);
+                      setDragMetric(null);
+                    }}
+                    onDragEnd={() => setDragMetric(null)}
+                    title={activeMetrics.length > 1 ? "Drag to reorder the columns" : undefined}
+                    className={`inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 font-display text-[11px] font-semibold text-white ${
+                      activeMetrics.length > 1 ? "cursor-grab" : ""
+                    } ${dragMetric === m ? "opacity-40" : ""}`}
                   >
+                    {activeMetrics.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => reorderMetrics(i, i - 1)}
+                        disabled={i === 0}
+                        className="px-0.5 text-white/70 hover:text-white disabled:opacity-25"
+                        aria-label={`Move ${findColumn(m).label} left`}
+                      >
+                        ‹
+                      </button>
+                    )}
                     {findColumn(m).label}
+                    {activeMetrics.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => reorderMetrics(i, i + 1)}
+                        disabled={i === activeMetrics.length - 1}
+                        className="px-0.5 text-white/70 hover:text-white disabled:opacity-25"
+                        aria-label={`Move ${findColumn(m).label} right`}
+                      >
+                        ›
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setMetrics(selectedMetrics.filter((k) => k !== m))}
@@ -481,6 +532,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                     </button>
                   </span>
                 ))}
+                {activeMetrics.length > 1 && <span className="text-[10px] text-slate-400">drag a chip (or use ‹ ›) to arrange the columns</span>}
               </div>
             </>
           )}
