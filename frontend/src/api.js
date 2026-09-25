@@ -153,6 +153,31 @@ export const api = {
   dod: () => request("/api/dod"), // DoD Dashboard: Station Health per day, this week + last week
   // KPI Dashboard -> Hybrid Productivity (Metabase): view "weekly" | "monthly"; refresh re-runs the questions (admin / manager only)
   kpiHybrid: (view, refresh = false) => request(`/api/kpi/hybrid?view=${view}${refresh ? "&refresh=true" : ""}`),
+  kpiUploads: () => request("/api/kpi/uploads"),
+  kpiUpload: async (dataset, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    // No Content-Type header -- the browser sets the multipart boundary itself.
+    const res = await fetch(`/api/kpi/uploads/${dataset}`, { method: "POST", body: formData, headers: viewAsHeaders() });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return res.json();
+  },
+  kpiUploadRemove: (dataset) => request(`/api/kpi/uploads/${dataset}`, { method: "DELETE" }),
+  kpiMetabaseCheck: () => request("/api/kpi/metabase-check"),
+  kpiWeekly: () => request("/api/kpi/weekly"),
+  kpiInvalidPod: () => request("/api/kpi/invalid-pod"),
+  kpiInvalidPodTns: (q) => request(`/api/kpi/invalid-pod/tns?${new URLSearchParams(q)}`),
+  kpiCodRts: () => request("/api/kpi/cod-rts"),
+  kpiCodRtsTns: (q) => request(`/api/kpi/cod-rts/tns?${new URLSearchParams(q)}`),
+  kpiTable: (name) => request(`/api/kpi/table/${name}`),
   // Task List (backend/tasklist.py)
   reminders: { ack: (kind, id) => request("/api/reminders/ack", { method: "POST", body: JSON.stringify({ kind, id }) }) },
   followups: {

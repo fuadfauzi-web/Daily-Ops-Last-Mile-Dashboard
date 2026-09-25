@@ -7,20 +7,30 @@ import Skeleton from "./components/Skeleton";
 import TrendChart from "./components/TrendChart";
 import { exportCsv } from "./lib/csv";
 import { formatTime } from "./lib/format";
+import KpiUploadPanel from "./kpi/KpiUploadPanel";
+import MetabaseCheck from "./kpi/MetabaseCheck";
+import WeeklyDashboard from "./kpi/WeeklyDashboard";
+import OpexResult from "./kpi/OpexResult";
+import InvalidPodRca from "./kpi/InvalidPodRca";
+import CodRtsRca from "./kpi/CodRtsRca";
 
-// KPI Dashboard (2026-09-26, staging): the Fleet Manager's Google Sheet / Apps Script "Southern Region Hybrid Performance" app,
-// rebuilt inside the dashboard for ALL stations. Only Hybrid Productivity has live data (Metabase, see backend/kpi.py); the other
-// KPI modules are placeholders until their Metabase questions / logic are given.
+// KPI Dashboard (2026-09-26, staging). The KPI page is the RCA side of the KPIs: the OPEX team's dashboard shows the RESULT (a %), this
+// shows WHY -- with the numbers and the tracking numbers behind them. Three parts:
+//   Results       Weekly Dashboard (the team's WoW dashboard) and OPEX Result (the OPEX team's results, merged in later)
+//   RCA details   one page per KPI: Hybrid Productivity, Invalid POD, COD RTS (others listed as "soon")
+// Data: uploaded files (managers / admins, "Data upload") or Metabase where a question exists -- see backend/kpi.py, kpi_rca.py.
 
 const MODULES = [
-  { key: "hybrid", label: "Hybrid Productivity", live: true },
-  { key: "prior", label: "Prior KPI" },
-  { key: "fifod0", label: "FIFO D0 KPI" },
-  { key: "invalidPod", label: "Invalid POD" },
-  { key: "terminalT7", label: "Terminal T7" },
-  { key: "compD0", label: "Completion D0" },
-  { key: "compD3", label: "Completion D3" },
-  { key: "codRts", label: "COD RTS" },
+  { key: "weekly", label: "Weekly Dashboard", group: "Results", live: true },
+  { key: "opex", label: "OPEX Result", group: "Results", live: true },
+  { key: "hybrid", label: "Hybrid Productivity", group: "RCA details", live: true },
+  { key: "invalidPod", label: "Invalid POD", group: "RCA details", live: true },
+  { key: "codRts", label: "COD RTS", group: "RCA details", live: true },
+  { key: "prior", label: "Prior KPI", group: "RCA details" },
+  { key: "fifod0", label: "FIFO D0 KPI", group: "RCA details" },
+  { key: "terminalT7", label: "Terminal T7", group: "RCA details" },
+  { key: "compD0", label: "Completion D0", group: "RCA details" },
+  { key: "compD3", label: "Completion D3", group: "RCA details" },
 ];
 
 const int = (v) => Math.round(v).toLocaleString();
@@ -125,6 +135,7 @@ function HybridProductivity({ me }) {
   const [pickedStation, setPickedStation] = useState(null);
   const [pickedZone, setPickedZone] = useState("all");
   const [pickedDaily, setPickedDaily] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
 
   const canRefresh = me.role === "admin" || me.role === "manager";
   const load = (refresh = false) => {
@@ -507,7 +518,17 @@ function HybridProductivity({ me }) {
       >
         {loading ? "Loading…" : "Refresh data"}
       </button>
-      {data?.fetched_at && <span className="text-xs text-slate-400">Source read {formatTime(data.fetched_at)}</span>}
+      {data?.sources && Object.keys(data.sources).length > 0 && (
+        <span className="text-xs text-slate-400" title={Object.entries(data.sources).map(([k, v]) => `${k}: ${v}`).join("\n")}>
+          Source: {[...new Set(Object.values(data.sources).map((s) => (s.startsWith("uploaded") ? "uploaded file" : s)))].join(" + ")}
+          {data.fetched_at ? ` · ${formatTime(data.fetched_at)}` : ""}
+        </span>
+      )}
+      {canRefresh && (
+        <button onClick={() => setShowUpload((v) => !v)} className="h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
+          {showUpload ? "Hide data upload" : "Data upload"}
+        </button>
+      )}
       <button
         onClick={() =>
           exportCsv(
@@ -526,14 +547,32 @@ function HybridProductivity({ me }) {
 
   if (error) return <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>;
   if (!data) return <Skeleton />;
-  if (!data.configured) {
+  if (!data.has_data) {
     return (
-      <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-        <div className="font-display text-base font-semibold text-ink">Hybrid Productivity isn't connected to Metabase yet</div>
-        <p className="mt-2">
-          The dashboard reads Metabase questions 126389 (weekly), 126392 (monthly), 126393 (daily) and 126216 (hybrid driver list). Ask an admin to add a Metabase API key
-          for this app (the <code className="rounded bg-slate-100 px-1">METABASE_API_KEY</code> setting) and press Refresh data.
-        </p>
+      <div className="space-y-3">
+        <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
+          <div className="font-display text-base font-semibold text-ink">No Hybrid Productivity data yet</div>
+          <p className="mt-2">
+            The data comes from Metabase questions 126389 (weekly), 126392 (monthly), 126393 (daily) and 126216 (hybrid driver list). While the app's own Metabase link is being
+            sorted out, a manager or admin can <strong>upload the downloaded files</strong> below -- that works today and is used instead of Metabase until removed.
+          </p>
+          {data.error && <p className="mt-2 rounded-lg bg-red-50 p-2 text-status-critical">Metabase said: {data.error}</p>}
+        </div>
+        <KpiUploadPanel kpi="hybrid" me={me} onChanged={() => load(false)} />
+        {me.role === "admin" && (
+          <div className="space-y-2 rounded-xl bg-white p-4 text-sm text-slate-600 ring-1 ring-slate-200">
+            <div className="font-display text-sm font-semibold text-ink">Connect Metabase (admins)</div>
+            <p>
+              The app calls Metabase with the <code className="rounded bg-slate-100 px-1">METABASE_API_KEY</code> secret. HTTP 401 means Metabase did not recognise the key -- press the button
+              for a plain-English reason.
+            </p>
+            <p className="text-xs text-slate-500">
+              Note: the four saved questions are filtered to <strong>depot region = South</strong>, so even a working key returns Southern only. For all stations, duplicate each question in
+              Metabase without that filter (and keep the same columns).
+            </p>
+            <MetabaseCheck />
+          </div>
+        )}
       </div>
     );
   }
@@ -541,6 +580,7 @@ function HybridProductivity({ me }) {
   return (
     <div className="space-y-3">
       {controls}
+      {showUpload && <KpiUploadPanel kpi="hybrid" me={me} onChanged={() => load(false)} />}
       {data.error && <div className="rounded-xl bg-white p-3 text-sm text-status-critical ring-1 ring-slate-200">{data.error}</div>}
       {!recs.length && !data.error ? (
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">No hybrid data for your scope yet.</div>
@@ -568,7 +608,7 @@ function HybridProductivity({ me }) {
 }
 
 export default function KpiDashboard({ me }) {
-  const [module, setModule] = useState("hybrid");
+  const [module, setModule] = useState("weekly");
   const active = MODULES.find((m) => m.key === module);
   return (
     <div className="flex flex-col gap-4 md:flex-row">
@@ -576,9 +616,12 @@ export default function KpiDashboard({ me }) {
         <div className="overflow-hidden rounded-xl border-r-4 border-brand bg-ink text-white">
           <div className="border-b border-white/10 px-4 py-3 text-center font-display text-xs font-black uppercase tracking-wider text-brand">KPI Dashboard</div>
           <nav className="flex overflow-x-auto md:block">
-            {MODULES.map((m) => (
+            {MODULES.map((m, i) => (
+              <div key={m.key} className="contents">
+                {(i === 0 || MODULES[i - 1].group !== m.group) && (
+                  <div className="hidden px-4 pb-1 pt-3 text-[9px] font-bold uppercase tracking-widest text-slate-500 md:block">{m.group}</div>
+                )}
               <button
-                key={m.key}
                 onClick={() => setModule(m.key)}
                 className={`flex min-h-[44px] w-full shrink-0 items-center justify-between gap-2 whitespace-nowrap border-l-4 px-4 py-2 text-left font-display text-[11px] font-bold uppercase ${
                   module === m.key ? "border-brand bg-white/10 text-white" : "border-transparent text-slate-300 hover:bg-white/5"
@@ -587,13 +630,26 @@ export default function KpiDashboard({ me }) {
                 {m.label}
                 {!m.live && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold normal-case text-slate-300">soon</span>}
               </button>
+              </div>
             ))}
           </nav>
         </div>
       </aside>
       <section className="min-w-0 flex-1 space-y-3">
         <h2 className="font-display text-lg font-black uppercase tracking-wide text-brand">{active.label}</h2>
-        {module === "hybrid" ? <HybridProductivity me={me} /> : <ComingSoon label={active.label} />}
+        {module === "weekly" ? (
+          <WeeklyDashboard me={me} />
+        ) : module === "opex" ? (
+          <OpexResult me={me} />
+        ) : module === "hybrid" ? (
+          <HybridProductivity me={me} />
+        ) : module === "invalidPod" ? (
+          <InvalidPodRca me={me} />
+        ) : module === "codRts" ? (
+          <CodRtsRca me={me} />
+        ) : (
+          <ComingSoon label={active.label} />
+        )}
       </section>
     </div>
   );

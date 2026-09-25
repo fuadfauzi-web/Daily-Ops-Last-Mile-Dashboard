@@ -57,10 +57,11 @@ export const CHANGELOG = [
   },
   {
     date: "2026-09-26",
-    title: "KPI: Hybrid Productivity for all stations",
+    title: "KPI page: weekly results and RCA for each KPI",
     feature: "kpiDashboard",
     points: [
-      "A new KPI page next to Dashboard: the Hybrid Performance app (driver leaderboard, station and zone roll-ups, trends, daily log) for every station you can see, read from Metabase. The other KPI modules are listed and marked soon.",
+      "A new KPI page next to Dashboard, built as the RCA side of the KPIs: Weekly Dashboard (every KPI against its target for the past 4 weeks, by region / zone / station), OPEX Result (the OPEX team's result file, to be merged in), and RCA pages for Hybrid Productivity, Invalid POD and COD RTS with the numbers and tracking numbers behind them. The other KPIs are listed as soon.",
+      "Managers and admins load the data with Data upload (CSV or Excel -- the right sheet is picked automatically). An uploaded Hybrid file is used instead of Metabase until it is removed.",
     ],
   },
   {

@@ -28,6 +28,7 @@ from pydantic import BaseModel
 import db
 import storage
 from kpi import router as kpi_router
+from kpi_rca import router as kpi_rca_router
 from tasklist import (
     next_owner_slot_label as tasklist_next_owner_slot,
     notification_counts as tasklist_counts,
@@ -630,6 +631,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Daily Ops Last Mile Dashboard", lifespan=lifespan)
+app.include_router(kpi_rca_router)  # KPI Dashboard RCA views: Invalid POD, COD RTS, Weekly KPI results (kpi_rca.py, staging)
 app.include_router(kpi_router)  # KPI Dashboard: Hybrid Productivity from Metabase (kpi.py, staging)
 app.include_router(tasklist_router)  # Task List: Email / Gchat follow-ups, To Do List, Task Assigned (tasklist.py)
 app.add_middleware(

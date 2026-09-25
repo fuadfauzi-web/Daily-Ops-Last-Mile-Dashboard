@@ -5,16 +5,18 @@ Monthly / Daily rows from Metabase (questions 126389 / 126392 / 126393) plus the
 ALL stations, not only Southern. A driver's station comes from the station code in their name ("LKN - HD - FAUZI" -> Larkin, the
 same rule Route Monitoring uses), so the sheet's Control tab is not needed.
 
-Only this module has live data; the other KPI modules in the UI are placeholders until their Metabase questions / logic are given.
+Data source per dataset: an UPLOADED file (Data upload, kpi_data.py) wins -- an explicit, newer act -- otherwise Metabase. So the page
+works today with downloads from Metabase while the app's own Metabase link is being sorted out.
 """
 import asyncio
 import logging
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+import kpi_data as kd
 import metabase_client as mb
 from auth import CurrentUser, get_current_user
 from stations import ABBR_TO_HUB, HUBS
@@ -133,23 +135,37 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
 
 # ------------------------------------------------------------------------------------------------ loading
 
-async def _load(view: str, force: bool) -> tuple[datetime, list[dict], list[dict], list[dict]]:
+_mb_cache: dict[int, dict] = {}  # Metabase card id -> {"at": datetime, "rows": [...]}
+
+
+async def _mb_rows(card_id: int, force: bool) -> tuple[datetime, list[dict]]:
     now = datetime.now(timezone.utc)
     async with _lock:
-        hit = _cache.get(view)
+        hit = _mb_cache.get(card_id)
         if hit and not force and (now - hit["at"]).total_seconds() < CACHE_TTL_SECONDS:
-            return hit["at"], hit["perf"], hit["daily"], hit["hybrid"]
+            return hit["at"], hit["rows"]
         try:
-            perf = await mb.fetch_question(_QUESTION_FOR_VIEW[view])
-            daily = await mb.fetch_question(mb.QUESTION_HYBRID_DAILY)
-            hybrid = await mb.fetch_question(mb.QUESTION_HYBRID_DATA)
+            rows = await mb.fetch_question(card_id)
         except mb.MetabaseError:
             if hit:  # Metabase hiccup: keep showing what we have rather than an empty dashboard
                 log.exception("KPI refresh failed -- serving the cached data")
-                return hit["at"], hit["perf"], hit["daily"], hit["hybrid"]
+                return hit["at"], hit["rows"]
             raise
-        _cache[view] = {"at": now, "perf": perf, "daily": daily, "hybrid": hybrid}
-        return now, perf, daily, hybrid
+        _mb_cache[card_id] = {"at": now, "rows": rows}
+        return now, rows
+
+
+async def _source(dataset: str, card_id: int, force: bool):
+    """(rows, label, when) for one dataset: the uploaded file if there is one, else Metabase. Raises MetabaseError when it is
+    Metabase's turn and Metabase fails; returns (None, None, None) when there is no upload and no Metabase key."""
+    up = await kd.load_rows(dataset)
+    if up:
+        meta, rows = up
+        return rows, f"uploaded file {meta['filename']} ({str(meta['uploaded_at'])[:10]})", meta["uploaded_at"]
+    if mb.configured():
+        at, rows = await _mb_rows(card_id, force)
+        return rows, "Metabase", at.isoformat()
+    return None, None, None
 
 
 def _in_scope(driver: dict, user: CurrentUser) -> bool:
@@ -175,10 +191,12 @@ class KpiDriver(BaseModel):
 
 
 class KpiHybridResponse(BaseModel):
-    configured: bool
+    configured: bool          # a Metabase API key is set on the app
+    has_data: bool = False    # some source (upload or Metabase) gave the weekly / monthly numbers
     error: str | None = None
     fetched_at: str | None = None
     view: str
+    sources: dict[str, str] = {}
     drivers: list[KpiDriver] = []
     rows: list[list] = []   # [period, driver#, delivered+pickup, on route, attendance days, productivity, success %]
     daily: list[list] = []  # [date, driver#, delivered+pickup, on route, success %]
@@ -186,23 +204,108 @@ class KpiHybridResponse(BaseModel):
 
 @router.get("/api/kpi/hybrid", response_model=KpiHybridResponse)
 async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentUser = Depends(get_current_user)):
-    """Hybrid Productivity data for the KPI Dashboard, scoped to what the viewer may see. `refresh` (admins / managers) skips the cache."""
+    """Hybrid Productivity data for the KPI Dashboard, scoped to what the viewer may see. `refresh` (admins / managers) skips the
+    Metabase cache. Each of the datasets comes from an uploaded file if there is one, otherwise from Metabase."""
     if view not in _QUESTION_FOR_VIEW:
         raise HTTPException(status_code=422, detail=f"view must be one of {sorted(_QUESTION_FOR_VIEW)}")
-    if not mb.configured():
-        return {"configured": False, "view": view}
-    try:
-        fetched_at, perf, daily, hybrid = await _load(view, force=refresh and user.role in ("admin", "manager"))
-    except mb.MetabaseError as exc:
-        return {"configured": True, "view": view, "error": str(exc)}
-    payload = build_payload(view, perf, daily, hybrid)
+    force = refresh and user.role in ("admin", "manager")
+    plan = [
+        ("performance", f"hybrid_{view}", _QUESTION_FOR_VIEW[view]),
+        ("daily", "hybrid_daily", mb.QUESTION_HYBRID_DAILY),
+        ("drivers", "hybrid_data", mb.QUESTION_HYBRID_DATA),
+    ]
+    got: dict[str, list[dict]] = {}
+    sources: dict[str, str] = {}
+    whens: list[str] = []
+    errors: list[str] = []
+    for name, dataset, card in plan:
+        try:
+            rows, label, when = await _source(dataset, card, force)
+        except mb.MetabaseError as exc:
+            errors.append(str(exc))
+            continue
+        if rows is not None:
+            got[name] = rows
+            sources[name] = label
+            if when:
+                whens.append(str(when))
+    base = {"configured": mb.configured(), "view": view, "sources": sources}
+    if "performance" not in got:
+        return {**base, "has_data": False, "error": errors[0] if errors else None}
+    payload = build_payload(view, got["performance"], got.get("daily", []), got.get("drivers", []))
     keep = {i for i, d in enumerate(payload["drivers"]) if _in_scope(d, user)}
     remap = {old: new for new, old in enumerate(sorted(keep))}
     return {
-        "configured": True,
-        "view": view,
-        "fetched_at": fetched_at.isoformat(),
+        **base,
+        "has_data": True,
+        "error": (errors[0] + " -- showing what could be loaded") if errors else None,
+        "fetched_at": max(whens) if whens else None,
         "drivers": [d for i, d in enumerate(payload["drivers"]) if i in keep],
         "rows": [[*r[:1], remap[r[1]], *r[2:]] for r in payload["rows"] if r[1] in keep],
         "daily": [[*r[:1], remap[r[1]], *r[2:]] for r in payload["daily"] if r[1] in keep],
     }
+
+
+# ------------------------------------------------------------------------------------------------ data uploads
+
+def _require_uploader(user: CurrentUser) -> None:
+    if user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Only managers and admins can upload KPI data")
+
+
+class UploadInfo(BaseModel):
+    dataset: str
+    kpi: str
+    label: str
+    hint: str
+    filename: str | None = None
+    row_count: int | None = None
+    uploaded_by: str | None = None
+    uploaded_at: str | None = None
+
+
+@router.get("/api/kpi/uploads", response_model=list[UploadInfo])
+async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
+    """Which datasets have an uploaded file (for the KPI page's Data upload panel)."""
+    current = await kd.list_uploads()
+    return [{"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], **current.get(name, {})} for name, spec in kd.DATASETS.items()]
+
+
+class UploadResult(BaseModel):
+    ok: bool
+    detail: str
+
+
+@router.post("/api/kpi/uploads/{dataset}", response_model=UploadResult)
+async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
+    _require_uploader(user)
+    if dataset not in kd.DATASETS:
+        raise HTTPException(status_code=404, detail="Unknown dataset")
+    data = await file.read()
+    try:
+        info = await kd.save_upload(dataset, file.filename or "upload", data, user.email)
+    except kd.UploadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:  # noqa: BLE001
+        log.exception("KPI upload failed")
+        raise HTTPException(status_code=503, detail="Couldn't store the file right now -- try again")
+    return {"ok": True, "detail": f"{kd.DATASETS[dataset]['label']}: {info['row_count']:,} rows loaded"}
+
+
+@router.delete("/api/kpi/uploads/{dataset}", response_model=UploadResult)
+async def kpi_upload_delete(dataset: str, user: CurrentUser = Depends(get_current_user)):
+    _require_uploader(user)
+    if dataset not in kd.DATASETS:
+        raise HTTPException(status_code=404, detail="Unknown dataset")
+    await kd.delete_upload(dataset)
+    return {"ok": True, "detail": "Upload removed"}
+
+
+# ------------------------------------------------------------------------------------------------ Metabase diagnostics
+
+@router.get("/api/kpi/metabase-check")
+async def kpi_metabase_check(user: CurrentUser = Depends(get_current_user)):
+    """Admins: what does Metabase say to this app's API key? (never returns the key itself)"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admins only")
+    return await mb.diagnose()

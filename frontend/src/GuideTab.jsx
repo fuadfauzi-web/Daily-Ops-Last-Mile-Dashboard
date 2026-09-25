@@ -202,20 +202,25 @@ const SECTIONS = [
     id: "kpi",
     title: "KPI",
     show: () => F.kpiDashboard,
-    body: () => (
+    body: ({ rank }) => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          The <strong>KPI</strong> page (next to Dashboard in the header) is the Hybrid Performance app moved into the dashboard, for every station you can see.
-          The menu on the left lists the KPI modules; <strong>Hybrid Productivity</strong> is live, the others (Prior KPI, FIFO D0, Invalid POD, Terminal T7,
-          Completion D0 / D3, COD RTS) are marked <em>soon</em> and get built as their Metabase data is set up.
+          The <strong>KPI</strong> page (next to Dashboard in the header) is the <strong>RCA side of the KPIs</strong>: the OPEX team's dashboard shows the result (a %),
+          this page shows <em>why</em> -- by hub, reason, driver and shipper, with the tracking numbers behind every number. The menu on the left has two parts.
         </p>
         <Bullets
           items={[
-            <>Top bar: <strong>View</strong> (Weekly / Monthly), <strong>Period</strong> (Latest by default), Region / Zone / Station, and a driver search. <strong>Refresh data</strong> re-reads Metabase (admins and managers; everyone else reloads what is cached for half an hour).</>,
-            <>Cards: active drivers (HD / HR), parcels on route, delivered + pickup, average success %, average attendance and average productivity for the period.</>,
-            <><strong>Driver Performance</strong>: the leaderboard (click headers to sort, click a driver for their productivity trend and last 2 weeks of daily volume). Attendance below the target (6 days a week, 26 a month) is red.</>,
-            <><strong>Station Performance</strong> and <strong>Regional Breakdown</strong> (by zone): the same numbers rolled up, with trends, the station leaderboard and the ten lowest performers (productivity under 80).</>,
-            <><strong>Daily Data</strong>: the latest period's leaderboard with the selected driver's daily log and delivery-volume trend.</>,
+            <><strong>Results</strong> -- <strong>Weekly Dashboard</strong>: pick a region, zone or station and see every KPI (Success Rate, D-0, FIFO D0, D-3, T-7, COD RTS, Sweep, Prior, Invalid POD, Complaint, Lost, Shipment Inbound, RPU) for the past 4 weeks against its target (green on target, red ▲ missing), a trend line per KPI, and the stations underneath for the chosen week. <strong>OPEX Result</strong> shows the OPEX team's result file as uploaded until its layout is agreed; it gets merged into the Weekly Dashboard later.</>,
+            <><strong>RCA details</strong> -- <strong>Hybrid Productivity</strong> (driver leaderboard, station and zone roll-ups, trends, daily log; attendance below the target -- 6 days a week, 26 a month -- is red), <strong>Invalid POD</strong> (invalid % by station against the 25% target, the reasons behind it, the drivers with the most, and the tracking numbers) and <strong>COD RTS</strong> (COD parcels returned to the shipper: by station, reason, shipper, driver, how many before a first attempt, and the tracking numbers). Prior KPI, FIFO D0, Terminal T7 and Completion D0 / D3 are marked <em>soon</em>.</>,
+            <>Click a station, reason or driver to filter the rest of the page; <strong>Show tracking numbers</strong> lists them and <strong>Export CSV</strong> downloads them all.</>,
+            rank >= 2 ? (
+              <><strong>Data upload</strong> (managers and admins): each page has a Data upload button. Download the data (from Metabase, or use the team's RCA files), choose the file -- CSV or Excel; for a workbook the right sheet is picked for you -- and it is loaded straight away. One current file per slot; uploading again replaces it. For Hybrid Productivity an uploaded file is used instead of Metabase until you remove it.</>
+            ) : (
+              <>Managers and admins upload the data behind these pages.</>
+            ),
+            rank >= 3 && (
+              <>Hybrid Productivity can also read Metabase directly. If it shows a 401 error, open that page's <strong>Check Metabase connection</strong> for a plain-English reason. The four saved Metabase questions are filtered to the Southern region, so for all stations they need copies without that filter.</>
+            ),
             <>A driver's station comes from the station code in their name (for example "LKN - HD - ...").</>,
           ]}
         />
