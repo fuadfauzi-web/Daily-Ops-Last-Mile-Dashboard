@@ -22,7 +22,7 @@ function notifyChanged() {
 // tracking number can be assigned to a PIC -- another user, by email, who must
 // already be in the user list. Two roles on each item:
 //   * the PIC (assignee) picks a status -- "In progress" (acknowledges it: the tab's bell
-//     goes quiet and comes back after an hour if it still isn't closed) or "Closed" (bell
+//     goes quiet until the next 10am / 2pm / 5pm reminder if it still isn't closed) or "Closed" (bell
 //     gone; the item stays in the PIC's list, marked closed) -- and can type a reply the
 //     owner sees;
 //   * the owner (whoever added it) can edit the PIC / note, reopen an item the PIC
@@ -298,7 +298,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
         return (
           <>
             In progress
-            {r.reminder_in_minutes ? <div className="text-[10px] font-normal text-slate-400">reminder in {r.reminder_in_minutes} min</div> : null}
+            {r.next_reminder ? <div className="text-[10px] font-normal text-slate-400">next reminder {r.next_reminder}</div> : null}
           </>
         );
       },
@@ -360,7 +360,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
                 <button
                   onClick={() => setStatus(r, "in_progress")}
                   disabled={busy}
-                  title="Acknowledge: silences the bell for 1 hour, then it reminds you again if it isn't closed"
+                  title="Acknowledge: silences the bell until the next reminder (10am, 2pm or 5pm), then it reminds you again if it isn't closed"
                   className={`px-2 py-1 ${r.status === "in_progress" ? "bg-status-warning/15 text-status-warning" : "text-slate-500 hover:bg-slate-50"}`}
                 >
                   In progress
@@ -585,7 +585,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
           footer={
             <>
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
-              to you. A PIC picks In progress (quiets the tab's bell for an hour) or Closed (bell off; it stays on their list
+              to you. A PIC picks In progress (quiets the tab's bell until the next 10am / 2pm / 5pm reminder) or Closed (bell off; it stays on their list
               marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
               Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
               search; "Not found" means the parcel is already completed or added to a shipment.

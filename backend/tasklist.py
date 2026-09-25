@@ -198,6 +198,29 @@ def _reminder_active(due_s: str | None, created_at, is_open: bool, acked_at) -> 
     return acked_at is None or _aware(acked_at) < slot_utc
 
 
+def urgent_reminder_ringing(acked_at) -> bool:
+    """Urgent TN, PIC side (used by main.py): is the bell ringing for an In-progress item?
+    An assignment the PIC hasn't touched yet rings straight away; once they acknowledge it (pick
+    In progress) it stays quiet until the next scheduled slot -- 10am / 2pm / 5pm Malaysia time, the
+    same slots as an item due within NEAR_DAYS -- and rings again then until they acknowledge or close it."""
+    if acked_at is None:
+        return True
+    slot = _latest_slot(_now_myt(), near=True)
+    return slot is not None and _aware(acked_at) < slot.astimezone(timezone.utc)
+
+
+def next_reminder_label() -> str:
+    """When the next scheduled reminder rings, for display: '2pm' or 'tomorrow 10am'."""
+    now = _now_myt()
+    for ahead in (0, 1):
+        d = now.date() + timedelta(days=ahead)
+        for h in sorted(NEAR_SLOTS):
+            if datetime(d.year, d.month, d.day, h, 0, tzinfo=_MYT) > now:
+                t = f"{h % 12 or 12}{'am' if h < 12 else 'pm'}"
+                return t if ahead == 0 else f"tomorrow {t}"
+    return ""
+
+
 async def _acks_for(user_email: str) -> dict[tuple[str, int], datetime]:
     rows = await db.fetch_all("SELECT kind, item_id, acked_at FROM due_reminder_acks WHERE LOWER(user_email) = %s", (user_email.lower(),))
     return {(r[0], r[1]): r[2] for r in rows}

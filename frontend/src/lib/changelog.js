@@ -18,6 +18,13 @@
 export const CHANGELOG = [
   {
     date: "2026-09-25",
+    title: "Urgent TN reminders at 10am, 2pm and 5pm",
+    points: [
+      "A tracking number assigned to you rings the bell straight away. Once you pick In progress, the bell stays quiet and rings again at the next reminder -- 10am, 2pm or 5pm every day -- until you pick In progress again or close it (this replaces the old 1-hour reminder). Each row shows when the next reminder is.",
+    ],
+  },
+  {
+    date: "2026-09-25",
     title: "A bell for What's new",
     points: [
       "A red bell shows on Settings (and on Guide → What's new) when there are updates you haven't read. It clears as soon as you open What's new, and updates you haven't seen yet are tagged NEW.",
@@ -59,7 +66,7 @@ export const CHANGELOG = [
     title: "Urgent TN: assign a PIC",
     points: [
       "Start typing a teammate's name or email when you track a tracking number and pick them from the suggestions (they must already be a dashboard user), with an optional note.",
-      "They see a red bell on the Urgent TN tab. They pick In progress (the bell goes quiet for an hour, then reminds them if it isn't closed) or Closed (the bell stays off and it stays on their list marked closed), and can type a reply that you see.",
+      "They see a red bell on the Urgent TN tab. They pick In progress (the bell goes quiet until the next 10am / 2pm / 5pm reminder, then rings again if it isn't closed) or Closed (the bell stays off and it stays on their list marked closed), and can type a reply that you see.",
       "You can assign the same tracking number to several PICs (\"Assign another PIC\") without touching the ones who already have it, and a PIC can pass it on to someone else while keeping their own copy.",
       "When you close or remove it, it disappears from their list too, whatever its status. You can tick several tracking numbers and remove them all at once.",
       "A tracking number with no status (not found) is never assigned to a PIC -- there's nothing to chase. It stays on your own list and is removed automatically after 1 day if it still has no status.",

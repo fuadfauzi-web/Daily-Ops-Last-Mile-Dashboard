@@ -330,8 +330,8 @@ const SECTIONS = [
               The tab shows a red bell with a number for them, and the item is marked NEW.
             </>,
             <>
-              The <strong>PIC</strong> picks <strong>In progress</strong> (acknowledges it: the bell goes quiet, and comes back after 1 hour if it
-              still isn't closed) or <strong>Closed</strong> (the bell stays off and the item stays on their list, marked closed). They can also
+              The <strong>PIC</strong> picks <strong>In progress</strong> (acknowledges it: the bell goes quiet, and rings again at the next
+              reminder -- <strong>10am, 2pm or 5pm</strong> -- if it still isn't closed) or <strong>Closed</strong> (the bell stays off and the item stays on their list, marked closed). They can also
               type a <strong>Reply</strong> the owner sees.
             </>,
             <>
@@ -374,7 +374,7 @@ const SECTIONS = [
               it is due within 2 days (or overdue), and <strong>once a day at 2pm</strong> while it is further away. It applies to Email / Gchat,
               Task Assigned and the To Do List.
             </>,
-            <><strong>Urgent TN</strong>: tracking numbers you want to keep an eye on, optionally assigned to a PIC (see the Urgent TN section).</>,
+            <><strong>Urgent TN</strong>: tracking numbers you want to keep an eye on, optionally assigned to a PIC (see the Urgent TN section). A PIC's bell rings on the same 10am / 2pm / 5pm schedule until they acknowledge or close it.</>,
             <>
               <strong>Email / Gchat</strong>: emails or chats you want to follow up again. Give each a due date, the <em>contact</em> (the person
               the email or chat is with -- the sender or recipient) and, if you like, a link. You can assign a <em>PIC</em> -- another dashboard
@@ -461,7 +461,7 @@ const FAQS = [
   { q: "Why does a tracking number show \"Not found\" in Urgent TN?", a: "Urgent TN looks parcels up in the same active dataset Station Health uses. A parcel that's already completed or added to a shipment is no longer in it." },
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
   { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
-  { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet for an hour and returns if it isn't closed) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
+  { q: "I'm the PIC on a tracking number -- what do I do?", a: "Open the Urgent TN tab. Pick In progress to acknowledge it (the bell stays quiet until the next reminder at 10am, 2pm or 5pm and returns if it isn't closed) or Closed when it's done, and use Reply to tell the person who assigned it what's happening." },
   { q: "How do I get reminded to follow up an email or Gchat?", a: "Task List -> Email / Gchat: add it with a due date (and a helper if you want someone to remind you or reply for you). The bell rings when it's due or overdue.", show: () => F.taskList },
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
