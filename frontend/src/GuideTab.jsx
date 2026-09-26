@@ -323,7 +323,7 @@ const SECTIONS = [
       <div className="space-y-2 text-sm text-slate-700">
         <p>
           Five sub-tabs. <strong>Missing Details</strong> shows open missing-parcel tickets by Region / Zone / Station (Hub / Ship In / Other / Total) plus the
-          full TN list with COD value and item description. Rows shaded red are at or above the high-value COD threshold or match
+          full TN list with COD value and item description; the TN table has a <strong>Type</strong> filter (Hub, Driver/Rider, Ship In, Ship Out, Other -- pick more than one; everything except Other is on to begin with). Rows shaded red are at or above the high-value COD threshold or match
           a high-value keyword{"  "}(both editable in Recovery Settings by an admin or manager).
         </p>
         <Bullets

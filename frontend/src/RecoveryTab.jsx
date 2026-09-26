@@ -10,6 +10,10 @@ import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 
+// Missing Details' tracking-number table can be narrowed by Type (Fleet Manager, 2026-09-26): pick more than one; every type except Other is on to begin with.
+const TN_TYPES = ["Hub", "Driver/Rider", "Ship In", "Ship Out", "Other"];
+const DEFAULT_TN_TYPES = TN_TYPES.filter((t) => t !== "Other");
+
 const SUB_TABS = [
   { key: "missing", label: "Missing Details" },
   { key: "active", label: "Active Missing" },
@@ -70,6 +74,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   const [tnSortDir, setTnSortDir] = useState("desc");
   const [tnStationFilter, setTnStationFilter] = useState([]);
   const [highValueOnly, setHighValueOnly] = useState(false);
+  const [typeFilter, setTypeFilter] = useState(DEFAULT_TN_TYPES);
   const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
@@ -112,8 +117,14 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
     [baseTnRows]
   );
 
+  const typeOptions = useMemo(
+    () => TN_TYPES.map((t) => ({ value: t, label: `${t} (${baseTnRows.filter((r) => r.type === t).length.toLocaleString()})` })),
+    [baseTnRows]
+  );
+
   const filteredTnRows = useMemo(() => {
     let rows = baseTnRows;
+    if (typeFilter.length) rows = rows.filter((r) => typeFilter.includes(r.type)); // nothing picked = every type
     if (highValueOnly) rows = rows.filter((r) => r.is_high_value);
     // A second, table-local station filter -- independent of the shared search
     // box above -- so a Manager/Region user can narrow just this TN list to one
@@ -126,7 +137,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [baseTnRows, tnSortKey, tnSortDir, highValueOnly, tnStationFilter]);
+  }, [baseTnRows, tnSortKey, tnSortDir, highValueOnly, tnStationFilter, typeFilter]);
 
   const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
   const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
@@ -222,6 +233,9 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
         title="Tracking numbers"
         titleExtra={
           <div className="flex flex-wrap items-center gap-3">
+            <div className="w-40" title="Type -- pick more than one; everything except Other to begin with">
+              <MultiSelect options={typeOptions} value={typeFilter} onChange={setTypeFilter} placeholder="All types" />
+            </div>
             <div className="w-48">
               <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
             </div>

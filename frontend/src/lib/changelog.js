@@ -18,6 +18,13 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
+    title: "Recovery: filter Missing Details by Type",
+    points: [
+      "The tracking-number table on Recovery → Missing Details has a Type filter: pick one or more of Hub, Driver/Rider, Ship In, Ship Out and Other. Everything except Other is picked to begin with; clear the box to see every type.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Recovery: Active Missing, Lost Declared This Week and Lost Declared Summary",
     points: [
       "Four new sub-tabs on Recovery, replacing the Active Missing Google Sheet. B2B Document Active Missing is the same list and the same answers for the B2B documents (MYRDO / MYPSO / -DO) that Active Missing leaves out. Active Missing lists the open missing tracking numbers in your access (Ship Out and the B2B documents left out) and you answer for your own -- ticket updated to In Progress?, parcel found?, customer contacted / received?, liable party, remarks, check by; it saves as you go. A tracking number that is settled drops off by itself, answers included, even if nobody answered it.",
