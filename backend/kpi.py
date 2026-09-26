@@ -19,6 +19,7 @@ from pydantic import BaseModel
 import kpi_data as kd
 import kpi_targets
 import metabase_client as mb
+import region_list
 from auth import CurrentUser, get_current_user
 from stations import ABBR_TO_HUB, HUBS
 
@@ -267,6 +268,7 @@ class UploadInfo(BaseModel):
     label: str
     hint: str
     link: str | None = None  # where to download the file (the Metabase question)
+    link_label: str | None = None  # the link's text when it is not a Metabase question
     filename: str | None = None
     row_count: int | None = None
     uploaded_by: str | None = None
@@ -278,7 +280,7 @@ async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
     """Which datasets have an uploaded file (for the KPI page's Data upload panel)."""
     current = await kd.list_uploads()
     return [
-        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], "link": spec.get("link"), **current.get(name, {})}
+        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], "link": spec.get("link"), "link_label": spec.get("link_label"), **current.get(name, {})}
         for name, spec in kd.DATASETS.items()
     ]
 
@@ -301,6 +303,8 @@ async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUs
     except Exception:  # noqa: BLE001
         log.exception("KPI upload failed")
         raise HTTPException(status_code=503, detail="Couldn't store the file right now -- try again")
+    if dataset == "region_list":
+        await region_list.ensure_fresh(force=True)  # the new station list is in use at once
     return {"ok": True, "detail": f"{kd.DATASETS[dataset]['label']}: {info['row_count']:,} rows loaded"}
 
 
@@ -310,6 +314,8 @@ async def kpi_upload_delete(dataset: str, user: CurrentUser = Depends(get_curren
     if dataset not in kd.DATASETS:
         raise HTTPException(status_code=404, detail="Unknown dataset")
     await kd.delete_upload(dataset)
+    if dataset == "region_list":
+        await region_list.ensure_fresh(force=True)  # back to the sheet link, or to the list built into the app
     return {"ok": True, "detail": "Upload removed"}
 
 

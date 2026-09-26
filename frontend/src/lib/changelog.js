@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
+    title: "Admin: the station list follows the Region List sheet",
+    minRank: 3,
+    points: [
+      "A new Station List tab on the Admin page. The stations (hub code, station, zone, region) now come from the team's Region List sheet instead of being fixed in the app: paste the sheet's published CSV link (File → Share → Publish to web → the Region tab → CSV) and the app re-reads it every hour, or upload the sheet as a file. Only Active / Virtual stations in the five regions count; Closed, SAMEDAY and NO HUB rows are left out.",
+      "The list built into the app now matches the sheet too: 8 Sarawak stations were added to East Malaysia (Kuching, Batu Kawa, Petra Jaya, Samarahan, Sibu, Saratok, Bintulu, Miri) -- 151 stations in all. East Malaysia stays out of the KPI pages unless it is switched on in KPI Settings.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Admin: KPI Settings -- targets and East Malaysia",
     minRank: 3,
     points: [

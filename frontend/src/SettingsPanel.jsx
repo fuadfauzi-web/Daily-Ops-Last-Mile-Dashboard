@@ -6,6 +6,7 @@ import TabBar from "./components/TabBar";
 import FeedbackPanel from "./FeedbackPanel";
 import GuideTab from "./GuideTab";
 import KpiTargetsPanel from "./KpiTargetsPanel";
+import RegionListPanel from "./RegionListPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
 
@@ -532,7 +533,7 @@ function DocumentsPanel() {
 // Two areas share this file (2026-09-25 feedback):
 //   Settings -- what any role may reach: Users (admin/manager/region), SLA Targets and Recovery
 //               Settings (admin/manager), plus Feedback and Guide (everyone).
-//   Admin    -- only what solely an admin can change (Documents, KPI Settings, Data Refresh); the Admin page
+//   Admin    -- only what solely an admin can change (Documents, Station List, KPI Settings, Data Refresh); the Admin page
 //               itself is admin-only.
 const SETTINGS_TABS = [
   { key: "users", label: "Users", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
@@ -541,6 +542,7 @@ const SETTINGS_TABS = [
   { key: "feedback", label: "Feedback", area: "settings", visible: () => true },
   { key: "guide", label: "Guide", area: "settings", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
   { key: "kpisettings", label: "KPI Settings", area: "admin", visible: (me) => me.role === "admin" },
   { key: "refresh", label: "Data Refresh", area: "admin", visible: (me) => me.role === "admin" },
 ];
@@ -773,6 +775,8 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       {adminTab === "guide" && <GuideTab me={me} />}
 
       {adminTab === "documents" && <DocumentsPanel />}
+
+      {adminTab === "stationlist" && isFullAdmin && <RegionListPanel me={me} />}
 
       {adminTab === "kpisettings" && isFullAdmin && <KpiTargetsPanel />}
 
