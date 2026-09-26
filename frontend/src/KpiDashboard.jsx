@@ -20,8 +20,8 @@ import { kpiTarget, kpiTargetText, useKpiTargets } from "./lib/kpiTargets";
 // KPI page (Beta). The OPEX team's dashboard shows the RESULT (a %); this page adds the Dashboard and shows WHY -- with the numbers and the tracking
 // numbers behind them. Two groups (menu names from the Fleet Manager, 2026-09-26):
 //   Dashboard      OPEX (the OPEX team's official result) and Trend (the team's WoW dashboard) -- Trend has Daily / Weekly / Monthly, only Weekly for now
-//   RCA analysis   one page per KPI, in this order: Hybrid, Prior, FIFO, D0, D3, T7, Lost, Complaint (Lost + Complaint will share their logic later),
-//                  then the Invalid POD and COD RTS pages
+//   RCA analysis   one page per KPI, in this order (Fleet Manager, 2026-09-26): Hybrid, Prior, FIFO D0, Completion D0, Completion D3, Terminal T7, COD RTS,
+//                  Lost, Invalid POD, Complaint (Lost + Complaint are "soon" and will share their logic later)
 // Data: uploaded files (admins, "Data upload") or Metabase where a question exists -- see backend/kpi.py, kpi_rca.py.
 
 const MODULES = [
@@ -33,10 +33,10 @@ const MODULES = [
   { key: "compD0", label: "Completion D0", group: "RCA analysis", live: true },
   { key: "compD3", label: "Completion D3", group: "RCA analysis", live: true },
   { key: "terminalT7", label: "Terminal T7", group: "RCA analysis", live: true },
-  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
-  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
-  { key: "invalidPod", label: "Invalid POD", group: "RCA analysis", live: true },
   { key: "codRts", label: "COD RTS", group: "RCA analysis", live: true },
+  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "invalidPod", label: "Invalid POD", group: "RCA analysis", live: true },
+  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
 ];
 
 const int = (v) => Math.round(v).toLocaleString();
