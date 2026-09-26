@@ -29,7 +29,9 @@ from pydantic import BaseModel
 import db
 import storage
 from kpi import router as kpi_router
+from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
+from kpi_targets import router as kpi_targets_router
 from kpi_pod import router as kpi_pod_router
 from kpi_rca import router as kpi_rca_router
 from tasklist import (
@@ -635,6 +637,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Daily Ops Last Mile Dashboard", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)  # the KPI payloads are large JSON (hundreds of KB) -- ~5-8x smaller on the wire
+app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)
+app.include_router(kpi_cisp_router)  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
 app.include_router(kpi_cod_router)  # KPI Dashboard: COD RTS RCA views (kpi_cod.py, staging)
 app.include_router(kpi_pod_router)  # KPI Dashboard: Invalid POD RCA + LM POD Performance (kpi_pod.py, staging)
 app.include_router(kpi_rca_router)  # KPI Dashboard RCA views: Invalid POD, COD RTS, Weekly KPI results (kpi_rca.py, staging)

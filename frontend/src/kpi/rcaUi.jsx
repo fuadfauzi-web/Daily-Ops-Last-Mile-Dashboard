@@ -100,7 +100,7 @@ const dayLabel = (d) => `${Number(d.slice(8))}/${Number(d.slice(5, 7))}`;
 // The date trend: per-day lines for a few regions / zones / stations / drivers (or reasons) picked from a list -- by default the top ones.
 //   levels   [{ key, label }]              load(level, keys) -> { has_data, days, all, series: [{ key, label, ...arrays }], options: [{ key, label, ... }] }
 //   metrics  [{ key, label, value: (series, i) => number | null, fmt, zeroBased }]   what one line shows per day
-export function TrendPanel({ levels, load, metrics, filterKey, note }) {
+export function TrendPanel({ levels, load, metrics, filterKey, note, targetLine }) {
   const [level, setLevel] = useState(levels[0].key);
   const [keys, setKeys] = useState([]);
   const [metricKey, setMetricKey] = useState(metrics[0].key);
@@ -126,7 +126,16 @@ export function TrendPanel({ levels, load, metrics, filterKey, note }) {
     values: days.map((_d, i) => metric.value(s, i)),
     format: metric.fmt,
   }));
-  const options = (data.options || []).map((o) => ({ value: o.key, label: `${o.label}${o.invalid != null ? ` · ${int(o.invalid)}` : o.count != null ? ` · ${int(o.count)}` : ""}` }));
+  // dashed "Target" line(s) across the days, when the page has one: a number, or several when the targets differ by region (one line per distinct target)
+  const tl = targetLine ? targetLine(data, metric) : null;
+  const targets = (Array.isArray(tl) ? tl : [tl]).filter((v) => v != null);
+  targets.forEach((v) =>
+    lines.push({ key: `__target__${v}`, name: targets.length > 1 ? `Target ${metric.fmt(v)}` : "Target", tone: "good", dashed: true, zeroBased: metric.zeroBased, values: days.map(() => v), format: metric.fmt })
+  );
+  const options = (data.options || []).map((o) => ({
+    value: o.key,
+    label: `${o.label}${o.invalid != null ? ` · ${int(o.invalid)}` : o.count != null ? ` · ${int(o.count)}` : o.rate != null ? ` · ${o.rate}%` : ""}`,
+  }));
   const picked = keys.length ? keys : data.series.map((s) => s.key);
 
   return (
