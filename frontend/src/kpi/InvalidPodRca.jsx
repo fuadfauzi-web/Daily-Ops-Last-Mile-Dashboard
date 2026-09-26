@@ -134,12 +134,11 @@ export default function InvalidPodRca({ me }) {
       {showUpload && <KpiUploadPanel kpi="invalid_pod" me={me} onChanged={load} />}
       {tab !== "perf" && !data.has_data ? (
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-          <div className="font-display text-base font-semibold text-ink">No POD validation data uploaded yet</div>
+          <div className="font-display text-base font-semibold text-ink">No POD validation data {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">
-            Download the POP/POD Validation Tasks Raw Data from Metabase (link in the upload panel) or use the POD Validation Analysis file -- the whole workbook is fine, its Raw sheet is
-            used -- and this page breaks the invalid POD % down by station, driver, reason and day.
+            {canUpload ? "Download the POP/POD Validation Tasks Raw Data from Metabase (link in the upload panel) or use the POD Validation Analysis file -- the whole workbook is fine, its Raw sheet is used -- and " : "Once it is loaded, "}
+            this page breaks the invalid POD % down by station, driver, reason and day.
           </p>
-          {!canUpload && <p className="mt-2 text-xs text-slate-400">Admins upload the data.</p>}
         </div>
       ) : (
         <>
@@ -602,10 +601,10 @@ function PodPerformance({ me }) {
     return (
       <div className="space-y-3">
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-          <div className="font-display text-base font-semibold text-ink">No LM POD Performance workbook uploaded yet</div>
+          <div className="font-display text-base font-semibold text-ink">No LM POD Performance workbook {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">
-            This is the weekly POD performance view for managers and admins: every station, driver and OPS route, judged on the final result after the audit. Upload the LM POD Performance
-            workbook (its RAW DATA sheet is used) to see it.
+            This is the weekly POD performance view for managers and admins: every station, driver and OPS route, judged on the final result after the audit.
+            {canUpload ? " Upload the LM POD Performance workbook (its RAW DATA sheet is used) to see it." : ""}
           </p>
         </div>
         <KpiUploadPanel kpi="invalid_pod" me={me} onChanged={() => setReload((n) => n + 1)} />

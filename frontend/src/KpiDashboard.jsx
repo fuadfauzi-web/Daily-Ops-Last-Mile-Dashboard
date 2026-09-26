@@ -131,7 +131,7 @@ function ComingSoon({ label, note }) {
     <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
       <div className="font-display text-base font-semibold text-ink">{label}</div>
       <p className="mt-2">
-        {note || "Not built yet. This will be added once its Metabase question and logic are set up -- the layout (controls, cards, tables and charts) is the same as the other KPI pages."}
+        {note || "Not built yet. This will be added once its logic is set up -- the layout (controls, cards, tables and charts) is the same as the other KPI pages."}
       </p>
     </div>
   );
@@ -740,11 +740,17 @@ function HybridProductivity({ me }) {
       <div className="space-y-3">
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
           <div className="font-display text-base font-semibold text-ink">No Hybrid Productivity data yet</div>
-          <p className="mt-2">
-            The data comes from the Metabase questions "Hybrid Weekly / Monthly / Daily Apps - All Regions" (127194, 127195, 127196) and "Hybrid Data Current Year - All Regions" (127193). While the app's own Metabase link is being
-            sorted out, an admin can <strong>upload the downloaded files</strong> below -- that works today and is used instead of Metabase until removed.
-          </p>
-          {data.error && <p className="mt-2 rounded-lg bg-red-50 p-2 text-status-critical">Metabase said: {data.error}</p>}
+          {canUpload ? (
+            <>
+              <p className="mt-2">
+                The data comes from the Metabase questions "Hybrid Weekly / Monthly / Daily Apps - All Regions" (127194, 127195, 127196) and "Hybrid Data Current Year - All Regions" (127193). While the app's own Metabase link is being
+                sorted out, you can <strong>upload the downloaded files</strong> below -- that works today and is used instead of Metabase until removed.
+              </p>
+              {data.error && <p className="mt-2 rounded-lg bg-red-50 p-2 text-status-critical">Metabase said: {data.error}</p>}
+            </>
+          ) : (
+            <p className="mt-2">It shows here once the data is loaded.</p>
+          )}
         </div>
         <KpiUploadPanel kpi="hybrid" me={me} onChanged={() => load(false)} />
         {me.role === "admin" && (

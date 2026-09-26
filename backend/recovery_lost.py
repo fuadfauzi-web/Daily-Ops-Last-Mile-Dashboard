@@ -457,12 +457,14 @@ async def lost_view(user: CurrentUser, view: str, week: str | None) -> dict:
     base.sort(key=lambda d: (d["resolution_date"] or "", d["tracking_number"]), reverse=True)
     uploads = await kd.list_uploads()
     up = uploads.get("lost_declared") if status == "week" else None
+    if up is not None and user.role != "admin":
+        up = {"uploaded_at": up.get("uploaded_at")}  # how fresh it is, nothing about where it comes from
     top_hidden = sorted(hidden.items(), key=lambda kv: -kv[1])
     return {
         "view": status, "rows": base[:ROWS_CAP], "total": len(base), "truncated": len(base) > ROWS_CAP,
-        "weeks": week_list, "week": chosen, "can_edit": user.role in LOST_EDIT_ROLES, "upload": up, "status_upload": uploads.get("lost_current_status"),
+        "weeks": week_list, "week": chosen, "can_edit": user.role in LOST_EDIT_ROLES, "upload": up, "status_upload": uploads.get("lost_current_status") if user.role == "admin" else None,
         "not_shown": {"count": sum(hidden.values()), "hubs": [h for h, _n in top_hidden[:4]]} if user.scope_type == "all" and hidden else None,
-        "can_upload": user.role in ("admin", "manager"),
+        "can_upload": user.role == "admin",
         "options": {"customer_received": YES_NO, "liable_party": LIABLE_LOST},
         "move": {"weekday": "Monday", "hour": MOVE_HOUR},
     }

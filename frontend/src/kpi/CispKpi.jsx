@@ -23,7 +23,7 @@ const NOTE = {
   d0: "Completion D0: TNs measured at D0 (n0 measured) that met it (n0 met). Cut-off date for the calculation, start-clock date for the trend.",
   d3: "Completion D3: TNs measured at D3 (n3 measured) that met it (n3 met) after 0 / 1 / 2 / 3 days. Cut-off date for the calculation, start-clock date for the trend.",
   t7: "Terminal T7: TNs past their N7 cut-off that met it (n7 met), by last-mile start-clock date.",
-  fifo: "FIFO D0: the parcel was attempted at D0 (from the Metabase FIFO D0 question, one period per file).",
+  fifo: "FIFO D0: the parcel was attempted at D0 (one period per file).",
 };
 const OPEX_KEY = { prior: "prior", d0: "d0_d2", d3: "d3", t7: "d7", fifo: "fifo" }; // what the OPEX dashboard calls each one
 const OPEX_NAME = { prior: "Priority", d0_d2: "D0/D2", d3: "D3", d7: "D7", fifo: "FIFO" };
@@ -117,13 +117,12 @@ export default function CispKpi({ me, kpi }) {
     return (
       <div className="space-y-3">
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-          <div className="font-display text-base font-semibold text-ink">No {label} data uploaded yet</div>
+          <div className="font-display text-base font-semibold text-ink">No {label} data {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">{NOTE[kpi]}</p>
           <p className="mt-2">
-            The data comes from a small Metabase file: open the question from the upload panel below, download the results as CSV, and upload it here (admins). The official {label} number is on the{" "}
+            {canUpload && "The data comes from a small Metabase file: open the question from the upload panel below, download the results as CSV, and upload it here. "}The official {label} number is on the{" "}
             <strong>Dashboard → OPEX</strong> page.
           </p>
-          {!canUpload && <p className="mt-2 text-xs text-slate-400">Admins upload the data.</p>}
         </div>
         <KpiUploadPanel kpi={GROUP[kpi]} me={me} onChanged={() => setReload((n) => n + 1)} />
         <OpexOfficial opexKey={OPEX_KEY[kpi]} label={label} />
@@ -232,7 +231,7 @@ export default function CispKpi({ me, kpi }) {
             ]}
           />
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
-            {NOTE[kpi]} Built from a Metabase feeder file with provisional exclusions -- the official number is the OPEX result below.
+            {NOTE[kpi]} Built from feeder files with provisional exclusions -- the official number is the OPEX result below.
             {rank >= 2 && data.not_counted?.hubs > 0 && (
               <div className="mt-1 text-slate-600">
                 <span className="font-semibold">Not counted:</span> {int(data.not_counted.hubs)} hub{data.not_counted.hubs === 1 ? "" : "s"} in the file {data.not_counted.hubs === 1 ? "is" : "are"} not

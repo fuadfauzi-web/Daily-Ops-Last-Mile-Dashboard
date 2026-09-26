@@ -10,7 +10,8 @@ nobody touched follows the code. Reading is synchronous (target_for) from a smal
 (and at once after a save); version() changes whenever a number or a setting does, so cached views can tell.
 
 Settings (kpi_settings table, V41): include_east_malaysia -- default OFF: the KPI pages are for Last Mile stations and East Malaysia is Retail, so its
-stations / regions are left out of every KPI page until an admin switches it on.
+stations / regions are left out of every KPI page until an admin switches it on. include_sarawak -- default OFF (Fleet Manager, 2026-09-26: "Sarawak stays out of the
+KPI pages for now"): the Sarawak stations (zones East Malaysia 3 and 4) stay out even when East Malaysia itself is switched on, until an admin includes them too.
 """
 import logging
 import math
@@ -29,6 +30,7 @@ router = APIRouter()
 REGIONS = ["Klang Valley", "Northern", "Southern", "East Coast", "East Malaysia"]
 FALLBACK_REGION = "Klang Valley"  # a station whose region is unknown is judged like the standard (Klang Valley / Northern / Southern) targets
 EAST_MALAYSIA = "East Malaysia"
+SARAWAK_ZONES = ("East Malaysia 3", "East Malaysia 4")  # Kuching, Batu Kawa, Petra Jaya, Samarahan (3); Sibu, Saratok, Bintulu, Miri (4)
 
 
 def _same(v: float | None) -> dict[str, float | None]:
@@ -54,7 +56,7 @@ KPI_TARGETS = {k: (v[0], v[1], v[2], v[3] if len(v) > 3 else "pct") for k, v in 
 # the Weekly Dashboard's own keys (Dashboard WoW sheet columns) -> the keys above
 WEEKLY_KEYS = {"fifo_d0": "fifo", "d0": "d0", "d3": "d3", "t7": "t7", "prior": "prior", "lost": "lost", "complaint": "complaint", "cod_rts": "cod_rts", "invalid_pod": "invalid_pod"}
 
-SETTING_DEFAULTS = {"include_east_malaysia": False}
+SETTING_DEFAULTS = {"include_east_malaysia": False, "include_sarawak": False}
 
 _TTL_SECONDS = 30
 _MAX = {"pct": 100.0, "number": 100000.0}
@@ -89,9 +91,28 @@ def include_east_malaysia() -> bool:
     return _settings["include_east_malaysia"]
 
 
+def include_sarawak() -> bool:
+    """Whether the KPI pages count the Sarawak stations (default no -- and never while East Malaysia itself is left out)."""
+    return _settings["include_sarawak"]
+
+
 def excluded_region(region: str | None) -> bool:
     """True for a region the KPI pages leave out right now."""
     return (region or "").strip().lower() == EAST_MALAYSIA.lower() and not include_east_malaysia()
+
+
+def is_sarawak_zone(zone: str | None) -> bool:
+    return (zone or "").strip().lower() in {z.lower() for z in SARAWAK_ZONES}
+
+
+def excluded_place(region: str | None, zone: str | None) -> bool:
+    """True for a station / zone / region the KPI pages leave out right now: East Malaysia while it is switched off, Sarawak while it is."""
+    return excluded_region(region) or (is_sarawak_zone(zone) and not include_sarawak())
+
+
+def scope_flags() -> tuple:
+    """Part of every KPI view's cache key: what the two switches say."""
+    return (include_east_malaysia(), include_sarawak())
 
 
 def version() -> int:
@@ -147,7 +168,8 @@ class TargetsIn(BaseModel):
 
 
 class SettingsIn(BaseModel):
-    include_east_malaysia: bool
+    include_east_malaysia: bool | None = None
+    include_sarawak: bool | None = None
 
 
 def _view() -> dict:
@@ -163,7 +185,7 @@ def _view() -> dict:
             }
             for k, (label, d, by, unit) in KPI_TARGETS.items()
         ],
-        "settings": {"include_east_malaysia": include_east_malaysia()},
+        "settings": {"include_east_malaysia": include_east_malaysia(), "include_sarawak": include_sarawak()},
         "settings_changed_by": (_settings_changed.get("include_east_malaysia") or (None, None))[0],
         "settings_changed_at": (_settings_changed.get("include_east_malaysia") or (None, None))[1],
         "last_changed_by": last[0] if last else None,
@@ -207,14 +229,18 @@ async def put_kpi_targets(payload: TargetsIn, user: CurrentUser = Depends(get_cu
 
 @router.put("/api/kpi/settings")
 async def put_kpi_settings(payload: SettingsIn, user: CurrentUser = Depends(get_current_user)):
-    """Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off)."""
+    """Admin only: switch KPI settings -- whether the KPI pages count East Malaysia and whether they count Sarawak (both default off; Retail, not Last Mile)."""
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    await db.execute("DELETE FROM kpi_settings WHERE setting_key=%s", ("include_east_malaysia",))
-    if payload.include_east_malaysia != SETTING_DEFAULTS["include_east_malaysia"]:  # only a difference from the default is kept
-        await db.execute(
-            "INSERT INTO kpi_settings (setting_key, setting_value, changed_by, changed_at) VALUES (%s, %s, %s, %s)",
-            ("include_east_malaysia", "1" if payload.include_east_malaysia else "0", user.email, datetime.now(timezone.utc)),
-        )
+    for key in SETTING_DEFAULTS:
+        value = getattr(payload, key, None)
+        if value is None:
+            continue  # not sent: left as it is
+        await db.execute("DELETE FROM kpi_settings WHERE setting_key=%s", (key,))
+        if value != SETTING_DEFAULTS[key]:  # only a difference from the default is kept
+            await db.execute(
+                "INSERT INTO kpi_settings (setting_key, setting_value, changed_by, changed_at) VALUES (%s, %s, %s, %s)",
+                (key, "1" if value else "0", user.email, datetime.now(timezone.utc)),
+            )
     await ensure_fresh(force=True)
     return {"ok": True, **_view(), "can_edit": True}
