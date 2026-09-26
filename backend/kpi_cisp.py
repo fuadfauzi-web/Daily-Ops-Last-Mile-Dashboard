@@ -6,13 +6,17 @@ that come out of Metabase (station by start-clock day counts). Their exclusions 
 little from the official one. When the Metabase API access exists the app will pull the same numbers itself instead of taking an upload.
 
 Feeder files (Metabase questions in the Fleet Manager's collection; CSV or Excel):
-  cisp_prior       127199  Dest Hub Name, Working Start Clock Date: Day, Measured, Met     (PRE-tagged TNs, open PETs excluded; met = completion_met_flag)
+  cisp_prior       127199  Dest Hub Name, Start Clock: Day, Measured, Met     (PRE-tagged TNs, open PETs excluded; met = completion_met_flag, which is judged on each TN's
+                           WORKING start clock date -- but the result and the trend are by START clock date (the day of start_clock), Fleet Manager 2026-09-26)
   cisp_completion  127200  Dest Hub Name, Last Mile Start Clock Date: Day, D0 Measured, D0 Met, D3 Measured, D3 Met
   cisp_terminal    127201  Dest Hub Name, Last Mile Start Clock Date: Day, T7 Measured, T7 Met  (TNs past their N7 cut-off)
   cisp_fifo        118041  the saved "(MY) LM CISP FIFO D0" question: per hub Total Orders, Total N0 Met, FIFO Target (one period, no days)
 
 Targets are per REGION (kpi_targets.py, the Fleet Manager's "New Target" table): a station, zone or region row is judged against its own region's target; a
 total that spans regions is judged against the blend of their targets (weighted by TNs measured) and says so.
+
+Only stations are counted: the real Prior feed (2026-09-26) also carries hubs that are not stations (C-RTM-* return hubs, CC-* cross-dock / cold-chain hubs -- 44 of 187
+hubs), so a row whose hub is not on the station reference list is left out of every view and counted instead (`not_counted`, shown to admins / managers on the page).
 
 Speed: an upload becomes a compact {(station, day): [measured, met]} once; every view is a pass over it, limited to the viewer's scope.
 """
@@ -67,12 +71,18 @@ def _builder(dataset: str):
         real: dict[str, str | None] = {}
         days: set[str] = set()
         snapshot: dict[str, dict] = {}  # FIFO: one row per hub, no days
+        ignored: dict[str, dict[str, float]] = {}  # hubs that are not stations -> {kpi: TNs measured}
         for r in rows:
             raw = _s(g(r, "desthubname"))
             if not raw:
                 continue
             code = _hub_code_from_code(raw)
-            ck = code or raw
+            if code is None:  # not a station (RTM / cross-dock / cold-chain hubs ...): not part of a station KPI, but counted so the page can say so
+                ign = ignored.setdefault(raw, {})
+                for k in keys:
+                    ign[k] = ign.get(k, 0.0) + _num(g(r, KPIS[k]["measured"]))
+                continue
+            ck = code
             if ck not in meta:
                 meta[ck] = _hub_meta(code, raw)
                 real[ck] = code
@@ -81,7 +91,7 @@ def _builder(dataset: str):
                 s["measured"] += _num(g(r, "totalorders"))
                 s["met"] += _num(g(r, "totaln0met"))
                 continue
-            day = kd.to_iso_day(g(r, "workingstartclockdate") or g(r, "lastmilestartclockdate"))
+            day = kd.to_iso_day(g(r, "startclock") or g(r, "lastmilestartclockdate"))
             if not day:
                 continue
             days.add(day)
@@ -89,7 +99,7 @@ def _builder(dataset: str):
                 cell = cells[k].setdefault((ck, day), [0.0, 0.0])
                 cell[0] += _num(g(r, KPIS[k]["measured"]))
                 cell[1] += _num(g(r, KPIS[k]["met"]))
-        return {"cells": cells, "snapshot": snapshot, "meta": meta, "real": real, "days": sorted(days), "vis": {}, "cache": {}}
+        return {"cells": cells, "snapshot": snapshot, "meta": meta, "real": real, "days": sorted(days), "ignored": ignored, "vis": {}, "cache": {}}
 
     return build
 
@@ -320,7 +330,13 @@ async def cisp_view(
         if len(cache) > 300:
             cache.clear()
         cache[ckey] = view
+    ign = data.get("ignored") or {}
+    not_counted = None
+    if user.scope_type == "all" and ign:  # only someone who sees everything is told what was left out
+        by_hub = sorted(((h, v.get(kpi, 0.0)) for h, v in ign.items()), key=lambda kv: -kv[1])
+        not_counted = {"hubs": len(by_hub), "measured": int(sum(m for _h, m in by_hub)), "examples": [h for h, _m in by_hub[:5]]}
     return {
+        "not_counted": not_counted,
         "has_data": True, "kpi": kpi, "label": spec["label"], "snapshot": spec["snapshot"], "targets": targets_for(kpi), "opex_key": spec["opex"], "meta": meta_file,
         "options": _options(data, user), "range": {"from": data["days"][0], "to": data["days"][-1]} if data["days"] else None, "tab": tab, **cache[ckey],
     }

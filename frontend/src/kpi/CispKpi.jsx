@@ -19,7 +19,7 @@ const pctFmt = (v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`;
 const pp = (v) => (v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)} pp`);
 const GROUP = { prior: "prior", d0: "completion", d3: "completion", t7: "terminal", fifo: "fifo" };
 const NOTE = {
-  prior: "Prior KPI: PRE-tagged TNs; met = completed on the working start-clock day; TNs with an open PETs ticket are not counted yet. Trend by start-clock date.",
+  prior: "Prior KPI: PRE-tagged TNs; each TN is measured against its working start-clock date (met = completed that day; PETs pause and restart the clock), while the result and the trend are by start-clock date. TNs with an open PETs ticket are not counted yet.",
   d0: "Completion D0: TNs measured at D0 (n0 measured) that met it (n0 met). Cut-off date for the calculation, start-clock date for the trend.",
   d3: "Completion D3: TNs measured at D3 (n3 measured) that met it (n3 met) after 0 / 1 / 2 / 3 days. Cut-off date for the calculation, start-clock date for the trend.",
   t7: "Terminal T7: TNs past their N7 cut-off that met it (n7 met), by last-mile start-clock date.",
@@ -233,6 +233,12 @@ export default function CispKpi({ me, kpi }) {
           />
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
             {NOTE[kpi]} Built from a Metabase feeder file with provisional exclusions -- the official number is the OPEX result below.
+            {rank >= 2 && data.not_counted?.hubs > 0 && (
+              <div className="mt-1 text-slate-600">
+                <span className="font-semibold">Not counted:</span> {int(data.not_counted.hubs)} hub{data.not_counted.hubs === 1 ? "" : "s"} in the file {data.not_counted.hubs === 1 ? "is" : "are"} not
+                station{data.not_counted.hubs === 1 ? "" : "s"} on the station list (e.g. {data.not_counted.examples.join(", ")}), {int(data.not_counted.measured)} TNs.
+              </div>
+            )}
             <div className="mt-1 text-slate-600">
               <span className="font-semibold">Target by region:</span>{" "}
               {Object.entries(data.targets || {}).map(([r, v]) => `${r} ${pctFmt(v)}`).join(" · ")}. Every row is judged against its own region's target{mixed ? "; the total against the blend of the regions in view" : ""}.
