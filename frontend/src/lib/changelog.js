@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
+    title: "KPI: weekly, monthly or daily",
+    points: [
+      "Prior KPI, FIFO D0, Completion D0, Completion D3, Terminal T7, COD RTS and Invalid POD now have a View (Weekly / Monthly / Daily) and a Period, like Hybrid Productivity, instead of the last 7 days. A week is Monday to Sunday and numbered like the team's sheets (last week is week 38); the page opens on the last complete week, Monthly on the last complete month and Daily on the current month. Any earlier week or month is one pick away, and the week or month in progress is there too, marked so far.",
+      "A new Day by day tab on Prior KPI, FIFO D0, Completion D0 / D3 and Terminal T7 shows every station's % met on every day of the period (green on target, red under it) with the period's total, so the past days of a week or month are always there. The trend is drawn per day, week or month -- the View sets which -- with week labels like W38.",
+      "The KPI feeders now hold the last 26 weeks, so the earlier weeks and months can be picked. FIFO D0 is now a station-by-day file too (Metabase question 127205) and has the same views, the grid and the trend. Invalid POD and COD RTS offer the weeks and months inside the uploaded file. Lost and Complaint are not built yet.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Recovery: filter Missing Details by Type",
     points: [
       "The tracking-number table on Recovery → Missing Details has a Type filter: pick one or more of Hub, Driver/Rider, Ship In, Ship Out and Other. Everything except Other is picked to begin with; clear the box to see every type.",

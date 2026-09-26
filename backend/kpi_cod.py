@@ -7,6 +7,10 @@ Data (uploads, or later Metabase): cod_rts_cod (the COD RTS parcels: hub, reason
 parcel size, FIFO N0, lost flag, days to the first attempt, before-a-first-attempt flag; the date the RTS was triggered is used when the
 file has it) and cod_rts_overall (all RTS parcels: reason, delivery attempts, COD value, date).
 
+Time (Fleet Manager, 2026-09-26): like Hybrid Productivity the page is read by WEEK (Monday-Sunday, week numbers like Excel's WEEKNUM(d, 2)), by MONTH or by DAY -- view +
+period (kpi_periods.py; the default is the last complete week of the days in the file), judged by the day the RTS was triggered. A file that holds several weeks (a month,
+a quarter) gives the weeks and months inside it; a file without dates has no periods and is shown whole.
+
 Speed: an upload becomes a compact list of tuples ONCE; each view is a pass over it, filtered to the viewer's scope, and the answers
 are cached per (scope, view, filters).
 """
@@ -16,6 +20,7 @@ import sys
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import kpi_data as kd
+import kpi_periods as kp
 from auth import CurrentUser, get_current_user
 import kpi_targets
 from kpi_rca import TN_ROWS_CAP, _hub_code_from_code, _hub_meta, _in_scope, _num, _s
@@ -167,6 +172,27 @@ def _top(rows: list[tuple], keyfn) -> tuple[str | None, int]:
         return None, 0
     k = max(counts.items(), key=lambda kv: (kv[1], str(kv[0])))
     return k[0], k[1]
+
+
+def _days(data: dict, overall: dict | None) -> list[str]:
+    """Every day the file(s) hold: the COD file's RTS-trigger days, else the overall file's."""
+    if data["has_day"]:
+        return sorted({r[DAY] for r in data["rows"] if r[DAY]})
+    if overall is not None and overall["has_day"]:
+        return sorted({r[ODAY] for r in overall["rows"] if r[ODAY]})
+    return []
+
+
+def _within(data: dict, overall: dict | None, rng: dict) -> tuple[dict, dict | None]:
+    """The two files cut to the period (the same visibility / cache objects are shared): the COD rows by their RTS day, the overall file by its own days when it has any."""
+    if not rng["from"]:
+        return data, overall
+    f, t = rng["from"], rng["to"]
+    d = {**data, "rows": [r for r in data["rows"] if r[DAY] and f <= r[DAY] <= t]} if data["has_day"] else data
+    o = overall
+    if overall is not None and overall["has_day"]:
+        o = {**overall, "rows": [r for r in overall["rows"] if r[ODAY] and f <= r[ODAY] <= t]}
+    return d, o
 
 
 def _options(data: dict, user: CurrentUser) -> dict:
@@ -336,8 +362,8 @@ def _parcels(data, ok):
     }
 
 
-def _trend(data, overall, ok, meta, level, keys, top, user, region, zone, hub):
-    """RTS parcels per day. The COD file's own dates when it has them, otherwise the overall RTS file's."""
+def _trend(data, overall, ok, meta, level, keys, top, user, region, zone, hub, grain="day", full_days=()):
+    """RTS parcels per day / week / month. The COD file's own dates when it has them, otherwise the overall RTS file's."""
     source = "cod"
     if data["has_day"]:
         rows = [(r[CK], r[REASON], r[DAY]) for r in data["rows"] if r[DAY] and ok(r[CK])]
@@ -352,18 +378,23 @@ def _trend(data, overall, ok, meta, level, keys, top, user, region, zone, hub):
     totals: dict[str, int] = {}
     labels: dict[str, str] = {}
     all_day: dict[str, int] = {}
+    def bucket(day: str) -> str:
+        return (kp.week_key(day) or day) if grain == "week" else day[:7] if grain == "month" else day
+
     for ck, reason, day in rows:
         m = meta[ck]
         key, label = (m["region"], m["region"]) if level == "region" else (m["zone"], m["zone"]) if level == "zone" else (reason, reason) if level == "reason" else (ck, m["name"])
         labels[key] = label
-        per.setdefault(key, {})[day] = per.get(key, {}).get(day, 0) + 1
+        b = bucket(day)
+        per.setdefault(key, {})[b] = per.get(key, {}).get(b, 0) + 1
         totals[key] = totals.get(key, 0) + 1
-        all_day[day] = all_day.get(day, 0) + 1
+        all_day[b] = all_day.get(b, 0) + 1
     days = sorted(all_day)
+    short, names = kp.trend_labels(grain, days, list(full_days))
     ranked = sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
     chosen = [k for k in keys if k in totals] or [k for k, _n in ranked[: max(1, min(top, 12))]]
     return {
-        "has_dates": True, "source": source, "level": level, "days": days,
+        "has_dates": True, "source": source, "level": level, "grain": grain, "days": days, "labels": short, "names": names,
         "all": {"key": "__all__", "label": "Everything in view", "count": [all_day.get(d, 0) for d in days]},
         "series": [{"key": k, "label": labels[k], "count": [per[k].get(d, 0) for d in days]} for k in chosen],
         "options": [{"key": k, "label": labels[k], "count": n} for k, n in ranked[:400]],
@@ -374,53 +405,66 @@ def _trend(data, overall, ok, meta, level, keys, top, user, region, zone, hub):
 
 @router.get("/api/kpi/cod-rts/view")
 async def kpi_cod_rts_view(
-    tab: str = "overview", region: str = "all", zone: str = "all", hub: str | None = None, reason: str | None = None, shipper: str | None = None,
-    level: str = "station", keys: list[str] = Query(default=[]), top: int = 5, user: CurrentUser = Depends(get_current_user),
+    tab: str = "overview", view: str = "weekly", period: str | None = None, grain: str = "day", region: str = "all", zone: str = "all", hub: str | None = None,
+    reason: str | None = None, shipper: str | None = None, level: str = "station", keys: list[str] = Query(default=[]), top: int = 5, user: CurrentUser = Depends(get_current_user),
 ):
+    """The COD RTS analysis for the period (view weekly / monthly / daily + period key; default the last complete week of the file's days; a file without dates is shown whole).
+    tab=trend draws the days of the period (grain day) or every week / month of the file."""
     if tab not in ("overview", "reasons", "shippers", "drivers", "timing", "parcels", "trend"):
         raise HTTPException(status_code=422, detail="Unknown tab")
-    if level not in ("region", "zone", "station", "reason"):
-        raise HTTPException(status_code=422, detail="level must be region, zone, station or reason")
+    if level not in ("region", "zone", "station", "reason") or grain not in ("day", "week", "month") or view not in kp.VIEWS:
+        raise HTTPException(status_code=422, detail="level must be region, zone, station or reason; grain day, week or month; view weekly, monthly or daily")
     got = await kd.load_compact("cod_rts_cod")
     if got is None:
         return {"has_data": False}
     meta_file, data = got
     og = await kd.load_compact("cod_rts_overall")
     overall = og[1] if og else None
-    ckey = (_scope_key(user), tab, region, zone, hub, reason, shipper, level, tuple(keys), top)
+    days = _days(data, overall)
+    picked = kp.resolve(days, view, period, None, None, None, None)
+    ckey = (_scope_key(user), tab, picked["from"], picked["to"], grain if tab == "trend" else None, region, zone, hub, reason, shipper, level, tuple(keys), top)
     cache = data["cache"]
     if ckey not in cache:
         ok = _picker(data, user, region, zone, hub)
         meta = data["meta"]
+        d, o = (data, overall) if (tab == "trend" and grain != "day") else _within(data, overall, picked)  # a week / month trend runs over the whole file
         if tab == "overview":
-            view = _overview(data, overall, ok, hub, region, zone, user)
+            body = _overview(d, o, ok, hub, region, zone, user)
         elif tab == "reasons":
-            view = _reasons(data, ok, reason, meta)
+            body = _reasons(d, ok, reason, meta)
         elif tab == "shippers":
-            view = _shippers(data, ok, shipper, meta)
+            body = _shippers(d, ok, shipper, meta)
         elif tab == "drivers":
-            view = _drivers(data, ok, meta)
+            body = _drivers(d, ok, meta)
         elif tab == "timing":
-            view = _timing(data, overall, ok, meta, user, region, zone, hub)
+            body = _timing(d, o, ok, meta, user, region, zone, hub)
         elif tab == "parcels":
-            view = _parcels(data, ok)
+            body = _parcels(d, ok)
         else:
-            view = _trend(data, overall, ok, meta, level, keys, top, user, region, zone, hub)
+            body = _trend(d, o, ok, meta, level, keys, top, user, region, zone, hub, grain, days)
         if len(cache) > 300:
             cache.clear()
-        cache[ckey] = view
-    return {"has_data": True, "meta": meta_file, "has_overall": overall is not None, "options": _options(data, user), "tab": tab, **cache[ckey]}
+        cache[ckey] = body
+    return {
+        "has_data": True, "meta": meta_file, "has_overall": overall is not None, "options": _options(data, user), "tab": tab, "view": picked["view"], "period": picked["period"],
+        "from": picked["from"] or None, "to": picked["to"] or None, "periods": kp.options(days), **cache[ckey],
+    }
 
 
 @router.get("/api/kpi/cod-rts/tns")
 async def kpi_cod_rts_tns(
     hub: str | None = None, reason: str | None = None, shipper: str | None = None, driver: str | None = None, region: str = "all", zone: str = "all",
-    user: CurrentUser = Depends(get_current_user),
+    view: str = "weekly", period: str | None = None, user: CurrentUser = Depends(get_current_user),
 ):
+    if view not in kp.VIEWS:
+        raise HTTPException(status_code=422, detail="view must be weekly, monthly or daily")
     got = await kd.load_compact("cod_rts_cod")
     if got is None:
         raise HTTPException(status_code=404, detail="No RTS file uploaded yet")
     _meta, data = got
+    og = await kd.load_compact("cod_rts_overall")
+    picked = kp.resolve(_days(data, og[1] if og else None), view, period, None, None, None, None)
+    data, _o = _within(data, None, picked)
     ok = _picker(data, user, region, zone, hub)
     meta = data["meta"]
     out = []

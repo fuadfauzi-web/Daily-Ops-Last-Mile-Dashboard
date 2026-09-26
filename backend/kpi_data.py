@@ -132,23 +132,23 @@ DATASETS: dict[str, dict] = {
     },
     "cisp_prior": {
         "kpi": "prior", "label": "Prior KPI (station by day)", "link": "https://metabase.ninjavan.co/question/127199",
-        "hint": "Metabase question 127199 (CISP Prior - station by START CLOCK day, last 35 days) -- Download results as .csv. PRE-tagged TNs only, open PETs excluded; each TN is measured on its working start clock date, the result is by start clock date; provisional exclusions until OPEX confirms",
+        "hint": "Metabase question 127199 (CISP Prior - station by START CLOCK day, last 26 weeks) -- Download results as .csv (the page reads it by week, month or day). PRE-tagged TNs only, open PETs excluded; each TN is measured on its working start clock date, the result is by start clock date; provisional exclusions until OPEX confirms",
         "sheet": None, "required": ["desthubname", "startclock", "measured", "met"],
     },
     "cisp_completion": {
         "kpi": "completion", "label": "Completion D0 + D3 (station by day)", "link": "https://metabase.ninjavan.co/question/127200",
-        "hint": "Metabase question 127200 (CISP Completion D0 + D3 - station by day, last 35 days) -- Download results as .csv; used by both Completion D0 and Completion D3. Provisional exclusions until OPEX confirms",
+        "hint": "Metabase question 127200 (CISP Completion D0 + D3 - station by day, last 26 weeks) -- Download results as .csv; used by both Completion D0 and Completion D3. Provisional exclusions until OPEX confirms",
         "sheet": None, "required": ["desthubname", "lastmilestartclockdate", "d0measured", "d0met", "d3measured", "d3met"],
     },
     "cisp_terminal": {
         "kpi": "terminal", "label": "Terminal T7 (station by day)", "link": "https://metabase.ninjavan.co/question/127201",
-        "hint": "Metabase question 127201 (CISP Terminal T7 - station by day, TNs past their N7 cut-off in the last 35 days) -- Download results as .csv. Provisional exclusions until OPEX confirms",
+        "hint": "Metabase question 127201 (CISP Terminal T7 - station by day, last 26 weeks, TNs past their N7 cut-off) -- Download results as .csv. Provisional exclusions until OPEX confirms",
         "sheet": None, "required": ["desthubname", "lastmilestartclockdate", "t7measured", "t7met"],
     },
     "cisp_fifo": {
-        "kpi": "fifo", "label": "FIFO D0 (per station, one period)", "link": "https://metabase.ninjavan.co/question/118041-my-lm-cisp-fifo-d0?FIFO_target=92&measured_date=past1weeks",
-        "hint": "Metabase question 118041 ((MY) LM CISP FIFO D0): pick the Measured Date (e.g. past 1 weeks), run it, then Download results as .csv -- one period per file",
-        "sheet": None, "required": ["desthubname", "totalorders", "totaln0met"],
+        "kpi": "fifo", "label": "FIFO D0 (station by day)", "link": "https://metabase.ninjavan.co/question/127205",
+        "hint": "Metabase question 127205 (CISP FIFO D0 - station by start clock day, last 26 weeks) -- Download results as .csv (the page reads it by week, month or day). Built on the Last Mile Push Off report without the third-party / DP-reservation exclusions of the saved FIFO question 118041, so a rate can differ a little from the official one",
+        "sheet": None, "required": ["desthubname"],
     },
     "lost_declared": {
         "kpi": "recovery", "label": "Lost declared this week (Recovery)", "link": "https://metabase.ninjavan.co/question/127203",

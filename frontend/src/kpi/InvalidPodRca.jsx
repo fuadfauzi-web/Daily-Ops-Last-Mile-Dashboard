@@ -8,7 +8,7 @@ import HBars from "./HBars";
 import KpiUploadPanel from "./KpiUploadPanel";
 import { kpiTarget, kpiTargetText, useKpiTargets } from "../lib/kpiTargets";
 import { groupBy, int, pct1, pctOf, selectClass } from "./fmt";
-import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
+import { Cards, Panel, PeriodControls, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
 
 // Invalid POD -- the RCA view (staging). Every failed delivery attempt is validated: FAILURE = the proof of delivery attempt was judged
 // invalid, SUCCESS = valid. The KPI is the invalid share (target under 25% by default, per region in Admin -> KPI Targets); this shows WHERE it comes from -- station, driver, reason, day --
@@ -18,6 +18,8 @@ import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from ".
 //   Date trend         invalid % / count per day for a region, zone, station or driver
 //   Reasons            each reason and which stations it comes from
 //   LM performance     the LM POD Performance workbook (audit + final result); managers and admins only
+// Time works like Hybrid Productivity (Fleet Manager, 2026-09-26): View = Weekly / Monthly / Daily and a Period (a Monday-Sunday week -- week 38 = last week --, a month or a month
+// day by day); the page opens on the last complete week of the file, and a file that holds several weeks gives the weeks and months inside it. The trend's grain follows the View.
 // Data: the POD validation Raw sheet (Metabase question 69573), uploaded here. Everything follows the viewer's scope.
 // The target is per region (Admin -> KPI Settings; 25% until someone changes it): a row is judged against its own region's, amber = within 5 points of it.
 const targetOf = (region) => kpiTarget("invalid_pod", region) ?? 25;
@@ -34,24 +36,36 @@ export default function InvalidPodRca({ me }) {
   const canUpload = me.role === "admin";
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState("overview");
-  const [week, setWeek] = useState("all");
+  const [view, setView] = useState("weekly");
+  const [period, setPeriod] = useState(null); // null = the view's default (the newest complete week / month, the current month for Daily)
+  const [grain, setGrain] = useState("week"); // the trend's grain follows the View
   const [region, setRegion] = useState("all");
   const [zone, setZone] = useState("all");
   const [hub, setHub] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
 
-  const load = () =>
-    api
-      .kpiInvalidPod()
+  const load = () => {
+    setLoading(true);
+    return api
+      .kpiInvalidPod({ view, period })
       .then((d) => {
         setData(d);
         setError(null);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  };
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, period]);
+  const pickView = (v) => {
+    setView(v);
+    setPeriod(null);
+    setGrain({ weekly: "week", monthly: "month", daily: "day" }[v]);
+  };
 
   const hubs = data?.hubs || [];
   const hubMeta = useMemo(() => new Map(hubs.map((h) => [h.code, h])), [hubs]);
@@ -87,16 +101,7 @@ export default function InvalidPodRca({ me }) {
 
   const filters = data.has_data && tab !== "perf" && (
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
-      {data.weeks.length > 1 && (
-        <select className={selectClass} value={week} onChange={(e) => setWeek(e.target.value)} aria-label="Week">
-          <option value="all">All weeks</option>
-          {data.weeks.map((w) => (
-            <option key={w.key} value={w.key}>
-              {w.label}
-            </option>
-          ))}
-        </select>
-      )}
+      {data.periods?.weekly?.length > 0 && <PeriodControls periods={data.periods} view={view} period={data.period} onView={pickView} onPeriod={setPeriod} disabled={tab === "trend" && grain !== "day"} />}
       <select className={selectClass} value={region} onChange={(e) => { setRegion(e.target.value); setZone("all"); setHub(null); }} aria-label="Region">
         <option value="all">All regions</option>
         {regions.map((r) => (
@@ -115,15 +120,18 @@ export default function InvalidPodRca({ me }) {
           <option key={code} value={code}>{name}</option>
         ))}
       </select>
-      {(hub || region !== "all" || zone !== "all" || week !== "all") && (
-        <button onClick={() => { setHub(null); setRegion("all"); setZone("all"); setWeek("all"); }} className="text-xs font-medium text-slate-500 underline hover:text-brand">
+      {(hub || region !== "all" || zone !== "all") && (
+        <button onClick={() => { setHub(null); setRegion("all"); setZone("all"); }} className="text-xs font-medium text-slate-500 underline hover:text-brand">
           Reset filters
         </button>
       )}
+      {loading && <span className="text-xs text-slate-400">Loading…</span>}
     </div>
   );
 
-  const ctx = { data, hubs, hubMeta, week, region, zone, hub, setHub };
+  const pr = { view: data.view, period: data.period }; // the period the page is showing (the backend's pick when none was asked for)
+  const periodLabel = (data.periods?.[data.view] || []).find((o) => o.key === data.period)?.label;
+  const ctx = { data, hubs, hubMeta, pr, periodLabel, grain, setGrain, region, zone, hub, setHub };
 
   return (
     <div className="space-y-3">
@@ -155,15 +163,14 @@ export default function InvalidPodRca({ me }) {
 }
 
 // ------------------------------------------------------------------------------------------------ Overview
-function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
+function PodOverview({ data, hubs, hubMeta, pr, periodLabel, region, zone, hub, setHub }) {
   const [reason, setReason] = useState(null);
   const [courier, setCourier] = useState(null);
   const [tns, setTns] = useState(null);
   const [tnBusy, setTnBusy] = useState(false);
   const [error, setError] = useState(null);
-  useEffect(() => setTns(null), [week, region, zone, hub, reason, courier]);
+  useEffect(() => setTns(null), [pr.view, pr.period, region, zone, hub, reason, courier]);
 
-  const inWeek = (w) => week === "all" || w === week;
   const okHub = (code) => {
     const m = hubMeta.get(code);
     return !!m && (region === "all" || m.region === region) && (zone === "all" || m.zone === zone) && (!hub || code === hub);
@@ -174,26 +181,26 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
   };
   // the station table lists every station in the region / zone (you pick FROM it); every other panel follows the picked station
   const hubRows = useMemo(() => {
-    const by = groupBy(hubs.filter((h) => inWeek(h.week) && okArea(h.code)), (h) => h.code);
+    const by = groupBy(hubs.filter((h) => okArea(h.code)), (h) => h.code);
     return [...by.entries()].map(([code, rows]) => {
       const total = rows.reduce((s, r) => s + r.total, 0);
       const invalid = rows.reduce((s, r) => s + r.invalid, 0);
       return { code, name: rows[0].name, zone: rows[0].zone, total, invalid, valid: total - invalid, invalidPct: pctOf(invalid, total) };
     });
-  }, [hubs, week, region, zone]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hubs, region, zone]); // eslint-disable-line react-hooks/exhaustive-deps
   const inView = useMemo(() => hubRows.filter((h) => !hub || h.code === hub), [hubRows, hub]);
   const totals = inView.reduce((a, h) => ({ total: a.total + h.total, invalid: a.invalid + h.invalid }), { total: 0, invalid: 0 });
   const reasonRows = useMemo(
     () =>
-      [...groupBy(data.reasons.filter((r) => inWeek(r.week) && okHub(r.code)), (r) => r.reason).entries()]
+      [...groupBy(data.reasons.filter((r) => okHub(r.code)), (r) => r.reason).entries()]
         .map(([label, rows]) => ({ key: label, label, value: rows.reduce((s, r) => s + r.count, 0) }))
         .sort((a, b) => b.value - a.value),
-    [data, week, region, zone, hub] // eslint-disable-line react-hooks/exhaustive-deps
+    [data, region, zone, hub] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const invalidInScope = reasonRows.reduce((s, r) => s + r.value, 0);
   const courierRows = useMemo(
     () =>
-      [...groupBy(data.couriers.filter((c) => inWeek(c.week) && okHub(c.code)), (c) => `${c.code}|${c.courier}`).entries()]
+      [...groupBy(data.couriers.filter((c) => okHub(c.code)), (c) => `${c.code}|${c.courier}`).entries()]
         .map(([k, rows]) => {
           const total = rows.reduce((s, r) => s + r.total, 0);
           const invalid = rows.reduce((s, r) => s + r.invalid, 0);
@@ -201,15 +208,14 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
         })
         .sort((a, b) => b.invalid - a.invalid)
         .slice(0, 200),
-    [data, week, region, zone, hub] // eslint-disable-line react-hooks/exhaustive-deps
+    [data, region, zone, hub] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const loadTns = async () => {
     setTnBusy(true);
     try {
-      const q = {};
+      const q = { view: pr.view, period: pr.period };
       if (hub) q.hub = hub;
-      if (week !== "all") q.week = week;
       if (reason) q.reason = reason;
       if (courier) q.courier = courier;
       setTns(await api.kpiInvalidPodTns(q));
@@ -221,7 +227,7 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
   };
 
   const hubName = hub ? hubMeta.get(hub)?.name : null;
-  const filterText = [hubName && `Station ${hubName}`, reason && `reason "${reason}"`, courier && `driver ${courier}`, week !== "all" && (data.weeks.find((w) => w.key === week)?.label || week)].filter(Boolean).join(" · ");
+  const filterText = [hubName && `Station ${hubName}`, reason && `reason "${reason}"`, courier && `driver ${courier}`, periodLabel].filter(Boolean).join(" · ");
   if (error) return <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>;
 
   return (
@@ -346,14 +352,14 @@ function TnList({ title, tns, busy, onLoad, filename, extra }) {
 }
 
 // ------------------------------------------------------------------------------------------------ Drivers & reasons
-function PodDrivers({ data, week, region, zone, hub }) {
+function PodDrivers({ data, pr, region, zone, hub }) {
   const [minInvalid, setMinInvalid] = useState(1);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState(null);
   const [tns, setTns] = useState(null);
   const [tnBusy, setTnBusy] = useState(false);
-  const filters = { week: noneIf(week), region: noneIf(region), zone: noneIf(zone), hub };
-  const { data: d, error, loading } = useApi(() => api.kpiInvalidPodDrivers({ ...filters, min_invalid: minInvalid }), [week, region, zone, hub, minInvalid]);
+  const filters = { view: pr.view, period: pr.period, region: noneIf(region), zone: noneIf(zone), hub };
+  const { data: d, error, loading } = useApi(() => api.kpiInvalidPodDrivers({ ...filters, min_invalid: minInvalid }), [pr.view, pr.period, region, zone, hub, minInvalid]);
   useEffect(() => setTns(null), [picked]);
 
   const rows = useMemo(() => {
@@ -369,7 +375,7 @@ function PodDrivers({ data, week, region, zone, hub }) {
   );
   const drvTrend = useApi(
     () => (chosen ? api.kpiInvalidPodTrend({ ...filters, level: "driver", keys: [chosen.key], top: 1 }) : Promise.resolve(null)),
-    [chosen?.key, week, region, zone, hub]
+    [chosen?.key, pr.view, pr.period, region, zone, hub]
   );
 
   if (error) return <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>;
@@ -378,8 +384,7 @@ function PodDrivers({ data, week, region, zone, hub }) {
   const loadTns = async () => {
     setTnBusy(true);
     try {
-      const qy = { hub: chosen.code, courier: chosen.courier };
-      if (week !== "all") qy.week = week;
+      const qy = { hub: chosen.code, courier: chosen.courier, view: pr.view, period: pr.period };
       setTns(await api.kpiInvalidPodTns(qy));
     } finally {
       setTnBusy(false);
@@ -496,55 +501,61 @@ function PodDrivers({ data, week, region, zone, hub }) {
 }
 
 // ------------------------------------------------------------------------------------------------ Date trend
-function PodTrend({ week, region, zone, hub }) {
-  const filters = { week: noneIf(week), region: noneIf(region), zone: noneIf(zone), hub };
+function PodTrend({ pr, periodLabel, grain, setGrain, region, zone, hub }) {
+  const filters = { view: pr.view, period: grain === "day" ? pr.period : null, grain, region: noneIf(region), zone: noneIf(zone), hub };
   const metrics = [
     { key: "pct", label: "Invalid %", value: (s, i) => (s.total[i] ? (s.invalid[i] / s.total[i]) * 100 : null), fmt: pctFmt, zeroBased: false },
     { key: "invalid", label: "Invalid POD", value: (s, i) => s.invalid[i], fmt: int, zeroBased: true },
     { key: "total", label: "Validated", value: (s, i) => s.total[i], fmt: int, zeroBased: true },
   ];
   return (
-    <TrendPanel
-      levels={[{ key: "region", label: "Region" }, { key: "zone", label: "Zone" }, { key: "station", label: "Station" }, { key: "driver", label: "Driver" }]}
-      load={(level, keys) => api.kpiInvalidPodTrend({ ...filters, level, keys })}
-      metrics={metrics}
-      filterKey={[week, region, zone, hub].join("|")}
-      note={`target under ${kpiTargetText("invalid_pod")}`}
-    />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+        <span className="font-display font-semibold uppercase text-slate-500">Group by</span>
+        <TabsBar tabs={[{ key: "day", label: "Day" }, { key: "week", label: "Week" }, { key: "month", label: "Month" }]} value={grain} onChange={setGrain} />
+        <span className="text-slate-400">{grain === "day" ? `the days of ${periodLabel || "the file"} -- pick another period above` : `every ${grain} in the file`}</span>
+      </div>
+      <TrendPanel
+        levels={[{ key: "region", label: "Region" }, { key: "zone", label: "Zone" }, { key: "station", label: "Station" }, { key: "driver", label: "Driver" }]}
+        load={(level, keys) => api.kpiInvalidPodTrend({ ...filters, level, keys })}
+        metrics={metrics}
+        filterKey={[grain, grain === "day" ? `${pr.view}:${pr.period}` : "", region, zone, hub].join("|")}
+        note={`target under ${kpiTargetText("invalid_pod")}`}
+      />
+    </div>
   );
 }
 
 // ------------------------------------------------------------------------------------------------ Reasons
-function PodReasons({ data, hubs, hubMeta, week, region, zone, hub }) {
+function PodReasons({ data, hubs, hubMeta, region, zone, hub }) {
   const [reason, setReason] = useState(null);
-  const inWeek = (w) => week === "all" || w === week;
   const okHub = (code) => {
     const m = hubMeta.get(code);
     return !!m && (region === "all" || m.region === region) && (zone === "all" || m.zone === zone) && (!hub || code === hub);
   };
   const rows = useMemo(() => {
-    const list = data.reasons.filter((r) => inWeek(r.week) && okHub(r.code));
+    const list = data.reasons.filter((r) => okHub(r.code));
     const total = list.reduce((s, r) => s + r.count, 0);
     return [...groupBy(list, (r) => r.reason).entries()].map(([name, rs]) => {
       const count = rs.reduce((s, r) => s + r.count, 0);
       return { reason: name, count, share: pctOf(count, total), stations: new Set(rs.map((r) => r.code)).size };
     });
-  }, [data, week, region, zone, hub]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, region, zone, hub]); // eslint-disable-line react-hooks/exhaustive-deps
   const stationInvalid = useMemo(() => {
     const m = new Map();
-    hubs.filter((h) => inWeek(h.week) && okHub(h.code)).forEach((h) => m.set(h.code, (m.get(h.code) || 0) + h.invalid));
+    hubs.filter((h) => okHub(h.code)).forEach((h) => m.set(h.code, (m.get(h.code) || 0) + h.invalid));
     return m;
-  }, [hubs, week, region, zone, hub]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hubs, region, zone, hub]); // eslint-disable-line react-hooks/exhaustive-deps
   const detail = useMemo(() => {
     if (!reason) return [];
-    const list = data.reasons.filter((r) => r.reason === reason && inWeek(r.week) && okHub(r.code));
+    const list = data.reasons.filter((r) => r.reason === reason && okHub(r.code));
     const reasonTotal = list.reduce((s, r) => s + r.count, 0);
     return [...groupBy(list, (r) => r.code).entries()].map(([code, rs]) => {
       const count = rs.reduce((s, r) => s + r.count, 0);
       const m = hubMeta.get(code);
       return { code, station: m?.name || code, zone: m?.zone || "", count, ofReason: pctOf(count, reasonTotal), ofStation: pctOf(count, stationInvalid.get(code) || 0) };
     });
-  }, [reason, data, week, region, zone, hub, stationInvalid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reason, data, region, zone, hub, stationInvalid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="grid gap-3 xl:grid-cols-[1fr_1.2fr]">

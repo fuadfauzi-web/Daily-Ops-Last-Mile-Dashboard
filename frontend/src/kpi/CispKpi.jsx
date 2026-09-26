@@ -5,15 +5,18 @@ import { exportCsv } from "../lib/csv";
 import { formatTime } from "../lib/format";
 import KpiUploadPanel from "./KpiUploadPanel";
 import { int, selectClass } from "./fmt";
-import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi } from "./rcaUi";
+import { Cards, DailyGrid, Panel, PeriodControls, SortTable, TabsBar, TrendPanel, useApi } from "./rcaUi";
 
 // CISP KPIs -- Prior, Completion D0 / D3, Terminal T7, FIFO D0 (staging + production, Beta).
 // The OPEX dashboard's result is the OFFICIAL number: this page shows it (from the uploaded OPEX file) next to the analysis, which is built from small
 // Metabase feeder files (station by start-clock day). Those use provisional exclusions, so a rate here can differ a little from the official one.
-//   Overview    the result against the target for the last 7 / 14 / 28 days (or the whole file) with the change on the period before, the regions / zones /
-//               stations under target, and the official OPEX numbers
-//   Date trend  the % met per day or week for regions, zones, stations -- by start-clock date -- with the target line
-// FIFO D0 comes from one Metabase question run for one period, so it has no trend.
+// Time works like Hybrid Productivity (Fleet Manager, 2026-09-26): View = Weekly / Monthly / Daily and a Period -- a Monday-Sunday week (week 38 = last week), a month, or a
+// month day by day. The page opens on the last complete week.
+//   Overview    the result against the target for the period, with the change on the period before, the regions / zones / stations under target, and the
+//               official OPEX numbers
+//   Day by day  the station-by-day grid of the period: the % met of every station on every day
+//   Trend       the % met per day (of the period), week or month for regions, zones, stations -- by start-clock date -- with the target line; the View sets the grain
+// A FIFO D0 file from the older saved question is one period, so it has no views, grid or trend.
 const noneIf = (v) => (v === "all" ? undefined : v);
 const pctFmt = (v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`;
 const pp = (v) => (v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)} pp`);
@@ -23,7 +26,7 @@ const NOTE = {
   d0: "Completion D0: TNs measured at D0 (n0 measured) that met it (n0 met). Cut-off date for the calculation, start-clock date for the trend.",
   d3: "Completion D3: TNs measured at D3 (n3 measured) that met it (n3 met) after 0 / 1 / 2 / 3 days. Cut-off date for the calculation, start-clock date for the trend.",
   t7: "Terminal T7: TNs past their N7 cut-off that met it (n7 met), by last-mile start-clock date.",
-  fifo: "FIFO D0: the parcel was attempted at D0 (one period per file).",
+  fifo: "FIFO D0: TNs measured at N0 whose first delivery attempt was made by the N0 cut-off (n0 met), by start-clock date.",
 };
 const OPEX_KEY = { prior: "prior", d0: "d0_d2", d3: "d3", t7: "d7", fifo: "fifo" }; // what the OPEX dashboard calls each one
 const OPEX_NAME = { prior: "Priority", d0_d2: "D0/D2", d3: "D3", d7: "D7", fifo: "FIFO" };
@@ -82,21 +85,92 @@ function OpexOfficial({ opexKey, label }) {
   );
 }
 
+// The station-by-day grid of the period: % met per station per day (green on / above the station's target, red under it), the period's total on the right.
+function DayByDay({ data, kpi, label, periodLabel, hub, setHub, onlyMissed, setOnlyMissed }) {
+  const days = data.daily_days || [];
+  const rate = (m, s) => (m ? (s / m) * 100 : null);
+  const all = {
+    key: "__all__", name: "All in view", target: data.target, measured: data.all.measured, met: data.all.met,
+    total_measured: data.all.measured.reduce((a, b) => a + b, 0), total_met: data.all.met.reduce((a, b) => a + b, 0),
+  };
+  const rows = onlyMissed ? data.stations.filter((s) => (rate(s.total_measured, s.total_met) ?? 100) < s.target) : data.stations;
+  const gridRows = rows.map((s) => ({ ...s, key: s.code }));
+  const cell = (r, i) => {
+    const m = r.measured[i];
+    const v = rate(m, r.met[i]);
+    if (v == null) return { text: "—", className: "text-slate-300" };
+    return { text: pctFmt(v), title: `${int(r.met[i])} of ${int(m)} met`, className: v >= r.target ? "font-semibold text-status-good" : "font-semibold text-status-critical" };
+  };
+  if (!days.length) {
+    return <div className="rounded-xl bg-white p-6 text-sm text-slate-500 ring-1 ring-slate-200">No days of {label} data in {periodLabel || "this period"} -- pick another period.</div>;
+  }
+  return (
+    <div className="space-y-3">
+      <DailyGrid
+        title={`${label} by day — ${periodLabel || `${data.from} → ${data.to}`}`}
+        titleExtra={
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+            <input type="checkbox" checked={onlyMissed} onChange={() => setOnlyMissed((v) => !v)} />
+            Under target for the period only
+          </label>
+        }
+        days={days}
+        rows={gridRows}
+        allRow={all}
+        cell={cell}
+        valueOf={(r, i) => rate(r.measured[i], r.met[i])}
+        extraCols={[
+          { key: "total", label: "Period %", render: (r) => <Rate r={rate(r.total_measured, r.total_met)} target={r.target} />, sortValue: (r) => rate(r.total_measured, r.total_met) },
+          { key: "measured", label: "Measured", render: (r) => int(r.total_measured), sortValue: (r) => r.total_measured },
+        ]}
+        rowClassName={(r) => (r.code === hub ? "bg-rose-50" : "")}
+        onRowClick={(r) => setHub(hub === r.code ? null : r.code)}
+        footer={`${gridRows.length} station${gridRows.length === 1 ? "" : "s"} · a day with no TNs measured shows — · Sundays are shaded · click a header to sort, a station to filter the page to it${data.target_mixed ? " · the top row is judged against the blend of the regions' targets" : ""}`}
+      />
+      <div className="flex justify-end">
+        <button
+          onClick={() =>
+            exportCsv(
+              `daily-ops-${kpi}-by-day-${data.from}-${data.to}.csv`,
+              ["Station", "Zone", "Region", "Target %", ...days, "Period %", "Measured", "Met"],
+              gridRows.map((s) => [s.name, s.zone, s.region, s.target, ...days.map((_d, i) => (rate(s.measured[i], s.met[i]) == null ? "" : Math.round(rate(s.measured[i], s.met[i]) * 100) / 100)), rate(s.total_measured, s.total_met) == null ? "" : Math.round(rate(s.total_measured, s.total_met) * 100) / 100, s.total_measured, s.total_met])
+            )
+          }
+          className="h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Export CSV
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function CispKpi({ me, kpi }) {
   const canUpload = me.role === "admin";
   const rank = { station: 0, region: 1, manager: 2, admin: 3 }[me.role] ?? 0;
   const [tab, setTab] = useState("overview");
-  const [win, setWin] = useState("7");
+  const [view, setView] = useState("weekly");
+  const [period, setPeriod] = useState(null); // null = the view's default (the newest complete week / month, the current month for Daily)
   const [region, setRegion] = useState("all");
   const [zone, setZone] = useState("all");
   const [hub, setHub] = useState(null);
-  const [grain, setGrain] = useState("day");
+  const [grain, setGrain] = useState("week"); // the trend's grain follows the View
   const [onlyMissed, setOnlyMissed] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [reload, setReload] = useState(0);
   const [opts, setOpts] = useState(null);
 
-  const { data, error, loading } = useApi(() => api.kpiCispView(kpi, { tab: "overview", window: win, region: noneIf(region), zone: noneIf(zone), hub }), [kpi, win, region, zone, hub, reload]);
+  const gridTab = tab === "daily";
+  const { data, error, loading } = useApi(
+    () => api.kpiCispView(kpi, { tab: gridTab ? "daily" : "overview", view, period, region: noneIf(region), zone: noneIf(zone), hub }),
+    [kpi, gridTab, view, period, region, zone, hub, reload]
+  );
+  const pickView = (v) => {
+    setView(v);
+    setPeriod(null);
+    setGrain({ weekly: "week", monthly: "month", daily: "day" }[v]);
+    if (v === "daily") setTab("daily");
+  };
   useEffect(() => {
     if (data?.options) setOpts(data.options);
   }, [data]);
@@ -137,7 +211,9 @@ export default function CispKpi({ me, kpi }) {
   const zones = (opts?.zones || []).filter(([, r]) => region === "all" || r === region).map(([z]) => z);
   const hubList = (opts?.hubs || []).filter((h) => (region === "all" || h.region === region) && (zone === "all" || h.zone === zone));
   const t = data.totals;
-  const tabs = [{ key: "overview", label: "Overview" }, ...(snapshot ? [] : [{ key: "trend", label: "Date trend" }])];
+  const tabs = [{ key: "overview", label: "Overview" }, ...(snapshot ? [] : [{ key: "daily", label: "Day by day" }, { key: "trend", label: "Trend" }])];
+  const shownPeriod = data.period; // the key the backend picked (the default when none was asked for)
+  const periodLabel = (data.periods?.[view] || []).find((o) => o.key === shownPeriod)?.label;
   const levels = [...(rank >= 2 ? [{ key: "region", label: "Region" }] : []), ...(rank >= 1 ? [{ key: "zone", label: "Zone" }] : []), { key: "station", label: "Station" }];
   const stationRows = (data.stations || []).map((s) => {
     const off = officialByStation.get(s.name);
@@ -145,7 +221,7 @@ export default function CispKpi({ me, kpi }) {
   });
   const shownStations = onlyMissed ? stationRows.filter((s) => s.status === "missed") : stationRows;
   const hasOfficial = officialByStation.size > 0;
-  const windowLabel = snapshot ? "the uploaded period" : win === "all" ? "the whole file" : `the last ${win} days`;
+  const windowLabel = snapshot ? "the uploaded period" : periodLabel || `${data.from} → ${data.to}`;
 
   const rollCols = (nameLabel, withStations) => [
     { key: "name", label: nameLabel, sticky: true, align: "left", text: true, render: (r) => <b>{r.name}</b> },
@@ -164,12 +240,7 @@ export default function CispKpi({ me, kpi }) {
       </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
         {!snapshot && (
-          <select className={selectClass} value={win} onChange={(e) => setWin(e.target.value)} aria-label="Period" disabled={tab === "trend"} title={tab === "trend" ? "The trend shows every day in the file" : undefined}>
-            <option value="7">Last 7 days</option>
-            <option value="14">Last 14 days</option>
-            <option value="28">Last 28 days</option>
-            <option value="all">Whole file</option>
-          </select>
+          <PeriodControls periods={data.periods} view={view} period={shownPeriod} onView={pickView} onPeriod={setPeriod} disabled={tab === "trend" && grain !== "day"} />
         )}
         <select className={selectClass} value={region} onChange={(e) => { setRegion(e.target.value); setZone("all"); setHub(null); }} aria-label="Region">
           <option value="all">All regions</option>
@@ -206,18 +277,29 @@ export default function CispKpi({ me, kpi }) {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
             <span className="font-display font-semibold uppercase text-slate-500">Group by</span>
-            <TabsBar tabs={[{ key: "day", label: "Day" }, { key: "week", label: "Week" }]} value={grain} onChange={setGrain} />
-            <span className="text-slate-400">by start-clock date · dashed green line = the target{mixed ? " (targets differ by region, so each target has its own line)" : ` ${pctFmt(target)}`}</span>
+            <TabsBar tabs={[{ key: "day", label: "Day" }, { key: "week", label: "Week" }, { key: "month", label: "Month" }]} value={grain} onChange={setGrain} />
+            <span className="text-slate-400">
+              {grain === "day" ? `the days of ${periodLabel || "the period"} -- pick another period above` : `every ${grain} in the file`} · by start-clock date · dashed green line = the target
+              {mixed ? " (targets differ by region, so each target has its own line)" : ` ${pctFmt(target)}`}
+            </span>
           </div>
           <TrendPanel
             levels={levels}
-            load={(level, keys) => api.kpiCispView(kpi, { tab: "trend", level, grain, keys, region: noneIf(region), zone: noneIf(zone), hub })}
+            load={(level, keys) => api.kpiCispView(kpi, { tab: "trend", level, grain, keys, view, period: grain === "day" ? shownPeriod : null, region: noneIf(region), zone: noneIf(zone), hub })}
             metrics={[{ key: "rate", label: "% met", value: (s, i) => (s.measured[i] ? (s.met[i] / s.measured[i]) * 100 : null), fmt: pctFmt, zeroBased: false }]}
-            filterKey={[kpi, grain, region, zone, hub].join("|")}
+            filterKey={[kpi, grain, grain === "day" ? `${view}:${shownPeriod}` : "", region, zone, hub].join("|")}
             targetLine={(d) => (d?.series?.length ? [...new Set(d.series.map((s) => s.target))] : d?.target)}
             note="the entities furthest under target are drawn first"
           />
         </div>
+      ) : tab === "daily" ? (
+        data.tab !== "daily" ? (
+          <Skeleton />
+        ) : (
+          <DayByDay data={data} kpi={kpi} label={label} periodLabel={periodLabel} hub={hub} setHub={setHub} onlyMissed={onlyMissed} setOnlyMissed={setOnlyMissed} />
+        )
+      ) : data.tab !== "overview" ? (
+        <Skeleton />
       ) : (
         <div className="space-y-3">
           <Cards
@@ -227,7 +309,7 @@ export default function CispKpi({ me, kpi }) {
               [mixed ? "Target (blended)" : "Target", pctFmt(target), mixed ? "regions differ -- see the table below" : t.gap == null ? "" : `${pp(t.gap)} vs target`],
               ["Change vs the period before", snapshot ? "—" : <Delta key="d" d={t.delta} />, snapshot ? "one period per file" : data.prev_from ? `${data.prev_from} → ${data.prev_to}` : "no earlier period in the file"],
               ["Stations under target", `${data.stations_below_target} of ${data.stations_total}`, ""],
-              ["TNs measured", int(t.measured), `${int(t.met)} met`],
+              ["TNs measured", int(t.measured), snapshot ? `${int(t.met)} met` : `${int(t.met)} met · ${data.window_days} day${data.window_days === 1 ? "" : "s"} with data`],
             ]}
           />
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">

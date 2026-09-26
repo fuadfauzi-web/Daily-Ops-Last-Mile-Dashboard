@@ -8,6 +8,10 @@ and per reason, plus the invalid tracking numbers -- and only that stays in memo
 date trends, the tracking numbers) is then a pass over those counts, filtered to what the viewer's scope allows, instead of a pass over
 the raw rows on every request.
 
+Time (Fleet Manager, 2026-09-26): like Hybrid Productivity the page is read by WEEK (Monday-Sunday, week numbers like Excel's WEEKNUM(d, 2)), by MONTH or by DAY --
+view + period on every endpoint (kpi_periods.py); the default is the last complete week of the days in the uploaded file. The file can hold as many weeks as it likes
+(a month, a quarter): the page offers the weeks and months inside it.
+
 Two datasets feed it:
   invalid_pod_raw  the POD validation Raw sheet (Metabase question 69573)  -> the Invalid POD RCA for everyone, limited to their scope
   pod_performance  the LM POD Performance workbook's RAW DATA sheet (adds the audit result, the final result / reason, zone, route
@@ -19,9 +23,10 @@ import sys
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 import kpi_data as kd
+import kpi_periods as kp
 from auth import CurrentUser, get_current_user
 import kpi_targets
-from kpi_rca import TN_ROWS_CAP, _hub_meta, _in_scope, _monday, _pod_hub_code, _s, _week_label
+from kpi_rca import TN_ROWS_CAP, _hub_meta, _in_scope, _monday, _pod_hub_code, _s
 
 log = logging.getLogger("kpi_pod")
 router = APIRouter()
@@ -34,8 +39,15 @@ def _scope_key(user: CurrentUser) -> tuple:
     return (user.scope_type, tuple(sorted(user.scope_values or [])), *kpi_targets.scope_flags())
 
 
-def _week(day: str) -> str:
-    return (_monday(day) or UNKNOWN_DAY) if day != UNKNOWN_DAY else UNKNOWN_DAY
+def _range(data: dict, view: str, period: str | None, frm: str | None = None, to: str | None = None) -> dict:
+    """The period asked for (kpi_periods.resolve) over the days the file holds; from / to = "" when it holds none."""
+    if view not in kp.VIEWS:
+        raise HTTPException(status_code=422, detail="view must be weekly, monthly or daily")
+    return kp.resolve([d for d in data["days"] if d != UNKNOWN_DAY], view, period, frm, to, None, None)
+
+
+def _in(rng: dict, day: str) -> bool:
+    return not rng["from"] or (day != UNKNOWN_DAY and rng["from"] <= day <= rng["to"])
 
 
 def _visible(data: dict, user: CurrentUser) -> dict:
@@ -113,36 +125,32 @@ async def _pod():
 
 # ------------------------------------------------------------------------------------------------ the page (Overview tab)
 
-def _main_view(data: dict, user: CurrentUser) -> dict:
-    sk = _scope_key(user)
+def _main_view(data: dict, user: CurrentUser, rng: dict) -> dict:
+    sk = (_scope_key(user), rng["from"], rng["to"])
     cached = data["main"].get(sk)
     if cached is not None:
         return cached
     vis = _visible(data, user)
-    hubs: dict[tuple, list] = {}
+    hubs: dict[str, list] = {}
     couriers: dict[tuple, list] = {}
     reasons: dict[tuple, int] = {}
-    weeks: set[str] = set()
     for (ck, day, courier), (t, i) in data["cd"].items():
-        if not vis.get(ck):
+        if not vis.get(ck) or not _in(rng, day):
             continue
-        w = _week(day)
-        weeks.add(w)
-        h = hubs.setdefault((ck, w), [0, 0])
+        h = hubs.setdefault(ck, [0, 0])
         h[0] += t
         h[1] += i
-        c = couriers.setdefault((ck, w, courier), [0, 0])
+        c = couriers.setdefault((ck, courier), [0, 0])
         c[0] += t
         c[1] += i
     for (ck, day, courier, reason), n in data["cdr"].items():
-        if vis.get(ck):
-            rk = (ck, _week(day), reason)
+        if vis.get(ck) and _in(rng, day):
+            rk = (ck, reason)
             reasons[rk] = reasons.get(rk, 0) + n
     out = {
-        "weeks": [{"key": w, "label": _week_label(w) if w != UNKNOWN_DAY else "Unknown date"} for w in sorted(weeks)],
-        "hubs": [{**data["meta"][ck], "week": w, "total": v[0], "invalid": v[1]} for (ck, w), v in hubs.items()],
-        "reasons": [{"code": ck, "week": w, "reason": reason, "count": n} for (ck, w, reason), n in reasons.items()],
-        "couriers": [{"code": ck, "week": w, "courier": courier, "total": v[0], "invalid": v[1]} for (ck, w, courier), v in couriers.items() if v[1] > 0],
+        "hubs": [{**data["meta"][ck], "total": v[0], "invalid": v[1]} for ck, v in hubs.items()],
+        "reasons": [{"code": ck, "reason": reason, "count": n} for (ck, reason), n in reasons.items()],
+        "couriers": [{"code": ck, "courier": courier, "total": v[0], "invalid": v[1]} for (ck, courier), v in couriers.items() if v[1] > 0],
     }
     if len(data["main"]) > 64:
         data["main"].clear()
@@ -150,25 +158,34 @@ def _main_view(data: dict, user: CurrentUser) -> dict:
     return out
 
 
+def _picked(rng: dict) -> dict:
+    return {"view": rng["view"], "period": rng["period"], "from": rng["from"] or None, "to": rng["to"] or None}
+
+
 @router.get("/api/kpi/invalid-pod")
-async def kpi_invalid_pod(user: CurrentUser = Depends(get_current_user)):
+async def kpi_invalid_pod(view: str = "weekly", period: str | None = None, user: CurrentUser = Depends(get_current_user)):
+    """The Overview: per station / reason / driver for the period (view weekly / monthly / daily + period key; default the last complete week of the file's days)."""
     got = await _pod()
     if got is None:
         return {"has_data": False}
     meta, data = got
-    return {"has_data": True, "meta": meta, **_main_view(data, user)}
+    rng = _range(data, view, period)
+    return {"has_data": True, "meta": meta, "periods": kp.options([d for d in data["days"] if d != UNKNOWN_DAY]), **_picked(rng), **_main_view(data, user, rng)}
 
 
 @router.get("/api/kpi/invalid-pod/tns")
-async def kpi_invalid_pod_tns(hub: str | None = None, week: str | None = None, reason: str | None = None, courier: str | None = None, user: CurrentUser = Depends(get_current_user)):
+async def kpi_invalid_pod_tns(
+    hub: str | None = None, view: str = "weekly", period: str | None = None, reason: str | None = None, courier: str | None = None, user: CurrentUser = Depends(get_current_user),
+):
     got = await _pod()
     if got is None:
         raise HTTPException(status_code=404, detail="No POD validation file uploaded yet")
     _meta, data = got
+    rng = _range(data, view, period)
     vis = _visible(data, user)
     out = []
     for ck, raw_hub, cn, tn, failure_reason, rs, att, val, validator, day in data["tns"]:
-        if not vis.get(ck) or (hub and ck != hub) or (week and _week(day) != week) or (reason and rs != reason) or (courier and cn != courier):
+        if not vis.get(ck) or (hub and ck != hub) or not _in(rng, day) or (reason and rs != reason) or (courier and cn != courier):
             continue
         out.append({"tracking_id": tn, "hub": raw_hub, "courier": cn, "failure_reason": failure_reason, "invalid_reason": rs, "attempted": att, "validated": val, "validator": validator})
         if len(out) >= TN_ROWS_CAP:
@@ -180,7 +197,7 @@ async def kpi_invalid_pod_tns(hub: str | None = None, week: str | None = None, r
 
 @router.get("/api/kpi/invalid-pod/drivers")
 async def kpi_invalid_pod_drivers(
-    week: str = "all", region: str = "all", zone: str = "all", hub: str | None = None, min_invalid: int = 1, limit: int = 1000,
+    view: str = "weekly", period: str | None = None, region: str = "all", zone: str = "all", hub: str | None = None, min_invalid: int = 1, limit: int = 1000,
     user: CurrentUser = Depends(get_current_user),
 ):
     """Every driver with invalid POD in view: attempts, invalid, invalid %, and the reasons behind it -- top reason first."""
@@ -188,16 +205,17 @@ async def kpi_invalid_pod_drivers(
     if got is None:
         return {"has_data": False, "rows": []}
     _meta, data = got
+    rng = _range(data, view, period)
     ok = _picker(data, user, region, zone, hub)
     agg: dict[tuple, list] = {}
     for (ck, day, courier), (t, i) in data["cd"].items():
-        if ok(ck) and (week == "all" or _week(day) == week):
+        if ok(ck) and _in(rng, day):
             a = agg.setdefault((ck, courier), [0, 0])
             a[0] += t
             a[1] += i
     reasons: dict[tuple, dict] = {}
     for (ck, day, courier, reason), n in data["cdr"].items():
-        if ok(ck) and (week == "all" or _week(day) == week):
+        if ok(ck) and _in(rng, day):
             d = reasons.setdefault((ck, courier), {})
             d[reason] = d.get(reason, 0) + n
     rows = []
@@ -219,19 +237,24 @@ async def kpi_invalid_pod_drivers(
 
 @router.get("/api/kpi/invalid-pod/trend")
 async def kpi_invalid_pod_trend(
-    level: str = "station", week: str = "all", region: str = "all", zone: str = "all", hub: str | None = None,
+    level: str = "station", grain: str = "day", view: str = "weekly", period: str | None = None, region: str = "all", zone: str = "all", hub: str | None = None,
     keys: list[str] = Query(default=[]), top: int = 5, user: CurrentUser = Depends(get_current_user),
 ):
-    """Attempts and invalid POD per day for a region, zone, station or driver (level). Without `keys` the `top` entities with the most
-    invalid POD are drawn; `options` lists what can be picked. `__all__` is everything in view."""
-    if level not in ("region", "zone", "station", "driver"):
-        raise HTTPException(status_code=422, detail="level must be region, zone, station or driver")
+    """Attempts and invalid POD per day / week / month (grain) for a region, zone, station or driver (level). Days are the days of the period picked (view + period);
+    weeks and months run over every day of the file. Without `keys` the `top` entities with the most invalid POD are drawn; `options` lists what can be picked.
+    `__all__` is everything in view."""
+    if level not in ("region", "zone", "station", "driver") or grain not in ("day", "week", "month"):
+        raise HTTPException(status_code=422, detail="level must be region, zone, station or driver; grain day, week or month")
     got = await _pod()
     if got is None:
         return {"has_data": False}
     _meta, data = got
+    rng = _range(data, view, period)
     ok = _picker(data, user, region, zone, hub)
     meta = data["meta"]
+
+    def bucket(day: str) -> str:
+        return (_monday(day) or day) if grain == "week" else day[:7] if grain == "month" else day
 
     def entity(ck: str, courier: str) -> tuple[str, str]:
         m = meta[ck]
@@ -248,20 +271,22 @@ async def kpi_invalid_pod_trend(
     labels: dict[str, str] = {}
     all_day: dict[str, list] = {}
     for (ck, day, courier), (t, i) in data["cd"].items():
-        if day == UNKNOWN_DAY or not ok(ck) or (week != "all" and _week(day) != week):
+        if day == UNKNOWN_DAY or not ok(ck) or (grain == "day" and not _in(rng, day)):
             continue
+        b = bucket(day)
         key, label = entity(ck, courier)
         labels[key] = label
-        d = per_day.setdefault(key, {}).setdefault(day, [0, 0])
+        d = per_day.setdefault(key, {}).setdefault(b, [0, 0])
         d[0] += t
         d[1] += i
         tt = totals.setdefault(key, [0, 0])
         tt[0] += t
         tt[1] += i
-        a = all_day.setdefault(day, [0, 0])
+        a = all_day.setdefault(b, [0, 0])
         a[0] += t
         a[1] += i
     days = sorted(all_day)
+    short, names = kp.trend_labels(grain, days, [d for d in data["days"] if d != UNKNOWN_DAY])
     ranked = sorted(totals.items(), key=lambda kv: (-kv[1][1], -kv[1][0], kv[0]))
     chosen = [k for k in keys if k in totals] or [k for k, _v in ranked[: max(1, min(top, 12))]]
 
@@ -269,7 +294,7 @@ async def kpi_invalid_pod_trend(
         return {"key": key, "label": label, "total": [by_day.get(d, [0, 0])[0] for d in days], "invalid": [by_day.get(d, [0, 0])[1] for d in days]}
 
     return {
-        "has_data": True, "level": level, "days": days,
+        "has_data": True, "level": level, "grain": grain, "days": days, "labels": short, "names": names,
         "all": series("__all__", "Everything in view", all_day),
         "series": [series(k, labels[k], per_day[k]) for k in chosen],
         "options": [{"key": k, "label": labels[k], "total": v[0], "invalid": v[1]} for k, v in ranked[:400]],
