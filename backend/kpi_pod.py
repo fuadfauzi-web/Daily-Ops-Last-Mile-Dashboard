@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
+import kpi_targets
 from kpi_rca import TN_ROWS_CAP, _hub_meta, _in_scope, _monday, _pod_hub_code, _s, _week_label
 
 log = logging.getLogger("kpi_pod")
@@ -29,7 +30,8 @@ UNKNOWN_DAY = "unknown"
 
 
 def _scope_key(user: CurrentUser) -> tuple:
-    return (user.scope_type, tuple(sorted(user.scope_values or [])))
+    # the East Malaysia switch is part of the key: switching it changes who sees what, and every cached view is keyed by this
+    return (user.scope_type, tuple(sorted(user.scope_values or [])), kpi_targets.include_east_malaysia())
 
 
 def _week(day: str) -> str:

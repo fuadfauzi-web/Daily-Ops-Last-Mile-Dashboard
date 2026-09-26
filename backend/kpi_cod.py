@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
+import kpi_targets
 from kpi_rca import TN_ROWS_CAP, _hub_code_from_code, _hub_meta, _in_scope, _num, _s
 
 log = logging.getLogger("kpi_cod")
@@ -31,7 +32,8 @@ NO_DRIVER = "(no driver)"
 
 
 def _scope_key(user: CurrentUser) -> tuple:
-    return (user.scope_type, tuple(sorted(user.scope_values or [])))
+    # the East Malaysia switch is part of the key: switching it changes who sees what, and every cached view is keyed by this
+    return (user.scope_type, tuple(sorted(user.scope_values or [])), kpi_targets.include_east_malaysia())
 
 
 def _intern(value: str) -> str:

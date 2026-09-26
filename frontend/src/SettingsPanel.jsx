@@ -532,7 +532,7 @@ function DocumentsPanel() {
 // Two areas share this file (2026-09-25 feedback):
 //   Settings -- what any role may reach: Users (admin/manager/region), SLA Targets and Recovery
 //               Settings (admin/manager), plus Feedback and Guide (everyone).
-//   Admin    -- only what solely an admin can change (Documents, KPI Targets, Data Refresh); the Admin page
+//   Admin    -- only what solely an admin can change (Documents, KPI Settings, Data Refresh); the Admin page
 //               itself is admin-only.
 const SETTINGS_TABS = [
   { key: "users", label: "Users", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
@@ -541,7 +541,7 @@ const SETTINGS_TABS = [
   { key: "feedback", label: "Feedback", area: "settings", visible: () => true },
   { key: "guide", label: "Guide", area: "settings", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "kpitargets", label: "KPI Targets", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "kpisettings", label: "KPI Settings", area: "admin", visible: (me) => me.role === "admin" },
   { key: "refresh", label: "Data Refresh", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
@@ -774,7 +774,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "documents" && <DocumentsPanel />}
 
-      {adminTab === "kpitargets" && isFullAdmin && <KpiTargetsPanel />}
+      {adminTab === "kpisettings" && isFullAdmin && <KpiTargetsPanel />}
 
       {adminTab === "refresh" && isFullAdmin && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">

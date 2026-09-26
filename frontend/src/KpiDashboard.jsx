@@ -14,24 +14,29 @@ import OpexResult from "./kpi/OpexResult";
 import InvalidPodRca from "./kpi/InvalidPodRca";
 import CodRtsRca from "./kpi/CodRtsRca";
 import CispKpi from "./kpi/CispKpi";
+import { TabsBar } from "./kpi/rcaUi";
+import { kpiTarget, kpiTargetText, useKpiTargets } from "./lib/kpiTargets";
 
-// KPI Dashboard (2026-09-26, staging). The KPI page is the RCA side of the KPIs: the OPEX team's dashboard shows the RESULT (a %), this
-// shows WHY -- with the numbers and the tracking numbers behind them. Three parts:
-//   Results       Weekly Dashboard (the team's WoW dashboard) and OPEX Result (the OPEX team's results, merged in later)
-//   RCA details   one page per KPI: Hybrid Productivity, Invalid POD, COD RTS (others listed as "soon")
+// KPI page (Beta). The OPEX team's dashboard shows the RESULT (a %); this page adds the Dashboard and shows WHY -- with the numbers and the tracking
+// numbers behind them. Two groups (menu names from the Fleet Manager, 2026-09-26):
+//   Dashboard      OPEX (the OPEX team's official result) and Trend (the team's WoW dashboard) -- Trend has Daily / Weekly / Monthly, only Weekly for now
+//   RCA analysis   one page per KPI, in this order: Hybrid, Prior, FIFO, D0, D3, T7, Lost, Complaint (Lost + Complaint will share their logic later),
+//                  then the Invalid POD and COD RTS pages
 // Data: uploaded files (admins, "Data upload") or Metabase where a question exists -- see backend/kpi.py, kpi_rca.py.
 
 const MODULES = [
-  { key: "weekly", label: "Weekly Dashboard", group: "Results", live: true },
-  { key: "opex", label: "OPEX Result", group: "Results", live: true },
-  { key: "hybrid", label: "Hybrid Productivity", group: "RCA details", live: true },
-  { key: "invalidPod", label: "Invalid POD", group: "RCA details", live: true },
-  { key: "codRts", label: "COD RTS", group: "RCA details", live: true },
-  { key: "prior", label: "Prior KPI", group: "RCA details", live: true },
-  { key: "fifod0", label: "FIFO D0 KPI", group: "RCA details", live: true },
-  { key: "terminalT7", label: "Terminal T7", group: "RCA details", live: true },
-  { key: "compD0", label: "Completion D0", group: "RCA details", live: true },
-  { key: "compD3", label: "Completion D3", group: "RCA details", live: true },
+  { key: "opex", label: "OPEX", group: "Dashboard", live: true },
+  { key: "trend", label: "Trend", group: "Dashboard", live: true },
+  { key: "hybrid", label: "Hybrid Productivity", group: "RCA analysis", live: true },
+  { key: "prior", label: "Prior", group: "RCA analysis", live: true },
+  { key: "fifod0", label: "FIFO D0", group: "RCA analysis", live: true },
+  { key: "compD0", label: "Completion D0", group: "RCA analysis", live: true },
+  { key: "compD3", label: "Completion D3", group: "RCA analysis", live: true },
+  { key: "terminalT7", label: "Terminal T7", group: "RCA analysis", live: true },
+  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "invalidPod", label: "Invalid POD", group: "RCA analysis", live: true },
+  { key: "codRts", label: "COD RTS", group: "RCA analysis", live: true },
 ];
 
 const int = (v) => Math.round(v).toLocaleString();
@@ -121,20 +126,31 @@ function Card({ title, right, children }) {
   );
 }
 
-function ComingSoon({ label }) {
+function ComingSoon({ label, note }) {
   return (
     <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
       <div className="font-display text-base font-semibold text-ink">{label}</div>
       <p className="mt-2">
-        Not built yet. This KPI will be added once its Metabase question and logic are set up -- the layout (controls, cards, tables and charts) is the same as
-        Hybrid Productivity.
+        {note || "Not built yet. This will be added once its Metabase question and logic are set up -- the layout (controls, cards, tables and charts) is the same as the other KPI pages."}
       </p>
+    </div>
+  );
+}
+
+// Dashboard -> Trend: the team's WoW dashboard by week; Daily and Monthly come later.
+function TrendPage({ me }) {
+  const [grain, setGrain] = useState("weekly");
+  return (
+    <div className="space-y-3">
+      <TabsBar tabs={[{ key: "daily", label: "Daily" }, { key: "weekly", label: "Weekly" }, { key: "monthly", label: "Monthly" }]} value={grain} onChange={setGrain} />
+      {grain === "weekly" ? <WeeklyDashboard me={me} /> : <ComingSoon label={`${grain === "daily" ? "Daily" : "Monthly"} trend`} note="Not built yet -- for now the trend is weekly." />}
     </div>
   );
 }
 
 // ------------------------------------------------------------------------------------------------ Hybrid Productivity
 function HybridProductivity({ me }) {
+  useKpiTargets(); // the low-performer line follows the admin's per-region Hybrid target (Admin -> KPI Settings) once it is known
   const [view, setView] = useState("weekly");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -474,7 +490,9 @@ function HybridProductivity({ me }) {
     const scopeRows = pickedZone === "all" ? current : current.filter((r) => r.zone === pickedZone);
     const prevScopeBy = groupBy(pickedZone === "all" ? prevRows : prevRows.filter((r) => r.zone === pickedZone), (r) => r.station);
     const stationRows = [...groupBy(scopeRows, (r) => r.station).entries()].map(([name, rows]) => ({ name, ...summarize(rows), ...groupDelta(rows, prevScopeBy.get(name)) })).filter(passTrend).sort((a, b) => a.prod - b.prod);
-    const low = withDelta(withTenure(scopeRows), prevDriverProd).filter((r) => r.prod < 80).filter(passTrend).sort((a, b) => a.prod - b.prod).slice(0, 10);
+    // a driver is a low performer below THEIR region's Hybrid target; until a target is set the old fixed line (80) applies
+    const low = withDelta(withTenure(scopeRows), prevDriverProd).filter((r) => r.prod < (kpiTarget("hybrid", r.region) ?? 80)).filter(passTrend).sort((a, b) => a.prod - b.prod).slice(0, 10);
+    const lowLine = kpiTargetText("hybrid", (v) => String(v)) || "80";
     const trend = trendOf(pickedZone === "all" ? filtered : filtered.filter((r) => r.zone === pickedZone));
     const title = pickedZone === "all" ? "All in view" : pickedZone;
     const zoneColumns = [
@@ -509,7 +527,7 @@ function HybridProductivity({ me }) {
             <TrendChart labels={trend.labels} series={[{ key: "p", name: "Avg Productivity", tone: "brand", values: trend.values }]} format={dec1} zeroBased={false} height={210} />
           </Card>
           <DataTable
-            title={`${title} — top 10 low performers (prod < 80)`}
+            title={`${title} — top 10 low performers (productivity below ${lowLine})`}
             maxHeight="260px"
             columns={[
               { key: "name", label: "Name", sticky: true, align: "left", render: (r) => <b>{r.name}</b> },
@@ -521,7 +539,7 @@ function HybridProductivity({ me }) {
             ]}
             rows={low}
             rowKey={(r) => r.name}
-            emptyMessage="No drivers with productivity below 80."
+            emptyMessage={`No drivers with productivity below ${lowLine}.`}
           />
         </div>
       </div>
@@ -784,7 +802,7 @@ function HybridProductivity({ me }) {
 }
 
 // memo: opening another page must not re-render the ones that are hidden (their props never change).
-const WeeklyPane = memo(WeeklyDashboard);
+const TrendPane = memo(TrendPage);
 const OpexPane = memo(OpexResult);
 const HybridPane = memo(HybridProductivity);
 const InvalidPodPane = memo(InvalidPodRca);
@@ -792,10 +810,10 @@ const CodRtsPane = memo(CodRtsRca);
 const CispPane = memo(CispKpi);
 
 export default function KpiDashboard({ me }) {
-  const [module, setModule] = useState("weekly");
+  const [module, setModule] = useState("opex");
   // Pages that have been opened stay mounted (just hidden) -- switching back to one is instant, with its filters and data as you left them,
   // instead of fetching and building the page again (that was the lag when moving between Hybrid, Invalid POD and COD RTS).
-  const [visited, setVisited] = useState(() => new Set(["weekly"]));
+  const [visited, setVisited] = useState(() => new Set(["opex"]));
   const openModule = (key) => {
     setModule(key);
     setVisited((v) => (v.has(key) ? v : new Set(v).add(key)));
@@ -838,17 +856,17 @@ export default function KpiDashboard({ me }) {
           </p>
         </div>
         <h2 className="font-display text-lg font-black uppercase tracking-wide text-brand">{active.label}</h2>
-        {pane("weekly", <WeeklyPane me={me} />)}
         {pane("opex", <OpexPane me={me} />)}
+        {pane("trend", <TrendPane me={me} />)}
         {pane("hybrid", <HybridPane me={me} />)}
-        {pane("invalidPod", <InvalidPodPane me={me} />)}
-        {pane("codRts", <CodRtsPane me={me} />)}
         {pane("prior", <CispPane me={me} kpi="prior" />)}
         {pane("fifod0", <CispPane me={me} kpi="fifo" />)}
-        {pane("terminalT7", <CispPane me={me} kpi="t7" />)}
         {pane("compD0", <CispPane me={me} kpi="d0" />)}
         {pane("compD3", <CispPane me={me} kpi="d3" />)}
-        {!active.live && <ComingSoon label={active.label} />}
+        {pane("terminalT7", <CispPane me={me} kpi="t7" />)}
+        {pane("invalidPod", <InvalidPodPane me={me} />)}
+        {pane("codRts", <CodRtsPane me={me} />)}
+        {!active.live && <ComingSoon label={active.label} note={active.note} />}
       </section>
     </div>
   );

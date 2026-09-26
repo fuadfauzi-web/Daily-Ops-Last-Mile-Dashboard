@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-// KPI targets per region (Admin -> KPI Targets sets them; backend/kpi_targets.py holds the defaults). Loaded once and shared, so a page
-// that judges a number against its target reads it here instead of hard-coding it. saveKpiTargets() refreshes every page that uses it.
+// KPI targets per region (Admin -> KPI Settings sets them; backend/kpi_targets.py holds the defaults). Loaded once and shared, so a page
+// that judges a number against its target reads it here instead of hard-coding it. setKpiTargets() refreshes every page that uses it.
 let current = null; // the last /api/kpi/targets response
 let inflight = null;
 const listeners = new Set();
@@ -30,7 +30,7 @@ export function setKpiTargets(d) {
   listeners.forEach((fn) => fn(d));
 }
 
-// the target % of a KPI for a region (the standard one -- Klang Valley -- when the region is unknown); null until loaded
+// the target of a KPI for a region (the standard one -- Klang Valley -- when the region is unknown); null when not loaded or not set
 export function kpiTarget(kpi, region) {
   const k = current?.kpis?.find((x) => x.key === kpi);
   if (!k) return null;
@@ -42,8 +42,9 @@ export function kpiTargetText(kpi, fmt = (v) => `${v}%`) {
   const k = current?.kpis?.find((x) => x.key === kpi);
   if (!k) return "";
   const std = k.targets["Klang Valley"];
-  const odd = Object.entries(k.targets).filter(([, v]) => v !== std);
-  return odd.length ? `${fmt(std)} (${odd.map(([r, v]) => `${r} ${fmt(v)}`).join(", ")})` : fmt(std);
+  if (std == null && Object.values(k.targets).every((v) => v == null)) return "";
+  const odd = Object.entries(k.targets).filter(([, v]) => v !== std && v != null);
+  return odd.length ? `${std == null ? "—" : fmt(std)} (${odd.map(([r, v]) => `${r} ${fmt(v)}`).join(", ")})` : fmt(std);
 }
 
 // re-renders the caller when the targets arrive or change

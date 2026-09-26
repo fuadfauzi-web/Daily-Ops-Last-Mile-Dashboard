@@ -19,7 +19,7 @@ import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from ".
 //   Reasons            each reason and which stations it comes from
 //   LM performance     the LM POD Performance workbook (audit + final result); managers and admins only
 // Data: the POD validation Raw sheet (Metabase question 69573), uploaded here. Everything follows the viewer's scope.
-// The target is per region (Admin -> KPI Targets; 25% until someone changes it): a row is judged against its own region's, amber = within 5 points of it.
+// The target is per region (Admin -> KPI Settings; 25% until someone changes it): a row is judged against its own region's, amber = within 5 points of it.
 const targetOf = (region) => kpiTarget("invalid_pod", region) ?? 25;
 const sev = (p, region) => {
   const t = targetOf(region);
