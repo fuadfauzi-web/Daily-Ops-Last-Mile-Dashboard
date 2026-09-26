@@ -11,7 +11,11 @@ description: >
   Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress
   SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document
   compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a
-  PIC with in-progress / closed status and notifications). Every count opens its
+  PIC with in-progress / closed status and notifications), DoD (Station Health day by
+  day), a Task List (follow-ups, to-dos, assigned tasks) and a KPI page (Beta) with the
+  weekly results, the OPEX result and RCA / analysis for Hybrid Productivity, Invalid POD,
+  COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI
+  targets per region that an admin sets. Every count opens its
   tracking numbers, with CSV export. Access is role-based (admin, manager, region,
   station) with multi-value region/zone/station scopes enforced in the backend. Users can send feedback
   (with an attachment) that admins reply to and close. For Fleet Managers and their
