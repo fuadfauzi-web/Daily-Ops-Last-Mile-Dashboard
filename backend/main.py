@@ -31,6 +31,7 @@ import storage
 from kpi import router as kpi_router
 from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
+import kpi_data
 import kpi_targets
 import recovery_lost
 import region_list
@@ -81,6 +82,7 @@ REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
 # regardless of this interval. Fixed by fetching sequentially instead (see
 # refresh_metrics) -- the interval itself was never the actual cause.
 _refresh_task: asyncio.Task | None = None
+_warm_task: asyncio.Task | None = None
 # 2026-09-23 incident: /api/admin/refresh (Settings page's manual Refresh
 # button) called refresh_metrics() with nothing stopping it from overlapping
 # the scheduler's own 15-minute call -- two concurrent refreshes each hold
@@ -637,13 +639,16 @@ async def _hourly_refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _refresh_task
+    global _refresh_task, _warm_task
     await db.init_pool()
     if os.getenv("DATABASE_URL"):
         _refresh_task = asyncio.create_task(_hourly_refresh_loop())
+        _warm_task = asyncio.create_task(kpi_data.warm_compacts())  # the KPI pages' big uploads are ready before anyone asks
     yield
     if _refresh_task is not None:
         _refresh_task.cancel()
+    if _warm_task is not None:
+        _warm_task.cancel()
     await db.close_pool()
 
 
