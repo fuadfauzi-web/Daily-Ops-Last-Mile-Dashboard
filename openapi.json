@@ -354,6 +354,7 @@
     "/api/kpi/cisp/{kpi}/view": {
       "get": {
         "summary": "Prior / Completion D0 / D3 / Terminal T7 / FIFO D0 from the uploaded Metabase feeder file: Overview (window, regions, zones, stations against their region's target) or Date trend, limited to the caller's scope.",
+        "description": "Prior / Completion D0 / D3 / Terminal T7 / FIFO D0 from the uploaded feeder file. The period is view (weekly / monthly / daily) + period (a week's Monday or a\nmonth, YYYY-MM; default the last complete week / month, the current month for daily) or an explicit from..to. tab=overview: the result of the period against the one\nbefore (or prev_from..prev_to), with the regions / zones / stations; tab=daily: the station-by-day grid of the period; tab=trend: the % per day (of the period) /\nweek / month (grain) for the picked regions / zones / stations. Limited to the caller's scope.",
         "operationId": "cisp_view_api_kpi_cisp__kpi__view_get",
         "parameters": [
           {
@@ -376,13 +377,93 @@
             }
           },
           {
-            "name": "window",
+            "name": "view",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
-              "default": "7",
-              "title": "Window"
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "name": "prev_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prev From"
+            }
+          },
+          {
+            "name": "prev_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prev To"
             }
           },
           {
@@ -493,6 +574,7 @@
     "/api/kpi/cod-rts/view": {
       "get": {
         "summary": "COD RTS RCA view (Overview, Reasons, Shippers, Drivers, Timing, Parcels, Date trend) from the uploaded RTS Analysis file, limited to the caller's scope.",
+        "description": "The COD RTS analysis for the period (view weekly / monthly / daily + period key; default the last complete week of the file's days; a file without dates is shown whole).\ntab=trend draws the days of the period (grain day) or every week / month of the file.",
         "operationId": "kpi_cod_rts_view_api_kpi_cod_rts_view_get",
         "parameters": [
           {
@@ -503,6 +585,42 @@
               "type": "string",
               "default": "overview",
               "title": "Tab"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          },
+          {
+            "name": "grain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "day",
+              "title": "Grain"
             }
           },
           {
@@ -720,6 +838,32 @@
               "default": "all",
               "title": "Zone"
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
           }
         ],
         "responses": {
@@ -750,7 +894,36 @@
     "/api/kpi/invalid-pod": {
       "get": {
         "summary": "Invalid POD RCA data -- stations, reasons and couriers by week -- from the uploaded POD validation file, limited to the caller's scope.",
+        "description": "The Overview: per station / reason / driver for the period (view weekly / monthly / daily + period key; default the last complete week of the file's days).",
         "operationId": "kpi_invalid_pod_api_kpi_invalid_pod_get",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -798,7 +971,17 @@
             }
           },
           {
-            "name": "week",
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
             "in": "query",
             "required": false,
             "schema": {
@@ -810,7 +993,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Week"
+              "title": "Period"
             }
           },
           {
@@ -878,13 +1061,29 @@
         "operationId": "kpi_invalid_pod_drivers_api_kpi_invalid_pod_drivers_get",
         "parameters": [
           {
-            "name": "week",
+            "name": "view",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
-              "default": "all",
-              "title": "Week"
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
             }
           },
           {
@@ -972,7 +1171,7 @@
     "/api/kpi/invalid-pod/trend": {
       "get": {
         "summary": "Attempts and invalid POD per day for a region, zone, station or driver (level).",
-        "description": "Attempts and invalid POD per day for a region, zone, station or driver (level). Without `keys` the `top` entities with the most\ninvalid POD are drawn; `options` lists what can be picked. `__all__` is everything in view.",
+        "description": "Attempts and invalid POD per day / week / month (grain) for a region, zone, station or driver (level). Days are the days of the period picked (view + period);\nweeks and months run over every day of the file. Without `keys` the `top` entities with the most invalid POD are drawn; `options` lists what can be picked.\n`__all__` is everything in view.",
         "operationId": "kpi_invalid_pod_trend_api_kpi_invalid_pod_trend_get",
         "parameters": [
           {
@@ -986,13 +1185,39 @@
             }
           },
           {
-            "name": "week",
+            "name": "grain",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string",
-              "default": "all",
-              "title": "Week"
+              "default": "day",
+              "title": "Grain"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "weekly",
+              "title": "View"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
             }
           },
           {

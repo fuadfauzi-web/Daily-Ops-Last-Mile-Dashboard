@@ -7,7 +7,7 @@ import HBars from "./HBars";
 import KpiUploadPanel from "./KpiUploadPanel";
 import { kpiTargetText, useKpiTargets } from "../lib/kpiTargets";
 import { dec1, int, pct1, selectClass } from "./fmt";
-import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
+import { Cards, Panel, PeriodControls, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
 
 // COD RTS -- the RCA view. Which COD parcels went back to the shipper (RTS) and why. The KPI (RTS rate, target per region -- Admin -> KPI Targets) needs all COD
 // orders as its denominator, which is not in the file, so this shows COUNTS and shares; the rate stays with the OPEX result.
@@ -19,12 +19,18 @@ import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from ".
 //   Parcels    by parcel size, driver type, status, lost, FIFO
 //   Date trend RTS per day for a region, zone, station or reason
 //   Tracking numbers   the list behind whatever is picked
+// Time works like Hybrid Productivity (Fleet Manager, 2026-09-26): View = Weekly / Monthly / Daily and a Period (a Monday-Sunday week -- week 38 = last week --, a month or a month
+// day by day), judged by the day the RTS was triggered; the page opens on the last complete week of the file. A file that holds several weeks gives the weeks and months inside
+// it; a file without dates has no periods and is shown whole. The trend's grain follows the View.
 // Data: the RAW COD sheet of the RTS Analysis file (Metabase COD RTS Rate) and, optionally, its RAW Overal sheet (Metabase RTS Overall). Scope-limited.
 const noneIf = (v) => (v === "all" ? undefined : v);
 
 export default function CodRtsRca({ me }) {
   const canUpload = me.role === "admin";
   const [tab, setTab] = useState("overview");
+  const [view, setView] = useState("weekly");
+  const [period, setPeriod] = useState(null); // null = the view's default (the newest complete week / month, the current month for Daily)
+  const [grain, setGrain] = useState("week"); // the trend's grain follows the View
   const [region, setRegion] = useState("all");
   const [zone, setZone] = useState("all");
   const [hub, setHub] = useState(null);
@@ -36,8 +42,13 @@ export default function CodRtsRca({ me }) {
   const [opts, setOpts] = useState(null);
 
   const apiTab = tab === "trend" || tab === "tns" ? "overview" : tab;
-  const q = { tab: apiTab, region: noneIf(region), zone: noneIf(zone), hub, reason: apiTab === "reasons" ? reason : undefined, shipper: apiTab === "shippers" ? shipper : undefined };
-  const { data, error, loading } = useApi(() => api.kpiCodRtsView(q), [apiTab, region, zone, hub, apiTab === "reasons" ? reason : null, apiTab === "shippers" ? shipper : null, reload]);
+  const q = { tab: apiTab, view, period, region: noneIf(region), zone: noneIf(zone), hub, reason: apiTab === "reasons" ? reason : undefined, shipper: apiTab === "shippers" ? shipper : undefined };
+  const { data, error, loading } = useApi(() => api.kpiCodRtsView(q), [apiTab, view, period, region, zone, hub, apiTab === "reasons" ? reason : null, apiTab === "shippers" ? shipper : null, reload]);
+  const pickView = (v) => {
+    setView(v);
+    setPeriod(null);
+    setGrain({ weekly: "week", monthly: "month", daily: "day" }[v]);
+  };
   useEffect(() => {
     if (data?.options) setOpts(data.options);
   }, [data]);
@@ -77,6 +88,9 @@ export default function CodRtsRca({ me }) {
   const picks = [hubName && `Station ${hubName}`, reason && `reason “${reason}”`, shipper && `shipper ${shipper}`, driver && `driver ${driver}`].filter(Boolean);
   const ready = data.tab === apiTab;
   const where = hubName ? `Station ${hubName}` : "all stations in view";
+  const hasPeriods = !!data.periods?.weekly?.length; // a file without RTS dates has no periods and is shown whole
+  const shownPeriod = data.period;
+  const periodLabel = (data.periods?.[view] || []).find((o) => o.key === shownPeriod)?.label;
 
   return (
     <div className="space-y-3">
@@ -84,6 +98,7 @@ export default function CodRtsRca({ me }) {
         <TabsBar tabs={tabs} value={tab} onChange={setTab} />
       </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+        {hasPeriods && <PeriodControls periods={data.periods} view={view} period={shownPeriod} onView={pickView} onPeriod={setPeriod} disabled={tab === "trend" && grain !== "day"} />}
         <select className={selectClass} value={region} onChange={(e) => { setRegion(e.target.value); setZone("all"); setHub(null); }} aria-label="Region">
           <option value="all">All regions</option>
           {regions.map((r) => (
@@ -121,9 +136,9 @@ export default function CodRtsRca({ me }) {
       {showUpload && <KpiUploadPanel kpi="cod_rts" me={me} onChanged={() => setReload((n) => n + 1)} />}
 
       {tab === "trend" ? (
-        <CodTrend region={region} zone={zone} hub={hub} />
+        <CodTrend region={region} zone={zone} hub={hub} view={view} period={shownPeriod} periodLabel={periodLabel} grain={grain} setGrain={setGrain} />
       ) : tab === "tns" ? (
-        <CodTns region={region} zone={zone} hub={hub} reason={reason} shipper={shipper} driver={driver} picks={picks} />
+        <CodTns region={region} zone={zone} hub={hub} reason={reason} shipper={shipper} driver={driver} picks={picks} view={view} period={shownPeriod} />
       ) : !ready ? (
         <Skeleton />
       ) : (
@@ -452,28 +467,35 @@ function CodParcels({ v, where }) {
 }
 
 // ------------------------------------------------------------------------------------------------ Date trend
-function CodTrend({ region, zone, hub }) {
+function CodTrend({ region, zone, hub, view, period, periodLabel, grain, setGrain }) {
   return (
-    <TrendPanel
-      levels={[{ key: "station", label: "Station" }, { key: "zone", label: "Zone" }, { key: "region", label: "Region" }, { key: "reason", label: "Reason" }]}
-      load={(level, keys) => api.kpiCodRtsView({ tab: "trend", level, keys, region: noneIf(region), zone: noneIf(zone), hub })}
-      metrics={[{ key: "count", label: "RTS parcels", value: (s, i) => s.count[i], fmt: int, zeroBased: true }]}
-      filterKey={[region, zone, hub].join("|")}
-      note={(d) => (d?.source === "overall" ? "dates from the overall RTS file (all RTS, not only COD)" : "by the date the RTS was triggered")}
-    />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+        <span className="font-display font-semibold uppercase text-slate-500">Group by</span>
+        <TabsBar tabs={[{ key: "day", label: "Day" }, { key: "week", label: "Week" }, { key: "month", label: "Month" }]} value={grain} onChange={setGrain} />
+        <span className="text-slate-400">{grain === "day" ? `the days of ${periodLabel || "the file"} -- pick another period above` : `every ${grain} in the file`}</span>
+      </div>
+      <TrendPanel
+        levels={[{ key: "station", label: "Station" }, { key: "zone", label: "Zone" }, { key: "region", label: "Region" }, { key: "reason", label: "Reason" }]}
+        load={(level, keys) => api.kpiCodRtsView({ tab: "trend", level, keys, grain, view, period: grain === "day" ? period : null, region: noneIf(region), zone: noneIf(zone), hub })}
+        metrics={[{ key: "count", label: "RTS parcels", value: (s, i) => s.count[i], fmt: int, zeroBased: true }]}
+        filterKey={[region, zone, hub, grain, grain === "day" ? `${view}:${period}` : ""].join("|")}
+        note={(d) => (d?.source === "overall" ? "dates from the overall RTS file (all RTS, not only COD)" : "by the date the RTS was triggered")}
+      />
+    </div>
   );
 }
 
 // ------------------------------------------------------------------------------------------------ Tracking numbers
-function CodTns({ region, zone, hub, reason, shipper, driver, picks }) {
+function CodTns({ region, zone, hub, reason, shipper, driver, picks, view, period }) {
   const [tns, setTns] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  useEffect(() => setTns(null), [region, zone, hub, reason, shipper, driver]);
+  useEffect(() => setTns(null), [region, zone, hub, reason, shipper, driver, view, period]);
   const load = async () => {
     setBusy(true);
     try {
-      setTns(await api.kpiCodRtsTns(Object.fromEntries(Object.entries({ region: noneIf(region), zone: noneIf(zone), hub, reason, shipper, driver }).filter(([, v]) => v))));
+      setTns(await api.kpiCodRtsTns({ region: noneIf(region), zone: noneIf(zone), hub, reason, shipper, driver, view, period }));
     } catch (e) {
       setError(e.message);
     } finally {
