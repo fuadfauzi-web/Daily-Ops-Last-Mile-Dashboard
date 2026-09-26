@@ -40,9 +40,14 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", _UNIT_SUFFIX.sub("", text).lower())
 
 
+# a column that goes by two names in Metabase ("Start Clock: Day" from the datetime, "Start Clock Date" from a date column) is one column
+_ALIASES = {"startclockdate": "startclock"}
+
+
 def norm(name) -> str:
     """Column names are normalised for every cell of every row on every request -- the same few dozen strings -- so it is cached."""
-    return _norm(str(name))
+    n = _norm(str(name))
+    return _ALIASES.get(n, n)
 
 
 _MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
@@ -122,8 +127,8 @@ DATASETS: dict[str, dict] = {
     },
     "cisp_prior": {
         "kpi": "prior", "label": "Prior KPI (station by day)", "link": "https://metabase.ninjavan.co/question/127199",
-        "hint": "Metabase question 127199 (CISP Prior - station by day, last 35 days) -- Download results as .csv. PRE-tagged TNs only, open PETs excluded; provisional exclusions until OPEX confirms",
-        "sheet": None, "required": ["desthubname", "workingstartclockdate", "measured", "met"],
+        "hint": "Metabase question 127199 (CISP Prior - station by START CLOCK day, last 35 days) -- Download results as .csv. PRE-tagged TNs only, open PETs excluded; each TN is measured on its working start clock date, the result is by start clock date; provisional exclusions until OPEX confirms",
+        "sheet": None, "required": ["desthubname", "startclock", "measured", "met"],
     },
     "cisp_completion": {
         "kpi": "completion", "label": "Completion D0 + D3 (station by day)", "link": "https://metabase.ninjavan.co/question/127200",
