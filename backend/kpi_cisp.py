@@ -14,7 +14,8 @@ Feeder files (Metabase questions in the Fleet Manager's collection; CSV or Excel
   cisp_prior       127199  Dest Hub Name, Start Clock: Day, Measured, Met     (PRE-tagged TNs, open PETs excluded; met = completion_met_flag, which is judged on each TN's
                            WORKING start clock date -- but the result and the trend are by START clock date (the day of start_clock), Fleet Manager 2026-09-26)
   cisp_completion  127200  Dest Hub Name, Last Mile Start Clock Date: Day, D0 Measured, D0 Met, D3 Measured, D3 Met
-  cisp_terminal    127201  Dest Hub Name, Last Mile Start Clock Date: Day, T7 Measured, T7 Met  (TNs past their N7 cut-off)
+  cisp_terminal    127201  Dest Hub Name, N7 Cutoff Date: Day, T7 Measured, T7 Met  (TNs past their N7 cut-off; dated by the N7 CUT-OFF date, Fleet Manager 2026-09-26 --
+                           a T7 week is the week of the cut-off date, so it is final once it is over; the older "Last Mile Start Clock Date: Day" layout is still read)
   cisp_fifo        station by day like Prior (Dest Hub Name, Start Clock: Day, Measured, Met) -- or the older saved "(MY) LM CISP FIFO D0" question 118041, one period per
                    file (Total Orders, Total N0 Met per hub; no days, so no week / month / day views)
 

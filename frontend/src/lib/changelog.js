@@ -18,6 +18,13 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
+    title: "Terminal T7 by its N7 cut-off date",
+    points: [
+      "Terminal T7 now takes its day from the N7 cut-off date, so a T7 week is the week of the cut-off date and is final once it is over: the page opens on week 38 with week 39 building up, instead of running a week behind.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "KPI: weekly, monthly or daily",
     points: [
       "Prior KPI, FIFO D0, Completion D0, Completion D3, Terminal T7, COD RTS and Invalid POD now have a View (Weekly / Monthly / Daily) and a Period, like Hybrid Productivity, instead of the last 7 days. A week is Monday to Sunday and numbered like the team's sheets (last week is week 38); the page opens on the last complete week, Monthly on the last complete month and Daily on the current month. Any earlier week or month is one pick away, and the week or month in progress is there too, marked so far.",

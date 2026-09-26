@@ -46,7 +46,9 @@ def _norm(text: str) -> str:
 
 
 # a column that goes by two names in Metabase ("Start Clock: Day" from the datetime, "Start Clock Date" from a date column) is one column
-_ALIASES = {"startclockdate": "startclock", "ordermilestonesgranularstatus": "granularstatus"}
+# Terminal T7 is dated by its N7 CUT-OFF date (Fleet Manager, 2026-09-26: a T7 week is the week of the N7 cut-off date, so it is final once it is over); its file's
+# "N7 Cutoff Date: Day" is the day column, like "Last Mile Start Clock Date: Day" was before -- both are still accepted
+_ALIASES = {"startclockdate": "startclock", "ordermilestonesgranularstatus": "granularstatus", "n7cutoffdate": "lastmilestartclockdate"}
 
 
 def norm(name) -> str:
@@ -141,8 +143,8 @@ DATASETS: dict[str, dict] = {
         "sheet": None, "required": ["desthubname", "lastmilestartclockdate", "d0measured", "d0met", "d3measured", "d3met"],
     },
     "cisp_terminal": {
-        "kpi": "terminal", "label": "Terminal T7 (station by day)", "link": "https://metabase.ninjavan.co/question/127201",
-        "hint": "Metabase question 127201 (CISP Terminal T7 - station by day, last 26 weeks, TNs past their N7 cut-off) -- Download results as .csv. Provisional exclusions until OPEX confirms",
+        "kpi": "terminal", "label": "Terminal T7 (station by N7 cut-off day)", "link": "https://metabase.ninjavan.co/question/127201",
+        "hint": "Metabase question 127201 (CISP Terminal T7 - station by N7 cut-off day, last 26 weeks, TNs past their N7 cut-off) -- Download results as .csv (the page reads it by week, month or day). Provisional exclusions until OPEX confirms",
         "sheet": None, "required": ["desthubname", "lastmilestartclockdate", "t7measured", "t7met"],
     },
     "cisp_fifo": {
