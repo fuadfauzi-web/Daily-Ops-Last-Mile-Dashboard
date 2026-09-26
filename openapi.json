@@ -72,6 +72,46 @@
         ]
       }
     },
+    "/api/kpi/settings": {
+      "put": {
+        "summary": "Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off; Retail, not Last Mile).",
+        "description": "Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off).",
+        "operationId": "put_kpi_settings_api_kpi_settings_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "KPI page"
+        ]
+      }
+    },
     "/api/kpi/cisp/{kpi}/view": {
       "get": {
         "summary": "Prior / Completion D0 / D3 / Terminal T7 / FIFO D0 from the uploaded Metabase feeder file: Overview (window, regions, zones, stations against their region's target) or Date trend, limited to the caller's scope.",
@@ -7852,6 +7892,19 @@
           "total_tn"
         ],
         "title": "RpuStationRow"
+      },
+      "SettingsIn": {
+        "properties": {
+          "include_east_malaysia": {
+            "type": "boolean",
+            "title": "Include East Malaysia"
+          }
+        },
+        "type": "object",
+        "required": [
+          "include_east_malaysia"
+        ],
+        "title": "SettingsIn"
       },
       "ShipmentDetailsResponse": {
         "properties": {
