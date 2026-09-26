@@ -13,6 +13,7 @@ import WeeklyDashboard from "./kpi/WeeklyDashboard";
 import OpexResult from "./kpi/OpexResult";
 import InvalidPodRca from "./kpi/InvalidPodRca";
 import CodRtsRca from "./kpi/CodRtsRca";
+import CispKpi from "./kpi/CispKpi";
 
 // KPI Dashboard (2026-09-26, staging). The KPI page is the RCA side of the KPIs: the OPEX team's dashboard shows the RESULT (a %), this
 // shows WHY -- with the numbers and the tracking numbers behind them. Three parts:
@@ -26,11 +27,11 @@ const MODULES = [
   { key: "hybrid", label: "Hybrid Productivity", group: "RCA details", live: true },
   { key: "invalidPod", label: "Invalid POD", group: "RCA details", live: true },
   { key: "codRts", label: "COD RTS", group: "RCA details", live: true },
-  { key: "prior", label: "Prior KPI", group: "RCA details" },
-  { key: "fifod0", label: "FIFO D0 KPI", group: "RCA details" },
-  { key: "terminalT7", label: "Terminal T7", group: "RCA details" },
-  { key: "compD0", label: "Completion D0", group: "RCA details" },
-  { key: "compD3", label: "Completion D3", group: "RCA details" },
+  { key: "prior", label: "Prior KPI", group: "RCA details", live: true },
+  { key: "fifod0", label: "FIFO D0 KPI", group: "RCA details", live: true },
+  { key: "terminalT7", label: "Terminal T7", group: "RCA details", live: true },
+  { key: "compD0", label: "Completion D0", group: "RCA details", live: true },
+  { key: "compD3", label: "Completion D3", group: "RCA details", live: true },
 ];
 
 const int = (v) => Math.round(v).toLocaleString();
@@ -788,6 +789,7 @@ const OpexPane = memo(OpexResult);
 const HybridPane = memo(HybridProductivity);
 const InvalidPodPane = memo(InvalidPodRca);
 const CodRtsPane = memo(CodRtsRca);
+const CispPane = memo(CispKpi);
 
 export default function KpiDashboard({ me }) {
   const [module, setModule] = useState("weekly");
@@ -841,6 +843,11 @@ export default function KpiDashboard({ me }) {
         {pane("hybrid", <HybridPane me={me} />)}
         {pane("invalidPod", <InvalidPodPane me={me} />)}
         {pane("codRts", <CodRtsPane me={me} />)}
+        {pane("prior", <CispPane me={me} kpi="prior" />)}
+        {pane("fifod0", <CispPane me={me} kpi="fifo" />)}
+        {pane("terminalT7", <CispPane me={me} kpi="t7" />)}
+        {pane("compD0", <CispPane me={me} kpi="d0" />)}
+        {pane("compD3", <CispPane me={me} kpi="d3" />)}
         {!active.live && <ComingSoon label={active.label} />}
       </section>
     </div>

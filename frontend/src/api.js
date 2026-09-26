@@ -58,6 +58,7 @@ export const api = {
   kpiInvalidPodDrivers: (q) => request(`/api/kpi/invalid-pod/drivers?${qs(q)}`),
   kpiInvalidPodTrend: (q) => request(`/api/kpi/invalid-pod/trend?${qs(q)}`),
   kpiPodPerformance: () => request("/api/kpi/pod-performance"),
+  kpiCispView: (kpi, q) => request(`/api/kpi/cisp/${kpi}/view?${qs(q)}`),
   kpiCodRtsView: (q) => request(`/api/kpi/cod-rts/view?${qs(q)}`),
   kpiCodRtsTns: (q) => request(`/api/kpi/cod-rts/tns?${new URLSearchParams(q)}`),
   kpiTable: (name) => request(`/api/kpi/table/${name}`),

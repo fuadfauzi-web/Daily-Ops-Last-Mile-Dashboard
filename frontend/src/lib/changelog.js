@@ -17,6 +17,16 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-09-26",
+    title: "KPI page (Beta): Prior, Completion D0 / D3, Terminal T7, FIFO D0 -- and targets per region",
+    feature: "kpiDashboard",
+    points: [
+      "Prior KPI, Completion D0, Completion D3, Terminal T7 and FIFO D0 are now open on the KPI page (still Beta, a preview). Overview: the % met against the target for the last 7 / 14 / 28 days or the whole file, the change on the period before, and the regions, zones and stations -- worst first, with an Under target only tick; click a station to filter the page to it. Date trend: the % met per day or week (by start-clock date) with the target line. The official OPEX number sits beside each; the OPEX result stays the one to quote.",
+      "Admins load each KPI from a small Metabase file (Data upload has the link). Exclusions in these files are provisional until confirmed with OPEX, so a rate can differ a little from the official one.",
+      "Targets are now per region: FIFO D0 96 / 96 / 96 / 97 / 94%, D0 88 / 88 / 88 / 90 / 90%, D3 96 / 96 / 96 / 96 / 93%, D7 100%, Prior 92% for Klang Valley / Northern / Southern / East Coast / East Malaysia (Lost 0.005%, COD RTS 9 / 9 / 9 / 7 / 12%, Invalid POD 25%). Every station, zone and region is judged against its own region's target -- on these pages and on the Weekly Dashboard; a total that spans regions uses the blend of their targets and says so.",
+    ],
+  },
+  {
     date: "2026-09-25",
     title: "Urgent TN: re-send a note, reply to your PIC",
     points: [

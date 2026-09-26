@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
+from kpi_targets import weekly_region_targets
 from stations import ABBR_TO_HUB, FULL_NAME_TO_HUB, HUBS
 
 log = logging.getLogger("kpi_rca")
@@ -114,6 +115,8 @@ WEEKLY_COLUMNS = [
     (23, "shp_inbound", "Shipment Inbound", "pct", 0.99, "higher"),
     (28, "rpu", "RPU Performance", "pct", None, "higher"),
 ]
+# The targets above are the standard ones (Klang Valley / Northern / Southern); East Coast and East Malaysia differ for some KPIs, so the view also gets
+# region_targets (kpi_targets.py) and judges every scope against its own region's.
 WEEKLY_COUNTS = [(3, "total_routed", "Total Routed"), (4, "total_success", "Total Success"), (16, "complaint_count", "Complaints"), (18, "lost_count", "Lost"), (22, "fresh_received", "Fresh Received")]
 
 
@@ -164,6 +167,7 @@ def build_weekly_kpi(rows: list[dict], user: CurrentUser) -> dict:
         "weeks": sorted(weeks),
         "rows": out,
         "kpis": [{"key": k, "label": l, "target": t, "direction": d} for _p, k, l, _kind, t, d in WEEKLY_COLUMNS],
+        "region_targets": weekly_region_targets(),
         "counts": [{"key": k, "label": l} for _p, k, l in WEEKLY_COUNTS],
     }
 

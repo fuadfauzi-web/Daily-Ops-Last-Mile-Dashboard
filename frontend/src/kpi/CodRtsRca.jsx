@@ -8,7 +8,7 @@ import KpiUploadPanel from "./KpiUploadPanel";
 import { dec1, int, pct1, selectClass } from "./fmt";
 import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
 
-// COD RTS -- the RCA view (staging). Which COD parcels went back to the shipper (RTS) and why. The KPI (RTS rate, target under 9%) needs all COD
+// COD RTS -- the RCA view (staging). Which COD parcels went back to the shipper (RTS) and why. The KPI (RTS rate, target under 9% -- 7% East Coast, 12% East Malaysia) needs all COD
 // orders as its denominator, which is not in the file, so this shows COUNTS and shares; the rate stays with the OPEX result.
 //   Overview   stations, reasons, where the parcels are now, shippers, drivers, all-RTS summary
 //   Reasons    every reason: share, before a 1st attempt, top station / shipper -- click one for the stations, shippers and driver types behind it

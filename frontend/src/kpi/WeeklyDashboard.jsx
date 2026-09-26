@@ -76,6 +76,9 @@ export default function WeeklyDashboard({ me }) {
   }
 
   const scope = scopes.find((s) => s.key === scopeKey) || scopes[0];
+  // targets are per region (East Coast / East Malaysia differ for some KPIs): judge the scope against its own region's
+  const regionTargets = data.region_targets?.[scope.region] || {};
+  const kpis = data.kpis.map((k) => (regionTargets[k.key] != null ? { ...k, target: regionTargets[k.key] } : k));
   const weeksDesc = [...data.weeks].sort((a, b) => b - a);
   const week = weekSel && data.weeks.includes(weekSel) ? weekSel : weeksDesc[0];
   const past = data.weeks.filter((w) => w <= week).slice(-4);
@@ -84,7 +87,7 @@ export default function WeeklyDashboard({ me }) {
   // ---- past-4-weeks table: a row per KPI (and the volumes), a column per week
   const measureRows = [
     ...data.counts.map((c) => ({ key: c.key, label: c.label, count: true })),
-    ...data.kpis.map((k) => ({ ...k, kpi: true })),
+    ...kpis.map((k) => ({ ...k, kpi: true })),
   ];
   const valueOf = (row, w, s = scope) => {
     const r = at(s, w);
@@ -135,14 +138,14 @@ export default function WeeklyDashboard({ me }) {
     if (k === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else {
       setSortKey(k);
-      setSortDir(k === "name" || k === "zone" ? "asc" : data.kpis.find((x) => x.key === k)?.direction === "lower" ? "desc" : "asc"); // worst first
+      setSortDir(k === "name" || k === "zone" ? "asc" : kpis.find((x) => x.key === k)?.direction === "lower" ? "desc" : "asc"); // worst first
     }
   };
   const heatColumns = [
     { key: "name", label: "Station", sticky: true, align: "left", render: (r) => r.name },
     ...(scope.level !== "station" ? [{ key: "zone", label: "Zone", className: () => "text-slate-500" }] : []),
     { key: "routed", label: "Total Routed", render: (r) => int(r.routed || 0), className: () => "text-slate-700" },
-    ...data.kpis.map((k) => ({
+    ...kpis.map((k) => ({
       key: k.key,
       label: (
         <span>
@@ -156,7 +159,7 @@ export default function WeeklyDashboard({ me }) {
   ];
 
   // ---- one KPI over all weeks, against its target
-  const tk = data.kpis.find((k) => k.key === trendKpi) || data.kpis[0];
+  const tk = kpis.find((k) => k.key === trendKpi) || kpis[0];
   const trendWeeks = data.weeks;
   const trendVals = trendWeeks.map((w) => {
     const v = valueOf(tk, w);
@@ -221,14 +224,14 @@ export default function WeeklyDashboard({ me }) {
         columns={pastColumns}
         rows={measureRows}
         rowKey={(m) => m.key}
-        footer="Green = on target, red ▲ = missing the target. Targets come from the dashboard's own headers; rates are shown as the sheet has them."
+        footer="Green = on target, red ▲ = missing the target. Each scope is judged against its region's targets (East Coast and East Malaysia differ for some KPIs); rates are shown as the sheet has them."
       />
 
       <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <div className="font-display text-sm font-medium text-slate-700">{scope.name} — trend</div>
           <select className={selectClass} value={tk.key} onChange={(e) => setTrendKpi(e.target.value)} aria-label="KPI">
-            {data.kpis.map((k) => (
+            {kpis.map((k) => (
               <option key={k.key} value={k.key}>
                 {k.label}
               </option>
@@ -256,8 +259,8 @@ export default function WeeklyDashboard({ me }) {
               onClick={() =>
                 exportCsv(
                   `daily-ops-weekly-kpi-stations-w${week}.csv`,
-                  ["Station", "Zone", "Total Routed", ...data.kpis.map((k) => k.label)],
-                  heatSorted.map((r) => [r.name, r.zone, r.routed ?? "", ...data.kpis.map((k) => (r[k.key] == null ? "" : Math.round(r[k.key] * 100000) / 100000))])
+                  ["Station", "Zone", "Total Routed", ...kpis.map((k) => k.label)],
+                  heatSorted.map((r) => [r.name, r.zone, r.routed ?? "", ...kpis.map((k) => (r[k.key] == null ? "" : Math.round(r[k.key] * 100000) / 100000))])
                 )
               }
               className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
