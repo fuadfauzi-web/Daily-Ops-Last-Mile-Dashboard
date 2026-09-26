@@ -32,6 +32,9 @@ TAGS = [  # first matching prefix wins
 SUMMARIES = {
     ("get", "/api/kpi/targets"): "KPI targets for every region (the defaults plus what an admin changed), and whether the caller may edit them.",
     ("put", "/api/kpi/targets"): "Admin only: set (or put back to the default) the KPI targets per region; only differences from the defaults are stored.",
+    ("get", "/api/admin/region-list"): "Admin only: where the station list comes from (published sheet link, uploaded file or the built-in snapshot), how many stations, and what differs from the built-in list.",
+    ("put", "/api/admin/region-list/url"): "Admin only: set (or clear) the published-to-the-web CSV link of the Region List sheet and read it now.",
+    ("post", "/api/admin/region-list/sync"): "Admin only: read the Region List sheet link (or the uploaded file) again now.",
     ("put", "/api/kpi/settings"): "Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off; Retail, not Last Mile).",
     ("get", "/api/kpi/cisp/{kpi}/view"): "Prior / Completion D0 / D3 / Terminal T7 / FIFO D0 from the uploaded Metabase feeder file: Overview (window, regions, zones, stations against their region's target) or Date trend, limited to the caller's scope.",
     ("get", "/api/kpi/cod-rts/view"): "COD RTS RCA view (Overview, Reasons, Shippers, Drivers, Timing, Parcels, Date trend) from the uploaded RTS Analysis file, limited to the caller's scope.",
