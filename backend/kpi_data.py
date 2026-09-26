@@ -11,10 +11,15 @@ Column names are matched loosely (case, spaces and punctuation ignored), so "Cou
 import asyncio
 from functools import lru_cache
 import csv
+import gzip
+import hashlib
+import inspect
 import io
 import logging
+import pickle
 import re
 import sys
+import time
 import uuid
 from datetime import date, datetime, timezone
 
@@ -388,6 +393,7 @@ async def save_upload(dataset: str, filename: str, data: bytes, user_email: str)
         compact = await run_in_threadpool(builder, rows)
         async with _lock(dataset):
             _compact[dataset] = {"stamp": _stamp(now), "data": compact}
+        await run_in_threadpool(_write_blob, dataset, key, compact)  # so a restart / another replica does not have to parse the file again
     else:
         async with _lock(dataset):
             _cache[dataset] = {"stamp": _stamp(now), "rows": rows, "header": header}
@@ -408,6 +414,54 @@ async def delete_upload(dataset: str) -> None:
 
 _compact: dict[str, dict] = {}  # dataset -> {"stamp", "data"}: the compact structure a dataset's builder made from its rows
 _builders: dict[str, object] = {}
+
+
+def _blob_key(dataset: str, key: str) -> str:
+    """Where the compact structure of an upload lives. The name carries a fingerprint of the code that builds it (the module's source) and of the station list it
+    was built with, so a new build or a changed station list simply misses the old blob and rebuilds from the file."""
+    b = _builders[dataset]
+    try:
+        src = open(inspect.getsourcefile(b), "rb").read()
+    except Exception:  # noqa: BLE001
+        src = repr(b).encode()
+    from stations import HUBS  # imported here: stations is a plain module, kpi_data must not depend on it at import
+
+    h = hashlib.md5(src)
+    h.update(repr(sorted(HUBS.items())).encode())
+    return f"{key}.{h.hexdigest()[:12]}.cmp"
+
+
+def _write_blob(dataset: str, key: str, compact) -> None:
+    try:
+        payload = gzip.compress(pickle.dumps(compact, protocol=4), compresslevel=3)
+        storage.put_bytes(_blob_key(dataset, key), payload, content_type="application/octet-stream")
+    except Exception:  # noqa: BLE001 - only a speed-up
+        log.warning("could not store the compact %s", dataset, exc_info=True)
+
+
+def _read_blob(dataset: str, key: str):
+    try:
+        payload = storage.get_bytes(_blob_key(dataset, key))
+    except Exception:  # noqa: BLE001 - not there (yet) is the normal case
+        return None
+    try:
+        return pickle.loads(gzip.decompress(payload))  # our own file, written by _write_blob
+    except Exception:  # noqa: BLE001
+        log.warning("compact %s unreadable -- building it again", dataset, exc_info=True)
+        return None
+
+
+async def warm_compacts() -> None:
+    """At start-up: load every uploaded dataset -- the compact ones first (their blob makes it quick), then the plain ones -- one after the other, so the first person
+    to open a KPI page does not wait for a file to be read and parsed."""
+    for dataset in [*_builders, *[d for d in DATASETS if d not in _builders]]:
+        try:
+            t0 = time.perf_counter()
+            got = await (load_compact(dataset) if dataset in _builders else load_rows(dataset))
+            if got is not None:
+                log.info("warmed %s in %.1f s", dataset, time.perf_counter() - t0)
+        except Exception:  # noqa: BLE001
+            log.warning("could not warm %s", dataset, exc_info=True)
 
 
 def drop_hub_caches(keep: tuple = ()) -> None:
@@ -435,10 +489,15 @@ async def load_compact(dataset: str) -> tuple[dict, object] | None:
         hit = _compact.get(dataset)
         if hit and hit["stamp"] == stamp:
             return meta, hit["data"]
-        spec = DATASETS[dataset]
-        data = await run_in_threadpool(storage.get_bytes, key)
-        _header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"], spec.get("keep"))
-        compact = await run_in_threadpool(_builders[dataset], rows)
+        compact = await run_in_threadpool(_read_blob, dataset, key)
+        if compact is None:
+            spec = DATASETS[dataset]
+            t0 = time.perf_counter()
+            data = await run_in_threadpool(storage.get_bytes, key)
+            _header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"], spec.get("keep"))
+            compact = await run_in_threadpool(_builders[dataset], rows)
+            log.info("%s parsed from its file in %.1f s", dataset, time.perf_counter() - t0)
+            await run_in_threadpool(_write_blob, dataset, key, compact)
         _compact[dataset] = {"stamp": stamp, "data": compact}
         return meta, compact
 
