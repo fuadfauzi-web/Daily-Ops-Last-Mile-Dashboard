@@ -169,9 +169,11 @@ export default function OpexResult({ me }) {
     return (
       <div className="space-y-3">
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-          <div className="font-display text-base font-semibold text-ink">No OPEX result uploaded yet</div>
+          <div className="font-display text-base font-semibold text-ink">No OPEX result {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">
-            Open the OPEX Last Mile Performance dashboard (link below), pick the region / area and the dates, press <strong>Download CSV</strong>, then upload that file here (admins). It shows here, open to every user, next to the RCA pages.
+            {canUpload
+              ? "Open the OPEX Last Mile Performance dashboard (link below), pick the region / area and the dates, press Download CSV, then upload that file here. It shows here, open to every user, next to the RCA pages."
+              : "The OPEX result shows here, open to every user, next to the RCA pages, once it is loaded."}
           </p>
         </div>
         <KpiUploadPanel kpi="opex" me={me} onChanged={load} />

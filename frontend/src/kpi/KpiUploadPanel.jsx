@@ -51,6 +51,10 @@ export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data uploa
     }
   };
 
+  // Someone who cannot upload any of these files does not see the card at all -- nor the Metabase links in it (Fleet Manager, 2026-09-26)
+  if (items !== null && !items.some((u) => u.can_upload ?? canUploadAny)) return null;
+  if (items === null && !canUploadAny) return null;
+
   return (
     <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
       <div className="flex flex-wrap items-baseline justify-between gap-2">

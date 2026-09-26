@@ -59,9 +59,11 @@ export default function CodRtsRca({ me }) {
     return (
       <div className="space-y-3">
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-          <div className="font-display text-base font-semibold text-ink">No COD RTS data uploaded yet</div>
-          <p className="mt-2">Download the COD RTS Rate (and RTS Overall) results from Metabase -- links in the upload panel -- or use the RTS Analysis file (the whole workbook is fine). This page then shows why COD parcels are returned.</p>
-          {!canUpload && <p className="mt-2 text-xs text-slate-400">Admins upload the data.</p>}
+          <div className="font-display text-base font-semibold text-ink">No COD RTS data {canUpload ? "uploaded" : "loaded"} yet</div>
+          <p className="mt-2">
+            {canUpload ? "Download the COD RTS Rate (and RTS Overall) results from Metabase -- links in the upload panel -- or use the RTS Analysis file (the whole workbook is fine). " : ""}
+            This page then shows why COD parcels are returned.
+          </p>
         </div>
         <KpiUploadPanel kpi="cod_rts" me={me} onChanged={() => setReload((n) => n + 1)} />
       </div>

@@ -177,8 +177,8 @@ async def _source(dataset: str, card_id: int, force: bool):
 
 
 def _in_scope(driver: dict, user: CurrentUser) -> bool:
-    if kpi_targets.excluded_region(driver.get("region")):
-        return False  # East Malaysia is left out of the KPI pages unless an admin switched it on
+    if kpi_targets.excluded_place(driver.get("region"), driver.get("zone")):
+        return False  # East Malaysia / Sarawak are left out of the KPI pages unless an admin switched them on
     if user.scope_type == "all":
         return True
     if user.scope_type == "region":
@@ -286,7 +286,8 @@ async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
     """Which datasets have an uploaded file (for the KPI page's Data upload panel)."""
     current = await kd.list_uploads()
     return [
-        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], "link": spec.get("link"), "link_label": spec.get("link_label"), "can_upload": user.role in _uploader_roles(name), **current.get(name, {})}
+        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"] if user.role in _uploader_roles(name) else "", "link": spec.get("link") if user.role in _uploader_roles(name) else None,  # who cannot upload a file does not need to know where it comes from
+         "link_label": spec.get("link_label") if user.role in _uploader_roles(name) else None, "can_upload": user.role in _uploader_roles(name), **current.get(name, {})}
         for name, spec in kd.DATASETS.items()
     ]
 

@@ -220,6 +220,7 @@ export function LostDeclaredView({ view, me, ...props }) {
   const [stations, setStations] = useState([]);
   const [toAnswerOnly, setToAnswerOnly] = useState(false);
   const [reload, setReload] = useState(0);
+  const [showUpload, setShowUpload] = useState(false); // the upload card stays hidden until an admin opens it, like on the KPI pages
 
   useEffect(() => {
     setData(null);
@@ -313,25 +314,37 @@ export function LostDeclaredView({ view, me, ...props }) {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        {isSummary ? (
-          <>What Lost Declared This Week collected, moved here every Monday at 10pm for good (answers included). </>
-        ) : (
-          <>
-            The tickets declared lost this week, from the Metabase question{" "}
-            <a href="https://metabase.ninjavan.co/question/127203" target="_blank" rel="noopener noreferrer" className="font-medium text-sky-700 underline hover:text-sky-900">
-              This Week Lost Declared - All Regions ↗
-            </a>
-            {data.upload ? ` -- last loaded ${formatTime(data.upload.uploaded_at)} (${data.upload.filename}).` : " -- nothing loaded yet."} Everything on this list moves to the Summary every Monday at 10pm.{" "}
-          </>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          {isSummary ? (
+            <>What Lost Declared This Week collected, moved here every Monday at 10pm for good (answers included). </>
+          ) : (
+            <>
+              The tickets declared lost this week
+              {me.role === "admin" && (
+                <>
+                  , from the Metabase question{" "}
+                  <a href="https://metabase.ninjavan.co/question/127203" target="_blank" rel="noopener noreferrer" className="font-medium text-sky-700 underline hover:text-sky-900">
+                    This Week Lost Declared - All Regions ↗
+                  </a>
+                </>
+              )}
+              {data.upload?.uploaded_at ? ` -- updated ${formatTime(data.upload.uploaded_at)}.` : " -- nothing loaded yet."} Everything on this list moves to the Summary every Monday at 10pm.{" "}
+            </>
+          )}
+          {canEdit ? "You can answer for the stations in your access." : "Only region staff (and managers / admins) answer here; you can monitor the stations in your access."}
+        </div>
+        {data.can_upload && (
+          <button onClick={() => setShowUpload((v) => !v)} className="h-9 shrink-0 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
+            {showUpload ? "Hide data upload" : "Data upload"}
+          </button>
         )}
-        {canEdit ? "You can answer for the stations in your access." : "Only region staff (and managers / admins) answer here; you can monitor the stations in your access."}
       </div>
 
-      {data.can_upload && (
+      {data.can_upload && showUpload && (
         <div className="space-y-2">
-          <KpiUploadPanel kpi="recovery" me={me} title="Data upload (admins and managers) -- the Metabase CSVs" onChanged={() => setReload((n) => n + 1)} />
-          {!isSummary && me.role === "admin" && (
+          <KpiUploadPanel kpi="recovery" me={me} title="Data upload -- the Metabase CSVs" onChanged={() => setReload((n) => n + 1)} />
+          {!isSummary && (
             <div className="flex justify-end">
               <button onClick={move} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
                 Move everything to the Summary now

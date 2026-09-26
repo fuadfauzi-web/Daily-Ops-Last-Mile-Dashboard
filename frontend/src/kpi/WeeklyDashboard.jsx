@@ -64,10 +64,16 @@ export default function WeeklyDashboard({ me }) {
     return (
       <div className="space-y-3">
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
-          <div className="font-display text-base font-semibold text-ink">{data.has_data ? "No rows for your scope in the uploaded file" : "No weekly results uploaded yet"}</div>
+          <div className="font-display text-base font-semibold text-ink">{data.has_data ? "No rows for your scope in the loaded file" : `No weekly results ${canUpload ? "uploaded" : "loaded"} yet`}</div>
           <p className="mt-2">
-            Upload the <strong>Station KPI W0W</strong> sheet of the Dashboard WoW file (the whole workbook is fine) and this page shows the KPI results week over week, with each
-            KPI against its target.
+            {canUpload ? (
+              <>
+                Upload the <strong>Station KPI W0W</strong> sheet of the Dashboard WoW file (the whole workbook is fine) and this page shows the KPI results week over week, with each
+                KPI against its target.
+              </>
+            ) : (
+              "Once it is loaded, this page shows the KPI results week over week, with each KPI against its target."
+            )}
           </p>
         </div>
         <KpiUploadPanel kpi="weekly" me={me} onChanged={load} />

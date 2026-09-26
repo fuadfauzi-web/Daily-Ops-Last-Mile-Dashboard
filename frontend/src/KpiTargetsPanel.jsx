@@ -18,6 +18,7 @@ export default function KpiTargetsPanel() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const [switching, setSwitching] = useState(false);
+  const [switchingSarawak, setSwitchingSarawak] = useState(false);
 
   const fill = (d) => {
     const next = {};
@@ -103,6 +104,21 @@ export default function KpiTargetsPanel() {
   };
 
   const eastMalaysia = !!data.settings?.include_east_malaysia;
+  const sarawak = !!data.settings?.include_sarawak;
+
+  const switchSarawak = async (on) => {
+    setSwitchingSarawak(true);
+    setError(null);
+    try {
+      const res = await api.kpiSettingsSave({ include_sarawak: on });
+      setKpiTargets(res);
+      setData((d) => ({ ...d, settings: res.settings }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSwitchingSarawak(false);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -117,6 +133,16 @@ export default function KpiTargetsPanel() {
             <span className="block text-xs text-slate-500">
               Off by default: the KPI pages are for Last Mile stations and East Malaysia is Retail, so its stations and region are left out of the Dashboard, the RCA pages, the Weekly
               trend and the Hybrid page for everyone. Only stations on the station list are counted. {switching ? "Saving…" : data.settings_changed_by ? `Last changed by ${data.settings_changed_by}.` : ""}
+            </span>
+          </span>
+        </label>
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-1" checked={sarawak} disabled={switchingSarawak} onChange={(e) => switchSarawak(e.target.checked)} />
+          <span>
+            <span className="font-medium">Include Sarawak (East Malaysia 3 and 4) in the KPI pages</span>
+            <span className="block text-xs text-slate-500">
+              Off for now: Sarawak stays out of the KPI pages even when East Malaysia above is ticked. Kuching, Batu Kawa, Petra Jaya, Samarahan, Sibu, Saratok, Bintulu and Miri only count when
+              both are ticked.
             </span>
           </span>
         </label>

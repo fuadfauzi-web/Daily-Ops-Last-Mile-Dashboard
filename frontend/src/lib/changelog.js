@@ -28,8 +28,17 @@ export const CHANGELOG = [
     title: "Recovery: Active Missing, Lost Declared This Week and Lost Declared Summary",
     points: [
       "Four new sub-tabs on Recovery, replacing the Active Missing Google Sheet. B2B Document Active Missing is the same list and the same answers for the B2B documents (MYRDO / MYPSO / -DO) that Active Missing leaves out. Active Missing lists the open missing tracking numbers in your access (Ship Out and the B2B documents left out) and you answer for your own -- ticket updated to In Progress?, parcel found?, customer contacted / received?, liable party, remarks, check by; it saves as you go. A tracking number that is settled drops off by itself, answers included, even if nobody answered it.",
-      "Lost Declared This Week shows the tickets declared lost this week (the Metabase question This Week Lost Declared - All Regions, loaded by an admin or manager once a day): region staff answer customer received?, liable party, remarks, driver name and check by; everyone else monitors what is in their access. Every Monday at 10pm it all moves to Lost Declared Summary, weekly and for good, and leaves This Week.",
-      "Admins and managers: the daily CSV goes in from Admin → Documents (or the upload panel on the tab), with the link to the Metabase question. A second Metabase file (the current status of every lost tracking number of the last 26 weeks) fills the Current status column of both tabs whenever you upload it.",
+      "Lost Declared This Week shows the tickets declared lost this week (updated once a day): region staff answer customer received?, liable party, remarks, driver name and check by; everyone else monitors what is in their access. Every Monday at 10pm it all moves to Lost Declared Summary, weekly and for good, and leaves This Week.",
+      "A Current status column on both Lost Declared tabs shows where each lost tracking number stands now (Cancelled, Completed, Returned to Sender ...).",
+    ],
+  },
+  {
+    date: "2026-09-26",
+    title: "Admin: uploading the lost-declared files",
+    minRank: 3,
+    points: [
+      "On Recovery → Lost Declared This Week / Summary the upload card is hidden until you press Data upload (and Hide data upload puts it away again), like on the KPI pages. Only admins can upload -- managers no longer can -- and nobody else sees the upload cards or the Metabase links, on Recovery or on the KPI pages.",
+      "Two files: the daily This Week Lost Declared - All Regions (Metabase question 127203) and, whenever the status should be refreshed, Lost Declared Current Status (127204). Both are in Admin → Documents too.",
     ],
   },
   {
@@ -47,7 +56,7 @@ export const CHANGELOG = [
     minRank: 3,
     points: [
       "A new KPI Settings tab on the Admin page. Targets: the target of every KPI (Hybrid Productivity, Prior, FIFO D0, D0, D3, D7, COD RTS, Lost, Invalid POD, Complaint) for each region. Change a number and press Save -- the KPI pages, Trend, Invalid POD, COD RTS and Hybrid use it straight away; Back to default puts the built-in number back. Hybrid Productivity starts empty (drivers under 80 stay the low performers until a region has a target).",
-      "Scope: a tick for including East Malaysia in the KPI pages -- off by default, because East Malaysia is Retail and the KPI pages are for Last Mile stations.",
+      "Scope: a tick for including East Malaysia in the KPI pages -- off by default, because East Malaysia is Retail and the KPI pages are for Last Mile stations -- and a second tick for Sarawak (East Malaysia 3 and 4), off for now even when East Malaysia is on.",
     ],
   },
   {
@@ -57,7 +66,7 @@ export const CHANGELOG = [
     points: [
       "Results is now Dashboard: OPEX first, then Trend (the weekly dashboard) with Daily, Weekly and Monthly -- only Weekly for now. RCA details is now RCA analysis, in the order Hybrid, Prior, FIFO D0, Completion D0, Completion D3, Terminal T7, COD RTS, Lost, Invalid POD, Complaint. Lost and Complaint are marked soon: they will share their logic.",
       "East Malaysia is Retail, not Last Mile, so the KPI pages leave it out of every number, table and filter (only Last Mile stations on the station list are counted). An admin can include it again under Admin → KPI Settings.",
-      "Complaint has a target too (0.04% until changed) and the Weekly trend judges it per region like the other KPIs.",
+      "Complaint has a target too (0.04% until changed) and the Weekly trend judges it per region like the other KPIs. Sarawak (East Malaysia 3 and 4) stays out of the KPI pages for now, even if East Malaysia is switched on.",
     ],
   },
   {
