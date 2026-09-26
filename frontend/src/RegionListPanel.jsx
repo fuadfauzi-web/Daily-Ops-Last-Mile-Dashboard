@@ -82,7 +82,7 @@ export default function RegionListPanel({ me }) {
         <div className="font-display text-sm font-semibold text-ink">Link the sheet (optional, best)</div>
         <p className="mt-1 text-xs text-slate-500">
           The sheet needs a sign-in, so the app can only read it through a "published to the web" link: in the sheet choose <em>File → Share → Publish to web</em>, pick the <em>Region</em> tab and{" "}
-          <em>Comma-separated values (.csv)</em>, press Publish and paste the link here. The app then re-reads it every hour, so nobody has to upload anything. Clear the box to go back to the uploaded file.
+          <em>Comma-separated values (.csv)</em>, press Publish and paste the link here. Under <em>Published content &amp; settings</em> untick the box that makes viewers sign in with the organisation account -- with it ticked Google asks the app to sign in, which it cannot. The app then re-reads the sheet every hour, so nobody has to upload anything. Clear the box to go back to the uploaded file.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <input

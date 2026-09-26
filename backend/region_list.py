@@ -142,11 +142,18 @@ async def _url() -> str | None:
 async def _fetch(url: str) -> dict:
     async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
         resp = await client.get(url)
+    is_page = resp.content[:200].lstrip().lower().startswith((b"<!doctype", b"<html"))
+    if resp.status_code in (401, 403) or (is_page and b"sign in to your google account" in resp.content.lower()):
+        # a link published for the organisation only: Google wants a sign-in, which the app does not have (2026-09-26: the Fleet Manager's link did this)
+        raise RuntimeError(
+            "Google asks for a sign-in on this link, so the app cannot read it. In the sheet: File -> Share -> Publish to web -> Published content & settings, "
+            "untick the box that makes viewers sign in with the organisation account, then press Sync now. (Or upload the sheet as a file below.)"
+        )
     if resp.status_code != 200:
         raise RuntimeError(f"the sheet link answered HTTP {resp.status_code} -- is the tab published to the web as CSV?")
     if len(resp.content) > _MAX_BYTES:
         raise RuntimeError("the sheet link returned a file that is too large")
-    if resp.content[:200].lstrip().lower().startswith((b"<!doctype", b"<html")):
+    if is_page:
         raise RuntimeError("the sheet link returned a web page, not CSV -- publish the tab as CSV (File -> Share -> Publish to web -> CSV)")
     _header, rows = kd.parse_table("region-list.csv", resp.content, None, ["grouplh", "stationname", "zone", "region"])
     check(rows)
