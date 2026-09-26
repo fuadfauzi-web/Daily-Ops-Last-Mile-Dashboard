@@ -36,7 +36,7 @@ def _same(v: float | None) -> dict[str, float | None]:
 
 
 # key -> (label, direction, {region: default target}, unit)     unit "pct" = a percentage (0-100), "number" = a plain number (Hybrid productivity)
-# The order here is the order of the Admin page (the KPI page's RCA analysis order: Hybrid, Prior, FIFO, D0, D3, T7, Lost, Complaint, then the RCA pages).
+# The order here is the order of the Admin page = the KPI page's RCA analysis menu (Fleet Manager, 2026-09-26): Hybrid, Prior, FIFO D0, D0, D3, T7, COD RTS, Lost, Invalid POD, Complaint.
 KPI_TARGETS: dict[str, tuple[str, str, dict[str, float | None], str]] = {
     "hybrid": ("Hybrid Productivity", "higher", _same(None), "number"),
     "prior": ("Prior", "higher", _same(92)),
@@ -44,10 +44,10 @@ KPI_TARGETS: dict[str, tuple[str, str, dict[str, float | None], str]] = {
     "d0": ("Completion D0", "higher", {"Klang Valley": 88, "Northern": 88, "Southern": 88, "East Coast": 90, "East Malaysia": 90}),
     "d3": ("Completion D3", "higher", {"Klang Valley": 96, "Northern": 96, "Southern": 96, "East Coast": 96, "East Malaysia": 93}),
     "t7": ("Terminal T7 (D7)", "higher", _same(100)),
-    "lost": ("Lost", "lower", _same(0.005)),
-    "complaint": ("Complaint", "lower", _same(0.04)),  # 0.04% = the 0.0004 in the WoW dashboard's own header
-    "invalid_pod": ("Invalid POD", "lower", _same(25)),
     "cod_rts": ("COD RTS", "lower", {"Klang Valley": 9, "Northern": 9, "Southern": 9, "East Coast": 7, "East Malaysia": 12}),
+    "lost": ("Lost", "lower", _same(0.005)),
+    "invalid_pod": ("Invalid POD", "lower", _same(25)),
+    "complaint": ("Complaint", "lower", _same(0.04)),  # 0.04% = the 0.0004 in the WoW dashboard's own header
 }
 KPI_TARGETS = {k: (v[0], v[1], v[2], v[3] if len(v) > 3 else "pct") for k, v in KPI_TARGETS.items()}
 
