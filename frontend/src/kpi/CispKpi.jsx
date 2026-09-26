@@ -25,7 +25,7 @@ const NOTE = {
   prior: "Prior KPI: PRE-tagged TNs; each TN is measured against its working start-clock date (met = completed that day; PETs pause and restart the clock), while the result and the trend are by start-clock date. TNs with an open PETs ticket are not counted yet.",
   d0: "Completion D0: TNs measured at D0 (n0 measured) that met it (n0 met). Cut-off date for the calculation, start-clock date for the trend.",
   d3: "Completion D3: TNs measured at D3 (n3 measured) that met it (n3 met) after 0 / 1 / 2 / 3 days. Cut-off date for the calculation, start-clock date for the trend.",
-  t7: "Terminal T7: TNs past their N7 cut-off that met it (n7 met), by last-mile start-clock date.",
+  t7: "Terminal T7: TNs past their N7 cut-off that met it (n7 met), by N7 cut-off date -- a week is final once it is over.",
   fifo: "FIFO D0: TNs measured at N0 whose first delivery attempt was made by the N0 cut-off (n0 met), by start-clock date.",
 };
 const OPEX_KEY = { prior: "prior", d0: "d0_d2", d3: "d3", t7: "d7", fifo: "fifo" }; // what the OPEX dashboard calls each one
@@ -279,7 +279,7 @@ export default function CispKpi({ me, kpi }) {
             <span className="font-display font-semibold uppercase text-slate-500">Group by</span>
             <TabsBar tabs={[{ key: "day", label: "Day" }, { key: "week", label: "Week" }, { key: "month", label: "Month" }]} value={grain} onChange={setGrain} />
             <span className="text-slate-400">
-              {grain === "day" ? `the days of ${periodLabel || "the period"} -- pick another period above` : `every ${grain} in the file`} · by start-clock date · dashed green line = the target
+              {grain === "day" ? `the days of ${periodLabel || "the period"} -- pick another period above` : `every ${grain} in the file`} · by {kpi === "t7" ? "N7 cut-off date" : "start-clock date"} · dashed green line = the target
               {mixed ? " (targets differ by region, so each target has its own line)" : ` ${pctFmt(target)}`}
             </span>
           </div>
