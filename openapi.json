@@ -314,7 +314,7 @@
     "/api/kpi/settings": {
       "put": {
         "summary": "Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off; Retail, not Last Mile).",
-        "description": "Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off).",
+        "description": "Admin only: switch KPI settings -- whether the KPI pages count East Malaysia and whether they count Sarawak (both default off; Retail, not Last Mile).",
         "operationId": "put_kpi_settings_api_kpi_settings_put",
         "requestBody": {
           "required": true,
@@ -8356,14 +8356,29 @@
       "SettingsIn": {
         "properties": {
           "include_east_malaysia": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Include East Malaysia"
+          },
+          "include_sarawak": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Sarawak"
           }
         },
         "type": "object",
-        "required": [
-          "include_east_malaysia"
-        ],
         "title": "SettingsIn"
       },
       "ShipmentDetailsResponse": {
