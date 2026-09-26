@@ -13,6 +13,7 @@ import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 const SUB_TABS = [
   { key: "missing", label: "Missing Details" },
   { key: "active", label: "Active Missing" },
+  { key: "b2b", label: "B2B Document Active Missing" },
   { key: "lostweek", label: "Lost Declared This Week" },
   { key: "lostsummary", label: "Lost Declared Summary" },
 ];
@@ -281,8 +282,8 @@ export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excl
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       )}
-      {subTab === "active" && (
-        <ActiveMissingView regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick} />
+      {(subTab === "active" || subTab === "b2b") && (
+        <ActiveMissingView key={subTab} kind={subTab === "b2b" ? "b2b" : "parcel"} regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick} />
       )}
       {(subTab === "lostweek" || subTab === "lostsummary") && (
         <LostDeclaredView

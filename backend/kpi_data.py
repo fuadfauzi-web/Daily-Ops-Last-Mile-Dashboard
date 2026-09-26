@@ -41,7 +41,7 @@ def _norm(text: str) -> str:
 
 
 # a column that goes by two names in Metabase ("Start Clock: Day" from the datetime, "Start Clock Date" from a date column) is one column
-_ALIASES = {"startclockdate": "startclock"}
+_ALIASES = {"startclockdate": "startclock", "ordermilestonesgranularstatus": "granularstatus"}
 
 
 def norm(name) -> str:
@@ -146,9 +146,14 @@ DATASETS: dict[str, dict] = {
         "sheet": None, "required": ["desthubname", "totalorders", "totaln0met"],
     },
     "lost_declared": {
-        "kpi": "recovery", "label": "Lost declared this week (Recovery)", "link": "https://metabase.ninjavan.co/question/125947-this-week-lost-declared",
-        "hint": "Metabase question 125947 (This Week Lost Declared) -- Download results as .csv and upload it once a day; it fills Recovery -> Lost Declared This Week",
-        "sheet": None, "required": ["trackingid", "outcome", "investigatinghubname", "resolutiondatetime"],
+        "kpi": "recovery", "label": "Lost declared this week (Recovery)", "link": "https://metabase.ninjavan.co/question/127203",
+        "hint": "Metabase question 127203 (This Week Lost Declared - All Regions, a copy of 125947 without the Southern filter) -- Download results as .csv and upload it once a day; it fills Recovery -> Lost Declared This Week. Admins and managers upload",
+        "sheet": None, "required": ["trackingid", "outcome", "investigatinghubname", "resolutiondatetime"], "upload_roles": ("admin", "manager"),
+    },
+    "lost_current_status": {
+        "kpi": "recovery", "label": "Lost declared -- current status (Recovery)", "link": "https://metabase.ninjavan.co/question/127204",
+        "hint": "Metabase question 127204 (Lost Declared Current Status, last 26 weeks) -- Download results as .csv and upload it whenever the status should be refreshed; it fills the Current status column of Lost Declared This Week / Summary. Admins and managers upload",
+        "sheet": None, "required": ["trackingid", "granularstatus"], "upload_roles": ("admin", "manager"),
     },
     "region_list": {
         "kpi": "region", "label": "Station list (Region List sheet)", "link": "https://docs.google.com/spreadsheets/d/1KmHiK5q5mMoKX8N2TzlmRByjIc5nX2fwSsuCxHm4l8g/edit?gid=1339991125#gid=1339991125",

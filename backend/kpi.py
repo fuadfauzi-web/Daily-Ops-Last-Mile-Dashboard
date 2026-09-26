@@ -258,9 +258,13 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
 
 # ------------------------------------------------------------------------------------------------ data uploads
 
-def _require_uploader(user: CurrentUser) -> None:
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can upload KPI data")
+def _uploader_roles(dataset: str) -> tuple:
+    return kd.DATASETS.get(dataset, {}).get("upload_roles", ("admin",))  # most datasets: admins only; the Recovery lost-declared files: admins and managers
+
+
+def _require_uploader(user: CurrentUser, dataset: str) -> None:
+    if user.role not in _uploader_roles(dataset):
+        raise HTTPException(status_code=403, detail="Only admins can upload KPI data" if _uploader_roles(dataset) == ("admin",) else "Only admins and managers can upload this file")
 
 
 class UploadInfo(BaseModel):
@@ -274,6 +278,7 @@ class UploadInfo(BaseModel):
     row_count: int | None = None
     uploaded_by: str | None = None
     uploaded_at: str | None = None
+    can_upload: bool = False  # whether the caller may upload / remove this file
 
 
 @router.get("/api/kpi/uploads", response_model=list[UploadInfo])
@@ -281,7 +286,7 @@ async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
     """Which datasets have an uploaded file (for the KPI page's Data upload panel)."""
     current = await kd.list_uploads()
     return [
-        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], "link": spec.get("link"), "link_label": spec.get("link_label"), **current.get(name, {})}
+        {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"], "link": spec.get("link"), "link_label": spec.get("link_label"), "can_upload": user.role in _uploader_roles(name), **current.get(name, {})}
         for name, spec in kd.DATASETS.items()
     ]
 
@@ -293,7 +298,7 @@ class UploadResult(BaseModel):
 
 @router.post("/api/kpi/uploads/{dataset}", response_model=UploadResult)
 async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
-    _require_uploader(user)
+    _require_uploader(user, dataset)
     if dataset not in kd.DATASETS:
         raise HTTPException(status_code=404, detail="Unknown dataset")
     data = await file.read()
@@ -320,7 +325,7 @@ async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUs
 
 @router.delete("/api/kpi/uploads/{dataset}", response_model=UploadResult)
 async def kpi_upload_delete(dataset: str, user: CurrentUser = Depends(get_current_user)):
-    _require_uploader(user)
+    _require_uploader(user, dataset)
     if dataset not in kd.DATASETS:
         raise HTTPException(status_code=404, detail="Unknown dataset")
     await kd.delete_upload(dataset)

@@ -3,13 +3,15 @@
 The sheet had three tabs and four Apps Scripts; here is what became of each.
 
 Active Missing  (sheet: "Update Here!!!" + the hidden "Missing" query + copyNewTNtoUpdateHere + deleteRowsWithNoVlookup)
-  The TN list is the app's own live open-missing query (Redash 1297, the same rows as Recovery -> Missing Details), without Ship Out and B2B like the sheet's
-  "Missing" tab. Every user answers for the TNs in their own scope: ticket updated to In Progress?, parcel found?, customer contacted?, customer received?,
+  The TN list is the app's own live open-missing query (Redash 1297, the same rows as Recovery -> Missing Details), without Ship Out and without the B2B DOCUMENTS
+  (MYRDO / MYPSO / -DO tracking numbers) like the sheet's "Missing" tab. Those B2B documents get their own sub-tab, "B2B Document Active Missing" (the Fleet Manager,
+  2026-09-26), with the same questions and the same table of answers. Every user answers for the TNs in their own scope: ticket updated to In Progress?, parcel found?, customer contacted?, customer received?,
   liable party, remarks, checked by (active_missing_updates). A TN that has left the open list (settled) has its answers deleted by the refresh -- even if nobody
   updated it -- after 30 minutes off the list, so one bad refresh cannot wipe the answers.
 
 Lost Declared This Week  (sheet: "Lost Declared This Week" + "Raw Lost" + the Gmail import script)
-  The Metabase question "This Week Lost Declared" (125947). The app cannot read Gmail, so an admin uploads the question's CSV each day (Admin -> Documents, or the
+  The Metabase question "This Week Lost Declared" (125947 is locked to Southern hubs, so the app uses its all-regions copy 127203). The app cannot read Gmail, so an admin or
+  manager uploads the question's CSV each day (Admin -> Documents, or the
   upload panel on the tab) -- sync_lost_upload() then does what the script did: new TNs are added, known ones refreshed with their answers kept, and a TN of THIS week
   that is no longer in the file is removed (its ticket changed). A TN of an EARLIER week that is missing from the file stays until the Monday move -- Metabase's
   "this week" has already rolled over by then. Only region staff (and managers / admins) can answer; everyone else monitors what is in their scope.
@@ -18,7 +20,12 @@ Lost Declared Summary  (sheet: "Lost Declared Summary" + copyLostDeclaredToSumma
   Every Monday at 22:00 (Malaysia time) tick() moves what is on "This Week" to the Summary for good, answers included, and it leaves "This Week". The Week column is the
   resolution date's week (Excel WEEKNUM(..., 2): weeks start Monday, week 1 holds 1 January) in Malaysia time.
 
-Not carried over: the sheet's "Current Status" column (a hand-pasted query of each TN's granular status).
+Current status  (sheet: the hidden "Lost Declared Current Status" tab, pasted by hand from another query)
+  Metabase question 127204 gives the current granular status of every TN declared lost in the last 26 weeks; an admin / manager uploads its CSV whenever the status should
+  be refreshed and both tabs show it (lost_current_status -> {tracking number: status}).
+
+Only Last Mile stations are shown: the all-regions question also returns tickets investigated at hubs that are not stations (Intl - Singapore, DP, MM-MM, PUDO ...). They stay
+in the table but are hidden from every view; someone who sees everything is told how many.
 """
 import logging
 from datetime import date, datetime, timedelta, timezone
@@ -141,25 +148,33 @@ async def _active_feedback() -> dict[str, dict]:
     return {r[0]: {c: (_iso(r[1 + i]) if c == "updated_at" else r[1 + i]) for i, c in enumerate(AM_COLS)} for r in rows}
 
 
-def _active_rows(tn_rows: list[dict], user: CurrentUser) -> list[dict]:
+def _b2b_doc_type(tn: str) -> str:
+    """RDO / PSO / DO -- what kind of B2B document a tracking number is (the Redash pattern MYPSO|MYRDO|-DO)."""
+    t = (tn or "").upper()
+    return "RDO" if "MYRDO" in t else "PSO" if "MYPSO" in t else "DO" if "-DO" in t else "Other"
+
+
+def _active_rows(tn_rows: list[dict], user: CurrentUser, kind: str = "parcel") -> list[dict]:
+    """kind "parcel": the regular Active Missing (no Ship Out, no B2B documents); kind "b2b": the B2B documents only."""
     return [
         r for r in tn_rows
-        if r.get("type") != "Ship Out" and not r.get("is_b2b") and _in_scope_named(user, r["region"], r["zone"], r["station_name"])
+        if ((r.get("is_b2b") and r.get("type") != "Ship Out") if kind == "b2b" else (r.get("type") != "Ship Out" and not r.get("is_b2b")))
+        and _in_scope_named(user, r["region"], r["zone"], r["station_name"])
     ]
 
 
-async def active_missing_view(tn_rows: list[dict], captured_at: str | None, user: CurrentUser, cod_threshold: float) -> dict:
+async def active_missing_view(tn_rows: list[dict], captured_at: str | None, user: CurrentUser, cod_threshold: float, kind: str = "parcel") -> dict:
     options = {"ticket_updated": TICKET_UPDATED, "parcel_found": YES_NO, "contacted_customer": YES_NO, "customer_received": YES_NO, "liable_party": LIABLE}
     if captured_at is None:
         return {"captured_at": None, "rows": [], "total": 0, "truncated": False, "options": options, "high_cod_value_threshold": cod_threshold}
-    base = sorted(_active_rows(tn_rows, user), key=lambda r: r.get("age") or 0, reverse=True)
+    base = sorted(_active_rows(tn_rows, user, kind), key=lambda r: r.get("age") or 0, reverse=True)
     fb = await _active_feedback()
     out = []
     for r in base[:ROWS_CAP]:
         f = fb.get(r["tracking_number"], {})
         out.append({
             "tracking_number": r["tracking_number"], "station_code": r["station_code"], "station_name": r["station_name"], "zone": r["zone"], "region": r["region"],
-            "hub_code": r.get("hub_code"), "type": "PDCNR" if r.get("is_pdcnr") else r["type"], "age": r.get("age"), "cod_value": r.get("cod_value"),
+            "hub_code": r.get("hub_code"), "type": _b2b_doc_type(r["tracking_number"]) if kind == "b2b" else ("PDCNR" if r.get("is_pdcnr") else r["type"]), "age": r.get("age"), "cod_value": r.get("cod_value"),
             "item_description": r.get("item_description"), "is_high_value": r.get("is_high_value", False),
             **{c: f.get(c) for c in AM_COLS},
         })
@@ -167,7 +182,7 @@ async def active_missing_view(tn_rows: list[dict], captured_at: str | None, user
 
 
 async def save_active_missing(tn: str, payload: ActiveMissingIn, tn_rows: list[dict], user: CurrentUser) -> dict:
-    row = next((r for r in tn_rows if r["tracking_number"] == tn and r.get("type") != "Ship Out" and not r.get("is_b2b")), None)
+    row = next((r for r in tn_rows if r["tracking_number"] == tn and r.get("type") != "Ship Out"), None)  # a parcel or a B2B document -- both lists save here
     if row is None:
         raise HTTPException(status_code=404, detail="This tracking number is not on the active missing list any more (it may have just been settled)")
     if not _in_scope_named(user, row["region"], row["zone"], row["station_name"]):
@@ -221,6 +236,23 @@ async def sync_active_missing(current_tns: set[str]) -> int:
 
 
 # ------------------------------------------------------------------------------------------------ Lost Declared
+
+def _build_status(rows: list[dict]) -> dict:
+    """Rows of the current-status CSV (127204: Tracking ID + Granular Status) -> {"map": {tracking number: status}}."""
+    if not rows:
+        return {"map": {}}
+    keys = {kd.norm(k): k for k in rows[0]}
+    kt, ks = keys.get("trackingid"), keys.get("granularstatus")
+    out = {}
+    for r in rows:
+        tn = str(r.get(kt) or "").strip() if kt else ""
+        st = str(r.get(ks) or "").strip() if ks else ""
+        if tn and st:
+            out[tn] = st
+    return {"map": out}
+
+
+kd.register_compact("lost_current_status", _build_status)
 
 LD_SOURCE = ["hub_code", "outcome", "ticket_type", "last_scan_user", "last_scan_type", "dest_zone", "cod_value", "ticket_notes", "items", "delivery_instructions",
              "resolution_at", "resolution_date", "days_to_resolution", "week_no", "week_year"]
@@ -393,15 +425,20 @@ async def lost_view(user: CurrentUser, view: str, week: str | None) -> dict:
     except Exception as e:  # noqa: BLE001
         log.warning("lost_declared could not be read (%s)", e)
         rows = []
+    got = await kd.load_compact("lost_current_status")
+    status_map = got[1]["map"] if got else {}
     base = []
+    hidden: dict[str, int] = {}
     for r in rows:
         d = dict(zip(LD_ALL, r))
         code, name, zone, region = _station_of(d["hub_code"])
-        if user.scope_type != "all" and region == "Unknown":
+        if region == "Unknown":  # not a Last Mile station: left out for everybody
+            key = d["hub_code"] or "(no hub)"
+            hidden[key] = hidden.get(key, 0) + 1
             continue
         if not _in_scope_named(user, region, zone, name):
             continue
-        d.update({"station_code": code, "station_name": name, "zone": zone, "region": region})
+        d.update({"station_code": code, "station_name": name, "zone": zone, "region": region, "current_status": status_map.get(d["tracking_number"])})
         d["resolution_date"] = _iso(_as_date(d["resolution_date"]))
         for k in ("updated_at", "added_at", "moved_at"):
             d[k] = _iso(d[k])
@@ -418,10 +455,14 @@ async def lost_view(user: CurrentUser, view: str, week: str | None) -> dict:
         if chosen != "all":
             base = [d for d in base if d["week_no"] is not None and f"{d['week_year']}-{d['week_no']:02d}" == chosen]
     base.sort(key=lambda d: (d["resolution_date"] or "", d["tracking_number"]), reverse=True)
-    up = (await kd.list_uploads()).get("lost_declared") if status == "week" else None
+    uploads = await kd.list_uploads()
+    up = uploads.get("lost_declared") if status == "week" else None
+    top_hidden = sorted(hidden.items(), key=lambda kv: -kv[1])
     return {
         "view": status, "rows": base[:ROWS_CAP], "total": len(base), "truncated": len(base) > ROWS_CAP,
-        "weeks": week_list, "week": chosen, "can_edit": user.role in LOST_EDIT_ROLES, "upload": up,
+        "weeks": week_list, "week": chosen, "can_edit": user.role in LOST_EDIT_ROLES, "upload": up, "status_upload": uploads.get("lost_current_status"),
+        "not_shown": {"count": sum(hidden.values()), "hubs": [h for h, _n in top_hidden[:4]]} if user.scope_type == "all" and hidden else None,
+        "can_upload": user.role in ("admin", "manager"),
         "options": {"customer_received": YES_NO, "liable_party": LIABLE_LOST},
         "move": {"weekday": "Monday", "hour": MOVE_HOUR},
     }
