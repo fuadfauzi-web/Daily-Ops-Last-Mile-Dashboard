@@ -37,7 +37,7 @@ const SECTIONS = [
         { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
         { role: "Region staff", rank: 1, text: "View the dashboard, plus add, edit and remove Station-staff teammates (with more than one station if needed) in Settings → Users." },
         { role: "Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings." },
-        { role: "Admin", rank: 3, text: `Everything: full user management, all Settings screens, the Admin page (Documents, KPI Settings, Data Refresh), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
+        { role: "Admin", rank: 3, text: `Everything: full user management, all Settings screens, the Admin page (Documents, Station List, KPI Settings, Data Refresh), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
       ].filter((r) => r.rank <= rank);
       return (
         <div className="space-y-2 text-sm text-slate-700">
@@ -519,6 +519,7 @@ const SECTIONS = [
         <Bullets
           items={[
             <><strong>Documents</strong>: upload the driver/rider details CSV that gives Route Monitoring its Tenure column. The page links to the Metabase question (Active Driver Details) to download it from -- a temporary step until the Metabase API access is in place.</>,
+            <><strong>Station List</strong>: where the app gets its stations (hub code, station, zone, region) -- the team's Region List sheet, so a station opening or closing needs no code change. Best: publish the sheet's Region tab to the web as CSV (File → Share → Publish to web) and paste the link -- the app re-reads it every hour (Sync now reads it at once). Or download the sheet and upload it. Only Active / Virtual rows in Klang Valley, Northern, Southern, East Coast and East Malaysia count (Closed, SAMEDAY and NO HUB are left out). Until you do either, the app uses the list built into it.</>,
             <><strong>KPI Settings</strong>: <em>Scope</em> -- a tick for including East Malaysia in the KPI pages (off by default: the KPI pages are for Last Mile stations, and East Malaysia is Retail). <em>Targets</em> -- the target of every KPI (Hybrid Productivity, Prior, FIFO D0, D0, D3, D7, Lost, Complaint, Invalid POD, COD RTS) for each region. Change a number and press Save -- the KPI pages, Trend, Invalid POD, COD RTS and Hybrid use it straight away. A changed box turns amber and shows the built-in default under it; <em>Back to default</em> puts the default back. Lost and Complaint are percentages too (0.005 means 0.005%). Hybrid Productivity is a plain number (its Productivity column) and starts empty.</>,
             <><strong>Data Refresh</strong>: trigger an immediate refresh and see when each Redash query was last pulled.</>,
             <>Feedback and the Guide are not here -- they're under Settings{F.roleTester ? ", and the Role Tester is in the header" : ""}.</>,

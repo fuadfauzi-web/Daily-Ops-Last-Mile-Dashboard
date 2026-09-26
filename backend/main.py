@@ -32,6 +32,7 @@ from kpi import router as kpi_router
 from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
 import kpi_targets
+import region_list
 from kpi_targets import router as kpi_targets_router
 from kpi_pod import router as kpi_pod_router
 from kpi_rca import router as kpi_rca_router
@@ -617,6 +618,10 @@ async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> 
 async def _hourly_refresh_loop() -> None:
     while True:
         try:
+            await region_list.ensure_fresh(force=True)  # the station list (Region List) first, so a new station is in this refresh
+        except Exception:  # noqa: BLE001
+            log.exception("Station list refresh failed")
+        try:
             await refresh_metrics(triggered_by="scheduler")
         except Exception:  # noqa: BLE001 - never let the loop die
             log.exception("Scheduled refresh crashed")
@@ -640,8 +645,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)  # the KPI payloads are la
 async def _kpi_fresh() -> None:
     """The KPI pages follow the admin's targets and settings (Admin -> KPI Settings): reloaded at most every 30 seconds."""
     await kpi_targets.ensure_fresh()
+    await region_list.ensure_fresh()
 
 
+app.include_router(region_list.router)  # Admin: the station list from the Region List sheet (region_list.py)
 app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)
 app.include_router(kpi_cisp_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
 app.include_router(kpi_cod_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): COD RTS RCA views (kpi_cod.py)

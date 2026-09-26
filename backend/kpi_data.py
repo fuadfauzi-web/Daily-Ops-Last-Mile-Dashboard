@@ -145,6 +145,12 @@ DATASETS: dict[str, dict] = {
         "hint": "Metabase question 118041 ((MY) LM CISP FIFO D0): pick the Measured Date (e.g. past 1 weeks), run it, then Download results as .csv -- one period per file",
         "sheet": None, "required": ["desthubname", "totalorders", "totaln0met"],
     },
+    "region_list": {
+        "kpi": "region", "label": "Station list (Region List sheet)", "link": "https://docs.google.com/spreadsheets/d/1KmHiK5q5mMoKX8N2TzlmRByjIc5nX2fwSsuCxHm4l8g/edit?gid=1339991125#gid=1339991125",
+        "link_label": "Open the Region List sheet",
+        "hint": "the Region List sheet (Region tab) downloaded as .csv or .xlsx -- Active / Virtual stations in Klang Valley, Northern, Southern, East Coast and East Malaysia become the station list; Closed, SAMEDAY and NO HUB rows are left out",
+        "sheet": None, "required": ["grouplh", "stationname", "zone", "region"],
+    },
     "opex_result": {
         "kpi": "opex", "label": "OPEX dashboard result", "link": "https://last-mile-dashboard.ninjavan.apps.substrait.build/",
         "hint": "the OPEX Last Mile Performance dashboard: pick the region / area and the dates, press Download CSV, then upload that file (any other table is shown as it is)",
@@ -348,6 +354,8 @@ async def save_upload(dataset: str, filename: str, data: bytes, user_email: str)
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadError(f"The file is too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
     header, rows = await run_in_threadpool(parse_table, filename, data, spec["sheet"], spec["required"], spec.get("keep"))
+    if spec.get("check"):  # a dataset may refuse a file that has the columns but is not the right one (the Region List: too few stations)
+        await run_in_threadpool(spec["check"], rows)
     ext = ".xlsx" if filename.lower().endswith((".xlsx", ".xlsm")) else ".csv"
     key = storage.safe_key("kpi", f"{dataset}-{uuid.uuid4().hex}{ext}")
     content_type = "application/octet-stream" if ext == ".xlsx" else "text/csv"
@@ -390,6 +398,13 @@ async def delete_upload(dataset: str) -> None:
 
 _compact: dict[str, dict] = {}  # dataset -> {"stamp", "data"}: the compact structure a dataset's builder made from its rows
 _builders: dict[str, object] = {}
+
+
+def drop_hub_caches(keep: tuple = ()) -> None:
+    """The compact structures carry station names / zones / regions taken from the station list when they were built: when the station list changes they are
+    dropped and rebuilt from the stored file on the next request."""
+    for name in [n for n in _compact if n not in keep]:
+        _compact.pop(name, None)
 
 
 def register_compact(dataset: str, builder) -> None:

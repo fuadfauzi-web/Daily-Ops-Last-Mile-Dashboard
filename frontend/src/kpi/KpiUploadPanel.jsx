@@ -70,7 +70,7 @@ export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data uploa
                   <span className="text-sm font-semibold text-slate-800">{u.label}</span>
                   {u.link && (
                     <a href={u.link} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-sky-700 underline hover:text-sky-900">
-                      Open in Metabase ↗
+                      {u.link_label || "Open in Metabase"} ↗
                     </a>
                   )}
                 </div>
