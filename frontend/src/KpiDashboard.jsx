@@ -73,6 +73,19 @@ const tenureDays = (start) => {
   return Number.isNaN(ms) || ms < 0 ? 0 : Math.floor(ms / 86400000);
 };
 
+// "▲ 3.2 (+5.6%)" -- how a number moved against the last week / month: green up, red down.
+function Change({ delta, pct }) {
+  if (delta == null) return <span className="text-slate-300">—</span>;
+  if (Math.abs(delta) < 0.05) return <span className="text-slate-400">±0</span>;
+  const up = delta > 0;
+  return (
+    <span className={`font-semibold ${up ? "text-status-good" : "text-status-critical"}`}>
+      {up ? "▲" : "▼"} {dec1(Math.abs(delta))}
+      {pct != null && ` (${up ? "+" : "−"}${dec1(Math.abs(pct))}%)`}
+    </span>
+  );
+}
+
 function useSort(defKey, defDir = "desc") {
   const [key, setKey] = useState(defKey);
   const [dir, setDir] = useState(defDir);
@@ -135,7 +148,11 @@ function HybridProductivity({ me }) {
   const [pickedStation, setPickedStation] = useState(null);
   const [pickedZone, setPickedZone] = useState("all");
   const [pickedDaily, setPickedDaily] = useState(null);
+  const [pickedRegion, setPickedRegion] = useState("all");
+  const [trendFilter, setTrendFilter] = useState("all"); // "all" | "up" | "down": only rows whose productivity rose / dropped against the last week / month
+  const [monthlyData, setMonthlyData] = useState(null); // the monthly rows, for "vs last month" on Daily Data when View is Weekly
   const [showUpload, setShowUpload] = useState(false);
+  const rank = { station: 0, region: 1, manager: 2, admin: 3 }[me.role] ?? 0; // station staff see up to stations, region staff up to zones, managers / admins up to regions
 
   const canRefresh = me.role === "admin" || me.role === "manager";
   const canUpload = me.role === "admin";
@@ -155,6 +172,9 @@ function HybridProductivity({ me }) {
     load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+  useEffect(() => {
+    if (sub === "daily" && view !== "monthly" && !monthlyData) api.kpiHybrid("monthly").then(setMonthlyData).catch(() => {});
+  }, [sub, view, monthlyData]);
 
   const prefix = view === "monthly" ? "M" : "W";
   const target = view === "monthly" ? 26 : 6; // attendance days that count as full attendance
@@ -239,9 +259,52 @@ function HybridProductivity({ me }) {
   }, [filtered, latestPeriod]);
 
   const withTenure = (rows) => rows.map((r) => ({ ...r, tenure: tenureText(r.start), tenureDays: tenureDays(r.start) }));
+  // Against the last period: the period before the one shown (last week / last month) -- the same drivers, same filters.
+  const prevPeriod = useMemo(() => {
+    const i = periods.indexOf(targetPeriod);
+    return i >= 0 ? periods[i + 1] : undefined;
+  }, [periods, targetPeriod]);
+  const prevRows = useMemo(() => {
+    if (prevPeriod == null) return [];
+    const seen = new Set();
+    return filtered.filter((r) => r.period === prevPeriod && !seen.has(r.name) && seen.add(r.name));
+  }, [filtered, prevPeriod]);
+  const prevDriverProd = useMemo(() => new Map(prevRows.map((r) => [r.name, r.prod])), [prevRows]);
+  // Daily Data is a month view: it compares with the month before, from the monthly rows (loaded when View is Weekly)
+  const monthSource = view === "monthly" ? data : monthlyData;
+  const prevMonthProd = useMemo(() => {
+    if (!monthSource?.rows?.length || !latestDay) return new Map();
+    const monthNo = Number(latestDay.slice(5, 7));
+    const prev = [...new Set(monthSource.rows.map((r) => r[0]))].sort((a, b) => b - a).find((p) => p < monthNo);
+    if (prev == null) return new Map();
+    return new Map(monthSource.rows.filter((r) => r[0] === prev).map((r) => [monthSource.drivers[r[1]].name, r[5]]));
+  }, [monthSource, latestDay]);
+  const withDelta = (rows, prevProd) =>
+    rows.map((r) => {
+      const p = prevProd.get(r.name);
+      return { ...r, delta: p == null ? null : r.prod - p, deltaPct: p ? ((r.prod - p) / p) * 100 : null };
+    });
+  const compareWord = view === "monthly" ? "month" : "week";
+  // station staff: up to Station; region staff: + Zone Breakdown; managers / admins: + Regional Breakdown
+  const subTabs = [
+    { key: "driver", label: "Driver Performance" },
+    { key: "station", label: "Station Performance" },
+    ...(rank >= 1 ? [{ key: "zone", label: "Zone Breakdown" }] : []),
+    ...(rank >= 2 ? [{ key: "region", label: "Regional Breakdown" }] : []),
+    { key: "daily", label: "Daily Data (Current Month)" },
+  ];
+  const subTab = subTabs.some((s) => s.key === sub) ? sub : "driver";
+  // group (station / zone / region) productivity now vs last period -> delta fields on a summary row
+  const groupDelta = (rows, prevList) => {
+    if (!prevList || !prevList.length) return { delta: null, deltaPct: null };
+    const p = avg(prevList, "prod");
+    const c = avg(rows, "prod");
+    return { delta: c - p, deltaPct: p ? ((c - p) / p) * 100 : null };
+  };
+  const passTrend = (r) => trendFilter === "all" || (r.delta != null && (trendFilter === "up" ? r.delta > 0 : r.delta < 0));
   // The two big leaderboards are ranked once per data / filter change, not on every keystroke or sort click.
-  const rankedCurrent = useMemo(() => sortBy(withTenure(current), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 })), [current]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rankedMonth = useMemo(() => sortBy(withTenure(monthRows), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 })), [monthRows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rankedCurrent = useMemo(() => sortBy(withDelta(withTenure(current), prevDriverProd), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 })), [current, prevDriverProd]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rankedMonth = useMemo(() => sortBy(withDelta(withTenure(monthRows), prevMonthProd), "prod", "desc").map((r, i) => ({ ...r, rank: i + 1 })), [monthRows, prevMonthProd]); // eslint-disable-line react-hooks/exhaustive-deps
   const attClass = (v, tgt = target) => (Math.round(v) < tgt ? "font-bold text-status-critical" : "text-slate-700");
 
   const groupBy = (rows, keyFn) => {
@@ -299,13 +362,15 @@ function HybridProductivity({ me }) {
     { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
     { key: "att", label: "Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att, opts.attTarget) },
     { key: "prod", label: "Productivity", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+    ...(opts.noDelta ? [] : [{ key: "delta", label: opts.deltaLabel || `vs last ${compareWord}`, render: (r) => <Change delta={r.delta} pct={r.deltaPct} /> }]),
   ];
+  const deltaColumn = { key: "delta", label: `vs last ${compareWord}`, render: (r) => <Change delta={r.delta} pct={r.deltaPct} /> };
 
   // -------------------------------------------------------------------------------- Driver Performance
   const driverSort = useSort("prod");
   const DriverPerformance = () => {
     const ranked = rankedCurrent;
-    const rows = driverSort.key === "rank" ? sortBy(ranked, "prod", driverSort.dir) : sortBy(ranked, driverSort.key, driverSort.dir);
+    const rows = (driverSort.key === "rank" ? sortBy(ranked, "prod", driverSort.dir) : sortBy(ranked, driverSort.key, driverSort.dir)).filter(passTrend);
     const chosen = ranked.find((r) => r.name === pickedDriver) || ranked[0];
     const history = chosen ? filtered.filter((r) => r.name === chosen.name).sort((a, b) => a.period - b.period) : [];
     const days = chosen ? filteredDaily.filter((r) => r.name === chosen.name).sort((a, b) => a.day.localeCompare(b.day)).slice(-14) : [];
@@ -319,7 +384,7 @@ function HybridProductivity({ me }) {
           columns={driverColumns({ rank: true })}
           rows={rows}
           rowKey={(r) => r.name}
-          rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-brand/10" : "")}
+          rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-rose-50" : "")}
           onRowClick={(r) => setPickedDriver(r.name)}
           sortKey={driverSort.key}
           sortDir={driverSort.dir}
@@ -349,10 +414,11 @@ function HybridProductivity({ me }) {
   const stationSort = useSort("prod");
   const StationPerformance = () => {
     const by = groupBy(current, (r) => r.station);
-    const list = [...by.entries()].map(([name, rows]) => ({ name, zone: rows[0].zone, ...summarize(rows) }));
-    const rows = sortBy(list, stationSort.key, stationSort.dir);
+    const prevBy = groupBy(prevRows, (r) => r.station);
+    const list = [...by.entries()].map(([name, rows]) => ({ name, zone: rows[0].zone, ...summarize(rows), ...groupDelta(rows, prevBy.get(name)) }));
+    const rows = sortBy(list, stationSort.key, stationSort.dir).filter(passTrend);
     const chosen = list.find((r) => r.name === pickedStation) || rows[0];
-    const stationDrivers = chosen ? sortBy(withTenure(by.get(chosen.name) || []), "prod", "desc") : [];
+    const stationDrivers = chosen ? sortBy(withDelta(withTenure(by.get(chosen.name) || []), prevDriverProd), "prod", "desc").filter(passTrend) : [];
     const trend = chosen ? trendOf(filtered.filter((r) => r.station === chosen.name)) : { labels: [], values: [] };
     const columns = [
       { key: "name", label: "Station", sticky: true, align: "left", render: (r) => <b>{r.name}</b> },
@@ -362,6 +428,7 @@ function HybridProductivity({ me }) {
       { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
       { key: "att", label: "Avg Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att) },
       { key: "prod", label: "Avg Prod", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+      deltaColumn,
     ];
     return (
       <div className="space-y-3">
@@ -373,7 +440,7 @@ function HybridProductivity({ me }) {
             columns={columns}
             rows={rows}
             rowKey={(r) => r.name}
-            rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-brand/10" : "")}
+            rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-rose-50" : "")}
             onRowClick={(r) => setPickedStation(r.name)}
             sortKey={stationSort.key}
             sortDir={stationSort.dir}
@@ -396,15 +463,17 @@ function HybridProductivity({ me }) {
     );
   };
 
-  // -------------------------------------------------------------------------------- Regional Breakdown
-  const RegionalBreakdown = () => {
+  // -------------------------------------------------------------------------------- Zone Breakdown
+  const ZoneBreakdown = () => {
     const byZone = groupBy(current, (r) => r.zone);
-    const zoneRows = [...byZone.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, rows]) => ({ name, stations: new Set(rows.map((r) => r.station)).size, ...summarize(rows) }));
-    const total = { name: "All in view", stations: new Set(current.map((r) => r.station)).size, ...summarize(current), isTotal: true };
-    const zoneTable = current.length ? [total, ...zoneRows] : [];
+    const prevByZone = groupBy(prevRows, (r) => r.zone);
+    const zoneRows = [...byZone.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, rows]) => ({ name, stations: new Set(rows.map((r) => r.station)).size, ...summarize(rows), ...groupDelta(rows, prevByZone.get(name)) }));
+    const total = { name: "All in view", stations: new Set(current.map((r) => r.station)).size, ...summarize(current), ...groupDelta(current, prevRows), isTotal: true };
+    const zoneTable = current.length ? [total, ...zoneRows.filter(passTrend)] : [];
     const scopeRows = pickedZone === "all" ? current : current.filter((r) => r.zone === pickedZone);
-    const stationRows = [...groupBy(scopeRows, (r) => r.station).entries()].map(([name, rows]) => ({ name, ...summarize(rows) })).sort((a, b) => a.prod - b.prod);
-    const low = withTenure(scopeRows).filter((r) => r.prod < 80).sort((a, b) => a.prod - b.prod).slice(0, 10);
+    const prevScopeBy = groupBy(pickedZone === "all" ? prevRows : prevRows.filter((r) => r.zone === pickedZone), (r) => r.station);
+    const stationRows = [...groupBy(scopeRows, (r) => r.station).entries()].map(([name, rows]) => ({ name, ...summarize(rows), ...groupDelta(rows, prevScopeBy.get(name)) })).filter(passTrend).sort((a, b) => a.prod - b.prod);
+    const low = withDelta(withTenure(scopeRows), prevDriverProd).filter((r) => r.prod < 80).filter(passTrend).sort((a, b) => a.prod - b.prod).slice(0, 10);
     const trend = trendOf(pickedZone === "all" ? filtered : filtered.filter((r) => r.zone === pickedZone));
     const title = pickedZone === "all" ? "All in view" : pickedZone;
     const zoneColumns = [
@@ -415,6 +484,7 @@ function HybridProductivity({ me }) {
       { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
       { key: "att", label: "Avg Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att) },
       { key: "prod", label: "Avg Prod", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+      deltaColumn,
     ];
     const stationColumns = zoneColumns.filter((c) => c.key !== "stations").map((c) => (c.key === "name" ? { ...c, label: "Station" } : c));
     return (
@@ -427,7 +497,7 @@ function HybridProductivity({ me }) {
             columns={zoneColumns}
             rows={zoneTable}
             rowKey={(r) => r.name}
-            rowClassName={(r) => (r.isTotal ? (pickedZone === "all" ? "bg-brand/10" : "bg-slate-100") : r.name === pickedZone ? "bg-brand/10" : "")}
+            rowClassName={(r) => (r.isTotal ? (pickedZone === "all" ? "bg-rose-50" : "bg-slate-100") : r.name === pickedZone ? "bg-rose-50" : "")}
             onRowClick={(r) => setPickedZone(r.isTotal ? "all" : r.name)}
             emptyMessage="No data."
           />
@@ -446,6 +516,7 @@ function HybridProductivity({ me }) {
               { key: "delivered", label: "Delivered", render: (r) => int(r.delivered) },
               { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
               { key: "prod", label: "Productivity", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+              deltaColumn,
             ]}
             rows={low}
             rowKey={(r) => r.name}
@@ -456,11 +527,68 @@ function HybridProductivity({ me }) {
     );
   };
 
+  // -------------------------------------------------------------------------------- Regional Breakdown (managers and admins)
+  const RegionBreakdown = () => {
+    const byRegion = groupBy(current, (r) => r.region);
+    const prevByRegion = groupBy(prevRows, (r) => r.region);
+    const regionRows = [...byRegion.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, rows]) => ({ name, zones: new Set(rows.map((r) => r.zone)).size, stations: new Set(rows.map((r) => r.station)).size, ...summarize(rows), ...groupDelta(rows, prevByRegion.get(name)) }));
+    const total = { name: "All regions in view", zones: new Set(current.map((r) => r.zone)).size, stations: new Set(current.map((r) => r.station)).size, ...summarize(current), ...groupDelta(current, prevRows), isTotal: true };
+    const regionTable = current.length ? [total, ...regionRows.filter(passTrend)] : [];
+    const scopeRows = pickedRegion === "all" ? current : current.filter((r) => r.region === pickedRegion);
+    const prevScope = pickedRegion === "all" ? prevRows : prevRows.filter((r) => r.region === pickedRegion);
+    const prevZoneBy = groupBy(prevScope, (r) => r.zone);
+    const zoneRows = [...groupBy(scopeRows, (r) => r.zone).entries()]
+      .map(([name, rows]) => ({ name, stations: new Set(rows.map((r) => r.station)).size, ...summarize(rows), ...groupDelta(rows, prevZoneBy.get(name)) }))
+      .filter(passTrend)
+      .sort((a, b) => a.prod - b.prod);
+    const trend = trendOf(pickedRegion === "all" ? filtered : filtered.filter((r) => r.region === pickedRegion));
+    const title = pickedRegion === "all" ? "All regions in view" : pickedRegion;
+    const base = [
+      { key: "drivers", label: "Drivers (HD / HR)", render: (r) => `${r.drivers} (${r.hd} HD / ${r.hr} HR)` },
+      { key: "delivered", label: "Delivered", render: (r) => int(r.delivered) },
+      { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
+      { key: "att", label: "Avg Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att) },
+      { key: "prod", label: "Avg Prod", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+      deltaColumn,
+    ];
+    return (
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="space-y-3">
+          <DataTable
+            title="Region Summary"
+            titleExtra={<span className="text-[10px] text-slate-400">click a region to filter</span>}
+            maxHeight="300px"
+            columns={[{ key: "name", label: "Region", sticky: true, align: "left", render: (r) => <b>{r.name}</b> }, { key: "zones", label: "Zones" }, { key: "stations", label: "Stations" }, ...base]}
+            rows={regionTable}
+            rowKey={(r) => r.name}
+            rowClassName={(r) => (r.isTotal ? (pickedRegion === "all" ? "bg-rose-50" : "bg-slate-100") : r.name === pickedRegion ? "bg-rose-50" : "")}
+            onRowClick={(r) => setPickedRegion(r.isTotal ? "all" : r.name)}
+            emptyMessage="No data."
+          />
+          <DataTable
+            title={`${title} — zones`}
+            maxHeight="300px"
+            columns={[{ key: "name", label: "Zone", sticky: true, align: "left", render: (r) => <b>{r.name}</b> }, { key: "stations", label: "Stations" }, ...base]}
+            rows={zoneRows}
+            rowKey={(r) => r.name}
+            emptyMessage="No data found."
+            footer="Lowest productivity first."
+          />
+        </div>
+        <Card title={`${title} — productivity trend`}>
+          <TrendChart labels={trend.labels} series={[{ key: "p", name: "Avg Productivity", tone: "brand", values: trend.values }]} format={dec1} zeroBased={false} height={260} />
+        </Card>
+      </div>
+    );
+  };
+
   // -------------------------------------------------------------------------------- Daily Data (latest period)
   const dailySort = useSort("prod");
   const DailyData = () => {
     const ranked = rankedMonth;
-    const rows = dailySort.key === "rank" ? sortBy(ranked, "prod", dailySort.dir) : sortBy(ranked, dailySort.key, dailySort.dir);
+    const rows = (dailySort.key === "rank" ? sortBy(ranked, "prod", dailySort.dir) : sortBy(ranked, dailySort.key, dailySort.dir)).filter(passTrend);
     const chosen = ranked.find((r) => r.name === pickedDaily) || ranked[0];
     const logs = chosen ? filteredDaily.filter((r) => r.name === chosen.name).sort((a, b) => b.day.localeCompare(a.day)) : [];
     const chrono = [...logs].reverse();
@@ -471,10 +599,10 @@ function HybridProductivity({ me }) {
           titleExtra={<span className="text-[10px] text-slate-400">always the current month, whatever View / Period say · attendance = days worked · click headers to sort</span>}
           maxHeight="520px"
           pageSize={100}
-          columns={driverColumns({ rank: true, tenureLabel: "Service Duration", attTarget: monthTarget })}
+          columns={driverColumns({ rank: true, tenureLabel: "Service Duration", attTarget: monthTarget, deltaLabel: "vs last month" })}
           rows={rows}
           rowKey={(r) => r.name}
-          rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-brand/10" : "")}
+          rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-rose-50" : "")}
           onRowClick={(r) => setPickedDaily(r.name)}
           sortKey={dailySort.key}
           sortDir={dailySort.dir}
@@ -516,14 +644,14 @@ function HybridProductivity({ me }) {
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
       <label className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-500">
         View
-        <select className={selectClass} value={view} onChange={(e) => setView(e.target.value)} disabled={sub === "daily"} title={sub === "daily" ? "Daily Data always shows the current month" : undefined}>
+        <select className={selectClass} value={view} onChange={(e) => setView(e.target.value)}>
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
         </select>
       </label>
       <label className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-500">
         Period
-        <select className={selectClass} value={period} onChange={(e) => setPeriod(e.target.value)} disabled={sub === "daily"} title={sub === "daily" ? "Daily Data always shows the current month" : undefined}>
+        <select className={selectClass} value={period} onChange={(e) => setPeriod(e.target.value)}>
           <option value="latest">Latest</option>
           {periods.map((p) => (
             <option key={p} value={p}>
@@ -628,20 +756,26 @@ function HybridProductivity({ me }) {
       ) : (
         <>
           {cardsFor(sub === "daily" ? monthRows : current)}
-          <SegmentedControl
-            options={[
-              { key: "driver", label: "Driver Performance" },
-              { key: "station", label: "Station Performance" },
-              { key: "regional", label: "Regional Breakdown" },
-              { key: "daily", label: "Daily Data (Current Month)" },
-            ]}
-            value={sub}
-            onChange={setSub}
-          />
-          {sub === "driver" && DriverPerformance()}
-          {sub === "station" && StationPerformance()}
-          {sub === "regional" && RegionalBreakdown()}
-          {sub === "daily" && DailyData()}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <SegmentedControl options={subTabs} value={subTab} onChange={setSub} />
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+              <span className="font-display font-semibold uppercase text-slate-500">Productivity vs last {subTab === "daily" ? "month" : compareWord}:</span>
+              <label className="flex min-h-[32px] cursor-pointer items-center gap-1.5">
+                <input type="checkbox" checked={trendFilter === "up"} onChange={() => setTrendFilter(trendFilter === "up" ? "all" : "up")} />
+                <span className="font-medium text-status-good">▲ Increasing only</span>
+              </label>
+              <label className="flex min-h-[32px] cursor-pointer items-center gap-1.5">
+                <input type="checkbox" checked={trendFilter === "down"} onChange={() => setTrendFilter(trendFilter === "down" ? "all" : "down")} />
+                <span className="font-medium text-status-critical">▼ Dropping only</span>
+              </label>
+              {trendFilter !== "all" && <span className="text-[11px] text-slate-400">rows with no earlier {subTab === "daily" ? "month" : compareWord} to compare are hidden</span>}
+            </div>
+          </div>
+          {subTab === "driver" && DriverPerformance()}
+          {subTab === "station" && StationPerformance()}
+          {subTab === "zone" && ZoneBreakdown()}
+          {subTab === "region" && RegionBreakdown()}
+          {subTab === "daily" && DailyData()}
         </>
       )}
     </div>
