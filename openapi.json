@@ -6,6 +6,145 @@
     "description": "Live nationwide operations dashboard for Ninja Van Malaysia's last-mile fleet team (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia -- East Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls parcel- and route-level data from Redash every 15 minutes and shows it per region, zone, station and driver: Action Board (SLA heatmap), Shipment Details (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route Monitoring (routed, attendance, OVFD, success and completion rates by driver type, old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU, Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a PIC with in-progress / closed status and notifications), DoD (Station Health day by day), a Task List (follow-ups, to-dos, assigned tasks) and a KPI page (Beta) with the weekly results, the OPEX result and RCA / analysis for Hybrid Productivity, Invalid POD, COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI targets per region that an admin sets. Every count opens its tracking numbers, with CSV export. Access is role-based (admin, manager, region, station) with multi-value region/zone/station scopes enforced in the backend; an admin can preview any role or user with the Role Tester. Users can send feedback (with an attachment) that admins reply to and close. For Fleet Managers and their regional and station teams. Every /api route answers for the signed-in user (Google SSO: the platform adds X-Forwarded-Email) and is limited to that user's role and region / zone / station scope."
   },
   "paths": {
+    "/api/recovery/lost-declared": {
+      "get": {
+        "summary": "Lost Declared This Week (view=week) or the Summary (view=summary, optionally one week), limited to the caller's access.",
+        "description": "Lost Declared This Week (view=week) or the Summary (view=summary, optionally one week as 2026-38 or 'all'), limited to the caller's access.",
+        "operationId": "get_lost_declared_api_recovery_lost_declared_get",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "week",
+              "title": "View"
+            }
+          },
+          {
+            "name": "week",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
+    "/api/recovery/lost-declared/{tracking_number}": {
+      "put": {
+        "summary": "Region staff (and managers / admins): answer for one lost declared tracking number in their access.",
+        "description": "Region staff (and managers / admins): answer for one lost declared tracking number in their access.",
+        "operationId": "put_lost_declared_api_recovery_lost_declared__tracking_number__put",
+        "parameters": [
+          {
+            "name": "tracking_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tracking Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LostIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
+    "/api/recovery/lost-declared/move": {
+      "post": {
+        "summary": "Admin only: move everything on Lost Declared This Week to the Summary now (it also happens every Monday at 22:00).",
+        "description": "Admin only: move everything on Lost Declared This Week to the Summary now (it also happens by itself every Monday at 22:00).",
+        "operationId": "post_lost_declared_move_api_recovery_lost_declared_move_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
     "/api/admin/region-list": {
       "get": {
         "summary": "Admin only: where the station list comes from (published sheet link, uploaded file or the built-in snapshot), how many stations, and what differs from the built-in list.",
@@ -2643,6 +2782,87 @@
         ]
       }
     },
+    "/api/recovery/active-missing": {
+      "get": {
+        "summary": "Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each.",
+        "description": "Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each.",
+        "operationId": "recovery_active_missing_api_recovery_active_missing_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
+    "/api/recovery/active-missing/{tracking_number}": {
+      "put": {
+        "summary": "Anyone in access: answer for one active missing tracking number (ticket updated?, parcel found?, customer contacted / received?, liable party, remarks, check by).",
+        "description": "Anyone in access: answer for one active missing tracking number (ticket updated?, parcel found?, customer contacted / received?, liable party, remarks).",
+        "operationId": "recovery_active_missing_save_api_recovery_active_missing__tracking_number__put",
+        "parameters": [
+          {
+            "name": "tracking_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tracking Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActiveMissingIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
     "/api/recovery/settings": {
       "get": {
         "summary": "Reads the Recovery -> Missing Details high-value highlighting rule (COD threshold + item keywords).",
@@ -3837,6 +4057,89 @@
   },
   "components": {
     "schemas": {
+      "ActiveMissingIn": {
+        "properties": {
+          "ticket_updated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Updated"
+          },
+          "parcel_found": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Found"
+          },
+          "contacted_customer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contacted Customer"
+          },
+          "customer_received": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Received"
+          },
+          "liable_party": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liable Party"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "checked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked By"
+          }
+        },
+        "type": "object",
+        "title": "ActiveMissingIn"
+      },
       "AgingDetailsResponse": {
         "properties": {
           "captured_at": {
@@ -5492,6 +5795,67 @@
           "parcels"
         ],
         "title": "LHTrip"
+      },
+      "LostIn": {
+        "properties": {
+          "customer_received": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Received"
+          },
+          "liable_party": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liable Party"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "driver_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Name"
+          },
+          "checked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked By"
+          }
+        },
+        "type": "object",
+        "title": "LostIn"
       },
       "Me": {
         "properties": {
