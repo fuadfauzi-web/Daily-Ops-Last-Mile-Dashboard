@@ -7,7 +7,7 @@ import { formatTime } from "../lib/format";
 // until it is removed. (2026-09-26: the way to feed the KPI page while the Metabase link is being sorted out, and for RCA files that
 // are pasted by hand today.)
 export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data upload" }) {
-  const canUpload = me.role === "admin";
+  const canUploadAny = me.role === "admin"; // the panel-level hint; each file says for itself who may upload it (can_upload)
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -56,7 +56,7 @@ export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data uploa
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="font-display text-sm font-semibold text-ink">{title}</div>
         <div className="text-[11px] text-slate-400">
-          {canUpload ? "CSV or Excel. An uploaded file is used instead of Metabase until you remove it." : "Admins upload the data."}
+          {items?.some((u) => u.can_upload) ? "CSV or Excel. An uploaded file is used instead of Metabase until you remove it." : "Admins upload the data."}
         </div>
       </div>
       {items === null ? (
@@ -88,7 +88,7 @@ export default function KpiUploadPanel({ kpi, me, onChanged, title = "Data uploa
                   <span className="text-slate-400">Nothing uploaded</span>
                 )}
               </div>
-              {canUpload && (
+              {(u.can_upload ?? canUploadAny) && (
                 <div className="flex items-center gap-2">
                   <label className={`inline-flex min-h-[36px] cursor-pointer items-center rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}>
                     {busy === u.dataset ? "Uploading…" : u.filename ? "Replace file" : "Choose file"}

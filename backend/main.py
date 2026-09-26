@@ -384,7 +384,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         _missing_details_item_keywords = list(item_keywords)
         _missing_details_captured_at = captured_at.isoformat()
         try:  # Recovery -> Active Missing: answers for TNs that are no longer open are dropped (after 30 minutes off the list)
-            await recovery_lost.sync_active_missing({r["tracking_number"] for r in missing_details_tn_rows if r.get("type") != "Ship Out" and not r.get("is_b2b")})
+            await recovery_lost.sync_active_missing({r["tracking_number"] for r in missing_details_tn_rows if r.get("type") != "Ship Out"})  # parcels and B2B documents
         except Exception:  # noqa: BLE001
             log.exception("Active missing cleanup failed")
         _health_v3_by_tn = {
@@ -2202,9 +2202,12 @@ async def recovery_missing_details(user: CurrentUser = Depends(get_current_user)
 
 
 @app.get("/api/recovery/active-missing")
-async def recovery_active_missing(user: CurrentUser = Depends(get_current_user)):
-    """Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each."""
-    return await recovery_lost.active_missing_view(_missing_details_tn_rows, _missing_details_captured_at, user, _missing_details_cod_threshold)
+async def recovery_active_missing(kind: str = "parcel", user: CurrentUser = Depends(get_current_user)):
+    """Recovery -> Active Missing (kind=parcel): the open missing tickets in the caller's access (Ship Out and B2B documents left out) with what stations answered about each.
+    kind=b2b: the B2B documents only (MYRDO / MYPSO / -DO), the "B2B Document Active Missing" sub-tab."""
+    if kind not in ("parcel", "b2b"):
+        raise HTTPException(status_code=422, detail="kind must be parcel or b2b")
+    return await recovery_lost.active_missing_view(_missing_details_tn_rows, _missing_details_captured_at, user, _missing_details_cod_threshold, kind)
 
 
 @app.put("/api/recovery/active-missing/{tracking_number}")

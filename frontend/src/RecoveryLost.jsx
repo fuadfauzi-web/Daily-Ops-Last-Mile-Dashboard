@@ -9,8 +9,9 @@ import { Cards, SortTable } from "./kpi/rcaUi";
 import { selectClass } from "./kpi/fmt";
 
 // Recovery -> Active Missing, Lost Declared This Week, Lost Declared Summary (2026-09-26): the team's "Active Missing Southern" sheet, moved into the app.
-//   Active Missing          the open missing TNs in your access (Ship Out and B2B left out); every user answers for their own; a settled TN drops off by itself
-//   Lost Declared This Week the Metabase question "This Week Lost Declared" (an admin uploads its CSV daily); region staff answer, everyone monitors their access
+//   Active Missing          the open missing TNs in your access (Ship Out and B2B documents left out); every user answers for their own; a settled TN drops off by itself
+//   B2B Document Active Missing  the same for the B2B documents (MYRDO / MYPSO / -DO) that Active Missing leaves out
+//   Lost Declared This Week the Metabase question "This Week Lost Declared - All Regions" (an admin / manager uploads its CSV daily); region staff answer, everyone monitors their access
 //   Lost Declared Summary   what This Week collects, moved here every Monday 10pm for good
 // See backend/recovery_lost.py.
 
@@ -67,9 +68,12 @@ const csvDate = () => new Date().toISOString().slice(0, 10);
 // ------------------------------------------------------------------------------------------------ Active Missing
 const AM_KEYS = ["ticket_updated", "parcel_found", "contacted_customer", "customer_received", "liable_party", "remarks"];
 const AM_TYPES = ["Hub", "Driver/Rider", "Ship In", "PDCNR", "Other"];
+const B2B_TYPES = ["RDO", "PSO", "DO", "Other"];
 
 export function ActiveMissingView(props) {
-  const { refreshTick } = props;
+  const { refreshTick, kind = "parcel" } = props;
+  const isB2b = kind === "b2b";
+  const TYPES = isB2b ? B2B_TYPES : AM_TYPES;
   const [data, setData] = useState(null);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
@@ -80,7 +84,7 @@ export function ActiveMissingView(props) {
 
   useEffect(() => {
     api
-      .activeMissing()
+      .activeMissing(kind)
       .then((d) => {
         setData(d);
         setRows(d.rows);
@@ -98,14 +102,14 @@ export function ActiveMissingView(props) {
   const byStation = useMemo(() => {
     const m = new Map();
     inScope.forEach((r) => {
-      if (!m.has(r.station_code)) m.set(r.station_code, { station_code: r.station_code, station_name: r.station_name, zone: r.zone, region: r.region, total: 0, answered: 0, ...Object.fromEntries(AM_TYPES.map((t) => [t, 0])) });
+      if (!m.has(r.station_code)) m.set(r.station_code, { station_code: r.station_code, station_name: r.station_name, zone: r.zone, region: r.region, total: 0, answered: 0, ...Object.fromEntries(TYPES.map((t) => [t, 0])) });
       const s = m.get(r.station_code);
       s.total += 1;
       if (answered(r, AM_KEYS)) s.answered += 1;
-      s[AM_TYPES.includes(r.type) ? r.type : "Other"] += 1;
+      s[TYPES.includes(r.type) ? r.type : "Other"] += 1;
     });
     return [...m.values()].map((s) => ({ ...s, pending: s.total - s.answered }));
-  }, [inScope]);
+  }, [inScope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
   if (!data) return <Skeleton />;
@@ -128,7 +132,7 @@ export function ActiveMissingView(props) {
   const tnColumns = [
     { key: "station_name", label: "Station", sticky: true, align: "left", text: true },
     { key: "tracking_number", label: "Tracking Number", text: true, className: () => "font-mono text-xs" },
-    { key: "type", label: "Type", text: true },
+    { key: "type", label: isB2b ? "Document" : "Type", text: true },
     { key: "age", label: "Age (days)", render: (r) => (r.age != null ? Number(r.age).toFixed(1) : "—") },
     { key: "cod_value", label: "COD Value", render: (r) => (r.cod_value != null ? r.cod_value.toLocaleString() : "—"), className: (r) => (r.is_high_value ? "font-semibold text-status-critical" : "") },
     { key: "item_description", label: "Item", text: true, render: (r) => <span title={r.item_description || ""}>{clip(r.item_description, 40) || "—"}</span>, className: (r) => (r.is_high_value ? "font-semibold text-status-critical" : "") },
@@ -144,7 +148,7 @@ export function ActiveMissingView(props) {
   ];
   const stationColumns = [
     { key: "station_name", label: "Station", sticky: true, align: "left", text: true },
-    ...AM_TYPES.map((t) => ({ key: t, label: t })),
+    ...TYPES.map((t) => ({ key: t, label: t })),
     { key: "total", label: "Total", className: () => "font-semibold text-status-critical" },
     { key: "answered", label: "Answered", className: () => "text-status-good" },
     { key: "pending", label: "To answer", className: (r) => (r.pending ? "font-semibold text-status-warning" : "text-slate-400") },
@@ -153,14 +157,16 @@ export function ActiveMissingView(props) {
   return (
     <div className="space-y-3">
       <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
-        Every open missing tracking number in your access (Ship Out and B2B are left out). Answer for your own: pick from the lists or type, it saves as you go. A tracking number that is settled drops off by
-        itself -- with its answers -- even if nobody answered it.
+        {isB2b
+          ? "The open missing B2B documents (MYRDO / MYPSO / -DO tracking numbers) in your access -- the ones the Active Missing tab leaves out. "
+          : "Every open missing tracking number in your access (Ship Out and B2B documents are left out; the B2B documents have their own tab). "}
+        Answer for your own: pick from the lists or type, it saves as you go. A tracking number that is settled drops off by itself -- with its answers -- even if nobody answered it.
       </div>
-      <Cards cols="sm:grid-cols-4" items={[["Active missing TNs", total.toLocaleString()], ["Answered", done.toLocaleString(), total ? `${Math.round((done / total) * 100)}%` : ""], ["To answer", (total - done).toLocaleString()], ["High value, to answer", highPending.toLocaleString(), "red rows below"]]} />
+      <Cards cols="sm:grid-cols-4" items={[[isB2b ? "Active missing B2B documents" : "Active missing TNs", total.toLocaleString()], ["Answered", done.toLocaleString(), total ? `${Math.round((done / total) * 100)}%` : ""], ["To answer", (total - done).toLocaleString()], ["High value, to answer", highPending.toLocaleString(), "red rows below"]]} />
       {msg && <div className="rounded-lg bg-status-critical/5 px-3 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">{msg}</div>}
       <SortTable title="By station" maxHeight="32vh" columns={stationColumns} rows={byStation} defaultSort={{ key: "pending", dir: "desc" }} rowKey={(r) => r.station_code} emptyMessage="No stations match." />
       <SortTable
-        title="Active missing tracking numbers"
+        title={isB2b ? "Active missing B2B documents" : "Active missing tracking numbers"}
         titleExtra={
           <div className="flex flex-wrap items-center gap-3">
             <div className="w-48">
@@ -177,7 +183,7 @@ export function ActiveMissingView(props) {
             <button
               onClick={() =>
                 exportCsv(
-                  `daily-ops-active-missing-${csvDate()}.csv`,
+                  `daily-ops-active-missing-${isB2b ? "b2b-documents-" : ""}${csvDate()}.csv`,
                   ["Station", "Tracking Number", "Type", "Age", "COD Value", "Item", "Ticket to In Progress?", "Parcel found?", "Contacted customer?", "Customer already received?", "Liable party", "Remarks", "Check by", "Last update", "Updated by"],
                   list.map((r) => [r.station_name, r.tracking_number, r.type, r.age ?? "", r.cod_value ?? "", r.item_description ?? "", r.ticket_updated ?? "", r.parcel_found ?? "", r.contacted_customer ?? "", r.customer_received ?? "", r.liable_party ?? "", r.remarks ?? "", r.checked_by ?? "", r.updated_at ?? "", r.updated_by ?? ""])
                 )
@@ -284,6 +290,7 @@ export function LostDeclaredView({ view, me, ...props }) {
     { key: "days_to_resolution", label: "Days to resolution", render: (r) => r.days_to_resolution ?? "—" },
     { key: "outcome", label: "Outcome", text: true, className: () => "whitespace-nowrap text-xs" },
     { key: "last_scan_type", label: "Last scan before resolution", text: true, className: () => "whitespace-nowrap text-xs text-slate-500" },
+    { key: "current_status", label: "Current status", text: true, render: (r) => (r.current_status ? <span className={r.current_status === "Completed" ? "font-semibold text-status-good" : ""}>{r.current_status}</span> : dash), className: () => "whitespace-nowrap text-xs" },
     { key: "cod_value", label: "COD Value", render: (r) => r.cod_value ?? "—" },
     { key: "ticket_notes", label: "Ticket notes", sortable: false, render: (r) => <span title={r.ticket_notes || ""} className="block max-w-[14rem] text-left text-xs">{clip(r.ticket_notes, 80) || "—"}</span> },
     { key: "items", label: "Items", sortable: false, render: (r) => <span title={items(r.items)} className="block max-w-[12rem] text-left text-xs">{clip(items(r.items), 60) || "—"}</span> },
@@ -312,8 +319,8 @@ export function LostDeclaredView({ view, me, ...props }) {
         ) : (
           <>
             The tickets declared lost this week, from the Metabase question{" "}
-            <a href="https://metabase.ninjavan.co/question/125947-this-week-lost-declared" target="_blank" rel="noopener noreferrer" className="font-medium text-sky-700 underline hover:text-sky-900">
-              This Week Lost Declared ↗
+            <a href="https://metabase.ninjavan.co/question/127203" target="_blank" rel="noopener noreferrer" className="font-medium text-sky-700 underline hover:text-sky-900">
+              This Week Lost Declared - All Regions ↗
             </a>
             {data.upload ? ` -- last loaded ${formatTime(data.upload.uploaded_at)} (${data.upload.filename}).` : " -- nothing loaded yet."} Everything on this list moves to the Summary every Monday at 10pm.{" "}
           </>
@@ -321,14 +328,22 @@ export function LostDeclaredView({ view, me, ...props }) {
         {canEdit ? "You can answer for the stations in your access." : "Only region staff (and managers / admins) answer here; you can monitor the stations in your access."}
       </div>
 
-      {!isSummary && me.role === "admin" && (
+      {data.can_upload && (
         <div className="space-y-2">
-          <KpiUploadPanel kpi="recovery" me={me} title="Data upload (admins) -- the Metabase CSV, once a day" onChanged={() => setReload((n) => n + 1)} />
-          <div className="flex justify-end">
-            <button onClick={move} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-              Move everything to the Summary now
-            </button>
-          </div>
+          <KpiUploadPanel kpi="recovery" me={me} title="Data upload (admins and managers) -- the Metabase CSVs" onChanged={() => setReload((n) => n + 1)} />
+          {!isSummary && me.role === "admin" && (
+            <div className="flex justify-end">
+              <button onClick={move} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
+                Move everything to the Summary now
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {data.not_shown && (
+        <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
+          {data.not_shown.count.toLocaleString()} tracking number{data.not_shown.count === 1 ? "" : "s"} from hubs that are not Last Mile stations ({data.not_shown.hubs.join(", ")}
+          {data.not_shown.hubs.length < 4 ? "" : ", …"}) are not shown.
         </div>
       )}
 
@@ -374,8 +389,8 @@ export function LostDeclaredView({ view, me, ...props }) {
               onClick={() =>
                 exportCsv(
                   `daily-ops-lost-declared-${isSummary ? "summary" : "this-week"}-${csvDate()}.csv`,
-                  ["Week", "Station", "Tracking ID", "Resolved", "Days to resolution", "Outcome", "Last scan before resolution", "COD Value", "Ticket notes", "Items", "Delivery instructions", "Customer already received?", "Liable party", "Remarks", "Driver display name", "Check by", "Last update", "Updated by"],
-                  list.map((r) => [r.week_no ?? "", r.station_name, r.tracking_number, r.resolution_date ?? "", r.days_to_resolution ?? "", r.outcome ?? "", r.last_scan_type ?? "", r.cod_value ?? "", r.ticket_notes ?? "", items(r.items), r.delivery_instructions ?? "", r.customer_received ?? "", r.liable_party ?? "", r.remarks ?? "", r.driver_name ?? "", r.checked_by ?? "", r.updated_at ?? "", r.updated_by ?? ""])
+                  ["Week", "Station", "Tracking ID", "Resolved", "Days to resolution", "Outcome", "Last scan before resolution", "Current status", "COD Value", "Ticket notes", "Items", "Delivery instructions", "Customer already received?", "Liable party", "Remarks", "Driver display name", "Check by", "Last update", "Updated by"],
+                  list.map((r) => [r.week_no ?? "", r.station_name, r.tracking_number, r.resolution_date ?? "", r.days_to_resolution ?? "", r.outcome ?? "", r.last_scan_type ?? "", r.current_status ?? "", r.cod_value ?? "", r.ticket_notes ?? "", items(r.items), r.delivery_instructions ?? "", r.customer_received ?? "", r.liable_party ?? "", r.remarks ?? "", r.driver_name ?? "", r.checked_by ?? "", r.updated_at ?? "", r.updated_by ?? ""])
                 )
               }
               className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"

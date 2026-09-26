@@ -196,7 +196,7 @@ export const api = {
   regionListSetUrl: (url) => request("/api/admin/region-list/url", { method: "PUT", body: JSON.stringify({ url }) }),
   regionListSync: () => request("/api/admin/region-list/sync", { method: "POST" }),
   // Recovery -> Active Missing / Lost Declared This Week / Lost Declared Summary (backend/recovery_lost.py)
-  activeMissing: () => request("/api/recovery/active-missing"),
+  activeMissing: (kind = "parcel") => request(`/api/recovery/active-missing?kind=${kind}`),
   activeMissingSave: (tn, body) => request(`/api/recovery/active-missing/${encodeURIComponent(tn)}`, { method: "PUT", body: JSON.stringify(body) }),
   lostDeclared: (view, week) => request(`/api/recovery/lost-declared?view=${view}${week ? `&week=${encodeURIComponent(week)}` : ""}`),
   lostDeclaredSave: (tn, body) => request(`/api/recovery/lost-declared/${encodeURIComponent(tn)}`, { method: "PUT", body: JSON.stringify(body) }),
