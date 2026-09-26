@@ -170,7 +170,7 @@ function CodOverview({ v, where, hub, setHub, reason, setReason, shipper, setShi
           rows={v.hubs}
           defaultSort={{ key: "count", dir: "desc" }}
           rowKey={(r) => r.code}
-          rowClassName={(r) => (r.code === hub ? "bg-brand/10" : "")}
+          rowClassName={(r) => (r.code === hub ? "bg-rose-50" : "")}
           onRowClick={(r) => {
             setHub(hub === r.code ? null : r.code);
             setDriver(null);
@@ -210,7 +210,7 @@ function CodOverview({ v, where, hub, setHub, reason, setReason, shipper, setShi
         rows={v.drivers}
         defaultSort={{ key: "count", dir: "desc" }}
         rowKey={(r) => `${r.station}|${r.driver}`}
-        rowClassName={(r) => (r.driver === driver ? "bg-brand/10" : "")}
+        rowClassName={(r) => (r.driver === driver ? "bg-rose-50" : "")}
         onRowClick={(r) => setDriver(driver === r.driver ? null : r.driver)}
         emptyMessage="No drivers."
         footer={'Top 20 by RTS parcels -- see the Drivers tab for all. "(no driver)" = returned without ever being routed to a driver.'}
@@ -255,7 +255,7 @@ function CodReasons({ v, reason, setReason }) {
         rows={v.rows}
         defaultSort={{ key: "count", dir: "desc" }}
         rowKey={(r) => r.reason}
-        rowClassName={(r) => (r.reason === reason ? "bg-brand/10" : "")}
+        rowClassName={(r) => (r.reason === reason ? "bg-rose-50" : "")}
         onRowClick={(r) => setReason(reason === r.reason ? null : r.reason)}
         emptyMessage="No RTS parcels here."
         footer="The % columns sort by the %; the two “top” columns sort by their parcel count."
@@ -315,7 +315,7 @@ function CodShippers({ v, shipper, setShipper }) {
         rows={v.rows}
         defaultSort={{ key: "count", dir: "desc" }}
         rowKey={(r) => r.shipper}
-        rowClassName={(r) => (r.shipper === shipper ? "bg-brand/10" : "")}
+        rowClassName={(r) => (r.shipper === shipper ? "bg-rose-50" : "")}
         onRowClick={(r) => setShipper(shipper === r.shipper ? null : r.shipper)}
         emptyMessage="No shippers."
         footer={`Cumulative % = how much of all RTS the shippers down to this row make up (sorted by parcels)${v.row_count > v.rows.length ? ` · the top ${v.rows.length} of ${int(v.row_count)}` : ""}`}
@@ -370,7 +370,7 @@ function CodDrivers({ v, driver, setDriver }) {
       rows={v.rows}
       defaultSort={{ key: "count", dir: "desc" }}
       rowKey={(r) => `${r.code}|${r.driver}`}
-      rowClassName={(r) => (r.driver === driver ? "bg-brand/10" : "")}
+      rowClassName={(r) => (r.driver === driver ? "bg-rose-50" : "")}
       onRowClick={(r) => setDriver(driver === r.driver ? null : r.driver)}
       emptyMessage="No drivers."
       footer={`${v.row_count > v.rows.length ? `The ${v.rows.length} with the most of ${int(v.row_count)} · ` : ""}"(no driver)" = returned without ever being routed to a driver, counted per station · the % columns sort by the %`}

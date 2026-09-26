@@ -410,7 +410,7 @@ export default function DodTab({ stationCodes }) {
           columns={columns}
           rows={tableRows}
           rowKey={(e) => e.key}
-          rowClassName={(e) => (e.key === chosen.key ? "bg-brand/10" : e.isTotal ? "bg-slate-100" : "")}
+          rowClassName={(e) => (e.key === chosen.key ? "bg-rose-50" : e.isTotal ? "bg-slate-100" : "")}
           onRowClick={(e) => setPicked(e.key)}
           sortKey={sk}
           sortDir={sortDir}

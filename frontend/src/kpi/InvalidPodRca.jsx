@@ -245,7 +245,7 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
           rows={hubRows}
           defaultSort={{ key: "invalidPct", dir: "desc" }}
           rowKey={(r) => r.code}
-          rowClassName={(r) => (r.code === hub ? "bg-brand/10" : "")}
+          rowClassName={(r) => (r.code === hub ? "bg-rose-50" : "")}
           onRowClick={(r) => {
             setHub(hub === r.code ? null : r.code);
             setCourier(null);
@@ -273,7 +273,7 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
         rows={courierRows}
         defaultSort={{ key: "invalid", dir: "desc" }}
         rowKey={(r) => r.key}
-        rowClassName={(r) => (r.courier === courier ? "bg-brand/10" : "")}
+        rowClassName={(r) => (r.courier === courier ? "bg-rose-50" : "")}
         onRowClick={(r) => setCourier(courier === r.courier ? null : r.courier)}
         emptyMessage="No drivers with invalid POD here."
         footer="Top 200 by invalid count."
@@ -428,7 +428,7 @@ function PodDrivers({ data, week, region, zone, hub }) {
           rows={rows}
           defaultSort={{ key: "invalid", dir: "desc" }}
           rowKey={(r) => r.key}
-          rowClassName={(r) => (r.key === picked ? "bg-brand/10" : "")}
+          rowClassName={(r) => (r.key === picked ? "bg-rose-50" : "")}
           onRowClick={(r) => setPicked(picked === r.key ? null : r.key)}
           emptyMessage="No drivers with invalid POD match."
           footer={`${rows.length.toLocaleString()} drivers${d.capped ? ` (the ${d.rows.length.toLocaleString()} with the most invalid of ${d.total_drivers.toLocaleString()})` : ""} · % columns sort by the %`}
@@ -557,7 +557,7 @@ function PodReasons({ data, hubs, hubMeta, week, region, zone, hub }) {
         rows={rows}
         defaultSort={{ key: "count", dir: "desc" }}
         rowKey={(r) => r.reason}
-        rowClassName={(r) => (r.reason === reason ? "bg-brand/10" : "")}
+        rowClassName={(r) => (r.reason === reason ? "bg-rose-50" : "")}
         onRowClick={(r) => setReason(reason === r.reason ? null : r.reason)}
         emptyMessage="No invalid attempts here."
       />
