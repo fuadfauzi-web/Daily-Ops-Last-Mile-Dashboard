@@ -1235,7 +1235,7 @@
     },
     "/api/kpi/uploads": {
       "get": {
-        "summary": "The KPI page's data-upload slots: what is uploaded in each and the Metabase link to download it from.",
+        "summary": "The data-upload slots: what is uploaded in each, the Metabase link to download it from and whether the caller may upload it.",
         "description": "Which datasets have an uploaded file (for the KPI page's Data upload panel).",
         "operationId": "kpi_uploads_api_kpi_uploads_get",
         "responses": {
@@ -1271,7 +1271,7 @@
     },
     "/api/kpi/uploads/{dataset}": {
       "post": {
-        "summary": "Admin only: upload a CSV or Excel file into a KPI data slot (replaces the current file).",
+        "summary": "Admin only (the Recovery lost-declared files: admins and managers): upload a CSV or Excel file into a data slot (replaces the current file).",
         "operationId": "kpi_upload_api_kpi_uploads__dataset__post",
         "parameters": [
           {
@@ -1321,7 +1321,7 @@
         ]
       },
       "delete": {
-        "summary": "Admin only: remove the file in a KPI data slot.",
+        "summary": "Admin only (the Recovery lost-declared files: admins and managers): remove the file in a data slot.",
         "operationId": "kpi_upload_delete_api_kpi_uploads__dataset__delete",
         "parameters": [
           {
@@ -2784,9 +2784,21 @@
     },
     "/api/recovery/active-missing": {
       "get": {
-        "summary": "Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each.",
-        "description": "Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each.",
+        "summary": "Recovery -> Active Missing (kind=parcel) or B2B Document Active Missing (kind=b2b): the open missing tickets in the caller's access (Ship Out left out; B2B documents on their own list) with what stations answered about each.",
+        "description": "Recovery -> Active Missing (kind=parcel): the open missing tickets in the caller's access (Ship Out and B2B documents left out) with what stations answered about each.\nkind=b2b: the B2B documents only (MYRDO / MYPSO / -DO), the \"B2B Document Active Missing\" sub-tab.",
         "operationId": "recovery_active_missing_api_recovery_active_missing_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "parcel",
+              "title": "Kind"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9941,6 +9953,11 @@
               }
             ],
             "title": "Uploaded At"
+          },
+          "can_upload": {
+            "type": "boolean",
+            "title": "Can Upload",
+            "default": false
           }
         },
         "type": "object",
