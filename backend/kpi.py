@@ -19,6 +19,7 @@ from pydantic import BaseModel
 import kpi_data as kd
 import kpi_targets
 import metabase_client as mb
+import recovery_lost
 import region_list
 from auth import CurrentUser, get_current_user
 from stations import ABBR_TO_HUB, HUBS
@@ -305,7 +306,16 @@ async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUs
         raise HTTPException(status_code=503, detail="Couldn't store the file right now -- try again")
     if dataset == "region_list":
         await region_list.ensure_fresh(force=True)  # the new station list is in use at once
-    return {"ok": True, "detail": f"{kd.DATASETS[dataset]['label']}: {info['row_count']:,} rows loaded"}
+    detail = f"{kd.DATASETS[dataset]['label']}: {info['row_count']:,} rows loaded"
+    if dataset == "lost_declared":  # what the sheet's daily Gmail script did: add the new TNs, refresh the known ones, drop those that changed
+        try:
+            r = await recovery_lost.sync_lost_upload()
+            detail += f" -- Lost Declared This Week: {r['added']} new, {r['updated']} refreshed, {r['removed']} removed" + (
+                f", {r['kept_previous_week']} from an earlier week kept for the Monday move" if r["kept_previous_week"] else "")
+        except Exception:  # noqa: BLE001
+            log.exception("Lost declared sync failed")
+            raise HTTPException(status_code=503, detail="The file was stored but Lost Declared This Week could not be updated -- try again")
+    return {"ok": True, "detail": detail}
 
 
 @router.delete("/api/kpi/uploads/{dataset}", response_model=UploadResult)

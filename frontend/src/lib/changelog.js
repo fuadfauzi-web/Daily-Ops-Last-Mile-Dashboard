@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
+    title: "Recovery: Active Missing, Lost Declared This Week and Lost Declared Summary",
+    points: [
+      "Three new sub-tabs on Recovery, replacing the Active Missing Google Sheet. Active Missing lists the open missing tracking numbers in your access (Ship Out and B2B left out) and you answer for your own -- ticket updated to In Progress?, parcel found?, customer contacted / received?, liable party, remarks, check by; it saves as you go. A tracking number that is settled drops off by itself, answers included, even if nobody answered it.",
+      "Lost Declared This Week shows the tickets declared lost this week (the Metabase question This Week Lost Declared, loaded by an admin once a day): region staff answer customer received?, liable party, remarks, driver name and check by; everyone else monitors what is in their access. Every Monday at 10pm it all moves to Lost Declared Summary, weekly and for good, and leaves This Week.",
+      "Admins: the daily CSV goes in from Admin → Documents (or the upload panel on the tab), with the link to the Metabase question.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "Admin: the station list follows the Region List sheet",
     minRank: 3,
     points: [

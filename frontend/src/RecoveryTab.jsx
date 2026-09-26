@@ -8,8 +8,14 @@ import DetailPanel from "./components/DetailPanel";
 import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
+import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 
-const SUB_TABS = [{ key: "missing", label: "Missing Details" }];
+const SUB_TABS = [
+  { key: "missing", label: "Missing Details" },
+  { key: "active", label: "Active Missing" },
+  { key: "lostweek", label: "Lost Declared This Week" },
+  { key: "lostsummary", label: "Lost Declared Summary" },
+];
 
 const OVERVIEW_COLUMNS = [
   { key: "hub_count", label: "Hub", render: (r) => r.hub_count.toLocaleString() },
@@ -269,10 +275,21 @@ export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excl
   return (
     <div className="space-y-3">
       <SegmentedControl options={SUB_TABS} value={subTab} onChange={setSubTab} />
-      <MissingDetailsView
-        regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-        excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
-      />
+      {subTab === "missing" && (
+        <MissingDetailsView
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      )}
+      {subTab === "active" && (
+        <ActiveMissingView regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick} />
+      )}
+      {(subTab === "lostweek" || subTab === "lostsummary") && (
+        <LostDeclaredView
+          key={subTab} view={subTab === "lostsummary" ? "summary" : "week"} me={me}
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      )}
     </div>
   );
 }

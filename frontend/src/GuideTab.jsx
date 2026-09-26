@@ -320,11 +320,20 @@ const SECTIONS = [
     id: "recovery",
     title: "Recovery",
     body: () => (
-      <p className="text-sm text-slate-700">
-        Missing Details shows open missing-parcel tickets by Region / Zone / Station (Hub / Ship In / Other / Total) plus the
-        full TN list with COD value and item description. Rows shaded red are at or above the high-value COD threshold or match
-        a high-value keyword{"  "}(both editable in Recovery Settings by an admin or manager).
-      </p>
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          Four sub-tabs. <strong>Missing Details</strong> shows open missing-parcel tickets by Region / Zone / Station (Hub / Ship In / Other / Total) plus the
+          full TN list with COD value and item description. Rows shaded red are at or above the high-value COD threshold or match
+          a high-value keyword{"  "}(both editable in Recovery Settings by an admin or manager).
+        </p>
+        <Bullets
+          items={[
+            <><strong>Active Missing</strong>: the open missing tracking numbers in your access (Ship Out and B2B are left out), oldest first, with a station summary on top. Answer for your own tracking numbers: <em>ticket updated to In Progress?</em> (Done / Not Done), <em>parcel found?</em>, <em>if not, contacted the customer?</em>, <em>customer already received?</em> (Yes / No / Waiting confirmation), <em>liable party</em> (Hub / Driver / PDCNR / Ship In / Ship Out), <em>remarks</em> and <em>check by</em>. It saves as you go. Everyone can answer for the stations in their access. A tracking number that is settled drops off the list by itself -- its answers too -- even if nobody answered it.</>,
+            <><strong>Lost Declared This Week</strong>: the tickets declared lost this week, from the Metabase question <em>This Week Lost Declared</em> (an admin uploads its CSV once a day -- Admin → Documents, or the upload panel on this tab, with the Metabase link). Region staff (managers and admins too) answer <em>customer already received?</em>, <em>liable party</em> (also TTDI Initiative), <em>remarks</em>, the <em>driver's display name</em> if it is under a driver, and <em>check by</em>; station staff and everyone else monitor what is in their access. A tracking number whose ticket changed disappears with the next upload.</>,
+            <><strong>Lost Declared Summary</strong>: every Monday at 10pm what is on <em>Lost Declared This Week</em> moves here for good, answers included, and leaves <em>This Week</em>. Pick a week (weeks start on Monday) or all weeks; the by-station table counts each outcome and liable party. Region staff can still update remarks here.</>,
+          ]}
+        />
+      </div>
     ),
   },
   {
