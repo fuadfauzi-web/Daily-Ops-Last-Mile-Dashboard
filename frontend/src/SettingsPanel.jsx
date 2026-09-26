@@ -7,6 +7,7 @@ import FeedbackPanel from "./FeedbackPanel";
 import GuideTab from "./GuideTab";
 import KpiTargetsPanel from "./KpiTargetsPanel";
 import RegionListPanel from "./RegionListPanel";
+import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
 
@@ -774,7 +775,12 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "guide" && <GuideTab me={me} />}
 
-      {adminTab === "documents" && <DocumentsPanel />}
+      {adminTab === "documents" && (
+        <div className="space-y-3">
+          <DocumentsPanel />
+          <KpiUploadPanel kpi="recovery" me={me} title="Recovery -- Lost Declared This Week (upload once a day)" />
+        </div>
+      )}
 
       {adminTab === "stationlist" && isFullAdmin && <RegionListPanel me={me} />}
 

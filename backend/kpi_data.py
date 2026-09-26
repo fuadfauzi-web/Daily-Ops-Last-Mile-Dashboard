@@ -145,6 +145,11 @@ DATASETS: dict[str, dict] = {
         "hint": "Metabase question 118041 ((MY) LM CISP FIFO D0): pick the Measured Date (e.g. past 1 weeks), run it, then Download results as .csv -- one period per file",
         "sheet": None, "required": ["desthubname", "totalorders", "totaln0met"],
     },
+    "lost_declared": {
+        "kpi": "recovery", "label": "Lost declared this week (Recovery)", "link": "https://metabase.ninjavan.co/question/125947-this-week-lost-declared",
+        "hint": "Metabase question 125947 (This Week Lost Declared) -- Download results as .csv and upload it once a day; it fills Recovery -> Lost Declared This Week",
+        "sheet": None, "required": ["trackingid", "outcome", "investigatinghubname", "resolutiondatetime"],
+    },
     "region_list": {
         "kpi": "region", "label": "Station list (Region List sheet)", "link": "https://docs.google.com/spreadsheets/d/1KmHiK5q5mMoKX8N2TzlmRByjIc5nX2fwSsuCxHm4l8g/edit?gid=1339991125#gid=1339991125",
         "link_label": "Open the Region List sheet",

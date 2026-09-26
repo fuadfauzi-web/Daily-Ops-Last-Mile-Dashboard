@@ -32,6 +32,7 @@ from kpi import router as kpi_router
 from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
 import kpi_targets
+import recovery_lost
 import region_list
 from kpi_targets import router as kpi_targets_router
 from kpi_pod import router as kpi_pod_router
@@ -381,6 +382,10 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         _missing_details_cod_threshold = cod_threshold
         _missing_details_item_keywords = list(item_keywords)
         _missing_details_captured_at = captured_at.isoformat()
+        try:  # Recovery -> Active Missing: answers for TNs that are no longer open are dropped (after 30 minutes off the list)
+            await recovery_lost.sync_active_missing({r["tracking_number"] for r in missing_details_tn_rows if r.get("type") != "Ship Out" and not r.get("is_b2b")})
+        except Exception:  # noqa: BLE001
+            log.exception("Active missing cleanup failed")
         _health_v3_by_tn = {
             r["tracking_id"]: {
                 "dest_hub": r.get("dest_hub"),
@@ -625,6 +630,7 @@ async def _hourly_refresh_loop() -> None:
             await refresh_metrics(triggered_by="scheduler")
         except Exception:  # noqa: BLE001 - never let the loop die
             log.exception("Scheduled refresh crashed")
+        await recovery_lost.tick()  # Monday 22:00: Lost Declared This Week -> Summary (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
 
 
@@ -648,6 +654,7 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
 app.include_router(region_list.router)  # Admin: the station list from the Region List sheet (region_list.py)
 app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)
 app.include_router(kpi_cisp_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
@@ -2161,6 +2168,18 @@ async def recovery_missing_details(user: CurrentUser = Depends(get_current_user)
         "tn_rows_total": tn_rows_total,
         "tn_rows_truncated": tn_rows_truncated,
     }
+
+
+@app.get("/api/recovery/active-missing")
+async def recovery_active_missing(user: CurrentUser = Depends(get_current_user)):
+    """Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each."""
+    return await recovery_lost.active_missing_view(_missing_details_tn_rows, _missing_details_captured_at, user, _missing_details_cod_threshold)
+
+
+@app.put("/api/recovery/active-missing/{tracking_number}")
+async def recovery_active_missing_save(tracking_number: str, payload: recovery_lost.ActiveMissingIn, user: CurrentUser = Depends(get_current_user)):
+    """Anyone in access: answer for one active missing tracking number (ticket updated?, parcel found?, customer contacted / received?, liable party, remarks)."""
+    return await recovery_lost.save_active_missing(tracking_number, payload, _missing_details_tn_rows, user)
 
 
 class RecoverySettings(BaseModel):

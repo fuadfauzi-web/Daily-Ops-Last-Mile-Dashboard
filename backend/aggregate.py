@@ -355,6 +355,9 @@ def build_missing_details(
             "cod_value": cod_value,
             "item_description": item_description,
             "is_high_value": _is_high_value(cod_value, item_description, cod_threshold, keywords),
+            # Recovery -> Active Missing (the team's "Update Here" sheet) leaves B2B and Ship Out out and shows PDCNR as its own type
+            "is_b2b": bool(_B2B_TN_PATTERN.search(r.get("tracking_id") or "")),
+            "is_pdcnr": r.get("granular_status") == "Completed",
         })
     return by_station, tn_rows
 
