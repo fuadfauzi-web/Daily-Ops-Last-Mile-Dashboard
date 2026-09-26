@@ -5,10 +5,11 @@ import { exportCsv } from "../lib/csv";
 import { formatTime } from "../lib/format";
 import HBars from "./HBars";
 import KpiUploadPanel from "./KpiUploadPanel";
+import { kpiTargetText, useKpiTargets } from "../lib/kpiTargets";
 import { dec1, int, pct1, selectClass } from "./fmt";
 import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
 
-// COD RTS -- the RCA view (staging). Which COD parcels went back to the shipper (RTS) and why. The KPI (RTS rate, target under 9% -- 7% East Coast, 12% East Malaysia) needs all COD
+// COD RTS -- the RCA view. Which COD parcels went back to the shipper (RTS) and why. The KPI (RTS rate, target per region -- Admin -> KPI Targets) needs all COD
 // orders as its denominator, which is not in the file, so this shows COUNTS and shares; the rate stays with the OPEX result.
 //   Overview   stations, reasons, where the parcels are now, shippers, drivers, all-RTS summary
 //   Reasons    every reason: share, before a 1st attempt, top station / shipper -- click one for the stations, shippers and driver types behind it
@@ -139,6 +140,7 @@ export default function CodRtsRca({ me }) {
 
 // ------------------------------------------------------------------------------------------------ Overview
 function CodOverview({ v, where, hub, setHub, reason, setReason, shipper, setShipper, driver, setDriver }) {
+  useKpiTargets(); // the target line below draws once the targets are known
   const t = v.totals;
   const ov = v.overall;
   return (
@@ -153,6 +155,9 @@ function CodOverview({ v, where, hub, setHub, reason, setReason, shipper, setShi
           ["Avg days to 1st attempt", t.avg_days == null ? "—" : dec1(t.avg_days)],
         ]}
       />
+      <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
+        The COD RTS rate is met at or under <span className="font-semibold text-slate-700">{kpiTargetText("cod_rts") || "its target"}</span> (per region; changed by an admin under Admin → KPI Targets). This view shows the counts and shares behind the rate; the rate itself is on the OPEX Result page.
+      </div>
       <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
         <SortTable
           title="COD RTS by station"

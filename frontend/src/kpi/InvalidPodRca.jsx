@@ -6,11 +6,12 @@ import { exportCsv } from "../lib/csv";
 import { formatTime } from "../lib/format";
 import HBars from "./HBars";
 import KpiUploadPanel from "./KpiUploadPanel";
+import { kpiTarget, kpiTargetText, useKpiTargets } from "../lib/kpiTargets";
 import { groupBy, int, pct1, pctOf, selectClass } from "./fmt";
 import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
 
 // Invalid POD -- the RCA view (staging). Every failed delivery attempt is validated: FAILURE = the proof of delivery attempt was judged
-// invalid, SUCCESS = valid. The KPI is the invalid share (target under 25%); this shows WHERE it comes from -- station, driver, reason, day --
+// invalid, SUCCESS = valid. The KPI is the invalid share (target under 25% by default, per region in Admin -> KPI Targets); this shows WHERE it comes from -- station, driver, reason, day --
 // and lists the tracking numbers behind every number.
 //   Overview           stations, why it is invalid, the drivers with the most, tracking numbers
 //   Drivers & reasons  every driver with invalid POD and the reasons behind it, top reason first
@@ -18,13 +19,17 @@ import { Cards, Panel, SortTable, TabsBar, TrendPanel, useApi, withPct } from ".
 //   Reasons            each reason and which stations it comes from
 //   LM performance     the LM POD Performance workbook (audit + final result); managers and admins only
 // Data: the POD validation Raw sheet (Metabase question 69573), uploaded here. Everything follows the viewer's scope.
-const TARGET = 25;
-const WARN = 20;
-const sev = (p) => (p >= TARGET ? "font-semibold text-status-critical" : p >= WARN ? "font-medium text-status-warning" : "text-status-good");
+// The target is per region (Admin -> KPI Targets; 25% until someone changes it): a row is judged against its own region's, amber = within 5 points of it.
+const targetOf = (region) => kpiTarget("invalid_pod", region) ?? 25;
+const sev = (p, region) => {
+  const t = targetOf(region);
+  return p >= t ? "font-semibold text-status-critical" : p >= t - 5 ? "font-medium text-status-warning" : "text-status-good";
+};
 const pctFmt = (v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`;
 const noneIf = (v) => (v === "all" ? undefined : v);
 
 export default function InvalidPodRca({ me }) {
+  useKpiTargets(); // draws again once the targets are known / changed
   const isManager = me.role === "manager" || me.role === "admin";
   const canUpload = me.role === "admin";
   const [data, setData] = useState(null);
@@ -226,13 +231,13 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
         items={[
           ["Validated attempts", int(totals.total)],
           ["Invalid POD", int(totals.invalid)],
-          ["Invalid %", <span key="p" className={sev(pctOf(totals.invalid, totals.total))}>{pct1(pctOf(totals.invalid, totals.total))}</span>],
+          ["Invalid %", <span key="p" className={sev(pctOf(totals.invalid, totals.total), region === "all" ? undefined : region)}>{pct1(pctOf(totals.invalid, totals.total))}</span>],
           ["Top reason", reasonRows[0] ? `${reasonRows[0].label} (${pct1(pctOf(reasonRows[0].value, invalidInScope))})` : "—"],
         ]}
       />
       <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
         <SortTable
-          title={`Invalid POD by station (target under ${TARGET}%)`}
+          title={`Invalid POD by station (target under ${kpiTargetText("invalid_pod")})`}
           titleExtra={<span className="text-[10px] text-slate-400">click a station to break it down</span>}
           maxHeight="480px"
           columns={[
@@ -240,7 +245,7 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
             { key: "zone", label: "Zone", text: true, className: () => "text-slate-500" },
             { key: "total", label: "Validated", render: (r) => int(r.total) },
             { key: "invalid", label: "Invalid", render: (r) => int(r.invalid) },
-            { key: "invalidPct", label: "Invalid %", render: (r) => pct1(r.invalidPct), className: (r) => sev(r.invalidPct) },
+            { key: "invalidPct", label: "Invalid %", render: (r) => pct1(r.invalidPct), className: (r) => sev(r.invalidPct, r.region) },
           ]}
           rows={hubRows}
           defaultSort={{ key: "invalidPct", dir: "desc" }}
@@ -251,7 +256,7 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
             setCourier(null);
           }}
           emptyMessage="No stations match."
-          footer={`${hubRows.length} stations · red = at or over ${TARGET}%, amber = ${WARN}%+`}
+          footer={`${hubRows.length} stations · red = at or over the station's region target, amber = within 5 points of it`}
         />
         <Panel title={`Why it's invalid — ${hubName ? `Station ${hubName}` : "all stations in view"}`}>
           <HBars rows={reasonRows.map((r) => ({ ...r, sub: pct1(pctOf(r.value, invalidInScope)) }))} picked={reason} onPick={setReason} format={int} max={10} empty="No invalid attempts here." />
@@ -268,7 +273,7 @@ function PodOverview({ data, hubs, hubMeta, week, region, zone, hub, setHub }) {
           { key: "station", label: "Station", text: true, className: () => "text-slate-500" },
           { key: "invalid", label: "Invalid", render: (r) => int(r.invalid) },
           { key: "total", label: "Validated", render: (r) => int(r.total) },
-          { key: "invalidPct", label: "Invalid %", render: (r) => pct1(r.invalidPct), className: (r) => sev(r.invalidPct) },
+          { key: "invalidPct", label: "Invalid %", render: (r) => pct1(r.invalidPct), className: (r) => sev(r.invalidPct, r.region) },
         ]}
         rows={courierRows}
         defaultSort={{ key: "invalid", dir: "desc" }}
@@ -420,7 +425,7 @@ function PodDrivers({ data, week, region, zone, hub }) {
             { key: "station", label: "Station", text: true, className: () => "text-slate-500" },
             { key: "total", label: "Validated", render: (r) => int(r.total) },
             { key: "invalid", label: "Invalid", render: (r) => int(r.invalid) },
-            { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct) },
+            { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct, r.region) },
             { key: "top_reason", label: "Top invalid reason", text: true, align: "left", className: () => "max-w-[260px] truncate text-xs text-slate-700", render: (r) => r.top_reason || "—" },
             { key: "topPct", label: "Top reason (count · % of driver's invalid)", render: (r) => withPct(r.top_count, r.topPct), sortValue: (r) => r.topPct },
             { key: "second", label: "2nd reason", text: true, className: () => "max-w-[200px] truncate text-xs text-slate-500" },
@@ -505,7 +510,7 @@ function PodTrend({ week, region, zone, hub }) {
       load={(level, keys) => api.kpiInvalidPodTrend({ ...filters, level, keys })}
       metrics={metrics}
       filterKey={[week, region, zone, hub].join("|")}
-      note={`target under ${TARGET}%`}
+      note={`target under ${kpiTargetText("invalid_pod")}`}
     />
   );
 }
@@ -624,7 +629,7 @@ function PodPerformance({ me }) {
     { key: "station", label: "Station", text: true, className: () => "text-slate-500" },
     { key: "validated", label: "Validated", render: (r) => int(r.validated) },
     { key: "invalid", label: "Invalid", render: (r) => int(r.invalid) },
-    { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct) },
+    { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct, r.region) },
     { key: "top_reason", label: "Top invalid reason", text: true, align: "left", className: () => "max-w-[240px] truncate text-xs text-slate-700", render: (r) => r.top_reason || "—" },
     { key: "topPct", label: "Top reason (count · % of invalid)", render: (r) => withPct(r.top_count, r.topPct), sortValue: (r) => r.topPct },
   ];
@@ -665,7 +670,7 @@ function PodPerformance({ me }) {
             { key: "validated", label: "Validated", render: (r) => int(r.validated) },
             { key: "invalid", label: "Invalid", render: (r) => int(r.invalid) },
             { key: "valid", label: "Valid", render: (r) => int(r.valid) },
-            { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct) },
+            { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct, r.region) },
           ]}
           rows={zones}
           defaultSort={{ key: "pct", dir: "desc" }}
@@ -680,7 +685,7 @@ function PodPerformance({ me }) {
             { key: "zone", label: "Zone", text: true, className: () => "text-slate-500" },
             { key: "validated", label: "Validated", render: (r) => int(r.validated) },
             { key: "invalid", label: "Invalid", render: (r) => int(r.invalid) },
-            { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct) },
+            { key: "pct", label: "Invalid %", render: (r) => pct1(r.pct), className: (r) => sev(r.pct, r.region) },
           ]}
           rows={stations}
           defaultSort={{ key: "invalid", dir: "desc" }}

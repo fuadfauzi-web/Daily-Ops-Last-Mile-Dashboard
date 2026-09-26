@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
+import kpi_targets
 from kpi_targets import weekly_region_targets
 from stations import ABBR_TO_HUB, FULL_NAME_TO_HUB, HUBS
 
@@ -186,6 +187,7 @@ async def kpi_weekly(user: CurrentUser = Depends(get_current_user)):
     meta, rows = await _rows("weekly_kpi")
     if meta is None:
         return {"has_data": False}
+    await kpi_targets.ensure_fresh()
     return {"has_data": True, "meta": meta, **build_weekly_kpi(rows, user)}
 
 
