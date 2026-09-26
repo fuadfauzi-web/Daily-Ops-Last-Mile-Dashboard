@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
 from kpi_rca import _hub_code_from_code, _hub_meta, _in_scope, _monday, _num, _s
+import kpi_targets
 from kpi_targets import target_for, targets_for
 
 log = logging.getLogger("kpi_cisp")
@@ -303,11 +304,12 @@ async def cisp_view(
     if level not in ("region", "zone", "station") or grain not in ("day", "week"):
         raise HTTPException(status_code=422, detail="level must be region / zone / station, grain day / week")
     n = None if window == "all" else max(1, min(int(window) if window.isdigit() else 7, 60))
+    await kpi_targets.ensure_fresh()
     got = await kd.load_compact(spec["dataset"])
     if got is None:
         return {"has_data": False, "kpi": kpi, "label": spec["label"], "snapshot": spec["snapshot"]}
     meta_file, data = got
-    ckey = (kpi, _scope_key(user), tab, n, region, zone, hub, level, grain, tuple(keys), top)
+    ckey = (kpi_targets.version(), kpi, _scope_key(user), tab, n, region, zone, hub, level, grain, tuple(keys), top)
     cache = data["cache"]
     if ckey not in cache:
         ok = _picker(data, user, region, zone, hub)

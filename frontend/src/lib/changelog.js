@@ -18,6 +18,14 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
+    title: "Admin: change the KPI targets yourself",
+    minRank: 3,
+    points: [
+      "A new KPI Targets tab on the Admin page: the target of every KPI (FIFO D0, D0, D3, D7, Prior, Lost, COD RTS, Invalid POD) for each region. Change a number and press Save -- the KPI pages, the Weekly Dashboard, Invalid POD and COD RTS use it straight away; Back to default puts the built-in number back.",
+    ],
+  },
+  {
+    date: "2026-09-26",
     title: "KPI page (Beta): Prior, Completion D0 / D3, Terminal T7, FIFO D0 -- and targets per region",
     feature: "kpiDashboard",
     points: [
