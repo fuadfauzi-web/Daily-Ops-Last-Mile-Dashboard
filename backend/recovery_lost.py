@@ -237,13 +237,16 @@ class LostIn(BaseModel):
 
 
 def _resolution_date(text) -> date | None:
-    """The resolution's date in Malaysia time (Metabase writes UTC: 2026-09-21T12:24:26Z); a timestamp without a zone is taken as Malaysia time already."""
+    """The resolution's date in Malaysia time. The daily CSV writes Malaysia clock digits with a "Z" on the end ("2026-09-21T12:24:26Z" is 12:24 in Malaysia -- the
+    Metabase API gives the same instant as 12:24:26+08:00), so a "Z" or no zone is the Malaysia date as written; a real offset is converted."""
     s = str(text or "").strip()
     if not s:
         return None
     try:
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        return (dt.astimezone(MYT) if dt.tzinfo else dt).date()
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is not None and not s.endswith("Z"):
+            dt = dt.astimezone(MYT)
+        return dt.date()
     except ValueError:
         pass
     iso = kd.to_iso_day(s)
