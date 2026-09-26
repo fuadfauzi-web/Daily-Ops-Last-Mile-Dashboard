@@ -3049,10 +3049,13 @@ def _parse_employment_date(value: str | None) -> date | None:
     value = (value or "").strip()
     if not value:
         return None
-    try:
-        return datetime.strptime(value, "%B %d, %Y").date()
-    except ValueError:
-        return None
+    # Metabase's CSV writes "December 18, 2024"; an ISO date / timestamp ("2024-12-18", "2024-12-18T00:00:00+08:00") or 18/12/2024 is accepted too
+    for fmt, size in (("%B %d, %Y", None), ("%b %d, %Y", None), ("%Y-%m-%d", 10), ("%d/%m/%Y", None)):
+        try:
+            return datetime.strptime(value[:size] if size else value, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 @app.get("/api/admin/driver-details/status", response_model=DriverDetailsStatus)
