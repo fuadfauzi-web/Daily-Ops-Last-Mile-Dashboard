@@ -105,7 +105,7 @@ DATASETS: dict[str, dict] = {
     },
     "invalid_pod_raw": {
         "kpi": "invalid_pod", "label": "POD validation (raw)",
-        "hint": "Metabase question 69573 (POP/POD Validation Tasks Raw Data): leave Hub Region empty for all regions, pick Date Type and Start / End date, then Download results as .csv -- or the Raw sheet of the POD Validation Analysis file",
+        "hint": "Metabase question 69573 (POP/POD Validation Tasks Raw Data): leave Hub Region empty for all regions, pick Date Type and Start / End date (a range that covers several weeks or the whole month gives the page its weeks and the month), then Download results as .csv -- or the Raw sheet of the POD Validation Analysis file",
         "link": "https://metabase.ninjavan.co/question/69573?transaction_type=DELIVERY&hub_region=&shipper_id=&date_type=&parent_id_coalesce=&start_date=&end_date=&driver_type=",
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
         "keep": ["hubshortname", "couriername", "trackingid", "transactionfailurereason", "validationresult", "invalidpodreason", "attempteddatetime", "validationdatetime", "validationusername"],
@@ -118,12 +118,12 @@ DATASETS: dict[str, dict] = {
     },
     "cod_rts_cod": {
         "kpi": "cod_rts", "label": "COD RTS (raw COD)", "link": "https://metabase.ninjavan.co/question/127198",
-        "hint": "Metabase question 127198 (COD RTS Rate - All Regions, previous week): change the date filter for another week, then Download results as .csv -- or the RAW COD sheet of the RTS Analysis file",
+        "hint": "Metabase question 127198 (COD RTS Rate - All Regions, previous week): change the date filter for another week -- or for a range that covers several weeks or the whole month, and the page offers the weeks and the month -- then Download results as .csv -- or the RAW COD sheet of the RTS Analysis file",
         "sheet": "RAW COD", "required": ["desthubname", "rtsflag"],
     },
     "cod_rts_overall": {
         "kpi": "cod_rts", "label": "RTS overall (raw)", "link": "https://metabase.ninjavan.co/question/127197",
-        "hint": "Metabase question 127197 (RTS Overall - All Regions, previous week): use the same week as the COD file, then Download results as .csv -- or the RAW Overal sheet; optional",
+        "hint": "Metabase question 127197 (RTS Overall - All Regions, previous week): use the same dates as the COD file, then Download results as .csv -- or the RAW Overal sheet; optional",
         "sheet": "RAW Overal", "required": ["trackingid", "rtsreason"],
     },
     "weekly_kpi": {
