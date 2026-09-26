@@ -2785,8 +2785,20 @@
     "/api/recovery/active-missing": {
       "get": {
         "summary": "Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each.",
-        "description": "Recovery -> Active Missing: the open missing tickets in the caller's access (Ship Out and B2B left out) with what stations answered about each.",
+        "description": "Recovery -> Active Missing (kind=parcel): the open missing tickets in the caller's access (Ship Out and B2B documents left out) with what stations answered about each.\nkind=b2b: the B2B documents only (MYRDO / MYPSO / -DO), the \"B2B Document Active Missing\" sub-tab.",
         "operationId": "recovery_active_missing_api_recovery_active_missing_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "parcel",
+              "title": "Kind"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9925,6 +9937,11 @@
               }
             ],
             "title": "Uploaded At"
+          },
+          "can_upload": {
+            "type": "boolean",
+            "title": "Can Upload",
+            "default": false
           }
         },
         "type": "object",
