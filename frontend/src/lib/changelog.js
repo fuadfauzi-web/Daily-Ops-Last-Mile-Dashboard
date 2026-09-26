@@ -18,10 +18,21 @@
 export const CHANGELOG = [
   {
     date: "2026-09-26",
-    title: "Admin: change the KPI targets yourself",
+    title: "Admin: KPI Settings -- targets and East Malaysia",
     minRank: 3,
     points: [
-      "A new KPI Targets tab on the Admin page: the target of every KPI (FIFO D0, D0, D3, D7, Prior, Lost, COD RTS, Invalid POD) for each region. Change a number and press Save -- the KPI pages, the Weekly Dashboard, Invalid POD and COD RTS use it straight away; Back to default puts the built-in number back.",
+      "A new KPI Settings tab on the Admin page. Targets: the target of every KPI (Hybrid Productivity, Prior, FIFO D0, D0, D3, D7, Lost, Complaint, Invalid POD, COD RTS) for each region. Change a number and press Save -- the KPI pages, Trend, Invalid POD, COD RTS and Hybrid use it straight away; Back to default puts the built-in number back. Hybrid Productivity starts empty (drivers under 80 stay the low performers until a region has a target).",
+      "Scope: a tick for including East Malaysia in the KPI pages -- off by default, because East Malaysia is Retail and the KPI pages are for Last Mile stations.",
+    ],
+  },
+  {
+    date: "2026-09-26",
+    title: "KPI page: new menu, East Malaysia left out",
+    feature: "kpiDashboard",
+    points: [
+      "Results is now Dashboard: OPEX first, then Trend (the weekly dashboard) with Daily, Weekly and Monthly -- only Weekly for now. RCA details is now RCA analysis, in the order Hybrid, Prior, FIFO, D0, D3, T7, Lost, Complaint, then Invalid POD and COD RTS. Lost and Complaint are marked soon: they will share their logic.",
+      "East Malaysia is Retail, not Last Mile, so the KPI pages leave it out of every number, table and filter (only Last Mile stations on the station list are counted). An admin can include it again under Admin → KPI Settings.",
+      "Complaint has a target too (0.04% until changed) and the Weekly trend judges it per region like the other KPIs.",
     ],
   },
   {

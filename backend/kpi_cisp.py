@@ -46,7 +46,8 @@ DATASET_KPIS = {"cisp_prior": ["prior"], "cisp_completion": ["d0", "d3"], "cisp_
 
 
 def _scope_key(user: CurrentUser) -> tuple:
-    return (user.scope_type, tuple(sorted(user.scope_values or [])))
+    # the East Malaysia switch is part of the key: switching it changes who sees what, and every cached view is keyed by this
+    return (user.scope_type, tuple(sorted(user.scope_values or [])), kpi_targets.include_east_malaysia())
 
 
 def _columns(rows: list[dict]):

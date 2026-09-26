@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 import kpi_data as kd
+import kpi_targets
 import metabase_client as mb
 from auth import CurrentUser, get_current_user
 from stations import ABBR_TO_HUB, HUBS
@@ -174,6 +175,8 @@ async def _source(dataset: str, card_id: int, force: bool):
 
 
 def _in_scope(driver: dict, user: CurrentUser) -> bool:
+    if kpi_targets.excluded_region(driver.get("region")):
+        return False  # East Malaysia is left out of the KPI pages unless an admin switched it on
     if user.scope_type == "all":
         return True
     if user.scope_type == "region":

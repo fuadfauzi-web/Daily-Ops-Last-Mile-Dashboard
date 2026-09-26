@@ -41,7 +41,10 @@ def _num(value) -> float:
 
 
 def _in_scope(code: str | None, user: CurrentUser) -> bool:
-    """code = a hub code of one of our stations, or None when the row could not be matched to a station."""
+    """code = a hub code of one of our stations, or None when the row could not be matched to a station. East Malaysia (Retail, not Last Mile) is
+    left out of every KPI page unless an admin switched it on (Admin -> KPI Settings)."""
+    if code and code in HUBS and kpi_targets.excluded_region(HUBS[code][3]):
+        return False
     if user.scope_type == "all":
         return True
     if code is None or code not in HUBS:
@@ -154,6 +157,8 @@ def build_weekly_kpi(rows: list[dict], user: CurrentUser) -> dict:
             level, zone, region = "region", "", name
         else:
             continue
+        if kpi_targets.excluded_region(region):
+            continue
         if user.scope_type != "all":
             if level != "station" or not _in_scope(next((c for c, v in HUBS.items() if v[0].lower() == low), None), user):
                 continue
@@ -227,6 +232,10 @@ def build_opex_result(columns: list[str], rows: list[dict], filename: str) -> di
         if not name:
             continue
         code = _hub_code_from_code(name) if kd.norm(first) == "hub" else None
+        if code and code in HUBS and kpi_targets.excluded_region(HUBS[code][3]):
+            continue  # East Malaysia stations are left out unless an admin switched them on
+        if not code and kpi_targets.excluded_region("East Malaysia") and re.match(r"\s*east\s*malaysia", name, re.I):
+            continue  # ... and so are the East Malaysia region / area / zone rows
         values = {}
         for k in kpis:
             met = str(r.get(f"{k}_met") or "").strip().lower()

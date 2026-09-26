@@ -191,6 +191,7 @@ export const api = {
   kpiCispView: (kpi, q) => request(`/api/kpi/cisp/${kpi}/view?${qs(q)}`),
   kpiTargets: () => request("/api/kpi/targets"),
   kpiTargetsSave: (rows) => request("/api/kpi/targets", { method: "PUT", body: JSON.stringify({ rows }) }),
+  kpiSettingsSave: (settings) => request("/api/kpi/settings", { method: "PUT", body: JSON.stringify(settings) }),
   kpiCodRtsView: (q) => request(`/api/kpi/cod-rts/view?${qs(q)}`),
   kpiCodRtsTns: (q) => request(`/api/kpi/cod-rts/tns?${new URLSearchParams(q)}`),
   kpiTable: (name) => request(`/api/kpi/table/${name}`),

@@ -156,7 +156,7 @@ function CodOverview({ v, where, hub, setHub, reason, setReason, shipper, setShi
         ]}
       />
       <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500 ring-1 ring-slate-200">
-        The COD RTS rate is met at or under <span className="font-semibold text-slate-700">{kpiTargetText("cod_rts") || "its target"}</span> (per region; changed by an admin under Admin → KPI Targets). This view shows the counts and shares behind the rate; the rate itself is on the OPEX Result page.
+        The COD RTS rate is met at or under <span className="font-semibold text-slate-700">{kpiTargetText("cod_rts") || "its target"}</span> (per region; changed by an admin under Admin → KPI Settings). This view shows the counts and shares behind the rate; the rate itself is on the Dashboard → OPEX page.
       </div>
       <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
         <SortTable

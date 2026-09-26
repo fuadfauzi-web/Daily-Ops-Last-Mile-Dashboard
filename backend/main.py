@@ -31,6 +31,7 @@ import storage
 from kpi import router as kpi_router
 from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
+import kpi_targets
 from kpi_targets import router as kpi_targets_router
 from kpi_pod import router as kpi_pod_router
 from kpi_rca import router as kpi_rca_router
@@ -637,12 +638,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Daily Ops Last Mile Dashboard", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)  # the KPI payloads are large JSON (hundreds of KB) -- ~5-8x smaller on the wire
+async def _kpi_fresh() -> None:
+    """The KPI pages follow the admin's targets and settings (Admin -> KPI Settings): reloaded at most every 30 seconds."""
+    await kpi_targets.ensure_fresh()
+
+
 app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)
-app.include_router(kpi_cisp_router)  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
-app.include_router(kpi_cod_router)  # KPI Dashboard: COD RTS RCA views (kpi_cod.py, staging)
-app.include_router(kpi_pod_router)  # KPI Dashboard: Invalid POD RCA + LM POD Performance (kpi_pod.py, staging)
-app.include_router(kpi_rca_router)  # KPI Dashboard RCA views: Invalid POD, COD RTS, Weekly KPI results (kpi_rca.py, staging)
-app.include_router(kpi_router)  # KPI Dashboard: Hybrid Productivity from Metabase (kpi.py, staging)
+app.include_router(kpi_cisp_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
+app.include_router(kpi_cod_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard: COD RTS RCA views (kpi_cod.py, staging)
+app.include_router(kpi_pod_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard: Invalid POD RCA + LM POD Performance (kpi_pod.py, staging)
+app.include_router(kpi_rca_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard RCA views: Invalid POD, COD RTS, Weekly KPI results (kpi_rca.py, staging)
+app.include_router(kpi_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard: Hybrid Productivity from Metabase (kpi.py, staging)
 app.include_router(tasklist_router)  # Task List: Email / Gchat follow-ups, To Do List, Task Assigned (tasklist.py)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],

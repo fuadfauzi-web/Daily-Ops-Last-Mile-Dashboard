@@ -38,7 +38,7 @@ function Delta({ d }) {
   return <span className={`font-semibold ${d > 0 ? "text-status-good" : "text-status-critical"}`}>{d > 0 ? "▲" : "▼"} {Math.abs(d).toFixed(1)} pp</span>;
 }
 
-// The official result: what the OPEX dashboard says (uploaded on the OPEX Result page), for this KPI.
+// The official result: what the OPEX dashboard says (uploaded on the Dashboard -> OPEX page), for this KPI.
 function OpexOfficial({ opexKey, label }) {
   const { data, error } = useApi(() => api.kpiTable("opex_result"), []);
   if (error) return null;
@@ -49,7 +49,7 @@ function OpexOfficial({ opexKey, label }) {
     return (
       <Panel title="Official result (OPEX)">
         <div className="text-sm text-slate-500">
-          The official {label} number comes from the OPEX dashboard. Once an admin uploads its Download CSV on the <strong>OPEX Result</strong> page it shows here.
+          The official {label} number comes from the OPEX dashboard. Once an admin uploads its Download CSV on the <strong>Dashboard → OPEX</strong> page it shows here.
         </div>
       </Panel>
     );
@@ -76,7 +76,7 @@ function OpexOfficial({ opexKey, label }) {
         rows={rows}
         defaultSort={{ key: "rate", dir: "asc" }}
         rowKey={(r, i) => `${r.name}-${i}`}
-        footer="From the OPEX dashboard's Download CSV as uploaded on the OPEX Result page -- the numbers to quote."
+        footer="From the OPEX dashboard's Download CSV as uploaded on the Dashboard → OPEX page -- the numbers to quote."
       />
     </Panel>
   );
@@ -121,7 +121,7 @@ export default function CispKpi({ me, kpi }) {
           <p className="mt-2">{NOTE[kpi]}</p>
           <p className="mt-2">
             The data comes from a small Metabase file: open the question from the upload panel below, download the results as CSV, and upload it here (admins). The official {label} number is on the{" "}
-            <strong>OPEX Result</strong> page.
+            <strong>Dashboard → OPEX</strong> page.
           </p>
           {!canUpload && <p className="mt-2 text-xs text-slate-400">Admins upload the data.</p>}
         </div>
