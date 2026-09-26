@@ -491,6 +491,17 @@ function DocumentsPanel() {
             Name must match the driver name format used elsewhere in the app (e.g. "KEP - ID - NOR IKHWAN"). Upload
             daily or whenever there's a new export; each upload fully replaces the previous one.
           </p>
+          <div className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-sky-200">
+            <a
+              href="https://metabase.ninjavan.co/question/126968-active-driver-details"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-sky-700 underline hover:text-sky-900"
+            >
+              Open the active driver / rider list in Metabase ↗
+            </a>{" "}
+            -- download the results as a .csv, then upload it below. (Temporary: this link and the manual upload go away once the Metabase API access is in place.)
+          </div>
           <label className="inline-block cursor-pointer rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90">
             {uploading ? "Uploading…" : "Upload CSV"}
             <input type="file" accept=".csv" onChange={onFileChange} disabled={uploading} className="hidden" />

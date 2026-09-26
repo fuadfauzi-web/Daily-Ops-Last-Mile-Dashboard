@@ -518,7 +518,7 @@ const SECTIONS = [
         <p>The admin-only page: the settings only an admin can change.</p>
         <Bullets
           items={[
-            <><strong>Documents</strong>: upload the driver/rider details CSV that gives Route Monitoring its Tenure column.</>,
+            <><strong>Documents</strong>: upload the driver/rider details CSV that gives Route Monitoring its Tenure column. The page links to the Metabase question (Active Driver Details) to download it from -- a temporary step until the Metabase API access is in place.</>,
             <><strong>Data Refresh</strong>: trigger an immediate refresh and see when each Redash query was last pulled.</>,
             <>Feedback and the Guide are not here -- they're under Settings{F.roleTester ? ", and the Role Tester is in the header" : ""}.</>,
           ]}
