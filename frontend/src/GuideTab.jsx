@@ -288,7 +288,8 @@ const SECTIONS = [
       <p className="text-sm text-slate-700">
         Overall / 0 Attempt / Delivery / ATS / COD pivots by age bucket (0, 1, 2, 3, 4-6, 7+), grouped by where the parcel is.
         Unlike Station Health's Age &gt;3 (which leaves out On Hold / On Vehicle for Delivery), this view includes them -- the
-        full picture of everything sitting in a hub by age.
+        full picture of everything sitting in a hub by age. The tracking-number table has a Station, Status and <strong>Age</strong>{" "}
+        filter (2026-09-28) -- each a dropdown where you can tick more than one -- so you can narrow it to, say, just Age 4-6 and 7+.
       </p>
     ),
   },

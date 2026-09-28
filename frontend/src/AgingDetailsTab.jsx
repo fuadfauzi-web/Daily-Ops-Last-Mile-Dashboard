@@ -46,6 +46,11 @@ const TN_COLUMNS = [
 
 const AGE_BUCKET_COLUMNS = AGE_BUCKETS.map((b) => ({ key: b.key, label: b.label, render: (r) => r[b.key].toLocaleString() }));
 
+// A TN row's raw `age` (days) sorted into the same buckets as the pivot table above (backend/aggregate.py's _age_bucket):
+// 0 or less -> Age 0, 1-3 each their own bucket, 4-6 together, 7+ together.
+const ageBucketKey = (age) => (age <= 0 ? "age_0" : age <= 3 ? `age_${age}` : age <= 6 ? "age_4_6" : "age_7_plus");
+const AGE_FILTER_OPTIONS = AGE_BUCKETS.map((b) => ({ value: b.key, label: b.label }));
+
 function localRollup(rows, groupKey) {
   const groups = {};
   rows.forEach((r) => {
@@ -75,6 +80,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   const [tnSortDir, setTnSortDir] = useState("desc");
   const [tnStationFilter, setTnStationFilter] = useState([]);
   const [tnStatusFilter, setTnStatusFilter] = useState([]);
+  const [tnAgeFilter, setTnAgeFilter] = useState([]);
   const [detailRow, setDetailRow] = useState(null);
 
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
@@ -134,6 +140,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
     let rows = baseTnRows;
     if (tnStationFilter.length) rows = rows.filter((r) => tnStationFilter.includes(r.station_name));
     if (tnStatusFilter.length) rows = rows.filter((r) => r.status && tnStatusFilter.includes(r.status));
+    if (tnAgeFilter.length) rows = rows.filter((r) => tnAgeFilter.includes(ageBucketKey(r.age)));
     return [...rows].sort((a, b) => {
       const av = a[tnSortKey];
       const bv = b[tnSortKey];
@@ -141,7 +148,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
       if (typeof av === "string") return tnSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return tnSortDir === "asc" ? av - bv : bv - av;
     });
-  }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter]);
+  }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter, tnAgeFilter]);
 
   const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
   const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
@@ -252,6 +259,9 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                 </div>
                 <div className="w-48">
                   <MultiSelect options={tnStatusOptions} value={tnStatusFilter} onChange={setTnStatusFilter} placeholder="All statuses" />
+                </div>
+                <div className="w-48">
+                  <MultiSelect options={AGE_FILTER_OPTIONS} value={tnAgeFilter} onChange={setTnAgeFilter} placeholder="All ages" />
                 </div>
                 <button
                 onClick={() =>
