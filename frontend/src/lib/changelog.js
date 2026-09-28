@@ -18,6 +18,13 @@
 export const CHANGELOG = [
   {
     date: "2026-09-28",
+    title: "Aging Details: filter tracking numbers by Age",
+    points: [
+      "The tracking-number table under Aging Details (and Cold Chain, which shares it) now has an Age filter next to Station and Status -- a dropdown where you can tick more than one bucket (0, 1, 2, 3, 4-6, 7+), same buckets as the pivot table above it.",
+    ],
+  },
+  {
+    date: "2026-09-28",
     title: "DoD: LH Timing, and Shipment Details sorts by it",
     feature: "dod",
     points: [
