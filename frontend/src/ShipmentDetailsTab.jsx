@@ -4,6 +4,7 @@ import { exportCsv } from "./lib/csv";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import TnModal from "./components/TnModal";
+import TripBadge from "./components/TripBadge";
 import DetailPanel from "./components/DetailPanel";
 import HeaderNote from "./components/HeaderNote";
 import { SHIPMENT_NOTES } from "./lib/shipmentNotes";
@@ -39,29 +40,6 @@ const PROCESS_BUCKET_COLUMNS = [
   { key: "process_over_3h", label: "3h+" },
 ];
 
-// "after 10am pre-warning, after 11am warning, after 12pm red flag"
-function tripBadgeClass(isoTime) {
-  const hour = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T")).getHours();
-  if (hour >= 12) return "bg-status-critical/10 text-status-critical";
-  if (hour >= 11) return "bg-status-warning/10 text-status-warning";
-  if (hour >= 10) return "bg-status-neutral/10 text-status-neutral";
-  return "bg-status-good/10 text-status-good";
-}
-
-function tripLabel(isoTime) {
-  const d = new Date(isoTime.includes("T") ? isoTime : isoTime.replace(" ", "T"));
-  return d.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", hour12: true });
-}
-
-function TripBadge({ trip }) {
-  if (!trip) return <span className="text-slate-300">—</span>;
-  return (
-    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${tripBadgeClass(trip.time)}`}>
-      {tripLabel(trip.time)} · {trip.parcels.toLocaleString()}
-    </span>
-  );
-}
-
 export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -91,6 +69,8 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
         ...Object.fromEntries(
           PROCESS_BUCKET_COLUMNS.map((c) => [`${c.key}_pct`, r.total_fresh ? (r[c.key] / r.total_fresh) * 100 : 0])
         ),
+        // for sorting the LH Timing column: the 2nd trip's time when there is one, otherwise the 1st trip's (2026-09-28 feedback)
+        lh_latest_time: r.lh_trips.length ? r.lh_trips[r.lh_trips.length - 1].time : "",
       })),
     [data]
   );
@@ -160,14 +140,13 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
       };
     }),
     {
-      key: "lh_timing",
+      key: "lh_latest_time",
       label: (
         <>
           LH Timing (1st / 2nd trip)
           <div className="text-[10px] font-normal normal-case text-slate-300">arrival time · parcels on that trip</div>
         </>
       ),
-      sortable: false,
       align: "left",
       render: (r) => (
         <div className="flex gap-1.5">
@@ -235,7 +214,8 @@ export default function ShipmentDetailsTab({ regionFilter, zoneFilter, search, m
           <>
             {filteredStations.length} rows · LH Timing shows each trip's arrival time followed by the parcel count on
             that trip (e.g. "10:32am · 45" = 45 parcels on that trip); colour bands green &lt;10am, blue 10–11am,
-            amber 11am–12pm, red after 12pm. Within 1h/1-2h/2-3h/3h+ bucket how long each parcel took from
+            amber 11am–12pm, red after 12pm; the column sorts by the latest trip (the 2nd when there is one, else the
+            1st). Within 1h/1-2h/2-3h/3h+ bucket how long each parcel took from
             arriving at the station (shipment completion) to its first scan-in at the station; the small % is that
             count's share of the station's Total Fresh, and those columns sort by the %. Click a count for its
             tracking numbers.

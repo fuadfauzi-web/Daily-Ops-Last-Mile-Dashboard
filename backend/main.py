@@ -125,22 +125,29 @@ _DOD_COLUMNS = METRIC_KEYS + ("attendance_rescue", "current_ovfd", "current_succ
 
 async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_station: dict, shipment_by_station: dict) -> None:
     """DoD Dashboard (2026-09-26): store today's (Malaysia date) Station Health numbers per station, replacing what an earlier
-    refresh today stored -- so the last refresh of the day is the day's number. Keeps the current week + last week only."""
+    refresh today stored -- so the last refresh of the day is the day's number. Keeps the current week + last week only.
+    LH Timing's trips (2026-09-28) aren't plain numbers, so they ride along as their own 4 columns, same as shipment_details'."""
     today = captured_at.astimezone(_MYT).date()
     params = []
     for hub, row in by_station.items():
         routed = routed_by_station.get(hub) or {}
         shipment = shipment_by_station.get(hub) or {}
+        trips = shipment.get("lh_trips") or []
         values = (
             [row.get(k) or 0 for k in METRIC_KEYS]
             + [routed.get(k) or 0 for k in ("attendance_rescue", "current_ovfd", "current_success")]
             + [shipment.get(k) or 0 for k in ("fresh_unscan", "latlong")]
         )
-        params.append((today, hub, captured_at, *values))
+        lh = (
+            trips[0]["time"] if len(trips) > 0 else None, trips[0]["parcels"] if len(trips) > 0 else None,
+            trips[1]["time"] if len(trips) > 1 else None, trips[1]["parcels"] if len(trips) > 1 else None,
+        )
+        params.append((today, hub, captured_at, *values, *lh))
     await db.execute("DELETE FROM dod_daily WHERE snap_date = %s", (today,))
     await db.execute_many(
-        f"""INSERT INTO dod_daily (snap_date, station_code, captured_at, {", ".join(_DOD_COLUMNS)})
-           VALUES ({", ".join(["%s"] * (3 + len(_DOD_COLUMNS)))})""",
+        f"""INSERT INTO dod_daily (snap_date, station_code, captured_at, {", ".join(_DOD_COLUMNS)},
+                                   lh_trip1_time, lh_trip1_parcels, lh_trip2_time, lh_trip2_parcels)
+           VALUES ({", ".join(["%s"] * (7 + len(_DOD_COLUMNS)))})""",
         params,
     )
     await db.execute("DELETE FROM dod_daily WHERE snap_date < %s", (today - timedelta(days=today.weekday() + 7),))
@@ -864,6 +871,11 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
 # DoD Dashboard (Beta): day-over-day Station Health for the current week + last week.
 # ---------------------------------------------------------------------------
 
+class LHTrip(BaseModel):
+    time: str
+    parcels: int
+
+
 class DodRow(BaseModel):
     day: str
     station_code: str
@@ -871,6 +883,7 @@ class DodRow(BaseModel):
     zone: str
     region: str
     metrics: dict[str, float]
+    lh_trips: list[LHTrip]  # Shipment Details' LH Timing (1st / 2nd trip), 2026-09-28
 
 
 class DodResponse(BaseModel):
@@ -887,7 +900,9 @@ async def dod(user: CurrentUser = Depends(get_current_user)):
     today = datetime.now(_MYT).date()
     week_start = today - timedelta(days=today.weekday())
     db_rows = await db.fetch_all(
-        f"SELECT snap_date, station_code, captured_at, {', '.join(_DOD_COLUMNS)} FROM dod_daily ORDER BY snap_date"
+        f"""SELECT snap_date, station_code, captured_at, {', '.join(_DOD_COLUMNS)},
+                   lh_trip1_time, lh_trip1_parcels, lh_trip2_time, lh_trip2_parcels
+           FROM dod_daily ORDER BY snap_date"""
     )
     shaped = []
     for r in db_rows:
@@ -895,9 +910,17 @@ async def dod(user: CurrentUser = Depends(get_current_user)):
         if hub is None:
             continue
         name, _full, zone, region = hub
+        offset = 3 + len(_DOD_COLUMNS)
+        trip1_time, trip1_parcels, trip2_time, trip2_parcels = r[offset:offset + 4]
+        trips = []
+        if trip1_time is not None:
+            trips.append({"time": str(trip1_time), "parcels": trip1_parcels or 0})
+        if trip2_time is not None:
+            trips.append({"time": str(trip2_time), "parcels": trip2_parcels or 0})
         shaped.append({
             "day": str(r[0])[:10], "station_code": r[1], "station_name": name, "zone": zone, "region": region,
             "captured_at": r[2], "metrics": {col: float(r[3 + i] or 0) for i, col in enumerate(_DOD_COLUMNS)},
+            "lh_trips": trips,
         })
     scoped = _scope_filter_stations(shaped, user)
     latest = max(
@@ -948,11 +971,6 @@ async def drilldown(station_code: str, metric: str, user: CurrentUser = Depends(
 # ---------------------------------------------------------------------------
 # Shipment Details
 # ---------------------------------------------------------------------------
-
-class LHTrip(BaseModel):
-    time: str
-    parcels: int
-
 
 class ShipmentDetailFields(BaseModel):
     total_fresh: int

@@ -5013,6 +5013,13 @@
             },
             "type": "object",
             "title": "Metrics"
+          },
+          "lh_trips": {
+            "items": {
+              "$ref": "#/components/schemas/LHTrip"
+            },
+            "type": "array",
+            "title": "Lh Trips"
           }
         },
         "type": "object",
@@ -5022,7 +5029,8 @@
           "station_name",
           "zone",
           "region",
-          "metrics"
+          "metrics",
+          "lh_trips"
         ],
         "title": "DodRow"
       },

@@ -5,6 +5,7 @@ import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 import TrendChart, { TONE_ORDER } from "./components/TrendChart";
+import TripBadge from "./components/TripBadge";
 import { exportCsv } from "./lib/csv";
 import { ALL_COLUMNS } from "./lib/metrics";
 
@@ -16,8 +17,8 @@ import { ALL_COLUMNS } from "./lib/metrics";
 // before 12am kept in dod_daily.
 // Everything follows the filters above the tabs.
 //
-// Where each Daily View number comes from (2026-09-26 feedback):
-//   Shipment Details   Total Fresh, Fresh Unscan, Latlong
+// Where each Daily View number comes from (2026-09-26 feedback; LH Timing added 2026-09-28):
+//   Shipment Details   Total Fresh, Fresh Unscan, Latlong, LH Timing (1st / 2nd line-haul trip that day)
 //   Station Health     Total 0 Attempt, In Hub, Age >3
 //   Route Monitoring   Attendance, Total Routed, Success Rate, Pending in Apps (= Current OVFD, the parcels still on a vehicle)
 
@@ -50,6 +51,16 @@ const MEASURES = [...DAILY_COLS, ...EXTRA_MEASURES];
 const MEASURE_OPTIONS = MEASURES.map((m) => ({ value: m.key, label: `${m.label} · ${m.src}` }));
 
 const sum = (rows, k) => rows.reduce((s, r) => s + (r.metrics[k] || 0), 0);
+// One station has at most 2 trips already in order (1st, 2nd); a region/zone group has one set per station, and there's
+// no single "the" trip for a group, so each trip SLOT shows the latest (worst) arrival in the group and the parcels
+// summed across every station's trip in that slot -- at station level (one row) that's just the station's own trip.
+function lhTrips(rows) {
+  return [0, 1].map((i) => {
+    const trips = rows.map((r) => r.lh_trips[i]).filter(Boolean);
+    if (!trips.length) return null;
+    return { time: trips.reduce((a, b) => (b.time > a.time ? b : a)).time, parcels: trips.reduce((s, t) => s + t.parcels, 0) };
+  });
+}
 function summarize(rows) {
   const routed = sum(rows, "total_routed");
   const attendance = sum(rows, "attendance");
@@ -61,6 +72,7 @@ function summarize(rows) {
     fresh: sum(rows, "total_fresh"),
     freshUnscan: sum(rows, "fresh_unscan"),
     latlong: sum(rows, "latlong"),
+    lhTrips: lhTrips(rows),
     zeroAttempt: sum(rows, "zero_attempt_total"),
     inHub: sum(rows, "total_in_hub"),
     ageGt3: sum(rows, "age_gt3"),
@@ -231,6 +243,25 @@ export default function DodTab({ stationCodes }) {
     </div>
   );
 
+  // A plain DAILY_COLS entry as a DataTable column -- split out so LH Timing (not a plain number) can sit between
+  // Latlong and Total 0 Attempt, matching the Shipment Details tab's own column order.
+  const dailyMetricColumn = (k) => ({
+    key: k.key,
+    label: (
+      <span title={k.note || k.src}>
+        <span className="block text-[9px] font-normal normal-case leading-tight opacity-60">{k.src}</span>
+        {k.label}
+      </span>
+    ),
+    render: (r) => (
+      <>
+        <div>{k.key === "attendance" && r.cur.rescue > 0 ? `${int(r.cur.attendance)} (${int(r.cur.rescue)} Rescue)` : k.fmt(valueOf(k, r.cur))}</div>
+        <Delta kpi={k} cur={valueOf(k, r.cur)} prev={r.prev ? valueOf(k, r.prev) : null} />
+      </>
+    ),
+    className: () => "text-slate-700",
+  });
+
   const dailyView = () => {
     const list = groups
       .map((g) => ({ key: g.key, name: g.name, region: g.region, zone: g.zone, cur: g.days.get(activeDay) || null, prev: prevDay ? g.days.get(prevDay) || null : null }))
@@ -250,22 +281,24 @@ export default function DodTab({ stationCodes }) {
       { key: "name", label: levelLabel, sticky: true, align: "left", render: (r) => (r.isTotal ? <span className="font-display font-bold uppercase tracking-wide text-ink">{r.name}</span> : r.name) },
       ...(level !== "region" ? [{ key: "region", label: "Region", sortable: false, className: () => "text-slate-500", render: (r) => r.region || "" }] : []),
       ...(level === "station" ? [{ key: "zone", label: "Zone", sortable: false, className: () => "text-slate-500", render: (r) => r.zone || "" }] : []),
-      ...DAILY_COLS.map((k) => ({
-        key: k.key,
+      ...DAILY_COLS.slice(0, 3).map((k) => dailyMetricColumn(k)),
+      {
+        key: "lh_timing",
         label: (
-          <span title={k.note || k.src}>
-            <span className="block text-[9px] font-normal normal-case leading-tight opacity-60">{k.src}</span>
-            {k.label}
+          <span title={level === "station" ? "Line-haul trip arrival that day · parcels on that trip" : "The latest (worst) trip in the group per slot, and its parcels summed across the group"}>
+            <span className="block text-[9px] font-normal normal-case leading-tight opacity-60">Shipment Details</span>
+            LH Timing
           </span>
         ),
+        sortable: false,
         render: (r) => (
-          <>
-            <div>{k.key === "attendance" && r.cur.rescue > 0 ? `${int(r.cur.attendance)} (${int(r.cur.rescue)} Rescue)` : k.fmt(valueOf(k, r.cur))}</div>
-            <Delta kpi={k} cur={valueOf(k, r.cur)} prev={r.prev ? valueOf(k, r.prev) : null} />
-          </>
+          <div className="flex justify-center gap-1.5">
+            <TripBadge trip={r.cur.lhTrips[0]} />
+            <TripBadge trip={r.cur.lhTrips[1]} />
+          </div>
         ),
-        className: () => "text-slate-700",
-      })),
+      },
+      ...DAILY_COLS.slice(3).map((k) => dailyMetricColumn(k)),
     ];
     const exportRows = () => {
       const stationRows = (byDay.get(activeDay) || []).slice().sort((a, b) => (b.metrics.total_in_hub || 0) - (a.metrics.total_in_hub || 0));
@@ -301,7 +334,8 @@ export default function DodTab({ stationCodes }) {
           footer={
             <>
               {list.length} row{list.length === 1 ? "" : "s"} · each day is the last refresh of that day (after 11:30pm); today's numbers are still moving. Pending in Apps = Current OVFD
-              (parcels still on a vehicle). Success Rate = Total Success ÷ Total Routed. ▲/▼ is the change from the day before
+              (parcels still on a vehicle). Success Rate = Total Success ÷ Total Routed. LH Timing colours green &lt;10am, blue 10–11am, amber 11am–12pm, red after 12pm; at region / zone
+              level it shows each trip slot's latest (worst) arrival in the group, with parcels summed across the group. ▲/▼ is the change from the day before
               {prevDay ? ` (${dayLabel(prevDay)})` : " (none yet)"}, green when it is an improvement.
             </>
           }

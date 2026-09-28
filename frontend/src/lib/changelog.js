@@ -17,6 +17,15 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-09-28",
+    title: "DoD: LH Timing, and Shipment Details sorts by it",
+    feature: "dod",
+    points: [
+      "The DoD Daily View now shows LH Timing next to Fresh Unscan and Latlong: the day's captured line-haul trip(s), coloured the same as Shipment Details. At region / zone level each trip slot shows the latest (worst) arrival among the stations in view, with parcels summed across them.",
+      "On Shipment Details, the LH Timing column can now be sorted by clicking its header -- by the latest trip (the 2nd when a station has one, otherwise the 1st).",
+    ],
+  },
+  {
     date: "2026-09-26",
     title: "Terminal T7 by its N7 cut-off date",
     points: [
