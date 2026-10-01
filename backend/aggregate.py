@@ -468,15 +468,15 @@ def build_shipment_details(
     total_shipments_rows: list[dict], tracker_rows: list[dict], lh_rows: list[dict],
 ) -> tuple[dict[str, dict], dict[str, dict], dict[str, dict]]:
     """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}},
-    timelines) -- timelines is {hub_code: {"sweep": [24], "attempt": [24], "success": [24],
-    "lh": [24]}}, each a 24-entry list indexed by hour of day (0-23), counting parcels
-    whose 1st_sweep_at_WM_station_datetime (column H) / first_attempt_datetime /
-    success_datetime / line-haul arrival_datetime (2026-10-01 feedback) fall in that
-    hour. Per station (not nationwide) so the Shipment Details timeline chart can follow
-    the region/zone/station filters (2026-09-24 feedback)."""
+    timelines) -- timelines is {hub_code: {"sweep": [24], "attempt": [24], "success": [24]}},
+    each a 24-entry list indexed by hour of day (0-23), counting parcels whose
+    1st_sweep_at_WM_station_datetime (column H) / first_attempt_datetime /
+    success_datetime fall in that hour. Per station (not nationwide) so the
+    Shipment Details timeline chart can follow the region/zone/station filters
+    (2026-09-24 feedback)."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
-    timelines = {hub: {"sweep": [0] * 24, "attempt": [0] * 24, "success": [0] * 24, "lh": [0] * 24} for hub in HUBS}
+    timelines = {hub: {"sweep": [0] * 24, "attempt": [0] * 24, "success": [0] * 24} for hub in HUBS}
     for r in total_shipments_rows:
         raw_name = (r.get("dest_hub_name") or "").strip().lower()
         hub = FULL_NAME_TO_HUB.get(raw_name)
@@ -547,11 +547,6 @@ def build_shipment_details(
         if row is None or not r.get("arrival_datetime"):
             continue
         row["lh_trips"].append({"time": r["arrival_datetime"], "parcels": r.get("total_parcels") or 0})
-        # Also feeds the Timing Trend chart's LH Timing line (2026-10-01 feedback), same
-        # hour-of-day bucketing as sweep/attempt/success above.
-        lh_dt = _parse_dt(r.get("arrival_datetime"))
-        if lh_dt is not None and hub in timelines:
-            timelines[hub]["lh"][lh_dt.hour] += 1
 
     for row in by_station.values():
         row["lh_trips"].sort(key=lambda t: t["time"])
