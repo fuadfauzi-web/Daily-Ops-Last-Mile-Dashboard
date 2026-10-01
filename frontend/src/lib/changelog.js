@@ -47,14 +47,6 @@ export const CHANGELOG = [
     ],
   },
   {
-    date: "2026-10-01",
-    title: "Admin: the app owner's role can no longer be edited",
-    minRank: 3,
-    points: [
-      "Settings -> Users: the owner's role is now locked -- nobody, including the owner, can change it by accident through the Edit form or the API.",
-    ],
-  },
-  {
     date: "2026-09-28",
     title: "Aging Details: filter tracking numbers by Age",
     points: [
