@@ -181,6 +181,11 @@ export const api = {
     return res.json();
   },
   kpiUploadRemove: (dataset) => request(`/api/kpi/uploads/${dataset}`, { method: "DELETE" }),
+  // Management View (2026-10-01): managers/admins only
+  managementCapacity: () => request("/api/management-view/capacity"),
+  managementNotes: () => request("/api/management-view/notes"),
+  managementNoteSave: (stationCode, payload) =>
+    request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
   kpiMetabaseCheck: () => request("/api/kpi/metabase-check"),
   kpiWeekly: () => request("/api/kpi/weekly"),
   kpiInvalidPod: (q = {}) => request(`/api/kpi/invalid-pod?${qs(q)}`),

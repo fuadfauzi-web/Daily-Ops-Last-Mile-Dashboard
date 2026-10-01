@@ -18,6 +18,17 @@
 export const CHANGELOG = [
   {
     date: "2026-10-01",
+    title: "New: Management View (Beta, staging only) -- a higher-level rollup for managers and admins",
+    feature: "managementView",
+    minRank: 2,
+    points: [
+      "Overall health: Routing health, Attendance Rate (Hybrid vs Independent vs Rescue), Aging health, Shipment Compliance, and driver/rider attendance weekday vs weekend -- all rolled up nationwide from numbers the app already tracks.",
+      "Capacity: Hub Size and Staff headcount per station, from an admin-uploaded workbook.",
+      "Backlog radar: the worst 20 stations by severity, each with a mitigation plan / rescue plan / deployment cost / PTWH count a manager can type in and save.",
+    ],
+  },
+  {
+    date: "2026-10-01",
     title: "KPI: Hybrid Productivity gets sizing % and two more productivity figures",
     feature: "kpiDashboard",
     points: [

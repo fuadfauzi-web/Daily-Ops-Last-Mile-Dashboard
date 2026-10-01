@@ -6,6 +6,124 @@
     "description": "Live nationwide operations dashboard for Ninja Van Malaysia's last-mile fleet team (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia -- East Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls parcel- and route-level data from Redash every 15 minutes and shows it per region, zone, station and driver: Action Board (SLA heatmap), Shipment Details (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route Monitoring (routed, attendance, OVFD, success and completion rates by driver type, old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU, Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a PIC with in-progress / closed status and notifications), DoD (Station Health day by day), a Task List (follow-ups, to-dos, assigned tasks) and a KPI page (Beta) with the weekly results, the OPEX result and RCA / analysis for Hybrid Productivity, Invalid POD, COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI targets per region that an admin sets. Every count opens its tracking numbers, with CSV export. Access is role-based (admin, manager, region, station) with multi-value region/zone/station scopes enforced in the backend; an admin can preview any role or user with the Role Tester. Users can send feedback (with an attachment) that admins reply to and close. For Fleet Managers and their regional and station teams. Every /api route answers for the signed-in user (Google SSO: the platform adds X-Forwarded-Email) and is limited to that user's role and region / zone / station scope."
   },
   "paths": {
+    "/api/management-view/capacity": {
+      "get": {
+        "summary": "Management View -- Hub Size and Staff headcount per station, from the admin-uploaded Fleet Management workbook. Managers and admins only.",
+        "operationId": "capacity_api_management_view_capacity_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapacityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/management-view/notes": {
+      "get": {
+        "summary": "Management View -- every station's backlog mitigation plan / rescue plan / deployment cost / PTWH count. Managers and admins only.",
+        "operationId": "list_notes_api_management_view_notes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StationNote"
+                  },
+                  "title": "Response List Notes Api Management View Notes Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/management-view/notes/{station_code}": {
+      "put": {
+        "summary": "Management View -- save one station's backlog mitigation plan / rescue plan / deployment cost / PTWH count. Managers and admins only.",
+        "operationId": "put_note_api_management_view_notes__station_code__put",
+        "parameters": [
+          {
+            "name": "station_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationNote"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/recovery/lost-declared": {
       "get": {
         "summary": "Lost Declared This Week (view=week) or the Summary (view=summary, optionally one week), limited to the caller's access.",
@@ -4767,6 +4885,101 @@
         ],
         "title": "BulkUserResult"
       },
+      "CapacityResponse": {
+        "properties": {
+          "sources": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Sources"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CapacityRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sources",
+          "rows"
+        ],
+        "title": "CapacityResponse"
+      },
+      "CapacityRow": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "sqft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sqft"
+          },
+          "staff_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Count"
+          },
+          "ptwh_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ptwh Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "sqft",
+          "staff_count",
+          "ptwh_count"
+        ],
+        "title": "CapacityRow"
+      },
       "ColdChainResponse": {
         "properties": {
           "captured_at": {
@@ -6453,6 +6666,56 @@
           "is_high_value"
         ],
         "title": "MissingDetailsTnRow"
+      },
+      "NoteIn": {
+        "properties": {
+          "mitigation_plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitigation Plan"
+          },
+          "rescue_plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rescue Plan"
+          },
+          "rescue_deployment_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rescue Deployment Cost"
+          },
+          "ptwh_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ptwh Count"
+          }
+        },
+        "type": "object",
+        "title": "NoteIn"
       },
       "Notifications": {
         "properties": {
@@ -9303,6 +9566,91 @@
           "region"
         ],
         "title": "StationMeta"
+      },
+      "StationNote": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "mitigation_plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitigation Plan"
+          },
+          "rescue_plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rescue Plan"
+          },
+          "rescue_deployment_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rescue Deployment Cost"
+          },
+          "ptwh_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ptwh Count"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code",
+          "mitigation_plan",
+          "rescue_plan",
+          "rescue_deployment_cost",
+          "ptwh_count",
+          "updated_by",
+          "updated_at"
+        ],
+        "title": "StationNote"
       },
       "StationRow": {
         "properties": {

@@ -252,6 +252,28 @@ const SECTIONS = [
     ),
   },
   {
+    id: "management",
+    title: "Management View",
+    show: ({ rank }) => F.managementView && rank >= 2,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>Management View</strong> tab (<em>Beta</em>, staging only for now; managers and admins only) is the nationwide, higher-level
+          rollup -- for a Head of Department / Head of Operations / COO view, not the station-level detail the rest of the app is built for.
+          It reads the same numbers as Station Health, Route Monitoring, Shipment Details and DoD -- nothing new is captured for these sections,
+          it's just rolled up nationwide here.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Overall health</strong> -- Routing health (Total Routed, Success Rate, Completion Rate), Attendance Rate (Hybrid HD+HR vs Independent ID+IR vs Rescue, and overall -- OPS attendance isn't split out anywhere in the app yet), Aging health (Age &gt;3 and 0 Attempt as a % of In Hub -- the Control Tower Hypercare shipper view isn't built yet, it needs that shipper list), and Shipment Compliance (Latlong as a % of Total Fresh, and the % of stations whose latest LH trip today was before 11am). Also a driver/rider attendance weekday-vs-weekend average, from DoD's own captured history (so only as many days as DoD currently keeps).</>,
+            <><strong>Capacity</strong> -- Hub Size (sqft) and Staff headcount per station, from an admin-uploaded workbook (the Fleet Management file's "control" and "SH &amp; FA Manpower" sheets) -- re-upload the same file whenever a hub relocates or staff joins/resigns, same upload-replaces-previous pattern as everywhere else in the app. PTWH is typed in per station under Backlog radar (no confirmed source yet).</>,
+            <><strong>Backlog radar</strong> -- the 20 stations with the worst severity (a blend of Age &gt;3 %, On Hold count and 0 Attempt %, against fixed bands for now). Click a row to type in that station's backlog mitigation plan, rescue plan, rescue deployment cost and PTWH count -- these are notes a manager writes, not pulled from anywhere, and stay until someone changes them.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "routed",
     title: "Route Monitoring",
     body: () => (

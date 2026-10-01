@@ -10,6 +10,7 @@ import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
 import { FEATURES } from "./lib/features";
 import KpiDashboard from "./KpiDashboard";
+import ManagementViewTab from "./ManagementViewTab";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
@@ -104,11 +105,18 @@ export default function App() {
   // Recovery Settings for admin/manager, plus Feedback and Guide for everyone); Admin is
   // admin-only (Documents, Data Refresh) -- 2026-09-25 feedback. Each tab inside applies its
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
-  const navTabs = ["dashboard", ...(FEATURES.kpiDashboard ? ["kpi"] : []), "settings", ...(me.role === "admin" ? ["admin"] : [])];
+  const canSeeManagementView = FEATURES.managementView && (me.role === "manager" || me.role === "admin");
+  const navTabs = [
+    "dashboard",
+    ...(canSeeManagementView ? ["management"] : []),
+    ...(FEATURES.kpiDashboard ? ["kpi"] : []),
+    "settings",
+    ...(me.role === "admin" ? ["admin"] : []),
+  ];
   const navLabel = (t) =>
-    t === "kpi" ? (
+    t === "kpi" || t === "management" ? (
       <span className="inline-flex items-center gap-1.5">
-        KPI
+        {t === "kpi" ? "KPI" : "Management View"}
         <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
       </span>
     ) : (
@@ -265,6 +273,7 @@ export default function App() {
       </header>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
         {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
+        {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}

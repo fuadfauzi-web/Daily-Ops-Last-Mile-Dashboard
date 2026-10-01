@@ -33,6 +33,7 @@ from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
+import management_view
 import recovery_lost
 import region_list
 from kpi_targets import router as kpi_targets_router
@@ -667,6 +668,7 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
 app.include_router(region_list.router)  # Admin: the station list from the Region List sheet (region_list.py)
 app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)

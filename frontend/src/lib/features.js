@@ -13,6 +13,7 @@ export const FEATURES = {
   restockBundles: true, // Restock bundle list, Restock On Hold Details, B2B Document Compliance (RDO)
   kpiDashboard: true, // "KPI" page (Beta -- preview only, not to be used until the green light): weekly results, OPEX result, RCA for Hybrid / Invalid POD / COD RTS
   dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; every role, limited to its own scope
+  managementView: true, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + To Do List + Task Assigned
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed

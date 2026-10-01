@@ -183,6 +183,16 @@ DATASETS: dict[str, dict] = {
         "hint": "the Region List sheet (Region tab) downloaded as .csv or .xlsx -- Active / Virtual stations in Klang Valley, Northern, Southern, East Coast and East Malaysia become the station list; Closed, SAMEDAY and NO HUB rows are left out",
         "sheet": None, "required": ["grouplh", "stationname", "zone", "region"],
     },
+    "capacity_hub_size": {
+        "kpi": "management_view", "label": "Management View -- Hub Size (sqft)", "link": None,
+        "hint": "the Fleet Management workbook's \"control\" sheet (Station, SQFT, ...) -- upload the same workbook you gave for Staff headcount; it changes whenever a hub relocates, re-upload then",
+        "sheet": "control", "required": ["station", "sqft"], "keep": ["station", "sqft"],
+    },
+    "capacity_staff": {
+        "kpi": "management_view", "label": "Management View -- Staff headcount", "link": None,
+        "hint": "the Fleet Management workbook's \"SH & FA Manpower\" sheet (one row per person) -- counted per station by Designation; re-upload whenever someone joins/resigns",
+        "sheet": "SH & FA Manpower", "required": ["station", "designation"], "keep": ["station", "designation"],
+    },
     "opex_result": {
         "kpi": "opex", "label": "OPEX dashboard result", "link": "https://last-mile-dashboard.ninjavan.apps.substrait.build/",
         "hint": "the OPEX Last Mile Performance dashboard: pick the region / area and the dates, press Download CSV, then upload that file (any other table is shown as it is)",
