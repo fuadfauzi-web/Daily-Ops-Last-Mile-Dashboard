@@ -891,9 +891,11 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
             <select
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500"
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
+              disabled={editingEmail === OWNER_EMAIL}
+              title={editingEmail === OWNER_EMAIL ? "The app owner's role can't be changed" : undefined}
             >
               {myAllowedRoles.map((r) => (
                 <option key={r} value={r}>

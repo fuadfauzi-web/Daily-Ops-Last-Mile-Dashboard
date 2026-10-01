@@ -161,7 +161,7 @@ const SECTIONS = [
           </>,
           F.timingChart && (
             <>
-              The <strong>timing chart</strong> under the table plots scan-in, first-attempt and success times by hour of day. Hover an hour for its
+              The <strong>timing chart</strong> under the table plots scan-in, first-attempt, success and LH Timing (line-haul trip arrivals) by hour of day. Hover an hour for its
               count and its <strong>% share</strong> of that line's total, or switch <strong>Count / % share</strong> above the chart to plot each line as a %
               of its own total.
               It follows the table's filters until you pick its own Region / Zone / Station filter, which then overrides them.
@@ -183,7 +183,7 @@ const SECTIONS = [
         <Bullets
           items={[
             <><strong>0 Attempt</strong> is age-0 only; <strong>0 Attempt &gt;D0</strong> is the same thing aged over 0 days -- they never overlap.</>,
-            <><strong>Age &gt;3</strong> is parcels sitting in-hub more than 3 days, scored as a count or as a % of Total In Hub.</>,
+            <><strong>Age &gt;3</strong> is parcels sitting in-hub more than 3 days, scored as a count or as a % of Total In Hub -- its header has a # / % toggle so you can sort by either.</>,
             <><strong>Missing (Hub / Driver-Rider / Ship-in)</strong>: open missing-parcel tickets split by who is on the hook. <strong>Pending ATS</strong> is parcels pending Add To Shipment.</>,
             <><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub).</>,
             <><strong>Attendance</strong>: unique Hybrid / Independent drivers with a route today. "12 (2 Rescue)" means 2 of the 12 are routing away from their home station, same as Route Monitoring.</>,
@@ -544,7 +544,7 @@ const SECTIONS = [
 // not covered can be sent to the admins as a question, which lands in Admin -> Feedback
 // with a "[Question]" prefix so the answer comes back there.
 const FAQS = [
-  { q: "How often does the data refresh?", a: "Every 15 minutes. \"Data as of\" in the header is when everything was last pulled from Redash." },
+  { q: "How often does the data refresh?", a: "Every 15 minutes. \"Data as of\" in the header is when everything was last refreshed." },
   { q: "Why does a tracking number show \"Not found\" in Urgent TN?", a: "Urgent TN looks parcels up in the same active dataset Station Health uses. A parcel that's already completed or added to a shipment is no longer in it." },
   { q: "Why can't I see another station's numbers?", a: "Your scope limits every tab, filter list and tracking-number list to your own station(s), zone(s) or region(s). Ask your admin if your scope should be wider." },
   { q: "How do I assign a tracking number to a colleague?", a: "Urgent TN tab -> paste the tracking numbers, start typing your colleague's name or email in the PIC box and pick them from the suggestions (they must already be a dashboard user), then press Track & assign. The Urgent TN tab shows a bell for them." },
@@ -554,11 +554,7 @@ const FAQS = [
   { q: "What does Completion Rate mean?", a: "(Total Routed - Current OVFD) / Total Routed. 100% means nothing is still on the vehicle. The target is 100%.", show: () => true },
   { q: "What is the difference between Age >3 and Aging Details?", a: "Station Health's Age >3 leaves out On Hold and On Vehicle for Delivery parcels (the actionable ones). Aging Details includes everything sitting in the hub by age." },
   { q: "How do I export tracking numbers?", a: "Click any coloured count to open its tracking numbers, then Export CSV (or Copy list). Every table also has its own Export CSV for exactly what's on screen." },
-  { q: "My numbers look different from Redash.", a: "The dashboard groups parcels by where they physically are (last scan hub), not their intended destination, unless a column's note says otherwise. Click the small i beside a column header for the exact rule, then send us a question if it still doesn't match." },
-  { q: "How do I change someone's access?", a: "Settings -> Users -> Edit. You can only grant a role and scope at or below your own. Region staff can edit Station staff and give them more than one station.", show: ({ rank }) => rank >= 1 },
-  { q: "Who has never opened the dashboard?", a: "Settings -> Users: tick \"Never opened\", or click the Last opened header to sort.", show: ({ rank }) => rank >= 1 },
   { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTester && F.roleTesterUser },
-  { q: "How do I reply to feedback?", a: "Settings -> Feedback -> type in the reply box under the message and Send reply; Close it when it's done (it's deleted a week later).", show: ({ rank }) => rank >= 3 },
 ];
 
 export default function GuideTab({ me }) {

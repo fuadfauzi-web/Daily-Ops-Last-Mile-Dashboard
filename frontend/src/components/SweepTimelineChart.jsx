@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import MultiSelect from "./MultiSelect";
 
-// Hour-of-day trend of three events on one chart: when parcels were first
+// Hour-of-day trend of four events on one chart: when parcels were first
 // scanned in at the station (1st_sweep_at_WM_station_datetime, column H), when
-// they got their first delivery attempt, and when they succeeded.
+// they got their first delivery attempt, when they succeeded, and when each
+// line-haul trip arrived (LH Timing, 2026-10-01 feedback).
 //
 // Filters (2026-09-25 feedback): the chart has its own Region / Zone / Station
 // filters. Left untouched it follows the table's master filters (the stations the
@@ -15,6 +16,8 @@ const SERIES = [
   { key: "sweep", label: "Scan-in", text: "text-brand", stroke: "stroke-brand", fill: "fill-brand", dot: "bg-brand" },
   { key: "attempt", label: "1st attempt", text: "text-status-warning", stroke: "stroke-status-warning", fill: "fill-status-warning", dot: "bg-status-warning" },
   { key: "success", label: "Success", text: "text-status-good", stroke: "stroke-status-good", fill: "fill-status-good", dot: "bg-status-good" },
+  // LH Timing (2026-10-01 feedback): line-haul trip arrivals by hour of day, same bucketing as the other three.
+  { key: "lh", label: "LH Timing", text: "text-sky-600", stroke: "stroke-sky-500", fill: "fill-sky-500", dot: "bg-sky-500" },
 ];
 
 function formatHour(h) {
@@ -111,7 +114,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
   }, [overriding, masterCodes, stationCodes, stationOptions]);
 
   const totals = useMemo(() => {
-    const out = { sweep: Array(24).fill(0), attempt: Array(24).fill(0), success: Array(24).fill(0) };
+    const out = Object.fromEntries(SERIES.map((s) => [s.key, Array(24).fill(0)]));
     for (const t of timelines) {
       if (!selectedCodes.has(t.station_code)) continue;
       for (const s of SERIES) for (let h = 0; h < 24; h++) out[s.key][h] += t[s.key][h] || 0;
@@ -273,7 +276,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
             height={height}
             className="block"
             role="img"
-            aria-label="Scan-in, first attempt and success by hour of day"
+            aria-label="Scan-in, first attempt, success and LH Timing by hour of day"
             onMouseMove={onMove}
             onMouseLeave={() => setHover(null)}
           >

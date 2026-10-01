@@ -17,6 +17,35 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-01",
+    title: "Station Health: sort Age >3 by count or by %",
+    points: [
+      "A column scored as \"% of\" another field (Age >3, by default) now shows a # / % toggle in its header -- pick whether sorting ranks stations by the raw count or by that percentage.",
+    ],
+  },
+  {
+    date: "2026-10-01",
+    title: "Shipment Details: LH Timing added to the Timing Trend chart",
+    points: [
+      "The Timing Trend chart (hour of day) now has a 4th line, LH Timing, alongside Scan-in, 1st attempt and Success -- same filters, same Count / % share toggle.",
+    ],
+  },
+  {
+    date: "2026-10-01",
+    title: "Task List: Email / Gchat now shows Entry Time",
+    points: [
+      "The Email / Gchat table now has an Entry Time column, same as Urgent TN -- when the follow-up was keyed in.",
+    ],
+  },
+  {
+    date: "2026-10-01",
+    title: "Admin: the app owner's role can no longer be edited",
+    minRank: 3,
+    points: [
+      "Settings -> Users: the owner's role is now locked -- nobody, including the owner, can change it by accident through the Edit form or the API.",
+    ],
+  },
+  {
     date: "2026-09-28",
     title: "Aging Details: filter tracking numbers by Age",
     points: [
