@@ -295,8 +295,24 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         del routed_rows
 
         tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
-        lh_rows = await _fetch(QUERY_LH_TIMING)
-        shipment_by_station, shipment_tn_details, shipment_timelines = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
+        # TEMPORARY DIAGNOSTIC (2026-10-01): staging's backend pod has been crash-looping
+        # right after this point since the LH Timing chart-series change landed, with no
+        # traceback ever reaching the log (consistent with a hang or a silent kill, not a
+        # caught exception) -- wrapping + timing out this step to finally see what happens.
+        # Remove this try/except once root-caused; it changes no behavior besides logging
+        # and bounding query 1500's fetch to 25s instead of waiting forever.
+        _diag_t0 = datetime.now(timezone.utc)
+        try:
+            lh_rows = await asyncio.wait_for(_fetch(QUERY_LH_TIMING), timeout=25)
+            log.warning("DIAG: query 1500 (LH Timing) fetched in %.1fs, %d rows", (datetime.now(timezone.utc) - _diag_t0).total_seconds(), len(lh_rows))
+            shipment_by_station, shipment_tn_details, shipment_timelines = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
+            log.warning("DIAG: build_shipment_details completed, %d stations", len(shipment_by_station))
+        except asyncio.TimeoutError:
+            log.exception("DIAG: query 1500 (LH Timing) fetch timed out after 25s")
+            raise
+        except Exception:
+            log.exception("DIAG: Shipment Details refresh step failed")
+            raise
         del shipment_rows, tracker_rows, lh_rows
 
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
