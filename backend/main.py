@@ -1035,6 +1035,7 @@ class ShipmentTimelineRow(BaseModel):
     sweep: list[int]
     attempt: list[int]
     success: list[int]
+    lh: list[int]
 
 
 class ShipmentDetailsResponse(BaseModel):
@@ -3416,6 +3417,11 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
     target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
+    # The owner's role is fixed -- nobody, including the owner themselves, can change it
+    # (2026-10-01 feedback: this is exactly the gap V26__restore_owner_admin_role.sql had
+    # to patch by hand after it happened once during testing).
+    if email == _OWNER_EMAIL and payload.role != "admin":
+        raise HTTPException(status_code=403, detail="The app owner's role can't be changed")
     _require_can_manage_target(user, target[0])
     _validate_user_in(payload)
     _validate_grant_limits(user, payload)

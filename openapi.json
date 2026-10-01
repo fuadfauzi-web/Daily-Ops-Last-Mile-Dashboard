@@ -8929,6 +8929,13 @@
             },
             "type": "array",
             "title": "Success"
+          },
+          "lh": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Lh"
           }
         },
         "type": "object",
@@ -8936,7 +8943,8 @@
           "station_code",
           "sweep",
           "attempt",
-          "success"
+          "success",
+          "lh"
         ],
         "title": "ShipmentTimelineRow"
       },

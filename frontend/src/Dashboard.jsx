@@ -153,10 +153,19 @@ function localRollup(rows, groupKey) {
 // "name" isn't a real field on the raw region/zone/station rows (they have
 // key/station_name respectively), so it's mapped to whichever field actually
 // holds that level's display name.
-function sortSiblings(rows, sortKey, sortDir, nameField) {
+// percentOfField (2026-10-01 feedback): when sorting by a metric that's scored as "% of"
+// another field and the header's % toggle is active, rank by that computed percentage
+// instead of the raw count -- region/zone rollup rows already sum both the numerator and
+// denominator (see sumMetrics/localRollup), so the percentage is correct at every level.
+function sortSiblings(rows, sortKey, sortDir, nameField, percentOfField) {
   if (!sortKey) return rows;
   const key = sortKey === "name" ? nameField : sortKey;
   return [...rows].sort((a, b) => {
+    if (percentOfField) {
+      const av = a[percentOfField] ? (a[key] / a[percentOfField]) * 100 : 0;
+      const bv = b[percentOfField] ? (b[key] / b[percentOfField]) * 100 : 0;
+      return sortDir === "asc" ? av - bv : bv - av;
+    }
     const av = a[key];
     const bv = b[key];
     if (av === undefined || bv === undefined) return 0;
@@ -178,11 +187,11 @@ function sortSiblings(rows, sortKey, sortDir, nameField) {
 // user can hide the region/zone rows -- `levels` says which of the two grouping levels to
 // draw (showRegion / showZone); with both off it is a flat list of stations. regionOpen /
 // zoneOpen say whether a shown row is expanded.
-function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sortDir) {
+function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sortDir, percentOfField) {
   const { showRegion, showZone } = levels;
   const rows = [];
   const pushStations = (list) =>
-    sortSiblings(list, sortKey, sortDir, "station_name").forEach((s) =>
+    sortSiblings(list, sortKey, sortDir, "station_name", percentOfField).forEach((s) =>
       rows.push({ ...s, type: "station", id: `station:${s.station_code}`, displayName: s.station_name })
     );
   const emitZones = (inScope) => {
@@ -190,7 +199,7 @@ function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sort
       pushStations(inScope);
       return;
     }
-    sortSiblings(localRollup(inScope, "zone"), sortKey, sortDir, "key").forEach((z) => {
+    sortSiblings(localRollup(inScope, "zone"), sortKey, sortDir, "key", percentOfField).forEach((z) => {
       rows.push({ ...z, type: "zone", id: `zone:${z.key}`, displayName: z.key });
       if (!zoneOpen(z.key)) return;
       pushStations(inScope.filter((s) => s.zone === z.key));
@@ -200,7 +209,7 @@ function buildCombinedRows(stations, levels, regionOpen, zoneOpen, sortKey, sort
     emitZones(stations);
     return rows;
   }
-  sortSiblings(localRollup(stations, "region"), sortKey, sortDir, "key").forEach((r) => {
+  sortSiblings(localRollup(stations, "region"), sortKey, sortDir, "key", percentOfField).forEach((r) => {
     rows.push({ ...r, type: "region", id: `region:${r.key}`, displayName: r.key });
     if (!regionOpen(r.key)) return;
     emitZones(stations.filter((s) => s.region === r.key));
@@ -263,6 +272,10 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const [expandedZones, setExpandedZones] = useState(() => new Set());
   const [combinedSortKey, setCombinedSortKey] = useState(null);
   const [combinedSortDir, setCombinedSortDir] = useState("asc");
+  // "value" | "percent" -- for a metric scored as "% of" another field (e.g. Age >3 as
+  // % of Total In Hub), lets the header's # / % toggle pick which basis to sort by
+  // (2026-10-01 feedback) instead of always ranking by the raw count.
+  const [combinedSortBasis, setCombinedSortBasis] = useState("value");
   // Anyone who sees region / zone grouping rows can hide them (remembered per person).
   const levelsKey = `station-health-levels-${me.email}`;
   const [levelPrefs, setLevelPrefs] = useState(() => {
@@ -289,7 +302,34 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
     else {
       setCombinedSortKey(key);
       setCombinedSortDir("asc");
+      setCombinedSortBasis("value");
     }
+  };
+  // The header's explicit # / % buttons (percent-scored columns only) -- always makes
+  // this column the active sort on the chosen basis, only resetting direction when it
+  // wasn't already the active column.
+  const setCombinedSortBasisFor = (key, basis) => {
+    if (key !== combinedSortKey) setCombinedSortDir("asc");
+    setCombinedSortKey(key);
+    setCombinedSortBasis(basis);
+  };
+  // Small # / % pill shown in a percent-scored column's header -- stopPropagation so
+  // picking a basis doesn't also fire the <th>'s own onSort (which would re-toggle
+  // direction instead of just switching basis).
+  const sortBasisToggle = (key, percentOfLabel) => {
+    const active = (basis) => combinedSortKey === key && combinedSortBasis === basis;
+    const btnClass = (basis) =>
+      `px-1 py-0.5 ${active(basis) ? "bg-white text-ink" : "text-white/60 hover:bg-white/20"}`;
+    return (
+      <span className="inline-flex overflow-hidden rounded border border-white/30 text-[9px] font-bold leading-none" onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={() => setCombinedSortBasisFor(key, "value")} className={btnClass("value")} title="Sort by raw count">
+          #
+        </button>
+        <button type="button" onClick={() => setCombinedSortBasisFor(key, "percent")} className={btnClass("percent")} title={`Sort by % of ${percentOfLabel}`}>
+          %
+        </button>
+      </span>
+    );
   };
   const toggleInSet = (setter, key) =>
     setter((prev) => {
@@ -574,10 +614,12 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       const natThreshold = resolveThreshold(thresholdRows, c.key, null);
       const isReference = !natThreshold.scored;
       const label = (
-        <>
+        <span className="inline-flex items-center gap-1">
           {c.label}
           {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
-        </>
+          {!isReference && natThreshold.percent_of &&
+            sortBasisToggle(c.key, ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of)?.label || natThreshold.percent_of)}
+        </span>
       );
       const clickable = row => row.type === "station" && DRILLDOWN_METRICS.has(c.key);
       if (isReference) {
@@ -614,13 +656,16 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       };
     }),
   ];
+  const activeSortPercentOf =
+    combinedSortBasis === "percent" ? resolveThreshold(thresholdRows, combinedSortKey, null).percent_of : null;
   const combinedRows = buildCombinedRows(
     filteredStations,
     { showRegion: showRegionRows, showZone: showZoneRows },
     isRegionOpen,
     isZoneOpen,
     combinedSortKey,
-    combinedSortDir
+    combinedSortDir,
+    activeSortPercentOf
   );
   const handleCombinedRowClick = (row) => {
     if (row.type === "station") {
@@ -810,7 +855,9 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             5-station region) — a percentage target (or a metric scored as "% of" another field) never scales, the
             same number applies at every level. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't
             clickable — their source queries don't return individual tracking numbers. Click the ⓘ next to a column
-            name for what that metric counts and what to do about it.
+            name for what that metric counts and what to do about it. A column scored as "% of" another field (e.g.
+            Age &gt;3) shows a # / % toggle in its header — pick whether sorting ranks stations by the raw count or
+            by that percentage.
           </p>
         </>
       )}

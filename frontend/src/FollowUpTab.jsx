@@ -131,6 +131,8 @@ export default function FollowUpTab({ me, refreshTick }) {
     },
     { key: "contact", label: "Contact", render: (r) => r.contact || "—", className: () => "text-slate-700" },
     { key: "due_date", label: "Due", render: (r) => dueCell(r, (row) => run(() => api.reminders.ack("followup", row.id)), busy), className: dueClass },
+    // Entry Time (2026-10-01 feedback): when the task was keyed in, same column/placement as Urgent TN's.
+    { key: "created_at", label: "Entry Time", render: (r) => formatTime(r.created_at), className: () => "whitespace-nowrap text-xs text-slate-600" },
     {
       key: "helper",
       label: "PIC",
@@ -237,8 +239,8 @@ export default function FollowUpTab({ me, refreshTick }) {
           {rows.length > 0 && (
             <button
               onClick={() =>
-                exportCsv(`daily-ops-followups-${new Date().toISOString().slice(0, 10)}.csv`, ["Channel", "Subject", "Contact", "Due", "Status", "PIC", "PIC reply", "Note"],
-                  rows.map((r) => [CHANNEL_LABEL[r.channel] || r.channel, r.subject, r.contact ?? "", r.due_date ?? "", r.status, r.helper_email ?? "", r.helper_reply ?? "", r.note ?? ""]))
+                exportCsv(`daily-ops-followups-${new Date().toISOString().slice(0, 10)}.csv`, ["Channel", "Subject", "Contact", "Due", "Entry Time", "Status", "PIC", "PIC reply", "Note"],
+                  rows.map((r) => [CHANNEL_LABEL[r.channel] || r.channel, r.subject, r.contact ?? "", r.due_date ?? "", r.created_at ? formatTime(r.created_at) : "", r.status, r.helper_email ?? "", r.helper_reply ?? "", r.note ?? ""]))
               }
               className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600"
             >
