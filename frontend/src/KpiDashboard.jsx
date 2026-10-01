@@ -199,17 +199,20 @@ function HybridProductivity({ me }) {
 
   const recs = useMemo(
     () =>
-      (data?.rows || []).map(([p, di, delivered, onRoute, att, prod, succ]) => {
+      (data?.rows || []).map(([p, di, delivered, onRoute, att, prod, succ, prodDelivered, prodRsvn, sizeS, sizeM, sizeL]) => {
         const d = drivers[di];
-        return { period: p, name: d.name, station: d.station, zone: d.zone, region: d.region, position: d.position, start: d.start, delivered, onRoute, att, prod, succ };
+        return {
+          period: p, name: d.name, station: d.station, zone: d.zone, region: d.region, position: d.position, start: d.start,
+          delivered, onRoute, att, prod, succ, prodDelivered, prodRsvn, sizeS, sizeM, sizeL,
+        };
       }),
     [data] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const dailyRecs = useMemo(
     () =>
-      (data?.daily || []).map(([day, di, delivered, onRoute, succ]) => ({
+      (data?.daily || []).map(([day, di, delivered, onRoute, succ, deliveredOnly, rsvn, sizeS, sizeM, sizeL]) => ({
         day, name: drivers[di].name, station: drivers[di].station, zone: drivers[di].zone, region: drivers[di].region,
-        position: drivers[di].position, start: drivers[di].start, delivered, onRoute, succ,
+        position: drivers[di].position, start: drivers[di].start, delivered, onRoute, succ, deliveredOnly, rsvn, sizeS, sizeM, sizeL,
       })),
     [data] // eslint-disable-line react-hooks/exhaustive-deps
   );
@@ -247,10 +250,17 @@ function HybridProductivity({ me }) {
     return [...by.values()].map((list) => {
       const onRoute = list.reduce((a, r) => a + r.onRoute, 0);
       const delivered = list.reduce((a, r) => a + r.delivered, 0);
+      const deliveredOnly = list.reduce((a, r) => a + r.deliveredOnly, 0);
+      const rsvn = list.reduce((a, r) => a + r.rsvn, 0);
+      const sizeS = list.reduce((a, r) => a + r.sizeS, 0);
+      const sizeM = list.reduce((a, r) => a + r.sizeM, 0);
+      const sizeL = list.reduce((a, r) => a + r.sizeL, 0);
       const f = list[0];
       return {
         name: f.name, station: f.station, zone: f.zone, region: f.region, position: f.position, start: f.start,
         onRoute, delivered, att: list.length, prod: delivered / list.length,
+        prodDelivered: deliveredOnly / list.length, prodRsvn: (delivered + rsvn) / list.length,
+        sizeS, sizeM, sizeL,
         succ: onRoute ? list.reduce((a, r) => a + r.succ * r.onRoute, 0) / onRoute : avg(list, "succ"),
       };
     });
@@ -369,6 +379,14 @@ function HybridProductivity({ me }) {
   );
 
   // ---- shared driver table columns
+  // Sizing % (2026-10-01): S = xs+s, M = m, L = l+xl+xxl, as a share of delivered parcels the size buckets actually cover
+  // (sizeS+sizeM+sizeL) -- 0 for every bucket (not just a blank) when the sizing feeder has no row for this driver/period.
+  const sizingText = (r) => {
+    const total = r.sizeS + r.sizeM + r.sizeL;
+    if (!total) return "—";
+    const pct = (v) => dec1((v / total) * 100);
+    return `S ${pct(r.sizeS)}% · M ${pct(r.sizeM)}% · L ${pct(r.sizeL)}%`;
+  };
   const driverColumns = (opts = {}) => [
     ...(opts.rank ? [{ key: "rank", label: "Rank" }] : []),
     { key: "name", label: "Name", sticky: true, align: "left", render: (r) => <b>{r.name}</b> },
@@ -378,7 +396,14 @@ function HybridProductivity({ me }) {
     { key: "delivered", label: "Del + PU", render: (r) => int(r.delivered) },
     { key: "succ", label: "Success %", render: (r) => `${dec1(r.succ)}%` },
     { key: "att", label: "Attendance", render: (r) => `${Math.round(r.att)}d`, className: (r) => attClass(r.att, opts.attTarget) },
-    { key: "prod", label: "Productivity", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+    { key: "prod", label: "Productivity (D+P)", render: (r) => dec1(r.prod), className: () => "font-black text-ink" },
+    ...(opts.showSizing
+      ? [
+          { key: "prodDelivered", label: "Productivity (Delivered)", render: (r) => dec1(r.prodDelivered) },
+          { key: "prodRsvn", label: "Productivity (D+P+RSVN)", render: (r) => dec1(r.prodRsvn) },
+          { key: "sizing", label: "Sizing (S/M/L)", render: sizingText, className: () => "text-slate-600" },
+        ]
+      : []),
     ...(opts.noDelta ? [] : [{ key: "delta", label: opts.deltaLabel || `vs last ${compareWord}`, render: (r) => <Change delta={r.delta} pct={r.deltaPct} /> }]),
   ];
   const deltaColumn = { key: "delta", label: `vs last ${compareWord}`, render: (r) => <Change delta={r.delta} pct={r.deltaPct} /> };
@@ -398,7 +423,7 @@ function HybridProductivity({ me }) {
           titleExtra={<span className="text-[10px] text-slate-400">click headers to sort · row for trends</span>}
           maxHeight="480px"
           pageSize={100}
-          columns={driverColumns({ rank: true })}
+          columns={driverColumns({ rank: true, showSizing: true })}
           rows={rows}
           rowKey={(r) => r.name}
           rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-rose-50" : "")}
@@ -471,7 +496,7 @@ function HybridProductivity({ me }) {
         <DataTable
           title={`${chosen ? chosen.name : "Station"} — drivers leaderboard`}
           maxHeight="260px"
-          columns={driverColumns({ noStation: true, tenureLabel: "Service Duration" }).filter((c) => c.key !== "rank")}
+          columns={driverColumns({ noStation: true, tenureLabel: "Service Duration", showSizing: true }).filter((c) => c.key !== "rank")}
           rows={stationDrivers}
           rowKey={(r) => r.name}
           emptyMessage="No drivers for this station."
@@ -618,7 +643,7 @@ function HybridProductivity({ me }) {
           titleExtra={<span className="text-[10px] text-slate-400">always the current month, whatever View / Period say · attendance = days worked · click headers to sort</span>}
           maxHeight="520px"
           pageSize={100}
-          columns={driverColumns({ rank: true, tenureLabel: "Service Duration", attTarget: monthTarget, deltaLabel: "vs last month" })}
+          columns={driverColumns({ rank: true, tenureLabel: "Service Duration", attTarget: monthTarget, deltaLabel: "vs last month", showSizing: true })}
           rows={rows}
           rowKey={(r) => r.name}
           rowClassName={(r) => (chosen && r.name === chosen.name ? "bg-rose-50" : "")}

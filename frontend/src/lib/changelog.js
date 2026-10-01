@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-10-01",
+    title: "KPI: Hybrid Productivity gets sizing % and two more productivity figures",
+    feature: "kpiDashboard",
+    points: [
+      "The driver tables now show Sizing (S/M/L) -- the share of delivered parcels in each size -- and two more productivity figures: Productivity (Delivered) and Productivity (D+P+RSVN), alongside the usual one.",
+      "Also fixed: Attendance now counts distinct days worked, not routes run -- a driver with two routes the same day no longer counts as two attendance days.",
+    ],
+  },
+  {
+    date: "2026-10-01",
     title: "Station Health: sort Age >3 by count or by %",
     points: [
       "A column scored as \"% of\" another field (Age >3, by default) now shows a # / % toggle in its header -- pick whether sorting ranks stations by the raw count or by that percentage.",

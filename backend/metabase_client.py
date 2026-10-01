@@ -31,6 +31,13 @@ QUESTION_HYBRID_WEEKLY = 127194  # Hybrid Weekly Apps - All Regions (current yea
 QUESTION_HYBRID_MONTHLY = 127195  # Hybrid Monthly Apps - All Regions (current year)
 QUESTION_HYBRID_DATA = 127193  # Hybrid Data Current Year - All Regions -- driver details incl. employment start date
 
+# 2026-10-01: sizing %/volume + a corrected Attendance (COUNT DISTINCT route_date, not route count --
+# the three questions above double-count a driver with 2 routes in one day as 2 attendance days). Same
+# filters/join/breakout as their sibling above, so rows line up 1:1 by (driver, period).
+QUESTION_HYBRID_DAILY_SIZING = 127410  # Hybrid Daily Sizing & Volume Add-on - All Regions (current month)
+QUESTION_HYBRID_WEEKLY_SIZING = 127411  # Hybrid Weekly Sizing & Volume + Fixed Attendance - All Regions (current year)
+QUESTION_HYBRID_MONTHLY_SIZING = 127412  # Hybrid Monthly Sizing & Volume + Fixed Attendance - All Regions (current year)
+
 _TIMEOUT_SECONDS = 240
 
 
