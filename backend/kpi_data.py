@@ -105,6 +105,21 @@ DATASETS: dict[str, dict] = {
         "link": "https://metabase.ninjavan.co/question/127193",
         "sheet": "Hybrid Data", "required": ["displayname"],
     },
+    "hybrid_weekly_sizing": {
+        "kpi": "hybrid", "label": "Hybrid weekly -- sizing & volume", "hint": "Metabase question 127411 (Hybrid Weekly Sizing & Volume + Fixed Attendance - All Regions) -- Download results as .csv; optional, adds sizing % and the delivered-only / delivered+pickup+RSVN productivity variants, and fixes Attendance to count distinct days",
+        "link": "https://metabase.ninjavan.co/question/127411",
+        "sheet": None, "required": ["courierdisplayname", "routeweek"],
+    },
+    "hybrid_monthly_sizing": {
+        "kpi": "hybrid", "label": "Hybrid monthly -- sizing & volume", "hint": "Metabase question 127412 (Hybrid Monthly Sizing & Volume + Fixed Attendance - All Regions) -- Download results as .csv; optional, same columns as the weekly sizing file",
+        "link": "https://metabase.ninjavan.co/question/127412",
+        "sheet": None, "required": ["courierdisplayname", "routemonth"],
+    },
+    "hybrid_daily_sizing": {
+        "kpi": "hybrid", "label": "Hybrid daily -- sizing & volume", "hint": "Metabase question 127410 (Hybrid Daily Sizing & Volume Add-on - All Regions, current month) -- Download results as .csv; optional, adds sizing % and delivered-only to the Daily Data tab",
+        "link": "https://metabase.ninjavan.co/question/127410",
+        "sheet": None, "required": ["courierdisplayname", "routedate"],
+    },
     "invalid_pod_raw": {
         "kpi": "invalid_pod", "label": "POD validation (raw)",
         "hint": "Metabase question 69573 (POP/POD Validation Tasks Raw Data): leave Hub Region empty for all regions, pick Date Type and Start / End date (a range that covers several weeks or the whole month gives the page its weeks and the month), then Download results as .csv -- or the Raw sheet of the POD Validation Analysis file",

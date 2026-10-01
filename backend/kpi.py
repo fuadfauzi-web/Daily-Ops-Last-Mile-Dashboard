@@ -29,6 +29,9 @@ router = APIRouter()
 
 CACHE_TTL_SECONDS = 30 * 60  # the source is refreshed daily; half an hour is plenty and keeps Metabase load low
 _QUESTION_FOR_VIEW = {"weekly": mb.QUESTION_HYBRID_WEEKLY, "monthly": mb.QUESTION_HYBRID_MONTHLY}
+# 2026-10-01: sizing %/volume + corrected Attendance -- optional companions to the questions above (see
+# metabase_client.py). Missing (not configured / not uploaded) just means those columns stay at 0 for a driver.
+_QUESTION_FOR_VIEW_SIZING = {"weekly": mb.QUESTION_HYBRID_WEEKLY_SIZING, "monthly": mb.QUESTION_HYBRID_MONTHLY_SIZING}
 
 # view -> {"at": datetime, "perf": rows, "daily": rows, "hybrid": rows}; one lock so concurrent page loads share one fetch.
 _cache: dict[str, dict] = {}
@@ -90,8 +93,34 @@ def _station_for(name: str, hub_name: str | None) -> tuple[str | None, str, str,
     return None, "Unknown", "Unknown", "Unknown"
 
 
-def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybrid_rows: list[dict]) -> dict:
-    """Compact columnar payload: a driver list once, then rows that point into it."""
+def build_payload(
+    view: str, perf_rows: list[dict], daily_rows: list[dict], hybrid_rows: list[dict],
+    sizing_rows: list[dict] | None = None, daily_sizing_rows: list[dict] | None = None,
+) -> dict:
+    """Compact columnar payload: a driver list once, then rows that point into it.
+
+    sizing_rows / daily_sizing_rows (2026-10-01, optional) are the companion feeders keyed the same way
+    (driver, period) / (driver, day) -- when a driver+period is missing from them (Metabase sizing question
+    not configured, or no upload yet), that row's sizing/extra-productivity fields are just 0, same as any
+    other missing-data case in this file."""
+    sizing_by_key: dict[tuple[str, float], dict] = {}
+    for r in sizing_rows or []:
+        idx = _index(r)
+        name = _name(_get(idx, "courierdisplayname"))
+        period = _get(idx, "routeweek", "routemonth", "routeperiod")
+        if not name or period is None:
+            continue
+        sizing_by_key[(name, _num(period))] = idx
+
+    daily_sizing_by_key: dict[tuple[str, str], dict] = {}
+    for r in daily_sizing_rows or []:
+        idx = _index(r)
+        name = _name(_get(idx, "courierdisplayname"))
+        day = kd.to_iso_day(_get(idx, "routedate"))
+        if not name or not day:
+            continue
+        daily_sizing_by_key[(name, day)] = idx
+
     starts: dict[str, str] = {}
     hub_of: dict[str, str] = {}
     for r in hybrid_rows:
@@ -124,9 +153,27 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
         period = _get(idx, "routeweek", "routemonth", "routeperiod")
         if not name or period is None:
             continue
+        s = sizing_by_key.get((name, _num(period)))
+        if s:
+            delivered = _num(_get(s, "sumofparcelsdelivered"))
+            picked_up = _num(_get(s, "sumofparcelspickedup"))
+            rsvn = _num(_get(s, "sumofreservationsuccesswaypoints"))
+            size_s, size_m, size_l = _num(_get(s, "sumofparcelsdeliveredsizes")), _num(_get(s, "sumofparcelsdeliveredsizem")), _num(_get(s, "sumofparcelsdeliveredsizel"))
+            delivered_pickup = delivered + picked_up
+            # The fix: COUNT DISTINCT route_date (this question), not the sibling's own COUNT(route_id) --
+            # a driver with 2 routes in one day was counted as 2 attendance days instead of 1.
+            attendance = _num(_get(s, "attendance")) or _num(_get(idx, "attendance"))
+        else:
+            delivered = picked_up = rsvn = size_s = size_m = size_l = 0.0
+            delivered_pickup = _num(_get(idx, "deliveredpickup"))
+            attendance = _num(_get(idx, "attendance"))
+        productivity = (delivered_pickup / attendance) if attendance else 0.0
+        prod_delivered_only = (delivered / attendance) if (s and attendance) else 0.0
+        prod_delivered_pickup_rsvn = ((delivered + picked_up + rsvn) / attendance) if (s and attendance) else 0.0
         rows.append([
-            _num(period), driver_idx(name), _num(_get(idx, "deliveredpickup")), _num(_get(idx, "sumofparcelsonroute")),
-            _num(_get(idx, "attendance")), _num(_get(idx, "productivity")), _pct(_get(idx, "successrate")),
+            _num(period), driver_idx(name), delivered_pickup, _num(_get(idx, "sumofparcelsonroute")),
+            attendance, productivity, _pct(_get(idx, "successrate")),
+            prod_delivered_only, prod_delivered_pickup_rsvn, size_s, size_m, size_l,
         ])
 
     daily = []
@@ -136,7 +183,20 @@ def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict], hybr
         day = kd.to_iso_day(_get(idx, "routedate"))
         if not name or not day:
             continue
-        daily.append([day, driver_idx(name), _num(_get(idx, "deliveredpickup")), _num(_get(idx, "sumofparcelsonroute")), _pct(_get(idx, "successrate"))])
+        s = daily_sizing_by_key.get((name, day))
+        if s:
+            delivered = _num(_get(s, "sumofparcelsdelivered"))
+            picked_up = _num(_get(s, "sumofparcelspickedup"))
+            rsvn = _num(_get(s, "sumofreservationsuccesswaypoints"))
+            size_s, size_m, size_l = _num(_get(s, "sumofparcelsdeliveredsizes")), _num(_get(s, "sumofparcelsdeliveredsizem")), _num(_get(s, "sumofparcelsdeliveredsizel"))
+            delivered_pickup = delivered + picked_up
+        else:
+            delivered = rsvn = size_s = size_m = size_l = 0.0
+            delivered_pickup = _num(_get(idx, "deliveredpickup"))
+        daily.append([
+            day, driver_idx(name), delivered_pickup, _num(_get(idx, "sumofparcelsonroute")), _pct(_get(idx, "successrate")),
+            delivered, rsvn, size_s, size_m, size_l,
+        ])
 
     return {"view": view, "drivers": drivers, "rows": rows, "daily": daily}
 
@@ -208,8 +268,11 @@ class KpiHybridResponse(BaseModel):
     view: str
     sources: dict[str, str] = {}
     drivers: list[KpiDriver] = []
-    rows: list[list] = []   # [period, driver#, delivered+pickup, on route, attendance days, productivity, success %]
-    daily: list[list] = []  # [date, driver#, delivered+pickup, on route, success %]
+    # [period, driver#, delivered+pickup, on route, attendance days, productivity, success %,
+    #  productivity (delivered only), productivity (delivered+pickup+RSVN waypoint), size S, size M, size L]
+    rows: list[list] = []
+    # [date, driver#, delivered+pickup, on route, success %, delivered only, RSVN waypoints, size S, size M, size L]
+    daily: list[list] = []
 
 
 @router.get("/api/kpi/hybrid", response_model=KpiHybridResponse)
@@ -221,9 +284,15 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
     force = refresh and user.role in ("admin", "manager")
     plan = [
         ("performance", f"hybrid_{view}", _QUESTION_FOR_VIEW[view]),
+        ("sizing", f"hybrid_{view}_sizing", _QUESTION_FOR_VIEW_SIZING[view]),
         ("daily", "hybrid_daily", mb.QUESTION_HYBRID_DAILY),
+        ("daily_sizing", "hybrid_daily_sizing", mb.QUESTION_HYBRID_DAILY_SIZING),
         ("drivers", "hybrid_data", mb.QUESTION_HYBRID_DATA),
     ]
+    # sizing / daily_sizing are optional companions (2026-10-01) -- a failure fetching them shouldn't surface as
+    # the page's error when the core performance/daily/drivers data loaded fine; build_payload already falls
+    # back cleanly to the old numbers for any driver+period they don't cover.
+    optional = {"sizing", "daily_sizing"}
     got: dict[str, list[dict]] = {}
     sources: dict[str, str] = {}
     whens: list[str] = []
@@ -232,7 +301,10 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
         try:
             rows, label, when = await _source(dataset, card, force)
         except mb.MetabaseError as exc:
-            errors.append(str(exc))
+            if name in optional:
+                log.warning("Hybrid Productivity sizing feeder (%s) unavailable -- falling back to the old numbers: %s", name, exc)
+            else:
+                errors.append(str(exc))
             continue
         if rows is not None:
             got[name] = rows
@@ -242,7 +314,7 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
     base = {"configured": mb.configured(), "view": view, "sources": sources}
     if "performance" not in got:
         return {**base, "has_data": False, "error": errors[0] if errors else None}
-    payload = build_payload(view, got["performance"], got.get("daily", []), got.get("drivers", []))
+    payload = build_payload(view, got["performance"], got.get("daily", []), got.get("drivers", []), got.get("sizing", []), got.get("daily_sizing", []))
     keep = {i for i, d in enumerate(payload["drivers"]) if _in_scope(d, user)}
     remap = {old: new for new, old in enumerate(sorted(keep))}
     return {
