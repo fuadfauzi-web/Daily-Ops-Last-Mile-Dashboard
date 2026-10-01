@@ -11,8 +11,12 @@ import Skeleton from "./components/Skeleton";
 // /api/dod) and rolls them up here -- only Capacity's Hub Size/Staff (uploaded workbook) and
 // Backlog radar's mitigation/rescue-plan notes (typed in by a manager) are new data.
 // Known gaps, not yet built: OPS attendance isn't split out from the HD/HR/ID/IR headcount
-// anywhere in the app yet; Control Tower Hypercare shipper aging needs that shipper list;
-// PTWH headcount has no confirmed source yet (editable manually in Backlog radar for now).
+// anywhere in the app yet. Control Tower Hypercare shipper (2026-10-01, confirmed by the Fleet
+// Manager) = the Shipper Radar SLA shippers Watson, Orca, Zalora NXD and Cold Chain, from
+// /api/shipper-watch -- no separate Hypercare list exists, this IS the Hypercare view. PTWH
+// headcount (2026-10-01, confirmed): no running-count source exists -- some stations have a
+// fixed daily PTWH, others only bring PTWH in for offdays/backlog, so it's manager-set per
+// station by design, not a gap (editable in Backlog radar).
 
 const int = (v) => Math.round(v || 0).toLocaleString();
 const dec1 = (v) => (Math.round((v || 0) * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -61,6 +65,7 @@ export default function ManagementViewTab({ me }) {
   const [dashboard, setDashboard] = useState(null);
   const [shipment, setShipment] = useState(null);
   const [dod, setDod] = useState(null);
+  const [shipper, setShipper] = useState(null);
   const [capacity, setCapacity] = useState(null);
   const [notes, setNotes] = useState(null);
   const [error, setError] = useState(null);
@@ -69,11 +74,14 @@ export default function ManagementViewTab({ me }) {
   const [saving, setSaving] = useState(false);
 
   const load = () => {
-    Promise.all([api.dashboard(), api.shipmentDetails(), api.dod(), api.managementCapacity(), api.managementNotes()])
-      .then(([d, s, dd, c, n]) => {
+    Promise.all([
+      api.dashboard(), api.shipmentDetails(), api.dod(), api.shipperWatch(), api.managementCapacity(), api.managementNotes(),
+    ])
+      .then(([d, s, dd, sh, c, n]) => {
         setDashboard(d);
         setShipment(s);
         setDod(dd);
+        setShipper(sh);
         setCapacity(c);
         setNotes(n);
       })
@@ -83,6 +91,7 @@ export default function ManagementViewTab({ me }) {
 
   const stations = dashboard?.stations || [];
   const shipStations = shipment?.stations || [];
+  const shipperStations = shipper?.stations || [];
   const notesByStation = useMemo(() => Object.fromEntries((notes || []).map((n) => [n.station_code, n])), [notes]);
 
   const subTabs = [
@@ -92,7 +101,7 @@ export default function ManagementViewTab({ me }) {
   ];
 
   if (error) return <div className="rounded-xl bg-white p-4 text-sm text-status-critical ring-1 ring-slate-200">{error}</div>;
-  if (!dashboard || !shipment || !dod || !capacity || !notes) return <Skeleton rows={6} />;
+  if (!dashboard || !shipment || !dod || !shipper || !capacity || !notes) return <Skeleton rows={6} />;
 
   // ---------------------------------------------------------------- Overall Health
   const OverallHealth = () => {
@@ -111,6 +120,16 @@ export default function ManagementViewTab({ me }) {
     const totalInHub = sum(stations, "total_in_hub");
     const ageGt3 = sum(stations, "age_gt3");
     const zeroAttempt = sum(stations, "zero_attempt_total");
+
+    // Control Tower Hypercare shippers (2026-10-01, confirmed by the Fleet Manager): Watson,
+    // Orca, Zalora NXD and Cold Chain from Shipper Radar's SLA view -- their 0-Attempt +
+    // Aging/OVFD/Other columns summed as one "stuck with a hypercare shipper" backlog number.
+    const watsonBacklog = sum(shipperStations, "watson_zero_attempt") + sum(shipperStations, "watson_aging");
+    const orcaBacklog = sum(shipperStations, "orca_ovfd") + sum(shipperStations, "orca_other");
+    const zaloraBacklog =
+      sum(shipperStations, "zalora_zero_attempt") + sum(shipperStations, "zalora_ovfd") + sum(shipperStations, "zalora_other");
+    const coldChainBacklog = sum(shipperStations, "cold_chain_zero_attempt") + sum(shipperStations, "cold_chain_aging");
+    const hypercareBacklog = watsonBacklog + orcaBacklog + zaloraBacklog + coldChainBacklog;
 
     const totalFresh = sum(shipStations, "total_fresh");
     const latlong = sum(shipStations, "latlong");
@@ -166,11 +185,18 @@ export default function ManagementViewTab({ me }) {
             <StatCard label="Rescue" value={int(attRescue)} sub={`${dec1(pct(attRescue, attTotal))}% of attendance`} />
           </CardRow>
         </Section>
-        <Section title="Aging health" note="Control Tower Hypercare shipper view not built yet -- needs that shipper list">
+        <Section title="Aging health" note="Hypercare = Watson, Orca, Zalora NXD, Cold Chain (Shipper Radar SLA)">
           <CardRow>
             <StatCard label="In Hub" value={int(totalInHub)} />
             <StatCard label="Age >3" value={int(ageGt3)} sub={`${dec1(pct(ageGt3, totalInHub))}% of In Hub`} />
             <StatCard label="0 Attempt" value={int(zeroAttempt)} sub={`${dec1(pct(zeroAttempt, totalInHub))}% of In Hub`} />
+            <StatCard label="Hypercare Backlog" value={int(hypercareBacklog)} sub={`${dec1(pct(hypercareBacklog, totalInHub))}% of In Hub`} />
+          </CardRow>
+          <CardRow>
+            <StatCard label="Watson" value={int(watsonBacklog)} sub="0 Attempt + Aging >D0" />
+            <StatCard label="Orca" value={int(orcaBacklog)} sub="OVFD + Other Status" />
+            <StatCard label="Zalora NXD" value={int(zaloraBacklog)} sub="0 Attempt + OVFD + Other" />
+            <StatCard label="Cold Chain" value={int(coldChainBacklog)} sub="0 Attempt + Aging >D0" />
           </CardRow>
         </Section>
         <Section title="Shipment Compliance">

@@ -22,7 +22,7 @@ export const CHANGELOG = [
     feature: "managementView",
     minRank: 2,
     points: [
-      "Overall health: Routing health, Attendance Rate (Hybrid vs Independent vs Rescue), Aging health, Shipment Compliance, and driver/rider attendance weekday vs weekend -- all rolled up nationwide from numbers the app already tracks.",
+      "Overall health: Routing health, Attendance Rate (Hybrid vs Independent vs Rescue), Aging health (including a Hypercare Backlog number for Watson/Orca/Zalora NXD/Cold Chain from Shipper Radar), Shipment Compliance, and driver/rider attendance weekday vs weekend -- all rolled up nationwide from numbers the app already tracks.",
       "Capacity: Hub Size and Staff headcount per station, from an admin-uploaded workbook.",
       "Backlog radar: the worst 20 stations by severity, each with a mitigation plan / rescue plan / deployment cost / PTWH count a manager can type in and save.",
     ],
