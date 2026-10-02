@@ -150,7 +150,7 @@ const SECTIONS = [
     body: () => (
       <Bullets
         items={[
-          <><strong>Total Fresh</strong> / <strong>Total Shipment</strong>: today's order volume and shipment count for the hub.</>,
+          <><strong>Total Fresh</strong>: Fresh Unscan + the four Within ... buckets below, always (they're the same parcels, just split by whether they've been scanned in yet and how long it took). <strong>Total Shipment</strong>: today's shipment count for the hub.</>,
           <><strong>Fresh Unscan</strong>: parcels with no first scan-in at the station yet (blank 1st sweep). <strong>Latlong</strong>: parcels whose current destination differs from the intended one (RTS excluded).</>,
           <><strong>Fresh Attempt %</strong>: parcels with a first attempt ÷ Total Fresh, target ≥96%.</>,
           <><strong>LH Timing</strong>: each line-haul trip's arrival time and parcel count (e.g. "10:32am · 45"). Colour bands: green before 10am, blue 10–11am, amber 11am–12pm, red after 12pm.</>,
