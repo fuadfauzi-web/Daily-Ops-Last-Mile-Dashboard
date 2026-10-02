@@ -8,7 +8,7 @@
   "paths": {
     "/api/management-view/capacity": {
       "get": {
-        "summary": "Management View -- Hub Size and Staff headcount per station, from the admin-uploaded Fleet Management workbook. Managers and admins only.",
+        "summary": "Management View -- Hub Size, Staff headcount, PTWH and parcel capacity per station plus the parcels-per-sqft setting. Managers and admins only.",
         "operationId": "capacity_api_management_view_capacity_get",
         "responses": {
           "200": {
@@ -37,7 +37,7 @@
         ]
       },
       "put": {
-        "summary": "Bulk save of the manager-keyed Capacity columns (PTWH headcount, parcel capacity) and the global parcels-per-sqft density.",
+        "summary": "Management View -- bulk save of manager-keyed PTWH headcount and parcel capacity per station, and the parcels-per-sqft setting. Managers and admins only.",
         "description": "Bulk save of the manager-keyed Capacity columns (PTWH headcount, parcel capacity) and the global parcels-per-sqft\ndensity. Only touches those columns -- a station's mitigation / rescue plan is left as it is.",
         "operationId": "put_capacity_api_management_view_capacity_put",
         "requestBody": {
@@ -77,7 +77,7 @@
     },
     "/api/management-view/notes": {
       "get": {
-        "summary": "Management View -- every station's backlog mitigation plan / rescue plan / deployment cost / PTWH count. Managers and admins only.",
+        "summary": "Management View -- every station's backlog mitigation plan, rescue plan, deployment cost, status, owner and target date. Managers and admins only.",
         "operationId": "list_notes_api_management_view_notes_get",
         "responses": {
           "200": {
@@ -112,7 +112,7 @@
     },
     "/api/management-view/notes/{station_code}": {
       "put": {
-        "summary": "Management View -- save one station's backlog mitigation plan / rescue plan / deployment cost / PTWH count. Managers and admins only.",
+        "summary": "Management View -- save one station's backlog mitigation plan, rescue plan, deployment cost, status, owner and target date. Managers and admins only.",
         "operationId": "put_note_api_management_view_notes__station_code__put",
         "parameters": [
           {
@@ -142,6 +142,37 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StationNote"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/management-view/lh-trips": {
+      "get": {
+        "summary": "Management View -- line-haul trips (driver, station, arrival time, parcels) from the admin-uploaded Metabase 127512 file. Managers and admins only.",
+        "operationId": "lh_trips_api_management_view_lh_trips_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LhTripsResponse"
                 }
               }
             }
@@ -5116,14 +5147,7 @@
             "title": "Sources"
           },
           "parcels_per_sqft": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "number",
             "title": "Parcels Per Sqft"
           },
           "rows": {
@@ -6706,6 +6730,67 @@
           "parcels"
         ],
         "title": "LHTrip"
+      },
+      "LhTrip": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "title": "Day"
+          },
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "driver": {
+            "type": "string",
+            "title": "Driver"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "parcels": {
+            "type": "integer",
+            "title": "Parcels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "station_code",
+          "driver",
+          "time",
+          "parcels"
+        ],
+        "title": "LhTrip"
+      },
+      "LhTripsResponse": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/LhTrip"
+            },
+            "type": "array",
+            "title": "Trips"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "trips"
+        ],
+        "title": "LhTripsResponse"
       },
       "LostIn": {
         "properties": {

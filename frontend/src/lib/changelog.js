@@ -73,13 +73,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-01",
-    title: "New: Management View (Beta, staging only) -- a higher-level rollup for managers and admins",
+    title: "New: Management View (Beta, staging only) -- operation health, capacity and backlog for managers and admins",
     feature: "managementView",
     minRank: 2,
     points: [
-      "Overall health: Routing health, Attendance Rate (Hybrid vs Independent vs Rescue), Aging health (including a Hypercare Backlog number for Watson/Orca/Zalora NXD/Cold Chain from Shipper Radar), Shipment Compliance, and driver/rider attendance weekday vs weekend -- all rolled up nationwide from numbers the app already tracks.",
-      "Capacity: Hub Size and Staff headcount per station, from an admin-uploaded workbook.",
-      "Backlog radar: the worst 20 stations by severity, each with a mitigation plan / rescue plan / deployment cost / PTWH count a manager can type in and save.",
+      "Operation Health: pick a date (default yesterday, last two weeks) and Daily / Weekly. Routed, Delivered, Success rate, Routed % and attendance (Total / Hybrid / Independent / Rescue), Routed % buckets vs 0 Attempt, attendance vs volume at a parcels-per-driver target, rescue routes.",
+      "Aging health (Delivery >3 days, ATS >1 day, 0 Attempt, Hypercare shippers) with top stations, and Shipment compliance: LH timing buckets with the top 10 line-haul drivers (from an uploaded Metabase file) and the top 10 Latlong hubs.",
+      "Capacity: Staff and Hub Size from an uploaded workbook, manager-keyed PTWH, parcel capacity and how full each hub is, and weekday vs weekend driver attendance by region / zone / station.",
+      "Backlog Radar: top hubs by 0 Attempt or Age >3 (number or %), with a mitigation plan (status, owner, date) and rescue plan with deployment cost.",
     ],
   },
   {

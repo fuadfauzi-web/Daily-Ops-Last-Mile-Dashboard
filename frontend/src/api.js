@@ -188,6 +188,7 @@ export const api = {
   // Management View (2026-10-01): managers/admins only
   managementCapacity: () => request("/api/management-view/capacity"),
   managementCapacitySave: (payload) => request("/api/management-view/capacity", { method: "PUT", body: JSON.stringify(payload) }),
+  managementLhTrips: () => request("/api/management-view/lh-trips"),
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>
     request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),

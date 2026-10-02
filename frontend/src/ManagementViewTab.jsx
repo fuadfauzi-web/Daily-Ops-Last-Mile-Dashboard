@@ -11,8 +11,8 @@ import BacklogRadar from "./management/BacklogRadar";
 // captures: the daily Station Health + Route Monitoring + Shipment Details snapshot (/api/dod, current + last week), live Aging
 // Details and Shipper Radar. Only Capacity's Hub Size / Staff (uploaded workbook) and the manager-keyed PTWH, parcel capacity and
 // backlog plans are new data.
-// Open items: driver-level LH data (top 10 LH drivers per bucket -- no source in the app yet, stations are ranked instead);
-// the Hybrid/Independent attendance split is only recorded from 2 Oct onward; "OPS" attendance isn't split out anywhere.
+// LH drivers: Metabase question 127512 (movement_trips_enriched), uploaded by an admin; Redash's station-level LH Timing is the fallback.
+// Open items: the Hybrid/Independent attendance split is only recorded from 2 Oct onward; "OPS" attendance isn't split out anywhere.
 
 const SUB_TABS = [
   { key: "health", label: "Operation Health" },
@@ -28,10 +28,10 @@ export default function ManagementViewTab({ me }) {
   const load = () => {
     Promise.all([
       api.dod(), api.shipperWatch(), api.agingSummary("delivery"), api.agingSummary("ats"), api.agingSummary("zero_attempt"),
-      api.dashboard(), api.managementCapacity(), api.managementNotes(),
+      api.dashboard(), api.managementCapacity(), api.managementNotes(), api.managementLhTrips(),
     ])
-      .then(([dod, shipper, delivery, ats, zero, dashboard, capacity, notes]) =>
-        setData({ dod, shipper, aging: { delivery, ats, zero_attempt: zero }, dashboard, capacity, notes })
+      .then(([dod, shipper, delivery, ats, zero, dashboard, capacity, notes, lhTrips]) =>
+        setData({ dod, shipper, aging: { delivery, ats, zero_attempt: zero }, dashboard, capacity, notes, lhTrips })
       )
       .catch((e) => setError(e.message));
   };
@@ -50,7 +50,7 @@ export default function ManagementViewTab({ me }) {
   return (
     <div className="space-y-4">
       <TabBar tabs={SUB_TABS} activeKey={sub} onSelect={setSub} />
-      {sub === "health" && <OperationHealth dod={data.dod} shipper={data.shipper} aging={data.aging} />}
+      {sub === "health" && <OperationHealth dod={data.dod} shipper={data.shipper} aging={data.aging} lhTrips={data.lhTrips} me={me} reload={load} setError={setError} />}
       {sub === "capacity" && <CapacityView capacity={data.capacity} dod={data.dod} me={me} reload={load} setError={setError} />}
       {sub === "backlog" && <BacklogRadar dashboard={data.dashboard} notes={data.notes} reload={load} setError={setError} />}
     </div>

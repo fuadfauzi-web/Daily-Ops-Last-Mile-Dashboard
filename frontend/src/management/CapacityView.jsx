@@ -45,7 +45,9 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
     return { ...r, capacity_eff: cap, in_hub: inHubNow[r.station_code] ?? null, util: cap && inHubNow[r.station_code] != null ? pct(inHubNow[r.station_code], cap) : null };
   });
   const totalCap = sum(tableRows.filter((r) => r.capacity_eff), "capacity_eff");
-  const capHubsInHub = sum(tableRows.filter((r) => r.capacity_eff && r.in_hub != null), "in_hub");
+  const withBoth = tableRows.filter((r) => r.capacity_eff && r.in_hub != null);
+  const capHubsInHub = sum(withBoth, "in_hub");
+  const capHubsCap = sum(withBoth, "capacity_eff");
 
   // ---- attendance by weekday / weekend, per day or per week, grouped by region / zone / station
   const days = dod.days;
@@ -155,7 +157,7 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
           <StatCard
             label="Parcel capacity"
             value={totalCap ? int(totalCap) : "—"}
-            sub={totalCap ? `${dec1(pct(capHubsInHub, totalCap))}% filled now (hubs with a capacity)` : "set parcels per sqft or a hub capacity below"}
+            sub={totalCap ? `${dec1(pct(capHubsInHub, capHubsCap))}% filled now` : "needs hub sizes uploaded"}
           />
         </CardRow>
         {canUpload && (
@@ -198,12 +200,12 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
         <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
           Parcels per sqft
           <input
-            type="number" step="0.1" min="0" className={input} placeholder="e.g. 0.5"
+            type="number" step="0.1" min="0" className={input} placeholder="1"
             value={densityDraft !== null ? densityDraft : density ?? ""}
             onChange={(e) => setDensityDraft(e.target.value)}
           />
           <span className="text-[10px] text-slate-400">
-            capacity = sqft × this, unless a hub has its own parcel capacity typed below. Left blank until you set it -- there's no confirmed figure yet.
+            capacity = sqft × this (1 = one parcel per sqft), unless a hub has its own parcel capacity typed below.
           </span>
         </label>
         <SubHead>Hubs ({rows.length})</SubHead>

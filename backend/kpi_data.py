@@ -193,6 +193,12 @@ DATASETS: dict[str, dict] = {
         "hint": "the Fleet Management workbook's \"SH & FA Manpower\" sheet (one row per person) -- counted per station by Designation; re-upload whenever someone joins/resigns",
         "sheet": "SH & FA Manpower", "required": ["station", "designation"], "keep": ["station", "designation"],
     },
+    "lh_trips": {
+        "kpi": "management_view", "label": "Management View -- LH trips (drivers)", "link": "https://metabase.ninjavan.co/question/127512",
+        "hint": "Metabase question 127512 (Mgmt View: LH Trips to Station -- completed land-haul trips, last 14 days) -- Download results as .csv; gives the top 10 line-haul drivers per arrival bucket (without it the LH timing shows stations from Redash only)",
+        "sheet": None, "required": ["desthubname", "primarydrivername", "actualarrivaldatetime", "totalorders"],
+        "keep": ["desthubname", "primarydrivername", "actualarrivaldatetime", "totalorders", "vehiclenumber"],
+    },
     "opex_result": {
         "kpi": "opex", "label": "OPEX dashboard result", "link": "https://last-mile-dashboard.ninjavan.apps.substrait.build/",
         "hint": "the OPEX Last Mile Performance dashboard: pick the region / area and the dates, press Download CSV, then upload that file (any other table is shown as it is)",

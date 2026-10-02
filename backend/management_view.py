@@ -7,6 +7,7 @@ same upload-replaces-previous pattern as everything else in kpi_data.py) and Bac
 rescue plan / deployment cost / PTWH count, which are typed in by a manager, not pulled from anywhere.
 """
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 import db
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
-from stations import HUBS
+from stations import FULL_NAME_TO_HUB, HUBS
 
 log = logging.getLogger("management_view")
 router = APIRouter()
@@ -84,19 +85,22 @@ class CapacityRow(BaseModel):
 
 class CapacityResponse(BaseModel):
     sources: dict[str, str | None]
-    parcels_per_sqft: float | None  # global density; capacity = sqft x this unless a station has its own parcel_capacity
+    parcels_per_sqft: float  # global density (default 1 = capacity follows sqft); capacity = sqft x this unless a hub has its own parcel_capacity
     rows: list[CapacityRow]
 
 
 _SETTING_PARCELS_PER_SQFT = "parcels_per_sqft"
 
 
-async def _parcels_per_sqft() -> float | None:
+DEFAULT_PARCELS_PER_SQFT = 1.0  # Fleet Manager 2026-10-02: capacity follows the hub's sqft (1 parcel per sqft) until a manager changes it
+
+
+async def _parcels_per_sqft() -> float:
     row = await db.fetch_one("SELECT setting_value FROM management_settings WHERE setting_key=%s", (_SETTING_PARCELS_PER_SQFT,))
     try:
-        return float(row[0]) if row and row[0] not in (None, "") else None
+        return float(row[0]) if row and row[0] not in (None, "") else DEFAULT_PARCELS_PER_SQFT
     except ValueError:
-        return None
+        return DEFAULT_PARCELS_PER_SQFT
 
 
 @router.get("/api/management-view/capacity", response_model=CapacityResponse)
@@ -237,3 +241,56 @@ async def put_note(station_code: str, payload: NoteIn, user: CurrentUser = Depen
             (*values, station_code),
         )
     return _note_row((station_code, *values))
+
+
+# ---- LH trips (2026-10-02): the line-haul trips that arrived at each station, with the driver, from Metabase question 127512
+# (movement_trips_enriched, completed LAND_HAUL). The deployed app can't read Metabase, so an admin uploads that question's CSV
+# (last 14 days) like every other Metabase feeder; Redash's station-level LH Timing stays the fallback when nothing is uploaded.
+class LhTrip(BaseModel):
+    day: str
+    station_code: str
+    driver: str
+    time: str  # HH:MM, Malaysia time
+    parcels: int
+
+
+class LhTripsResponse(BaseModel):
+    source: str | None
+    trips: list[LhTrip]
+
+
+def _arrival_time(value) -> str:
+    """HH:MM (24h) from an ISO timestamp or Metabase's formatted "September 18, 2026, 12:14 AM"; '' when there is none."""
+    s = str(value or "").strip()
+    m = re.search(r"[T\s](\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?", s)
+    if not m:
+        return ""
+    h, mi, ap = int(m.group(1)), m.group(2), (m.group(3) or "").lower()
+    if ap == "pm" and h < 12:
+        h += 12
+    elif ap == "am" and h == 12:
+        h = 0
+    return f"{h:02d}:{mi}"
+
+
+@router.get("/api/management-view/lh-trips", response_model=LhTripsResponse)
+async def lh_trips(user: CurrentUser = Depends(get_current_user)):
+    _require_manager(user)
+    up = await kd.load_rows("lh_trips")
+    if not up:
+        return {"source": None, "trips": []}
+    meta, rows = up
+    trips = []
+    for r in rows:
+        idx = {kd.norm(k): v for k, v in r.items()}
+        dest = str(idx.get("desthubname") or "").strip()
+        code = dest if dest in HUBS else FULL_NAME_TO_HUB.get(dest)
+        day, time = kd.to_iso_day(idx.get("actualarrivaldatetime")), _arrival_time(idx.get("actualarrivaldatetime"))
+        if not code or not day or not time:
+            continue  # sorting hubs / middle-mile nodes, or a trip with no arrival
+        try:
+            parcels = int(float(str(idx.get("totalorders") or 0).replace(",", "")))
+        except ValueError:
+            parcels = 0
+        trips.append({"day": day, "station_code": code, "driver": str(idx.get("primarydrivername") or "").strip() or "(no driver)", "time": time, "parcels": parcels})
+    return {"source": f"{meta['filename']} ({str(meta['uploaded_at'])[:10]})", "trips": trips}

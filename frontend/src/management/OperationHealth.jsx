@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { api } from "../api";
 import DataTable from "../components/DataTable";
 import SegmentedControl from "../components/SegmentedControl";
 import {
@@ -35,8 +36,9 @@ const LH_BUCKETS = [
 ];
 const aged3 = (r) => (r.age_4_6 || 0) + (r.age_7_plus || 0);
 const agedD0 = (r) => (r.total || 0) - (r.age_0 || 0);
+const agedGt1 = (r) => (r.total || 0) - (r.age_0 || 0) - (r.age_1 || 0);
 
-export default function OperationHealth({ dod, shipper, aging }) {
+export default function OperationHealth({ dod, shipper, aging, lhTrips, me, reload, setError }) {
   const days = dod.days;
   const weeks = useMemo(() => [...new Set(days.map(weekStartOf))], [days]);
   const [grain, setGrain] = useState("daily");
@@ -107,6 +109,39 @@ export default function OperationHealth({ dod, shipper, aging }) {
     return { ...b, list, count: list.length, parcels: sum(list, "parcels") };
   });
   const openLhBucket = lhBuckets.find((b) => b.key === openLh) || lhBuckets[0];
+  // Driver view (Metabase 127512, uploaded): every completed land-haul trip that arrived at a station that day, bucketed by its own
+  // arrival hour; a driver's volume in a bucket = the parcels on their trips arriving in it.
+  const dayTrips = (lhTrips?.trips || []).filter((t) => t.day === lhDay);
+  const tripBucket = (t, b) => b.test(parseInt(t.time.slice(0, 2), 10));
+  const driverRank = (b) => {
+    const by = new Map();
+    dayTrips.filter((t) => tripBucket(t, b)).forEach((t) => {
+      const d = by.get(t.driver) || { driver: t.driver, trips: 0, parcels: 0, stations: new Set(), latest: "" };
+      d.trips += 1; d.parcels += t.parcels; d.stations.add(t.station_code);
+      if (t.time > d.latest) d.latest = t.time;
+      by.set(t.driver, d);
+    });
+    return [...by.values()].map((d) => ({ ...d, stationCount: d.stations.size })).sort((a, c) => c.parcels - a.parcels);
+  };
+  const driverBuckets = lhBuckets.map((b) => {
+    const list = driverRank(b);
+    return { ...b, drivers: list, trips: sum(list, "trips"), tripParcels: sum(list, "parcels") };
+  });
+  const openDrivers = driverBuckets.find((b) => b.key === openLh) || driverBuckets[0];
+  const hasDrivers = dayTrips.length > 0;
+  const [uploadingLh, setUploadingLh] = useState(false);
+  const uploadLh = async (file) => {
+    if (!file) return;
+    setUploadingLh(true);
+    try {
+      await api.kpiUpload("lh_trips", file);
+      reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploadingLh(false);
+    }
+  };
 
   const latlongTop = [...stations].filter((s) => s.latlong > 0).sort((a, b) => b.latlong - a.latlong).slice(0, 10);
 
@@ -115,12 +150,12 @@ export default function OperationHealth({ dod, shipper, aging }) {
   const deliveryRows = agingRows("delivery"), atsRows = agingRows("ats"), zeroRows = agingRows("zero_attempt");
   const deliveryAged = sum(deliveryRows.map((r) => ({ v: aged3(r) })), "v");
   const deliveryTotal = sum(deliveryRows, "total");
-  const atsAged = sum(atsRows.map((r) => ({ v: aged3(r) })), "v");
+  const atsAged = sum(atsRows.map((r) => ({ v: agedGt1(r) })), "v");
   const zeroTotal = sum(zeroRows, "total");
   const zeroAgedD0 = sum(zeroRows.map((r) => ({ v: agedD0(r) })), "v");
   const topBy = (rows, score, n) => [...rows].map((r) => ({ ...r, _score: score(r) })).filter((r) => r._score > 0).sort((a, b) => b._score - a._score).slice(0, n);
   const topDelivery = topBy(deliveryRows, aged3, 10);
-  const topAts = topBy(atsRows, aged3, 3);
+  const topAts = topBy(atsRows, agedGt1, 3);
   const topZero = topBy(zeroRows, agedD0, 10);
 
   // ---- Hypercare (live): Watson, Orca, Zalora NXD, Cold Chain from Shipper Radar
@@ -321,7 +356,7 @@ export default function OperationHealth({ dod, shipper, aging }) {
       <Section title="Aging health" note={`Live -- latest refresh${aging.delivery?.captured_at ? ` (${aging.delivery.captured_at.slice(0, 16).replace("T", " ")} UTC)` : ""}, not date-driven`}>
         <CardRow>
           <StatCard label="Aging Delivery >3 days" value={int(deliveryAged)} sub={`${dec1(pct(deliveryAged, deliveryTotal))}% of ${int(deliveryTotal)} at their hub`} tone="warn" />
-          <StatCard label="Aging ATS >3 days" value={int(atsAged)} sub="parcels not at their destination hub" />
+          <StatCard label="Aging ATS >1 day" value={int(atsAged)} sub="parcels not at their destination hub" />
           <StatCard label="0 Attempt older than D0" value={int(zeroAgedD0)} sub={`${dec1(pct(zeroAgedD0, zeroTotal))}% of ${int(zeroTotal)} 0 Attempt`} />
         </CardRow>
         <div className="grid gap-3 xl:grid-cols-2">
@@ -349,12 +384,12 @@ export default function OperationHealth({ dod, shipper, aging }) {
           />
         </div>
         <DataTable
-          title="Aging ATS >3 -- top 3 stations"
+          title="Aging ATS >1 day -- top 3 stations"
           columns={[
             { key: "station_name", label: "Station", align: "left", sticky: true },
-            { key: "_score", label: "Age >3", render: (r) => int(r._score) },
+            { key: "_score", label: "Older than 1 day", render: (r) => int(r._score) },
             { key: "total", label: "ATS parcels", render: (r) => int(r.total) },
-            { key: "pct", label: "% aged >3", render: (r) => `${dec1(pct(r._score, r.total))}%` },
+            { key: "pct", label: "% older than 1 day", render: (r) => `${dec1(pct(r._score, r.total))}%` },
           ]}
           rows={topAts}
           rowKey={(r) => r.station_code}
@@ -394,26 +429,57 @@ export default function OperationHealth({ dod, shipper, aging }) {
             { key: "count", label: "Stations", render: (r) => int(r.count) },
             { key: "parcels", label: "LH parcels", render: (r) => int(r.parcels) },
             { key: "share", label: "% of stations", render: (r) => `${dec1(pct(r.count, lhStations.length))}%` },
+            ...(hasDrivers
+              ? [
+                  { key: "trips", label: "Trips", render: (r) => int(r.trips) },
+                  { key: "drivers", label: "Drivers", render: (r) => int(r.drivers.length) },
+                ]
+              : []),
           ]}
-          rows={lhBuckets}
+          rows={driverBuckets}
           rowKey={(r) => r.key}
           rowClassName={(r) => (r.key === openLh ? "bg-brand/10" : "")}
           onRowClick={(r) => setOpenLh(r.key)}
           emptyMessage="No LH trips recorded."
         />
-        <DataTable
-          title={`Top 10 stations by LH volume -- ${openLhBucket.label}`}
-          titleExtra={<span className="text-[10px] text-slate-400">driver-level LH data isn't in the app yet, so this ranks stations</span>}
-          columns={[
-            { key: "station_name", label: "Station", align: "left", sticky: true },
-            { key: "region", label: "Region" },
-            { key: "time", label: "Latest arrival", render: (r) => r.time.slice(11, 16) },
-            { key: "parcels", label: "LH parcels", render: (r) => int(r.parcels) },
-          ]}
-          rows={openLhBucket.list.slice(0, 10)}
-          rowKey={(r) => r.station_code}
-          emptyMessage="No stations in this bucket."
-        />
+        {hasDrivers ? (
+          <DataTable
+            title={`Top 10 LH drivers by volume -- ${openDrivers.label}`}
+            titleExtra={<span className="text-[10px] text-slate-400">{openDrivers.trips} trips · {openDrivers.drivers.length} drivers in this bucket · {lhTrips.source}</span>}
+            columns={[
+              { key: "driver", label: "Driver", align: "left", sticky: true },
+              { key: "parcels", label: "Parcels", render: (r) => int(r.parcels) },
+              { key: "trips", label: "Trips", render: (r) => int(r.trips) },
+              { key: "stationCount", label: "Stations", render: (r) => int(r.stationCount) },
+              { key: "latest", label: "Latest arrival" },
+            ]}
+            rows={openDrivers.drivers.slice(0, 10)}
+            rowKey={(r) => r.driver}
+            emptyMessage="No LH trips in this bucket."
+          />
+        ) : (
+          <DataTable
+            title={`Top 10 stations by LH volume -- ${openLhBucket.label}`}
+            titleExtra={<span className="text-[10px] text-slate-400">Redash timing (stations). Upload Metabase 127512 for LH drivers{lhDay ? ` -- no driver trips for ${dayLabel(lhDay)} yet` : ""}</span>}
+            columns={[
+              { key: "station_name", label: "Station", align: "left", sticky: true },
+              { key: "region", label: "Region" },
+              { key: "time", label: "Latest arrival", render: (r) => r.time.slice(11, 16) },
+              { key: "parcels", label: "LH parcels", render: (r) => int(r.parcels) },
+            ]}
+            rows={openLhBucket.list.slice(0, 10)}
+            rowKey={(r) => r.station_code}
+            emptyMessage="No stations in this bucket."
+          />
+        )}
+        {me?.role === "admin" && (
+          <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            Upload LH trips (Metabase question 127512, CSV, last 14 days)
+            <input type="file" accept=".csv,.xlsx,.xls" disabled={uploadingLh} onChange={(e) => uploadLh(e.target.files[0])} />
+            {uploadingLh && <span>Uploading…</span>}
+            {lhTrips?.source && <span className="text-slate-400">current: {lhTrips.source}</span>}
+          </label>
+        )}
         <SubHead>Latlong -- top 10 hubs</SubHead>
         <CardRow>
           <StatCard label="Total Fresh" value={int(tot.fresh)} />
