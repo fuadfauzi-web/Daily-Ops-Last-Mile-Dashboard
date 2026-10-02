@@ -17,6 +17,13 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-02",
+    title: "Shipment Details: Total Fresh now always adds up",
+    points: [
+      "Total Fresh is now Fresh Unscan + the four Within 1h/1-2h/2-3h/3h+ buckets, added together -- they used to come from a separate query that could disagree with the breakdown. A parcel with a missing or inconsistent processing timestamp now falls into 3h+ instead of being silently left out of both.",
+    ],
+  },
+  {
     date: "2026-10-01",
     title: "New: Management View (Beta, staging only) -- a higher-level rollup for managers and admins",
     feature: "managementView",

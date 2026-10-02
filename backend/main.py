@@ -288,7 +288,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         missing_details_by_station, missing_details_tn_rows = build_missing_details(
             missing_rows, cod_threshold, item_keywords
         )
-        del missing_rows, unsweep_rows
+        del missing_rows, unsweep_rows, shipment_rows  # Shipment Details derives its own Total Fresh below, doesn't need these
 
         routed_rows = await _fetch(QUERY_DELIVERY_PERFORMANCE)
         routed_by_station, driver_rows = build_routed_view(routed_rows)
@@ -297,8 +297,8 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
 
         tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
         lh_rows = await _fetch(QUERY_LH_TIMING)
-        shipment_by_station, shipment_tn_details, shipment_timelines = build_shipment_details(shipment_rows, tracker_rows, lh_rows)
-        del shipment_rows, tracker_rows, lh_rows
+        shipment_by_station, shipment_tn_details, shipment_timelines = build_shipment_details(tracker_rows, lh_rows)
+        del tracker_rows, lh_rows
 
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
         restock_rows = await _fetch(QUERY_RESTOCK_NXD)

@@ -465,7 +465,7 @@ def _empty_shipment_row(hub_code: str) -> dict:
 
 
 def build_shipment_details(
-    total_shipments_rows: list[dict], tracker_rows: list[dict], lh_rows: list[dict],
+    tracker_rows: list[dict], lh_rows: list[dict],
 ) -> tuple[dict[str, dict], dict[str, dict], dict[str, dict]]:
     """Returns ({hub_code: shipment_detail_row}, {hub_code: {metric: [tracking_id]}},
     timelines) -- timelines is {hub_code: {"sweep": [24], "attempt": [24], "success": [24],
@@ -473,15 +473,17 @@ def build_shipment_details(
     whose 1st_sweep_at_WM_station_datetime (column H) / first_attempt_datetime /
     success_datetime / line-haul arrival_datetime (2026-10-01 feedback) fall in that
     hour. Per station (not nationwide) so the Shipment Details timeline chart can follow
-    the region/zone/station filters (2026-09-24 feedback)."""
+    the region/zone/station filters (2026-09-24 feedback).
+
+    Total Fresh (2026-10-02 feedback): used to come from a separate query (653, "per-hub
+    total orders today"), which doesn't share tracker_rows' row-set or hub-matching field
+    (dest_hub_name vs shp_dest_hub_name below), so Fresh Unscan + the process-duration
+    buckets didn't reliably add up to it. Total Fresh is now DERIVED as that sum instead
+    -- every tracker row for a hub lands in exactly Fresh Unscan or one process bucket
+    (never both, never neither), so the identity holds by construction."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
     timelines = {hub: {"sweep": [0] * 24, "attempt": [0] * 24, "success": [0] * 24, "lh": [0] * 24} for hub in HUBS}
-    for r in total_shipments_rows:
-        raw_name = (r.get("dest_hub_name") or "").strip().lower()
-        hub = FULL_NAME_TO_HUB.get(raw_name)
-        if hub in by_station:
-            by_station[hub]["total_fresh"] = r.get("total_orders") or 0
 
     for r in tracker_rows:
         hub = r.get("shp_dest_hub_name")
@@ -490,15 +492,6 @@ def build_shipment_details(
             continue
         tn = r.get("tracking_id")
         tag = (r.get("tag") or "").upper()
-
-        # Fresh Unscan: blank 1st_sweep_at_WM_station_datetime (2026-09-23 feedback:
-        # briefly switched to 1st_dest_hub_sweep_after_shipment_completion_datetime,
-        # switched back to this one per Fleet Manager confirmation -- the field
-        # itself is correctly named now, matching the Redash schema change; the
-        # earlier code's bug was the missing "_datetime" suffix, not the column).
-        if not r.get("1st_sweep_at_WM_station_datetime"):
-            row["fresh_unscan"] += 1
-            tn_details[hub]["fresh_unscan"].append(tn)
 
         # Latlong: shp_dest_hub_name (intended dest) differs from dest_hub_name
         # (current dest) -- but not when either side is an RTS, which the tag
@@ -519,27 +512,40 @@ def build_shipment_details(
         if success_dt is not None:
             timelines[hub]["success"][success_dt.hour] += 1
 
-        # Process duration: how long between the shipment arriving at the
-        # station (shipment_completion_datetime, column G) and it actually
-        # getting scanned in (1st_sweep_at_WM_station_datetime, column H --
-        # 2026-09-24 feedback: was column I, switched to H to match Fresh
-        # Unscan's own definition of "scanned in"). Also feeds sweep_timeline
-        # (hour-of-day the scan happened, nationwide) for the timeline chart.
-        completion_dt = _parse_dt(r.get("shipment_completion_datetime"))
-        swept_dt = _parse_dt(r.get("1st_sweep_at_WM_station_datetime"))
-        if completion_dt is not None and swept_dt is not None and swept_dt >= completion_dt:
-            duration_hours = (swept_dt - completion_dt).total_seconds() / 3600
-            if duration_hours <= 1:
-                bucket = "process_within_1h"
-            elif duration_hours <= 2:
-                bucket = "process_within_2h"
-            elif duration_hours <= 3:
-                bucket = "process_within_3h"
+        # Fresh Unscan vs process-duration bucket: EVERY tracker row lands in exactly one
+        # of these five (2026-10-02 feedback -- they must add up to Total Fresh, see the
+        # docstring). Fresh Unscan = blank 1st_sweep_at_WM_station_datetime (2026-09-23
+        # feedback: the field itself is correctly named now, matching the Redash schema
+        # change; the earlier code's bug was the missing "_datetime" suffix, not the
+        # column). A swept row is bucketed by how long it took from the shipment arriving
+        # at the station (shipment_completion_datetime, column G) to getting scanned in
+        # (1st_sweep_at_WM_station_datetime, column H -- 2026-09-24 feedback: was column
+        # I, switched to H to match Fresh Unscan's own definition of "scanned in"); a
+        # swept row whose shipment_completion_datetime is missing or inconsistent (swept
+        # before it "arrived") still can't be dropped, so it's bucketed as 3h+ -- the
+        # conservative case -- rather than silently uncounted.
+        if not r.get("1st_sweep_at_WM_station_datetime"):
+            row["fresh_unscan"] += 1
+            tn_details[hub]["fresh_unscan"].append(tn)
+        else:
+            completion_dt = _parse_dt(r.get("shipment_completion_datetime"))
+            swept_dt = _parse_dt(r.get("1st_sweep_at_WM_station_datetime"))
+            if completion_dt is not None and swept_dt is not None and swept_dt >= completion_dt:
+                duration_hours = (swept_dt - completion_dt).total_seconds() / 3600
+                if duration_hours <= 1:
+                    bucket = "process_within_1h"
+                elif duration_hours <= 2:
+                    bucket = "process_within_2h"
+                elif duration_hours <= 3:
+                    bucket = "process_within_3h"
+                else:
+                    bucket = "process_over_3h"
             else:
                 bucket = "process_over_3h"
             row[bucket] += 1
             tn_details[hub][bucket].append(tn)
-            timelines[hub]["sweep"][swept_dt.hour] += 1
+            if swept_dt is not None:
+                timelines[hub]["sweep"][swept_dt.hour] += 1
 
     for r in lh_rows:
         hub = r.get("dest_hub_name")
@@ -566,6 +572,7 @@ def build_shipment_details(
             shipment_totals[hub] += r.get("total_shipments") or 0
     for hub, row in by_station.items():
         row["total_shipment"] = shipment_totals[hub]
+        row["total_fresh"] = row["fresh_unscan"] + sum(row[k] for k in PROCESS_BUCKET_KEYS)
         row["fresh_attempt_pct"] = (
             round(row["fresh_attempt_count"] / row["total_fresh"] * 100, 1) if row["total_fresh"] else 0.0
         )
