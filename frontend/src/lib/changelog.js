@@ -35,6 +35,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-02",
+    title: "Staff & Org Chart: edit HQ staff too, and posting is now separate from access (staging only)",
+    points: [
+      "The Fleet Admin team can now add, move and remove HQ staff (HOD, Manager, OPEX, Recovery, Restock, other Fleet Admins) as well as Region and Station staff. Posting is where a person works; their access (what they can see) starts the same.",
+      "Access is changed only in Settings -> Users, by a Manager / HOD, Region Head / RFS or the Superadmin -- for example to give someone sent to rescue another station or region that place's data. The staff list shows Custom for those people and keeps their access when the Fleet Admin team moves their posting. The org chart and PIC search follow the posting, so a person covering another station still shows at their own.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "New: Staff & Org Chart tab for the Fleet Admin team (staging only), and every Station Head / Fleet Assistant now has access",
     points: [
       "The Fleet Admin team keeps the staff list in one place: add a joiner, move someone to another station, change a position, remove a leaver. The same list gives people dashboard access and feeds the PIC box, so the PIC search stays right when staff change.",

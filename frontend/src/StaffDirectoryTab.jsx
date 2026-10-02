@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import MultiSelect from "./components/MultiSelect";
-import { POSITIONS, positionLabel } from "./lib/roles";
+import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
 
-// "Staff & Org Chart" (2026-10-02, staging): the one place the Fleet Admin team keeps the staff list right -- who the Region Heads,
-// RFS, Station Heads and Fleet Assistants are, and where. It edits the same users table that gives people access and feeds the PIC
-// box, so a change here is live everywhere at once. The Org chart view is built from that list and shows vacant seats.
+// "Staff & Org Chart" (2026-10-02, staging): the one place the Fleet Admin team keeps the staff list right -- every person's position
+// and where they are posted, HQ staff included. It feeds the PIC box and the org chart. It does NOT edit access (what a person may
+// see): that starts out the same as the posting and is changed only by a Manager / HOD, a Region Head / RFS or the Superadmin in
+// Settings -> Users, e.g. to give someone sent to rescue another station or region that place's data. The list shows when it differs.
 const SHORT = { region_head: "RH", rfs: "RFS", station_head: "SH", fleet_assistant: "FA" };
-const POSITION_OPTIONS = ["region_head", "rfs", "station_head", "fleet_assistant"];
 const emptyForm = { email: "", name: "", role: "fleet_assistant", scope_type: "station", scope_values: [] };
+// Every position the Fleet Admin team may set (the Superadmin role is not one of them), grouped like the roles are.
+const POSITION_GROUPS = GROUPS.map((g) => ({ ...g, positions: g.positions.filter((p) => p !== "admin") }));
 
-// "Name (SH - Larkin)": the same label the backend builds for a person added without a name (main.py _auto_display_name).
-const composeName = (f) => `${f.name.trim()} (${SHORT[f.role] || positionLabel(f.role)} - ${f.scope_values.join(" & ")})`;
-const plainName = (n) => (n || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
-const whereText = (u) => (u.scope_type === "all" || u.scope_type === "hq" ? "HQ" : (u.scope_values || []).join(", "));
+const whereText = (sc) => (!sc || sc.scope_type === "all" || sc.scope_type === "hq" ? "HQ" : (sc.scope_values || []).join(", "));
 
 function Person({ p, onEdit }) {
-  const label = plainName(p.name) || p.email;
+  const label = (p.name || "").replace(/\s*\([^)]*\)\s*$/, "").trim() || p.email;
   const body = (
     <>
       <span className="font-medium text-ink">{label}</span>
@@ -103,7 +102,7 @@ function OrgChart({ chart, onEdit }) {
 export default function StaffDirectoryTab({ me }) {
   const [view, setView] = useState("list");
   const [chart, setChart] = useState(null);
-  const [users, setUsers] = useState(null);
+  const [people, setPeople] = useState(null);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -116,7 +115,7 @@ export default function StaffDirectoryTab({ me }) {
 
   const load = () => {
     api.orgChart().then(setChart).catch((e) => setError(e.message));
-    api.users.list().then(setUsers).catch(() => setUsers([]));
+    api.staff.list().then((r) => setPeople(r.people)).catch(() => setPeople([]));
   };
   useEffect(() => {
     load();
@@ -129,17 +128,17 @@ export default function StaffDirectoryTab({ me }) {
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (users || [])
-      .filter((u) => roleFilter === "all" || u.role === roleFilter)
-      .filter((u) => !q || [u.email, u.display_name, positionLabel(u.role), ...(u.scope_values || [])].join(" ").toLowerCase().includes(q))
-      .sort((a, b) => (a.display_name || a.email).localeCompare(b.display_name || b.email));
-  }, [users, search, roleFilter]);
+    return (people || [])
+      .filter((u) => roleFilter === "all" || u.position === roleFilter || POSITIONS[u.position]?.group === roleFilter)
+      .filter((u) => !q || [u.email, u.name, positionLabel(u.position), ...(u.home.scope_values || [])].join(" ").toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [people, search, roleFilter]);
 
   const startEdit = (email) => {
-    const u = (users || []).find((x) => x.email.toLowerCase() === email.toLowerCase());
+    const u = (people || []).find((x) => x.email.toLowerCase() === email.toLowerCase());
     if (!u) return;
     setEditing(u.email);
-    setForm({ email: u.email, name: plainName(u.display_name), role: u.role, scope_type: u.scope_type, scope_values: u.scope_values || [] });
+    setForm({ email: u.email, name: u.name, role: u.position, scope_type: u.home.scope_type === "all" ? "hq" : u.home.scope_type, scope_values: u.home.scope_values || [] });
     setShowForm(true);
     setView("list");
     setError(null);
@@ -152,9 +151,11 @@ export default function StaffDirectoryTab({ me }) {
     setError(null);
   };
 
+  // HQ staff are based at HQ (or a dedicated region, like a regional Manager); region staff at zones / regions; station staff at a station.
   const pickRole = (role) => {
     const tier = POSITIONS[role]?.tier;
-    setForm((f) => ({ ...f, role, scope_type: tier === "region" && f.scope_type === "station" ? "zone" : tier === "station" ? "station" : f.scope_type, scope_values: [] }));
+    const type = tier === "station" ? "station" : tier === "region" ? (form.scope_type === "region" ? "region" : "zone") : form.scope_type === "region" ? "region" : "hq";
+    setForm((f) => ({ ...f, role, scope_type: type, scope_values: type === f.scope_type ? f.scope_values : [] }));
   };
 
   const submit = async (e) => {
@@ -163,10 +164,10 @@ export default function StaffDirectoryTab({ me }) {
     setBusy(true);
     try {
       if (!form.name.trim()) throw new Error("Type the person's name");
-      if (form.scope_values.length === 0) throw new Error("Pick where they work");
-      const payload = { email: form.email.trim(), role: form.role, scope_type: form.scope_type, scope_values: form.scope_values, display_name: composeName(form) };
-      if (editing) await api.users.update(editing, payload);
-      else await api.users.add(payload);
+      if (form.scope_type !== "hq" && form.scope_values.length === 0) throw new Error("Pick where they are based");
+      const payload = { email: form.email.trim(), name: form.name.trim(), role: form.role, scope_type: form.scope_type, scope_values: form.scope_type === "hq" ? [] : form.scope_values };
+      if (editing) await api.staff.update(editing, payload);
+      else await api.staff.add(payload);
       cancel();
       load();
     } catch (err) {
@@ -177,9 +178,9 @@ export default function StaffDirectoryTab({ me }) {
   };
 
   const remove = async (u) => {
-    if (!window.confirm(`Remove ${plainName(u.display_name) || u.email}? They lose their dashboard access and drop off the PIC list.`)) return;
+    if (!window.confirm(`Remove ${u.name}? They lose their dashboard access and drop off the PIC list.`)) return;
     try {
-      await api.users.remove(u.email);
+      await api.staff.remove(u.email);
       load();
     } catch (err) {
       setError(err.message);
@@ -197,8 +198,8 @@ export default function StaffDirectoryTab({ me }) {
         <div>
           <h2 className="font-display text-lg font-semibold text-ink">Staff &amp; Org Chart</h2>
           <p className="text-xs text-slate-500">
-            Who looks after each station, zone and region. This is the list the PIC box searches and the list that gives people access, so keep it current:
-            add new joiners, move people between stations, remove leavers.
+            Who is posted where, HQ staff included. The PIC box and the org chart follow this list, and a person's access starts out the same, so keep it
+            current: add new joiners, move people between stations, remove leavers.
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
@@ -228,20 +229,27 @@ export default function StaffDirectoryTab({ me }) {
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500" />
               <input required placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
               <select value={form.role} onChange={(e) => pickRole(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
-                {POSITION_OPTIONS.map((r) => <option key={r} value={r}>{positionLabel(r)}</option>)}
-                {!POSITION_OPTIONS.includes(form.role) && <option value={form.role}>{positionLabel(form.role)}</option>}
+                {POSITION_GROUPS.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.positions.map((r) => <option key={r} value={r}>{positionLabel(r)}</option>)}
+                  </optgroup>
+                ))}
+                {!POSITIONS[form.role] && <option value={form.role}>{form.role}</option>}
               </select>
               <div className="flex gap-2">
-                {tier === "region" && (
+                {tier !== "station" && (
                   <select value={form.scope_type} onChange={(e) => setForm({ ...form, scope_type: e.target.value, scope_values: [] })} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
-                    <option value="zone">Zone(s)</option>
+                    {tier !== "region" && <option value="hq">HQ</option>}
+                    {tier === "region" && <option value="zone">Zone(s)</option>}
                     <option value="region">Region(s)</option>
                   </select>
                 )}
-                <div className="min-w-0 flex-1">
-                  <MultiSelect placeholder={form.scope_type === "station" ? "Pick station(s)…" : form.scope_type === "zone" ? "Pick zone(s)…" : "Pick region(s)…"}
-                    options={scopeOptions} value={form.scope_values} onChange={(vals) => setForm({ ...form, scope_values: vals })} />
-                </div>
+                {form.scope_type !== "hq" && (
+                  <div className="min-w-0 flex-1">
+                    <MultiSelect placeholder={form.scope_type === "station" ? "Pick station(s)…" : form.scope_type === "zone" ? "Pick zone(s)…" : "Pick region(s)…"}
+                      options={scopeOptions} value={form.scope_values} onChange={(vals) => setForm({ ...form, scope_values: vals })} />
+                  </div>
+                )}
               </div>
               <div className="flex items-start gap-2">
                 <button type="submit" disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">{editing ? "Save" : "Add"}</button>
@@ -255,11 +263,17 @@ export default function StaffDirectoryTab({ me }) {
               className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" />
             <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} aria-label="Filter by position" className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700">
               <option value="all">All positions</option>
-              {POSITION_OPTIONS.map((r) => <option key={r} value={r}>{positionLabel(r)}</option>)}
-              <option value="region">Region staff (position not set)</option>
-              <option value="station">Station staff (position not set)</option>
+              {POSITION_GROUPS.map((g) => (
+                <optgroup key={g.key} label={g.label}>
+                  {g.positions.map((r) => <option key={r} value={r}>{positionLabel(r)}</option>)}
+                </optgroup>
+              ))}
+              <optgroup label="Position not set yet">
+                <option value="region">Region staff</option>
+                <option value="station">Station staff</option>
+              </optgroup>
             </select>
-            <span className="text-xs text-slate-400">{users ? `${rows.length} of ${users.length} people` : ""}</span>
+            <span className="text-xs text-slate-400">{people ? `${rows.length} of ${people.length} people` : ""}</span>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -269,17 +283,27 @@ export default function StaffDirectoryTab({ me }) {
                   <th className="px-3 py-2 font-medium">Name</th>
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Position</th>
-                  <th className="px-3 py-2 font-medium">Where</th>
+                  <th className="px-3 py-2 font-medium">Posted at</th>
+                  <th className="px-3 py-2 font-medium">Access</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((u) => (
                   <tr key={u.email} className={`border-t border-slate-100 ${editing === u.email ? "bg-blue-50/50" : ""}`}>
-                    <td className="px-3 py-1.5">{plainName(u.display_name) || "-"}</td>
+                    <td className="px-3 py-1.5">{u.name}</td>
                     <td className="px-3 py-1.5 text-slate-500">{u.email}</td>
-                    <td className="px-3 py-1.5">{positionLabel(u.role)}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{whereText(u)}</td>
+                    <td className="px-3 py-1.5">{positionLabel(u.position)}</td>
+                    <td className="px-3 py-1.5 text-slate-500">{whereText(u.home)}</td>
+                    <td className="px-3 py-1.5 text-xs">
+                      {u.custom_access ? (
+                        <span title="Set by hand in Settings -> Users, e.g. covering another station or region" className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
+                          Custom: {whereText(u.access)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Same as posting</span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right">
                       {canEdit && (
                         <>
@@ -290,14 +314,16 @@ export default function StaffDirectoryTab({ me }) {
                     </td>
                   </tr>
                 ))}
-                {users && rows.length === 0 && (
-                  <tr><td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">Nobody matches.</td></tr>
+                {people && rows.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-400">Nobody matches.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           <p className="text-xs text-slate-400">
-            Managers, HOD and the other HQ staff are not edited here -- ask an admin. The list shows Region Heads, RFS, Station Heads and Fleet Assistants.
+            This list is where people are <strong>posted</strong>. What each person can <strong>see</strong> (their access) starts out the same and is
+            changed in Settings -&gt; Users by a Manager, HOD, Region Head / RFS or the Superadmin -- for example to give someone sent to rescue another
+            station or region that place's data. A posting change moves access with it, unless the access was set by hand (shown as Custom).
           </p>
         </>
       )}

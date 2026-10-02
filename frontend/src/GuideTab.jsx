@@ -343,9 +343,10 @@ const SECTIONS = [
         </p>
         <Bullets
           items={[
-            <><strong>Staff list</strong> -- every Region Head, RFS, Station Head and Fleet Assistant with their position and where they work. <em>Add a person</em> (email, name, position, station / zone / region), <em>Edit</em> to move someone or change their position, <em>Remove</em> for a leaver (they lose access and drop off the PIC list). Search by name, email, position, station or zone.</>,
+            <><strong>Staff list</strong> -- everyone with a position, HQ staff included (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock, Region Head, RFS, Station Head, Fleet Assistant), with where they are <em>posted</em>. <em>Add a person</em> (email, name, position, HQ / region / zone / station), <em>Edit</em> to move someone or change their position, <em>Remove</em> for a leaver (they lose access and drop off the PIC list). Search by name, email, position, station or zone. Only the Fleet Admin team and the Superadmin can edit this list.</>,
+            <><strong>Posting vs access</strong> -- the list is where people are posted; what each person can <em>see</em> (their access) starts out the same and moves with them. A Manager / HOD, Region Head / RFS or the Superadmin can widen someone's access in Settings -&gt; Users, for example when a person is sent to rescue another station or region; the list then shows <em>Custom</em> for that person and their posting changes no longer overwrite it. The Fleet Admin team does not edit access.</>,
             <><strong>Org chart</strong> -- HQ staff on top, then each region with its manager, each zone with its Region Head / RFS, and each station with its Station Head and Fleet Assistants. A station with no Station Head shows <em>Vacant</em> in red. Click a person to edit them.</>,
-            <>HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock) and Managers are not edited here -- ask an admin. Managers and admins can open the tab too.</>,
+            <>Managers, HOD, other HQ staff and admins can open the tab and read it, but cannot edit it.</>,
           ]}
         />
       </div>

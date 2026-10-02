@@ -34,6 +34,7 @@ from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
 import management_view
+import staff
 import recovery_lost
 import region_list
 from kpi_targets import router as kpi_targets_router
@@ -42,7 +43,6 @@ from kpi_rca import router as kpi_rca_router
 from tasklist import (
     next_owner_slot_label as tasklist_next_owner_slot,
     notification_counts as tasklist_counts,
-    on_user_deleted as tasklist_user_deleted,
     router as tasklist_router,
     urgent_owner_ack as tasklist_urgent_owner_ack,
     urgent_owner_slot as tasklist_urgent_owner_slot,
@@ -711,6 +711,7 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
 app.include_router(region_list.router)  # Admin: the station list from the Region List sheet (region_list.py)
@@ -3061,7 +3062,9 @@ async def urgent_pic_suggestions(q: str = "", user: CurrentUser = Depends(get_cu
         zones = {p[1] for p in places}
         regions = {p[2] for p in places}
         cover = await db.fetch_all(
-            "SELECT email, display_name, role, scope_type, scope_values FROM users WHERE scope_type NOT IN ('all', 'hq') AND LOWER(email) <> %s",
+            # by where they are POSTED (Staff & Org Chart), not by what they can see -- someone covering another station is still at home
+            "SELECT email, display_name, role, COALESCE(home_scope_type, scope_type), COALESCE(home_scope_values, scope_values) FROM users "
+            "WHERE COALESCE(home_scope_type, scope_type) NOT IN ('all', 'hq') AND LOWER(email) <> %s",
             (me,),
         )
         tiers: dict[int, list] = {0: [], 1: [], 2: []}
@@ -3487,8 +3490,8 @@ def _require_admin(user: CurrentUser) -> None:
 
 
 def _require_can_add_users(user: CurrentUser) -> None:
-    if user.role not in ("admin", "manager", "region") and _grantable_tiers(user) is None:
-        raise HTTPException(status_code=403, detail="Admin, Manager, Fleet Admin or Region staff access required")
+    if user.role not in ("admin", "manager", "region"):
+        raise HTTPException(status_code=403, detail="Superadmin, Manager / HOD or Region staff access required")
 
 
 # 2026-10-02: Region Heads / RFS / Managers now run the Users page for their own people, so what they can see,
@@ -3534,12 +3537,12 @@ _GRANTABLE_TIERS = {"manager": ("region", "station"), "region": ("station",)}
 
 
 def _grantable_tiers(acting: CurrentUser) -> tuple[str, ...] | None:
-    """What this person may add / edit / remove (None = nothing; admin is handled before this is asked). The Fleet Admin
-    position keeps the staff list for the whole country (2026-10-02: staff change, and the Fleet Admin team maintains
-    them) -- the same reach as a Manager, but only over Region and Station staff, never HQ staff."""
-    if acting.position == "fleet_admin" and acting.role == "hq_staff":
-        return _GRANTABLE_TIERS["manager"]
+    """What this person may add / edit / remove on the Users page, i.e. who may change ACCESS (None = nothing; the Superadmin
+    is handled before this is asked). Managers / HOD and Region staff only -- the Fleet Admin team keeps the staff list
+    (who is posted where) in Staff & Org Chart (staff.py) and does not edit access."""
     return _GRANTABLE_TIERS.get(acting.role)
+
+
 _TIER_NAMES = {"region": "Region staff", "station": "Station staff"}
 
 
@@ -3658,9 +3661,10 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
     if existing:
         raise HTTPException(status_code=409, detail="That email is already set up")
     await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
+        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",  # a new person's posting starts out the same as their access
         (payload.email, payload.role, payload.scope_type, _scope_values_json(payload.scope_values),
+         payload.scope_type, _scope_values_json(payload.scope_values),
          (payload.display_name or "").strip() or _auto_display_name(payload.email, payload.role, payload.scope_type, payload.scope_values),
          user.email),
     )
@@ -3700,9 +3704,9 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             skipped.append(email)
             continue
         await db.execute(
-            """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
-            (email, row.role, row.scope_type, _scope_values_json(row.scope_values),
+            """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.scope_type, _scope_values_json(row.scope_values),
              (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email),
         )
         added.append(email)
@@ -3741,68 +3745,8 @@ async def delete_user(email: str, user: CurrentUser = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="User not found")
     _require_can_manage_target(user, target[0])
     _require_target_in_scope(user, target[1], parse_scope_values(target[2]))
-    await db.execute("DELETE FROM users WHERE email=%s", (email,))
-    # Urgent TN items follow their owner: the ones this user created go with them,
-    # and any assigned to them are just unassigned (V27 migration).
-    await tasklist_user_deleted(email)
-    await db.execute("DELETE FROM urgent_tn_items WHERE LOWER(created_by) = %s", (email.lower(),))
-    await db.execute(
-        "UPDATE urgent_tn_items SET assignee_email = NULL, assignee_seen_at = NULL WHERE LOWER(assignee_email) = %s",
-        (email.lower(),),
-    )
+    await staff.purge_user(email)  # the person and what hangs off them (Urgent TN items ...), shared with Staff & Org Chart
     return {"ok": True}
-
-
-# 2026-10-02: the organisation chart -- HQ staff, then each region's manager, each zone's Region Head / RFS and each station's
-# Station Head / Fleet Assistants -- built from the same users table the PIC box reads, so there is one list to keep right.
-# Stations with nobody in a role show up as vacant. Read by HQ staff and above; the Fleet Admin team maintains the list in the
-# Staff & Org Chart tab through the ordinary /api/admin/users calls.
-def _org_person(email: str, role: str, name: str | None) -> dict:
-    return {"email": email, "position": role, "label": POSITIONS.get(role, (role,))[0], "name": name or email}
-
-
-@app.get("/api/org-chart")
-async def org_chart(user: CurrentUser = Depends(get_current_user)):
-    if user.role not in ("admin", "manager", "hq_staff"):
-        raise HTTPException(status_code=403, detail="HQ staff access required")
-    rows = await db.fetch_all("SELECT email, role, scope_type, scope_values, display_name FROM users ORDER BY display_name, email")
-    hq, by_region, by_zone, by_station = [], {}, {}, {}
-    for email, role, scope_type, raw, name in rows:
-        person = _org_person(email, role, name)
-        values = parse_scope_values(raw)
-        if scope_type in ("all", "hq"):
-            if role != "admin":
-                hq.append(person)
-        elif scope_type == "region":
-            for v in values:
-                by_region.setdefault(v, []).append(person)
-        elif scope_type == "zone":
-            for v in values:
-                by_zone.setdefault(v, []).append(person)
-        elif scope_type == "station":
-            for v in values:
-                by_station.setdefault(v, []).append(person)
-    regions = []
-    for region in REGIONS:
-        zones = []
-        for zone in ZONES_BY_REGION.get(region, []):
-            stations = []
-            for name, _full, z, r in sorted(HUBS.values(), key=lambda h: h[0]):
-                if z != zone or r != region:
-                    continue
-                people = by_station.get(name, [])
-                stations.append({
-                    "name": name,
-                    "heads": [p for p in people if p["position"] == "station_head"],
-                    "assistants": [p for p in people if p["position"] != "station_head"],  # Fleet Assistants, and anyone with the old unspecific 'station' title
-                })
-            zones.append({"name": zone, "leads": by_zone.get(zone, []), "stations": stations})
-        regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones})
-    return {
-        "hq": hq,
-        "regions": regions,
-        "can_edit": user.role in ("admin", "manager") or user.position == "fleet_admin",
-    }
 
 
 class StationMeta(BaseModel):

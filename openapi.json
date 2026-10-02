@@ -6,6 +6,190 @@
     "description": "Live nationwide operations dashboard for Ninja Van Malaysia's last-mile fleet team (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia -- East Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls parcel- and route-level data from Redash every 15 minutes and shows it per region, zone, station and driver: Action Board (SLA heatmap), Shipment Details (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route Monitoring (routed, attendance, OVFD, success and completion rates by driver type, old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU, Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a PIC with in-progress / closed status and notifications), DoD (Station Health day by day), a Task List (follow-ups, to-dos, assigned tasks) and a KPI page (Beta) with the weekly results, the OPEX result and RCA / analysis for Hybrid Productivity, Invalid POD, COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI targets per region that an admin sets. Every count opens its tracking numbers, with CSV export. Access is role-based (admin, manager, region, station) with multi-value region/zone/station scopes enforced in the backend; an admin can preview any role or user with the Role Tester. Users can send feedback (with an attachment) that admins reply to and close. For Fleet Managers and their regional and station teams. Every /api route answers for the signed-in user (Google SSO: the platform adds X-Forwarded-Email) and is limited to that user's role and region / zone / station scope."
   },
   "paths": {
+    "/api/staff": {
+      "get": {
+        "summary": "Staff list for Staff & Org Chart -- every person (not the Superadmin) with position, where they are posted, what they can see (access) and whether that access was set by hand. HQ staff and above.",
+        "operationId": "list_staff_api_staff_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "post": {
+        "summary": "Add a person to the staff list (posting = access to start with). Fleet Admin team and Superadmin only.",
+        "operationId": "add_staff_api_staff_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/staff/{email}": {
+      "patch": {
+        "summary": "Change a person's name, position or posting. Their access moves with it unless it was set by hand. Fleet Admin team and Superadmin only.",
+        "operationId": "update_staff_api_staff__email__patch",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Email"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "delete": {
+        "summary": "Remove a person from the staff list and the dashboard. Fleet Admin team and Superadmin only.",
+        "operationId": "delete_staff_api_staff__email__delete",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/org-chart": {
+      "get": {
+        "summary": "Staff & Org Chart -- HQ staff, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants (vacant seats show as empty), plus whether the caller can edit. HQ staff and above.",
+        "description": "HQ staff, then each region's manager, each zone's Region Head / RFS and each station's Station Head / Fleet Assistants --\nby where they are POSTED (not by what they can see), so someone covering another station for a week still shows at home.\nStations with nobody in a role show up as vacant.",
+        "operationId": "org_chart_api_org_chart_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/management-view/capacity": {
       "get": {
         "summary": "Management View -- Hub Size, Staff headcount, PTWH and parcel capacity per station plus the parcels-per-sqft setting. Managers and admins only.",
@@ -4343,35 +4527,6 @@
         },
         "tags": [
           "Admin"
-        ]
-      }
-    },
-    "/api/org-chart": {
-      "get": {
-        "summary": "Staff & Org Chart -- HQ staff, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants (vacant seats show as empty), plus whether the caller can edit. HQ staff and above.",
-        "operationId": "org_chart_api_org_chart_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Dashboard"
         ]
       }
     },
@@ -10285,6 +10440,42 @@
           "regions"
         ],
         "title": "ShipperWatchResponse"
+      },
+      "StaffIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type"
+          },
+          "scope_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "name",
+          "role",
+          "scope_type"
+        ],
+        "title": "StaffIn"
       },
       "StationMeta": {
         "properties": {

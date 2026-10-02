@@ -32,7 +32,7 @@ class CurrentUser:
     # 2026-10-02: the job title the account is stored with (users.role), e.g. 'rfs' or 'opex'. `role` above is the access tier
     # that title belongs to -- every permission check keeps reading `role`, so a new position never needs touching them.
     position: str = ""
-    # 2026-10-02: where the person BELONGS, as stored -- e.g. a Manager's dedicated region. For a Manager the scope above is
+    # 2026-10-02: where the person is POSTED (users.home_scope_*, kept by the Fleet Admin team in Staff & Org Chart) -- e.g. a Manager's dedicated region. For a Manager the scope above is
     # widened to everything (they see all of the data), but who they may manage on the Users page stays within this.
     home_scope_type: str = ""
     home_scope_values: list[str] | None = None
@@ -108,7 +108,7 @@ async def get_current_user(
     if not x_forwarded_email:
         raise HTTPException(status_code=401, detail="Not signed in")
     row = await fetch_one(
-        "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE email = %s",
+        "SELECT email, role, scope_type, scope_values, display_name, home_scope_type, home_scope_values FROM users WHERE email = %s",
         (x_forwarded_email,),
     )
     if row is None:
@@ -126,14 +126,14 @@ async def get_current_user(
     # feedback) can be tested end to end. Same gate: only a real admin.
     if real_role == "admin" and x_view_as_email:
         target = await fetch_one(
-            "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE LOWER(email) = %s",
+            "SELECT email, role, scope_type, scope_values, display_name, home_scope_type, home_scope_values FROM users WHERE LOWER(email) = %s",
             (x_view_as_email.strip().lower(),),
         )
         if target is None:
             raise HTTPException(status_code=422, detail="That user isn't in the user list")
         return CurrentUser(
             email=target[0], role=tier_of(target[1]), display_name=target[4], is_impersonating=True, real_role=real_role, position=target[1],
-            home_scope_type=target[2], home_scope_values=parse_scope_values(target[3]),
+            home_scope_type=target[5] or target[2], home_scope_values=parse_scope_values(target[6] if target[5] else target[3]),
             **_scope_fields(tier_of(target[1]), target[2], parse_scope_values(target[3])),
         )
     if real_role == "admin" and x_view_as_role:
@@ -152,7 +152,7 @@ async def get_current_user(
         )
     return CurrentUser(
         email=row[0], role=real_role, display_name=row[4], real_role=real_role, position=row[1],
-        home_scope_type=row[2], home_scope_values=parse_scope_values(row[3]),
+        home_scope_type=row[5] or row[2], home_scope_values=parse_scope_values(row[6] if row[5] else row[3]),
         **_scope_fields(real_role, row[2], parse_scope_values(row[3])),
     )
 
