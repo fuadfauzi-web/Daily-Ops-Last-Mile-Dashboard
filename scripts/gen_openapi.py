@@ -51,6 +51,7 @@ SUMMARIES = {
     ("get", "/api/kpi/pod-performance"): "The weekly LM POD Performance view (zones, stations, drivers, OPS routes on the final result after the audit); managers and admins only.",
     ("get", "/api/kpi/weekly"): "Weekly KPI results by region / zone / station from the uploaded Dashboard WoW sheet, with every KPI's target (per-region targets included), limited to the caller's scope.",
     ("get", "/api/kpi/hybrid"): "Hybrid Productivity for the KPI page (weekly, monthly or daily) from Metabase or an uploaded file, limited to the caller's scope.",
+    ("get", "/api/org-chart"): "Staff & Org Chart -- HQ staff, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants (vacant seats show as empty), plus whether the caller can edit. HQ staff and above.",
     ("get", "/api/management-view/capacity"): "Management View -- Hub Size, Staff headcount, PTWH and parcel capacity per station plus the parcels-per-sqft setting. Managers and admins only.",
     ("put", "/api/management-view/capacity"): "Management View -- bulk save of manager-keyed PTWH headcount and parcel capacity per station, and the parcels-per-sqft setting. Managers and admins only.",
     ("get", "/api/management-view/lh-trips"): "Management View -- line-haul trips (driver, station, arrival time, parcels) from the admin-uploaded Metabase 127512 file. Managers and admins only.",
