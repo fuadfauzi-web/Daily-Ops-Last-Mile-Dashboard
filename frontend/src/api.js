@@ -69,6 +69,7 @@ export const api = {
     request(`/api/drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`),
   shipmentDetails: () => request("/api/shipment-details"),
   dailyKpi: () => request("/api/daily-kpi"),
+  processingTime: () => request("/api/processing-time"),
   shipmentDrilldown: (stationCode, metric) =>
     request(
       `/api/shipment-drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`

@@ -199,6 +199,31 @@ const SECTIONS = [
     ),
   },
   {
+    id: "processingTime",
+    title: "Processing Time",
+    show: () => F.processingTime,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p className="rounded-lg bg-amber-50 p-2 text-amber-900 ring-1 ring-amber-200">
+          <strong>Beta, staging only for now.</strong> It covers the stages we already have live data for; Driver Inbound and the Hybrid / Independent
+          driver split from the Metabase "Last Mile Processing Time" dashboard are not in it yet.
+        </p>
+        <p>
+          The <strong>Processing Time</strong> tab (next to Shipment Details) shows the hour-of-day pattern of each stage at the station for the
+          <em> past 7 days</em>, so you can see when work really lands and compare days. Pick a single day or <em>Last 7 days</em> (added up).
+        </p>
+        <Bullets
+          items={[
+            <><strong>Shipment Arrival</strong>: the hour each parcel's shipment completed at the station. <strong>Scan-in</strong>: 1st sweep at the station. <strong>1st attempt</strong> and <strong>Success</strong>: the first delivery attempt and the successful delivery. <strong>LH Timing</strong>: line-haul trip arrivals.</>,
+            <>The chart has its own Region / Zone / Station filters and a Count / % share switch, same as the Shipment Details chart; click a legend item to hide a line. The table below gives each station's totals and busiest hour per stage.</>,
+            <>It uses the same feeds as Shipment Details, but keeps one snapshot per station per day (the last refresh of the day is that day's number), so history builds up from when the tab went live. Today is still moving until the last refresh.</>,
+            <>Later: a weekly trend and one month of history for the Management View.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "dailyKpi",
     title: "Daily KPI",
     show: () => F.dailyKpi,

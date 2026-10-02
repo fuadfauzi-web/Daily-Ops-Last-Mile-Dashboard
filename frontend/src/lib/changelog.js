@@ -18,6 +18,14 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
+    title: "New: Processing Time tab (Beta, staging only) -- when work lands at the station, hour by hour, for the past 7 days",
+    feature: "processingTime",
+    points: [
+      "A new tab next to Shipment Details showing the hour-of-day pattern of shipment arrival, scan-in, 1st attempt, success and line-haul arrival, per station, for the past 7 days (pick a day or add all 7 up), with the same Region / Zone / Station filters and Count / % share switch as the Shipment Details chart. History starts building from the first refresh after it went live. Driver Inbound and the Hybrid / Independent driver split are not in it yet.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Find the PIC for a station: type the station in any PIC box",
     points: [
       "Type a station's name (or its 3-letter code, e.g. LKN) in a PIC box and the people looking after it come up -- the station's own staff, then the Region Head and RFS of its zone, then the manager of its region -- with their role and zone beside the name.",

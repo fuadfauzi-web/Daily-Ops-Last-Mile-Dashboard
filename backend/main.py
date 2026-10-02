@@ -155,6 +155,27 @@ async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_statio
     await db.execute("DELETE FROM dod_daily WHERE snap_date < %s", (today - timedelta(days=today.weekday() + 7),))
 
 
+_PROCESSING_TIME_SERIES = ("arrival", "sweep", "attempt", "success", "lh")
+_PROCESSING_TIME_DAYS = 7
+
+
+async def _capture_processing_time(captured_at: datetime, timelines: dict[str, dict[str, list[int]]]) -> None:
+    """Processing Time tab (2026-10-02): store today's (Malaysia date) per-station hour-of-day timelines -- the same ones
+    Shipment Details' chart shows for today -- replacing what an earlier refresh today stored (the last refresh of the day is
+    the day's number), and keep only the last 7 days (today included)."""
+    today = captured_at.astimezone(_MYT).date()
+    params = [
+        (today, hub, captured_at, json.dumps({k: t.get(k) or [0] * 24 for k in _PROCESSING_TIME_SERIES}))
+        for hub, t in timelines.items()
+    ]
+    await db.execute("DELETE FROM processing_time_daily WHERE snap_date = %s", (today,))
+    await db.execute_many(
+        "INSERT INTO processing_time_daily (snap_date, station_code, captured_at, timelines) VALUES (%s, %s, %s, %s)",
+        params,
+    )
+    await db.execute("DELETE FROM processing_time_daily WHERE snap_date < %s", (today - timedelta(days=_PROCESSING_TIME_DAYS - 1),))
+
+
 # Tracking-number lists behind each station's metric counts, for the UI's
 # click-a-number drill-down. In-memory only (not persisted) -- rebuilt on every
 # refresh, and empty again after a restart until the next one runs. Keeping this
@@ -534,6 +555,11 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             await _capture_dod(captured_at, by_station, routed_by_station, shipment_by_station)
         except Exception:  # noqa: BLE001 - the DoD history is isolated from the rest of the refresh
             log.exception("DoD snapshot failed")
+
+        try:
+            await _capture_processing_time(captured_at, shipment_timelines)
+        except Exception:  # noqa: BLE001 - the Processing Time history is isolated from the rest of the refresh
+            log.exception("Processing Time snapshot failed")
 
         try:
             await _prune_old_snapshots(captured_at)
@@ -981,6 +1007,53 @@ async def dod(user: CurrentUser = Depends(get_current_user)):
         "rows": [{k: v for k, v in s.items() if k != "captured_at"} for s in scoped],
         "captured_at": latest.isoformat() if hasattr(latest, "isoformat") else (str(latest) if latest else None),
     }
+
+
+# ---------------------------------------------------------------------------
+# Processing Time tab (2026-10-02): the last 7 days of hour-of-day timelines per station (see _capture_processing_time).
+# ---------------------------------------------------------------------------
+
+class ProcessingTimeRow(BaseModel):
+    day: str
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    arrival: list[int]
+    sweep: list[int]
+    attempt: list[int]
+    success: list[int]
+    lh: list[int]
+
+
+class ProcessingTimeResponse(BaseModel):
+    today: str
+    days: list[str]  # every day that has data, oldest first
+    rows: list[ProcessingTimeRow]
+
+
+@app.get("/api/processing-time", response_model=ProcessingTimeResponse)
+async def processing_time(user: CurrentUser = Depends(get_current_user)):
+    today = datetime.now(_MYT).date()
+    since = today - timedelta(days=_PROCESSING_TIME_DAYS - 1)
+    db_rows = await db.fetch_all(
+        "SELECT snap_date, station_code, timelines FROM processing_time_daily WHERE snap_date >= %s ORDER BY snap_date", (since,)
+    )
+    shaped = []
+    for r in db_rows:
+        hub = HUBS.get(r[1])
+        if hub is None:
+            continue
+        name, _full, zone, region = hub
+        tl = r[2]
+        if isinstance(tl, (str, bytes)):
+            tl = json.loads(tl)
+        shaped.append({
+            "day": str(r[0])[:10], "station_code": r[1], "station_name": name, "zone": zone, "region": region,
+            **{k: [int(v) for v in (tl.get(k) or [0] * 24)] for k in _PROCESSING_TIME_SERIES},
+        })
+    scoped = _scope_filter_stations(shaped, user)
+    return {"today": today.isoformat(), "days": sorted({s["day"] for s in scoped}), "rows": scoped}
 
 
 class DrilldownResponse(BaseModel):

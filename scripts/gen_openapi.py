@@ -30,6 +30,7 @@ TAGS = [  # first matching prefix wins
 ]
 
 SUMMARIES = {
+    ("get", "/api/processing-time"): "Processing Time (staging): the last 7 days of hour-of-day timelines (shipment arrival, scan-in, 1st attempt, success, LH arrival) per station, limited to the caller's scope.",
     ("get", "/api/daily-kpi"): "Daily KPI (staging only): today's FIFO D0, Completion D0 and Prior raw counts per station, zone and region, limited to the caller's scope. Latlong parcels excluded; resets at midnight.",
     ("get", "/api/kpi/targets"): "KPI targets for every region (the defaults plus what an admin changed), and whether the caller may edit them.",
     ("put", "/api/kpi/targets"): "Admin only: set (or put back to the default) the KPI targets per region; only differences from the defaults are stored.",

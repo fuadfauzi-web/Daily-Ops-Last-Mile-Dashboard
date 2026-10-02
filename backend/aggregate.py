@@ -483,7 +483,10 @@ def build_shipment_details(
     (never both, never neither), so the identity holds by construction."""
     by_station = {hub: _empty_shipment_row(hub) for hub in HUBS}
     tn_details = {hub: {k: [] for k in SHIPMENT_DRILLDOWN_METRICS} for hub in HUBS}
-    timelines = {hub: {"sweep": [0] * 24, "attempt": [0] * 24, "success": [0] * 24, "lh": [0] * 24} for hub in HUBS}
+    timelines = {
+        hub: {"arrival": [0] * 24, "sweep": [0] * 24, "attempt": [0] * 24, "success": [0] * 24, "lh": [0] * 24}
+        for hub in HUBS
+    }
 
     for r in tracker_rows:
         hub = r.get("shp_dest_hub_name")
@@ -511,6 +514,11 @@ def build_shipment_details(
         success_dt = _parse_dt(r.get("success_datetime"))
         if success_dt is not None:
             timelines[hub]["success"][success_dt.hour] += 1
+        # Shipment Arrival (Processing Time tab, 2026-10-02): the hour each parcel's shipment completed at the
+        # station -- every row with the field, swept yet or not.
+        arrival_dt = _parse_dt(r.get("shipment_completion_datetime"))
+        if arrival_dt is not None:
+            timelines[hub]["arrival"][arrival_dt.hour] += 1
 
         # Fresh Unscan vs process-duration bucket: EVERY tracker row lands in exactly one
         # of these five (2026-10-02 feedback -- they must add up to Total Fresh, see the

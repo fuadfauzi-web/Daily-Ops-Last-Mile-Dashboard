@@ -24,6 +24,7 @@ import UrgentTnTab from "./UrgentTnTab";
 import TaskListTab from "./TaskListTab";
 import DodTab from "./DodTab";
 import DailyKpiTab from "./DailyKpiTab";
+import ProcessingTimeTab from "./ProcessingTimeTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -66,6 +67,19 @@ const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
 const TABS = [
   { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
+  ...(FEATURES.processingTime
+    ? [
+        {
+          key: "processingTime",
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              Processing Time
+              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+            </span>
+          ),
+        },
+      ]
+    : []),
   { key: "health", label: "Station Health" },
   ...(FEATURES.dailyKpi
     ? [
@@ -874,6 +888,14 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             by that percentage.
           </p>
         </>
+      )}
+
+      {FEATURES.processingTime && tab === "processingTime" && (
+        <ProcessingTimeTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
+        />
       )}
 
       {FEATURES.dailyKpi && tab === "dailyKpi" && (

@@ -2451,6 +2451,37 @@
         ]
       }
     },
+    "/api/processing-time": {
+      "get": {
+        "summary": "Processing Time (staging): the last 7 days of hour-of-day timelines (shipment arrival, scan-in, 1st attempt, success, LH arrival) per station, limited to the caller's scope.",
+        "operationId": "processing_time_api_processing_time_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingTimeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/drilldown": {
       "get": {
         "summary": "Return the tracking numbers behind one station's metric count, for the UI's click-a-number drill-down. Served from an in-memory cache built by the last refresh.",
@@ -7541,6 +7572,108 @@
           "role"
         ],
         "title": "PicSuggestion"
+      },
+      "ProcessingTimeResponse": {
+        "properties": {
+          "today": {
+            "type": "string",
+            "title": "Today"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessingTimeRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "days",
+          "rows"
+        ],
+        "title": "ProcessingTimeResponse"
+      },
+      "ProcessingTimeRow": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "title": "Day"
+          },
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "arrival": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Arrival"
+          },
+          "sweep": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Sweep"
+          },
+          "attempt": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Attempt"
+          },
+          "success": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Success"
+          },
+          "lh": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Lh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "arrival",
+          "sweep",
+          "attempt",
+          "success",
+          "lh"
+        ],
+        "title": "ProcessingTimeRow"
       },
       "QueryFetchStatus": {
         "properties": {
