@@ -16,10 +16,11 @@ import Skeleton from "./components/Skeleton";
 // Prior: met only on a SUCCESSFUL delivery the same day, out of PRIOR-tagged parcels only.
 // Latlong parcels are already excluded server-side (same rule as Shipment Details' Latlong).
 
+// Column order: FIFO D0, Prior, Completion D0 (2026-10-02 feedback).
 const KPI_BLOCKS = [
   { key: "fifo", totalKey: "fifo_total", metKey: "fifo_met", aashKey: "fifo_aash", ovfdKey: "fifo_ovfd", label: "FIFO D0", leftWord: "attempt" },
-  { key: "d0", totalKey: "completion_total", metKey: "completion_met", aashKey: "completion_aash", ovfdKey: "completion_ovfd", label: "Completion D0", leftWord: "deliver" },
   { key: "prior", totalKey: "prior_total", metKey: "prior_met", aashKey: "prior_aash", ovfdKey: "prior_ovfd", label: "Prior", leftWord: "deliver" },
+  { key: "d0", totalKey: "completion_total", metKey: "completion_met", aashKey: "completion_aash", ovfdKey: "completion_ovfd", label: "Completion D0", leftWord: "deliver" },
 ];
 
 const VIEWS = [
@@ -157,6 +158,14 @@ export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excl
 
   return (
     <div className="space-y-3">
+      <div role="alert" className="rounded-xl border-l-4 border-amber-500 bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+        <div className="font-display font-bold uppercase tracking-wide">Numbers here are not 100% accurate yet</div>
+        <p className="mt-1">
+          The start-clock logic and targets are still being validated against the official KPI result -- treat this as a working estimate to
+          guide today's action, not the official number. It's here because an imperfect picture of today beats no picture at all and not
+          knowing what to push on.
+        </p>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SegmentedControl options={VIEWS} value={view} onChange={setView} />
         <button
@@ -171,14 +180,14 @@ export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excl
                 "FIFO D0 Met",
                 "FIFO D0 %",
                 "FIFO D0 Left",
-                "Completion D0 Total",
-                "Completion D0 Met",
-                "Completion D0 %",
-                "Completion D0 Left",
                 "Prior Total",
                 "Prior Met",
                 "Prior %",
                 "Prior Left",
+                "Completion D0 Total",
+                "Completion D0 Met",
+                "Completion D0 %",
+                "Completion D0 Left",
               ],
               filteredRows.map((r) => [
                 r.name,
@@ -188,14 +197,14 @@ export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excl
                 r.fifo_met,
                 r.fifo_pct == null ? "" : r.fifo_pct.toFixed(1),
                 r.fifo_left ?? "",
-                r.completion_total,
-                r.completion_met,
-                r.d0_pct == null ? "" : r.d0_pct.toFixed(1),
-                r.d0_left ?? "",
                 r.prior_total,
                 r.prior_met,
                 r.prior_pct == null ? "" : r.prior_pct.toFixed(1),
                 r.prior_left ?? "",
+                r.completion_total,
+                r.completion_met,
+                r.d0_pct == null ? "" : r.d0_pct.toFixed(1),
+                r.d0_left ?? "",
               ])
             )
           }
@@ -223,11 +232,10 @@ export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excl
         footer={`${filteredRows.length} ${view === "station" ? "stations" : view === "zone" ? "zones" : "regions"} shown`}
       />
       <p className="text-xs text-slate-400">
-        <b>FIFO D0</b>: met once the parcel got any delivery attempt (success or fail) the same day it arrived. <b>Completion D0</b>: met only
-        on a successful delivery the same day, out of every fresh parcel. <b>Prior</b>: met only on a successful delivery the same day, out of
-        PRIOR-tagged parcels only. "Not Yet" shows how many of the remaining parcels are still sitting Arrived at Sorting Hub (AASH) or On
-        Vehicle for Delivery (OVFD). Latlong parcels are excluded, same rule as Shipment Details' own Latlong metric. Numbers reset at midnight
-        and are not finalized -- the underlying data can still change.
+        <b>FIFO D0</b>: met once the parcel got any delivery attempt (success or fail) the same day it arrived. <b>Prior</b>: met only on a
+        successful delivery the same day, out of PRIOR-tagged parcels only. <b>Completion D0</b>: met only on a successful delivery the same
+        day, out of every fresh parcel. "Not Yet" shows how many of the remaining parcels are still sitting Arrived at Sorting Hub (AASH) or On
+        Vehicle for Delivery (OVFD). Latlong parcels are excluded, same rule as Shipment Details' own Latlong metric. Numbers reset at midnight.
       </p>
     </div>
   );

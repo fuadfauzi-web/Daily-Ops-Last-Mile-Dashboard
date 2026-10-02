@@ -205,7 +205,9 @@ const SECTIONS = [
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p className="rounded-lg bg-amber-50 p-2 text-amber-900 ring-1 ring-amber-200">
-          <strong>Staging only for now.</strong> The numbers are not finalized -- the underlying logic can still change.
+          <strong>Not 100% accurate yet.</strong> The start-clock logic and targets are still being validated against the official KPI
+          result -- treat it as a working estimate for today's action, not the official number. It's here because an imperfect picture of
+          today beats no picture at all.
         </p>
         <p>
           The <strong>Daily KPI</strong> tab (next to Station Health) shows, for <em>today only</em>, how many of a station's fresh
@@ -215,8 +217,8 @@ const SECTIONS = [
         <Bullets
           items={[
             <><strong>FIFO D0</strong>: met once the parcel gets any delivery attempt -- success or fail -- the same day it arrived (the "start clock" is the later of shipment completion and 1st sweep at the station, rolled to the next day if that moment is after noon). A next-day attempt, even a failed one, is a miss.</>,
-            <><strong>Completion D0</strong>: met only on a successful delivery the same day, out of every fresh parcel.</>,
             <><strong>Prior</strong>: met only on a successful delivery the same day, out of PRIOR-tagged parcels only (a subset of fresh) -- a station with no Prior-tagged parcels that day shows 0/0.</>,
+            <><strong>Completion D0</strong>: met only on a successful delivery the same day, out of every fresh parcel.</>,
             <><strong>Left to attempt / deliver</strong> is against that station's own region target (Admin → KPI Targets), same targets the KPI page's FIFO D0 / Completion D0 / Prior RCA pages use.</>,
             <><strong>Not Yet</strong> shows how many of the still-outstanding parcels are sitting Arrived at Sorting Hub (AASH) vs On Vehicle for Delivery (OVFD) -- it doesn't have to add up to the full gap, since a parcel in any other status isn't broken out.</>,
             <>Latlong parcels are excluded from every count here, same rule as Shipment Details' own Latlong metric (RTS-tagged ones are kept in).</>,

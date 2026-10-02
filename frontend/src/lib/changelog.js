@@ -18,10 +18,10 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
-    title: "New: Daily KPI tab (Beta, staging only) -- today's FIFO D0 / Completion D0 / Prior, and how much is left to attempt or deliver",
+    title: "New: Daily KPI tab (Beta) -- today's FIFO D0 / Prior / Completion D0, and how much is left to attempt or deliver",
     feature: "dailyKpi",
     points: [
-      "A new tab next to Station Health showing, for today only, each station's FIFO D0, Completion D0 and Prior against its own region target -- the count still needed to hit it, and how many of the remaining parcels are sitting Arrived at Sorting Hub vs On Vehicle for Delivery. Latlong parcels are excluded. Switch between Station / Zone / Region view; Export CSV downloads what's shown. The numbers are not finalized yet -- the underlying logic can still change.",
+      "A new tab next to Station Health showing, for today only, each station's FIFO D0, Prior and Completion D0 against its own region target -- the count still needed to hit it, and how many of the remaining parcels are sitting Arrived at Sorting Hub vs On Vehicle for Delivery. Latlong parcels are excluded. Switch between Station / Zone / Region view; Export CSV downloads what's shown. The tab says so in-app, but to be clear: the numbers are a working estimate, not 100% accurate yet -- the start-clock logic and targets are still being validated against the official KPI result.",
     ],
   },
   {
