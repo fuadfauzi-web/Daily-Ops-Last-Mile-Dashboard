@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import MultiSelect from "./MultiSelect";
+import { GROUPS, isHqTier, positionLabel } from "../lib/roles";
 
 // Lets the real admin preview the app as somebody else -- without changing their
 // own account -- to check a permission or scoping change actually works, or to
@@ -12,18 +13,12 @@ import MultiSelect from "./MultiSelect";
 // Lives in the header (not Settings) and is keyed off me.real_role, not me.role,
 // so it stays reachable even while viewing as a role that can't see Settings
 // itself (2026-09-24 feedback).
-const ROLES = [
-  { value: "admin", label: "Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "fleet_admin", label: "Fleet Admin" },
-  { value: "region", label: "Region staff" },
-  { value: "station", label: "Station staff" },
-];
+// The roles are job positions (lib/roles.js), grouped HQ staff / Region staff / Station staff.
 
 export default function RoleTester({ me, onChanged }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("role");
-  const [role, setRole] = useState("station");
+  const [role, setRole] = useState("fleet_assistant");
   const [scopeType, setScopeType] = useState("station");
   const [scopeValues, setScopeValues] = useState([]);
   const [userEmail, setUserEmail] = useState("");
@@ -55,7 +50,7 @@ export default function RoleTester({ me, onChanged }) {
   }, [scopeType, regions, stations]);
 
   const viewingAs = api.viewAs.get();
-  const viewingLabel = viewingAs?.email ? me.display_name || me.email : me.role;
+  const viewingLabel = viewingAs?.email ? me.display_name || me.email : positionLabel(me.position || me.role);
 
   // Only Admin is always nationwide -- Manager/Region/Station can each be
   // scoped to a region/zone/station like any other role (2026-09-24 feedback:
@@ -67,7 +62,7 @@ export default function RoleTester({ me, onChanged }) {
       api.viewAs.set({
         role,
         scopeType: role === "admin" ? "all" : scopeType,
-        scopeValues: role === "admin" ? [] : scopeValues,
+        scopeValues: role === "admin" || scopeType === "hq" ? [] : scopeValues,
       });
     }
     setOpen(false);
@@ -81,7 +76,7 @@ export default function RoleTester({ me, onChanged }) {
 
   if (me.real_role !== "admin") return null;
 
-  const canApply = mode === "user" ? !!userEmail : role === "admin" || scopeType === "all" || scopeValues.length > 0;
+  const canApply = mode === "user" ? !!userEmail : role === "admin" || scopeType === "all" || scopeType === "hq" || scopeValues.length > 0;
 
   return (
     <div className="relative" ref={ref}>
@@ -124,8 +119,8 @@ export default function RoleTester({ me, onChanged }) {
                   .sort((a, b) => a.email.localeCompare(b.email))
                   .map((u) => (
                     <option key={u.email} value={u.email}>
-                      {u.email} — {u.role}
-                      {u.scope_type !== "all" ? ` · ${(u.scope_values || []).join(", ")}` : ""}
+                      {u.email} — {positionLabel(u.role)}
+                      {u.scope_type !== "all" && u.scope_type !== "hq" ? ` · ${(u.scope_values || []).join(", ")}` : ""}
                     </option>
                   ))}
               </select>
@@ -143,12 +138,19 @@ export default function RoleTester({ me, onChanged }) {
                 onChange={(e) => {
                   setRole(e.target.value);
                   setScopeValues([]);
+                  // HQ staff have no dedicated place; everyone else needs one.
+                  if (isHqTier(e.target.value)) setScopeType("hq");
+                  else if (scopeType === "hq") setScopeType("station");
                 }}
               >
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
+                {GROUPS.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.positions.map((value) => (
+                      <option key={value} value={value}>
+                        {positionLabel(value)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
 
@@ -163,12 +165,13 @@ export default function RoleTester({ me, onChanged }) {
                       setScopeValues([]);
                     }}
                   >
+                    {isHqTier(role) && <option value="hq">HQ (no region / zone / station)</option>}
                     <option value="all">All (nationwide)</option>
                     <option value="region">Region</option>
                     <option value="zone">Zone</option>
                     <option value="station">Station</option>
                   </select>
-                  {scopeType !== "all" && (
+                  {scopeType !== "all" && scopeType !== "hq" && (
                     <div className="mb-2">
                       <MultiSelect
                         options={scopeOptions}

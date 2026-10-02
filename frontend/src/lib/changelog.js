@@ -26,6 +26,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-02",
+    title: "Roles now follow the job position (staging only)",
+    points: [
+      "Settings -> Users now uses the real positions, in three groups: HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock), Region staff (Region Head, Regional Fleet Supervisor) and Station staff (Station Head, Fleet Assistant). Your position shows under your name in the header.",
+      "HQ staff have no region, zone or station of their own, so they get a new access level, HQ. They see every region for now; HOD and Manager can still manage Region and Station staff, while Fleet Admin, OPEX, Recovery and Restock will each get their own tabs for their own work.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Find the PIC for a station: type the station in any PIC box",
     points: [
       "Type a station's name (or its 3-letter code, e.g. LKN) in a PIC box and the people looking after it come up -- the station's own staff, then the Region Head and RFS of its zone, then the manager of its region -- with their role and zone beside the name.",

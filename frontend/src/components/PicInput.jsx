@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-const ROLE_LABEL = { station: "Station staff", region: "Region staff", manager: "Manager", fleet_admin: "Fleet Admin", admin: "Admin" };
+import { positionLabel } from "../lib/roles";
 
 // The Urgent TN "PIC" email box with suggestions: type two or more letters of a name or email and
 // pick a dashboard user from the list (2026-09-25 feedback -- no more copying emails from the
@@ -113,7 +113,7 @@ export default function PicInput({ value, onChange, placeholder, className = "",
                 <span className="text-sm font-medium text-slate-800">{o.display_name || o.email}</span>
                 <span className="text-xs text-slate-500">
                   {o.display_name ? `${o.email} · ` : ""}
-                  {ROLE_LABEL[o.role] || o.role}
+                  {positionLabel(o.role)}
                 </span>
               </button>
             </li>

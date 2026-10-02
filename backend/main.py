@@ -62,7 +62,7 @@ from aggregate import (
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
-from auth import CurrentUser, get_current_user, parse_scope_values
+from auth import POSITIONS, CurrentUser, effective_scope, get_current_user, parse_scope_values, tier_of
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
     QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
@@ -123,7 +123,10 @@ async def _fetch(query_id: int) -> list[dict]:
 
 _METRIC_COLUMNS = METRIC_KEYS
 # DoD Dashboard: the Station Health metrics plus what the daily view needs from Route Monitoring.
-_DOD_COLUMNS = METRIC_KEYS + ("attendance_rescue", "current_ovfd", "current_success", "fresh_unscan", "latlong")
+_DOD_COLUMNS = METRIC_KEYS + (
+    "attendance_rescue", "current_ovfd", "current_success", "fresh_unscan", "latlong",
+    "attendance_hd", "attendance_hr", "attendance_id", "attendance_ir",  # Management View v2 (2026-10-02)
+)
 
 async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_station: dict, shipment_by_station: dict) -> None:
     """DoD Dashboard (2026-09-26): store today's (Malaysia date) Station Health numbers per station, replacing what an earlier
@@ -139,6 +142,7 @@ async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_statio
             [row.get(k) or 0 for k in METRIC_KEYS]
             + [routed.get(k) or 0 for k in ("attendance_rescue", "current_ovfd", "current_success")]
             + [shipment.get(k) or 0 for k in ("fresh_unscan", "latlong")]
+            + [routed.get(k) or 0 for k in ("attendance_hd", "attendance_hr", "attendance_id", "attendance_ir")]
         )
         lh = (
             trips[0]["time"] if len(trips) > 0 else None, trips[0]["parcels"] if len(trips) > 0 else None,
@@ -744,6 +748,8 @@ class Me(BaseModel):
     display_name: str | None = None
     is_impersonating: bool = False
     real_role: str | None = None
+    # The stored job position ('rfs', 'opex' ...); `role` above is its access tier (see auth.POSITIONS).
+    position: str | None = None
 
 
 @app.get("/api/me", response_model=Me)
@@ -763,7 +769,7 @@ async def me(
     if row is None:
         return {"email": x_forwarded_email, "provisioned": False}
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
-    real_role = row[1]
+    real_role = tier_of(row[1])
     # Same "View As" overrides as auth.get_current_user -- gated on real_role
     # from the DB, never on the override headers themselves.
     if real_role == "admin" and x_view_as_email:
@@ -774,20 +780,20 @@ async def me(
         if target is None:
             raise HTTPException(status_code=422, detail="That user isn't in the user list")
         return {
-            "email": target[0], "provisioned": True, "role": target[1], "scope_type": target[2],
+            "email": target[0], "provisioned": True, "role": tier_of(target[1]), "scope_type": effective_scope(target[2]),
             "scope_values": parse_scope_values(target[3]), "display_name": target[4],
-            "is_impersonating": True, "real_role": real_role,
+            "is_impersonating": True, "real_role": real_role, "position": target[1],
         }
     if real_role == "admin" and x_view_as_role:
         return {
-            "email": row[0], "provisioned": True, "role": x_view_as_role,
-            "scope_type": x_view_as_scope_type or "all",
+            "email": row[0], "provisioned": True, "role": tier_of(x_view_as_role), "position": x_view_as_role,
+            "scope_type": effective_scope(x_view_as_scope_type or "all"),
             "scope_values": [v for v in (x_view_as_scope_values or "").split(",") if v],
             "display_name": row[4], "is_impersonating": True, "real_role": real_role,
         }
     return {
-        "email": row[0], "provisioned": True, "role": row[1], "scope_type": row[2],
-        "scope_values": parse_scope_values(row[3]), "display_name": row[4], "real_role": real_role,
+        "email": row[0], "provisioned": True, "role": real_role, "scope_type": effective_scope(row[2]),
+        "scope_values": parse_scope_values(row[3]), "display_name": row[4], "real_role": real_role, "position": row[1],
     }
 
 
@@ -1676,7 +1682,8 @@ async def _fetch_aging_rows(captured_at, aging_type: str) -> list[dict]:
 
 
 @app.get("/api/aging-details", response_model=AgingDetailsResponse)
-async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_current_user)):
+async def aging_details(type: str = "overall", summary: bool = False, user: CurrentUser = Depends(get_current_user)):
+    # summary=true leaves the TN-level rows out (Management View only needs the per-station age buckets).
     if type not in AGING_TYPES:
         raise HTTPException(status_code=422, detail=f"type must be one of {list(AGING_TYPES)}")
 
@@ -1699,7 +1706,7 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
             for g in rows if g["station_count"] > 0
         ]
 
-    tn_rows = [r for r in _aging_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
+    tn_rows = [] if summary else [r for r in _aging_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
     tn_rows_total = len(tn_rows)
     tn_rows_truncated = tn_rows_total > AGING_TN_ROWS_CAP
     if tn_rows_truncated:
@@ -3052,7 +3059,7 @@ async def urgent_pic_suggestions(q: str = "", user: CurrentUser = Depends(get_cu
         zones = {p[1] for p in places}
         regions = {p[2] for p in places}
         cover = await db.fetch_all(
-            "SELECT email, display_name, role, scope_type, scope_values FROM users WHERE scope_type <> 'all' AND LOWER(email) <> %s",
+            "SELECT email, display_name, role, scope_type, scope_values FROM users WHERE scope_type NOT IN ('all', 'hq') AND LOWER(email) <> %s",
             (me,),
         )
         tiers: dict[int, list] = {0: [], 1: [], 2: []}
@@ -3456,8 +3463,8 @@ class UserOut(BaseModel):
 
 class UserIn(BaseModel):
     email: str
-    role: str  # 'admin' | 'manager' | 'region' | 'station'
-    scope_type: str  # 'all' | 'region' | 'zone' | 'station'
+    role: str  # a position, see auth.POSITIONS
+    scope_type: str  # 'all' | 'hq' | 'region' | 'zone' | 'station'
     scope_values: list[str] = []
     display_name: str | None = None
 
@@ -3486,8 +3493,8 @@ def _require_can_add_users(user: CurrentUser) -> None:
 # grant, edit and remove is limited to places INSIDE their own scope (before, a Region staff member could
 # grant or edit station access anywhere, since only the role was checked, not where).
 def _stations_for_scope(scope_type: str, scope_values: list[str]) -> set[str] | None:
-    """Station names a scope covers; None means everything ('all')."""
-    if scope_type == "all":
+    """Station names a scope covers; None means everything ('all', or 'hq' = HQ staff with no dedicated place)."""
+    if scope_type in ("all", "hq"):
         return None
     out = set()
     for name, _full, zone, region in HUBS.values():
@@ -3506,33 +3513,37 @@ def _scope_within(acting: CurrentUser, scope_type: str, scope_values: list[str])
     return theirs is not None and theirs <= mine
 
 
-_ROLE_TAG = {"station": "Station staff", "region": "Region staff", "manager": "Manager", "fleet_admin": "Fleet Admin", "admin": "Admin"}
+_SHORT_TAG = {"region_head": "RH", "rfs": "RFS", "station_head": "SH", "fleet_assistant": "FA"}  # the sheet's own abbreviations
 
 
 def _auto_display_name(email: str, role: str, scope_type: str, scope_values: list[str]) -> str:
     """"Afnan Roslan (Station staff - Larkin)" from the email when nobody typed a name, so the PIC box always shows who a
     person is and where (2026-10-02: the picker searches by station, and a bare email says neither)."""
     name = " ".join(p.capitalize() for p in email.split("@")[0].replace("_", ".").split(".") if p)
-    where = "Everything" if scope_type == "all" else " & ".join(scope_values)
-    return f"{name} ({_ROLE_TAG.get(role, role)} - {where})" if name else email
+    tag = _SHORT_TAG.get(role) or POSITIONS.get(role, (role,))[0]
+    where = "" if scope_type in ("all", "hq") else " - " + " & ".join(scope_values)
+    return f"{name} ({tag}{where})" if name else email
+
+
+# Who may hand out / manage which positions, by the ACTING user's access tier (auth.POSITIONS): a Manager / HOD looks after
+# Region and Station staff, Region staff look after Station staff, only the Admin side (the owner) hands out HQ positions.
+_GRANTABLE_TIERS = {"manager": ("region", "station"), "region": ("station",)}
+_TIER_NAMES = {"region": "Region staff", "station": "Station staff"}
 
 
 def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
-    """Edit/delete permission on an existing user -- keyed off the TARGET's
-    current role, mirroring _validate_grant_limits' ceiling: a Manager can
-    manage Station/Region-role users, Region staff can manage Station-role
-    users only, Admin can manage anyone."""
+    """Edit/delete permission on an existing user -- keyed off the TARGET's current position's tier, mirroring
+    _validate_grant_limits' ceiling."""
     if acting.role == "admin":
         return
-    if acting.role == "manager":
-        if target_role not in ("station", "region"):
-            raise HTTPException(status_code=403, detail="Managers can only edit or remove Station staff or Region staff")
-        return
-    if acting.role == "region":
-        if target_role != "station":
-            raise HTTPException(status_code=403, detail="Region staff can only edit or remove Station staff")
-        return
-    raise HTTPException(status_code=403, detail="You can't edit or remove other users")
+    allowed = _GRANTABLE_TIERS.get(acting.role)
+    if allowed is None:
+        raise HTTPException(status_code=403, detail="You can't edit or remove other users")
+    if tier_of(target_role) not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only edit or remove " + " or ".join(_TIER_NAMES[t] for t in allowed),
+        )
 
 
 def _require_can_grant_role(acting: CurrentUser, role: str) -> None:
@@ -3559,18 +3570,14 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     # ...and only the ones inside their own scope (2026-10-02).
     if user.role == "admin":
         return out
-    if user.role == "manager":
-        return [u for u in out if u["role"] in ("station", "region") and _scope_within(user, u["scope_type"], u["scope_values"])]
-    if user.role == "region":
-        return [u for u in out if u["role"] == "station" and _scope_within(user, u["scope_type"], u["scope_values"])]
-    return []
+    allowed = _GRANTABLE_TIERS.get(user.role, ())
+    return [u for u in out if tier_of(u["role"]) in allowed and _scope_within(user, u["scope_type"], u["scope_values"])]
 
 
-# 2026-10-02: "fleet_admin" -- the Fleet Admin / support team. Sees every region (scope 'all') but is NOT a manager: no user
-# management, no SLA / recovery settings. Every manager-only check in the code is an allow-list of role names, so a new role
-# is refused there by default; the tabs that are theirs (asset / vehicle / premise lists ...) come later.
-_VALID_ROLES = {"admin", "manager", "fleet_admin", "region", "station"}
-_VALID_SCOPE_TYPES = {"all", "region", "zone", "station"}
+# 2026-10-02: roles are job positions (auth.POSITIONS). HQ staff have no dedicated region / zone / station, so they get the
+# scope 'hq' (read as 'all' for the data they see today); the position decides the permissions through its access tier.
+_VALID_ROLES = set(POSITIONS)
+_VALID_SCOPE_TYPES = {"all", "hq", "region", "zone", "station"}
 
 
 def _validate_user_in(payload: UserIn) -> None:
@@ -3578,7 +3585,9 @@ def _validate_user_in(payload: UserIn) -> None:
         raise HTTPException(status_code=422, detail=f"role must be one of {sorted(_VALID_ROLES)}")
     if payload.scope_type not in _VALID_SCOPE_TYPES:
         raise HTTPException(status_code=422, detail=f"scope_type must be one of {sorted(_VALID_SCOPE_TYPES)}")
-    if payload.scope_type == "all":
+    if payload.scope_type == "hq" and tier_of(payload.role) not in ("admin", "manager", "hq_staff"):
+        raise HTTPException(status_code=422, detail="HQ scope is only for HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock)")
+    if payload.scope_type in ("all", "hq"):
         return
     if not payload.scope_values:
         raise HTTPException(status_code=422, detail="scope_values can't be empty unless scope_type is 'all'")
@@ -3605,16 +3614,15 @@ def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
     a privilege-escalation hole."""
     if acting.role == "admin":
         return
-    if acting.role == "manager":
-        if payload.role not in ("station", "region"):
-            raise HTTPException(status_code=403, detail="Managers can only grant the Station staff or Region staff role")
-        if payload.scope_type == "all":
-            raise HTTPException(status_code=403, detail="Managers can't grant 'sees everything' access")
-    elif acting.role == "region":
-        if payload.role != "station":
-            raise HTTPException(status_code=403, detail="Region staff can only grant the Station staff role")
-        if payload.scope_type != "station":
-            raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
+    allowed = _GRANTABLE_TIERS.get(acting.role)
+    if allowed is None:
+        raise HTTPException(status_code=403, detail="You can't grant access")
+    if tier_of(payload.role) not in allowed:
+        raise HTTPException(status_code=403, detail="You can only grant " + " or ".join(_TIER_NAMES[t] for t in allowed) + " positions")
+    if payload.scope_type in ("all", "hq"):
+        raise HTTPException(status_code=403, detail="You can't grant 'sees everything' access")
+    if acting.role == "region" and payload.scope_type != "station":
+        raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
     if not _scope_within(acting, payload.scope_type, payload.scope_values):
         raise HTTPException(status_code=403, detail="You can only give access to places inside your own scope")
 

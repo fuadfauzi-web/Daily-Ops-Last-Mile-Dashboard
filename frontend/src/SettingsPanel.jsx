@@ -10,6 +10,7 @@ import RegionListPanel from "./RegionListPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
+import { GRANTABLE_TIERS, GROUPS, POSITIONS, isHqTier, tierOf } from "./lib/roles";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
@@ -21,13 +22,14 @@ const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Prod
 // just with a driver position label as the scope string instead of a region name.
 const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
-const emptyForm = { email: "", role: "station", scope_type: "station", scope_values: [] };
-const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", fleet_admin: "Fleet Admin", admin: "Admin" };
-const ROLE_OPTION_ORDER = ["station", "region", "manager", "fleet_admin", "admin"];
+const emptyForm = { email: "", role: "fleet_assistant", scope_type: "station", scope_values: [] };
+// Roles are job positions (lib/roles.js): HQ staff, Region staff, Station staff. The old 'region' / 'station' titles are still
+// shown for people who have none yet, but no longer offered.
+const ROLE_LABELS = Object.fromEntries(Object.entries(POSITIONS).map(([k, v]) => [k, v.label]));
 // "Sees: a station/zone/region" -- can be granted more than one, see the
-// multi-select in the add/edit form below.
-const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything" };
-const SCOPE_OPTION_ORDER = ["station", "zone", "region", "all"];
+// multi-select in the add/edit form below. "HQ" is for HQ staff, who have no dedicated region / zone / station.
+const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything", hq: "HQ (no region / zone / station)" };
+const SCOPE_OPTION_ORDER = ["station", "zone", "region", "hq", "all"];
 
 // Only the app owner can grant the Admin role -- mirrors backend/main.py's
 // _OWNER_EMAIL/_require_can_grant_role exactly. An admin who isn't the owner
@@ -38,10 +40,11 @@ const OWNER_EMAIL = "fuad.mawardi@ninjavan.co";
 // _validate_grant_limits exactly, so the dropdowns/template never offer
 // something the server would reject.
 function allowedRoles(me) {
-  if (me.role === "manager") return ["station", "region"];
-  if (me.role === "region") return ["station"];
+  const tiers = GRANTABLE_TIERS[me.role];
+  const all = GROUPS.flatMap((g) => g.positions);
+  if (tiers) return all.filter((p) => tiers.includes(tierOf(p)));
   // admin
-  return me.email === OWNER_EMAIL ? ROLE_OPTION_ORDER : ROLE_OPTION_ORDER.filter((r) => r !== "admin");
+  return me.email === OWNER_EMAIL ? all : all.filter((r) => r !== "admin");
 }
 function allowedScopeTypes(actingRole) {
   if (actingRole === "manager") return ["station", "zone", "region"];
@@ -50,28 +53,27 @@ function allowedScopeTypes(actingRole) {
 }
 
 // Edit/delete permission on an existing user -- mirrors backend/main.py's
-// _require_can_manage_target exactly (keyed off the TARGET's current role).
+// _require_can_manage_target exactly (keyed off the TARGET's current position's tier).
 function canManageTarget(actingRole, targetRole) {
   if (actingRole === "admin") return true;
-  if (actingRole === "manager") return targetRole === "station" || targetRole === "region";
-  if (actingRole === "region") return targetRole === "station";
-  return false;
+  return (GRANTABLE_TIERS[actingRole] || []).includes(tierOf(targetRole));
 }
 
 // scope_values within one CSV cell is semicolon-separated, e.g. "Southern;Northern".
 function bulkTemplateFor(me) {
   const lines = ["email,role,scope_type,scope_values"];
   if (me.role === "region") {
-    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,station,station,Segambut;Larkin");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,station_head,station,Segambut;Larkin");
   } else if (me.role === "manager") {
-    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,region,region,Southern;Northern");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,rfs,zone,South 1", "name3@ninjavan.co,region_head,region,Southern;Northern");
   } else {
     lines.push(
-      "name1@ninjavan.co,station,station,Larkin",
-      "name2@ninjavan.co,region,region,Southern;Northern",
-      "name3@ninjavan.co,manager,zone,South 1"
+      "name1@ninjavan.co,fleet_assistant,station,Larkin",
+      "name2@ninjavan.co,rfs,zone,South 1",
+      "name3@ninjavan.co,region_head,region,Southern;Northern",
+      "name4@ninjavan.co,opex,hq,"
     );
-    if (me.email === OWNER_EMAIL) lines.push("name4@ninjavan.co,admin,all,");
+    if (me.email === OWNER_EMAIL) lines.push("name5@ninjavan.co,admin,all,");
   }
   return lines.join("\n");
 }
@@ -105,12 +107,12 @@ function parseBulkRows(text) {
   return lines.map((line) => {
     const [email, role, scope_type, scopeValuesCell] = line.split(",").map((p) => (p ?? "").trim());
     const scope_values =
-      !scope_type || scope_type === "all"
+      !scope_type || scope_type === "all" || scope_type === "hq"
         ? []
         : (scopeValuesCell || "").split(";").map((v) => v.trim()).filter(Boolean);
     return {
       email,
-      role: role || "station",
+      role: role || "fleet_assistant",
       scope_type: scope_type || "station",
       scope_values,
     };
@@ -573,7 +575,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
-  const [form, setForm] = useState({ ...emptyForm, role: myAllowedRoles[0], scope_type: myAllowedScopeTypes[0] });
+  const [form, setForm] = useState({ ...emptyForm, role: myAllowedRoles.includes("fleet_assistant") ? "fleet_assistant" : myAllowedRoles[0], scope_type: myAllowedScopeTypes[0] });
   const [editingEmail, setEditingEmail] = useState(null);
   // 2026-09-25 feedback: Edit jumps up to the form (it sits above a long list), and
   // the list has a find box.
@@ -625,7 +627,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     [users, scopeTypeFilter]
   );
 
-  const scopeText = (u) => (u.scope_type === "all" ? "Everything" : (u.scope_values || []).join(", "));
+  const scopeText = (u) => (u.scope_type === "all" ? "Everything" : u.scope_type === "hq" ? "HQ" : (u.scope_values || []).join(", "));
 
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
@@ -638,7 +640,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       );
     }
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter);
-    if (scopeTypeFilter === "everything") list = list.filter((u) => u.scope_type === "all");
+    if (scopeTypeFilter === "everything") list = list.filter((u) => u.scope_type === "all" || u.scope_type === "hq");
     else if (scopeTypeFilter !== "all") list = list.filter((u) => u.scope_type === scopeTypeFilter);
     if (scopeValuesFilter.length) list = list.filter((u) => (u.scope_values || []).some((v) => scopeValuesFilter.includes(v)));
     if (neverOpenedOnly) list = list.filter((u) => !u.last_seen_at);
@@ -684,7 +686,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     e.preventDefault();
     setError(null);
     try {
-      const payload = { ...form, scope_values: form.scope_type === "all" ? [] : form.scope_values };
+      const payload = { ...form, scope_values: form.scope_type === "all" || form.scope_type === "hq" ? [] : form.scope_values };
       if (editingEmail) {
         await api.users.update(editingEmail, payload);
         setEditingEmail(null);
@@ -893,15 +895,36 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
             <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500"
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value, ...(e.target.value === "fleet_admin" ? { scope_type: "all", scope_values: [] } : {}) })}
+              onChange={(e) => {
+                // HQ staff have no dedicated place (scope HQ); everyone else needs a station / zone / region.
+                const hq = isHqTier(e.target.value);
+                const placeless = ["all", "hq"].includes(form.scope_type);
+                setForm({
+                  ...form,
+                  role: e.target.value,
+                  ...(hq && !placeless
+                    ? { scope_type: "hq", scope_values: [] }
+                    : !hq && placeless && myAllowedScopeTypes.includes("station")
+                      ? { scope_type: "station", scope_values: [] }
+                      : {}),
+                });
+              }}
               disabled={editingEmail === OWNER_EMAIL}
               title={editingEmail === OWNER_EMAIL ? "The app owner's role can't be changed" : undefined}
             >
-              {myAllowedRoles.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
+              {GROUPS.map((g) => {
+                const opts = g.positions.filter((p) => myAllowedRoles.includes(p) || p === form.role);
+                return opts.length === 0 ? null : (
+                  <optgroup key={g.key} label={g.label}>
+                    {opts.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+              {!GROUPS.some((g) => g.positions.includes(form.role)) && <option value={form.role}>{ROLE_LABELS[form.role] || form.role}</option>}
             </select>
             <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
@@ -989,12 +1012,12 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
             <p className="text-xs text-slate-400">
               {me.role === "region"
-                ? "You can only grant the Station staff role with station-level access."
+                ? "You can grant Station Head (SH) or Fleet Assistant (FA), with station-level access."
                 : me.role === "manager"
-                  ? "You can grant Station staff or Region staff roles, with any access level except \"sees everything\"."
-                  : me.email === OWNER_EMAIL
-                    ? "role: station, region, manager, or admin. scope_type: station, zone, region, or all (leave scope_values blank for \"all\")."
-                    : "role: station, region, or manager (only the app owner can grant admin). scope_type: station, zone, region, or all (leave scope_values blank for \"all\")."}
+                  ? "You can grant Region Head (RH), RFS, Station Head (SH) or Fleet Assistant (FA), with any access level except \"sees everything\" / HQ."
+                  : "role: hod, manager, fleet_admin, opex, recovery, restock (HQ staff), region_head, rfs (region staff), station_head, fleet_assistant (station staff)" +
+                    (me.email === OWNER_EMAIL ? ", or admin" : " (only the app owner can grant admin)") +
+                    ". scope_type: station, zone, region, hq (HQ staff) or all (leave scope_values blank for hq / all)."}
             </p>
 
             {bulkResult && (
@@ -1031,11 +1054,19 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
               >
                 <option value="all">All roles</option>
-                {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
+                {GROUPS.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.positions.map((value) => (
+                      <option key={value} value={value}>
+                        {ROLE_LABELS[value]}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
+                <optgroup label="Position not set yet">
+                  <option value="region">Region staff</option>
+                  <option value="station">Station staff</option>
+                </optgroup>
               </select>
               <select
                 value={scopeTypeFilter}
@@ -1047,7 +1078,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
               >
                 <option value="all">All scope types</option>
-                <option value="everything">Everything (nationwide)</option>
+                <option value="everything">Everything / HQ (nationwide)</option>
                 <option value="region">Region</option>
                 <option value="zone">Zone</option>
                 <option value="station">Station</option>
@@ -1102,7 +1133,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                   <td className="px-4 py-2">{u.email}</td>
                   <td className="px-4 py-2">{ROLE_LABELS[u.role] || u.role}</td>
                   <td className="px-4 py-2 text-slate-500">
-                    {u.scope_type === "all" ? "Everything" : `${(u.scope_values || []).join(", ")} (${u.scope_type})`}
+                    {u.scope_type === "all" ? "Everything" : u.scope_type === "hq" ? "HQ" : `${(u.scope_values || []).join(", ")} (${u.scope_type})`}
                   </td>
                   <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                   <td className="px-4 py-2 text-right">

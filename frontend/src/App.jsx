@@ -10,6 +10,7 @@ import UserMenu from "./components/UserMenu";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
 import { FEATURES } from "./lib/features";
+import { positionLabel } from "./lib/roles";
 import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
 
@@ -218,7 +219,7 @@ export default function App() {
                   <div className="leading-tight">
                     <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
                     <div className="text-xs uppercase tracking-wide text-slate-400">
-                      {me.role}
+                      {positionLabel(me.position || me.role)}
                       {me.scope_type !== "all" && ` · ${(me.scope_values || []).join(", ")}`}
                     </div>
                   </div>
@@ -243,7 +244,7 @@ export default function App() {
             <div className="mb-3">
               <div className="text-sm font-medium text-ink">{me.display_name || me.email}</div>
               <div className="text-xs uppercase tracking-wide text-slate-400">
-                {me.role}
+                {positionLabel(me.position || me.role)}
                 {me.scope_type !== "all" && ` · ${(me.scope_values || []).join(", ")}`}
               </div>
             </div>

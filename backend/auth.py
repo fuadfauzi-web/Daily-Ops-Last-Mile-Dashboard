@@ -17,8 +17,8 @@ from db import fetch_one
 @dataclass
 class CurrentUser:
     email: str
-    role: str  # 'admin' | 'manager' | 'region' | 'station'
-    scope_type: str  # 'all' | 'region' | 'zone' | 'station'
+    role: str  # the ACCESS TIER, see POSITIONS: 'admin' | 'manager' | 'hq_staff' | 'region' | 'station'
+    scope_type: str  # 'all' | 'region' | 'zone' | 'station' ('hq' is stored for HQ staff but read as 'all', see effective_scope)
     # 2026-09-21: a region/zone/station-scoped user can be granted more than one
     # region/zone/station (see V23 migration) -- always [] when scope_type='all'.
     scope_values: list[str]
@@ -29,6 +29,9 @@ class CurrentUser:
     # is what the signed-in person's account actually is, for the frontend's banner.
     is_impersonating: bool = False
     real_role: str = ""
+    # 2026-10-02: the job title the account is stored with (users.role), e.g. 'rfs' or 'opex'. `role` above is the access tier
+    # that title belongs to -- every permission check keeps reading `role`, so a new position never needs touching them.
+    position: str = ""
 
 
 def parse_scope_values(raw) -> list[str]:
@@ -39,7 +42,43 @@ def parse_scope_values(raw) -> list[str]:
     return json.loads(raw)  # asyncmy returns JSON columns as a raw string
 
 
-_VIEW_AS_ROLES = ("admin", "manager", "fleet_admin", "region", "station")
+# 2026-10-02: roles follow the job position. users.role stores the POSITION; each position belongs to one access TIER and every
+# permission check in the code reads the tier (CurrentUser.role), so adding a position is one line here.
+#   HQ staff      HOD, Manager, Fleet Admin, OPEX, Recovery, Restock -- no dedicated region / zone / station (scope 'hq')
+#   Region staff  Region Head (RH), Regional Fleet Supervisor (RFS)
+#   Station staff Station Head (SH), Fleet Assistant (FA)
+# Tiers: admin (everything) > manager (HOD / Manager: manage region + station staff, SLA + recovery settings) >
+#        hq_staff (Fleet Admin / OPEX / Recovery / Restock: see every region, no settings; their own tabs come later) >
+#        region (zone / region staff: manage station staff) > station.
+# 'region' and 'station' are the old, unspecific titles -- still valid for people not yet given a position.
+POSITIONS: dict[str, tuple[str, str, str]] = {  # position -> (label, group, tier)
+    "admin": ("Admin", "hq", "admin"),
+    "hod": ("HOD", "hq", "manager"),
+    "manager": ("Manager", "hq", "manager"),
+    "fleet_admin": ("Fleet Admin", "hq", "hq_staff"),
+    "opex": ("OPEX", "hq", "hq_staff"),
+    "recovery": ("Recovery", "hq", "hq_staff"),
+    "restock": ("Restock", "hq", "hq_staff"),
+    "region_head": ("Region Head (RH)", "region", "region"),
+    "rfs": ("Regional Fleet Supervisor (RFS)", "region", "region"),
+    "station_head": ("Station Head (SH)", "station", "station"),
+    "fleet_assistant": ("Fleet Assistant (FA)", "station", "station"),
+    "region": ("Region staff", "region", "region"),
+    "station": ("Station staff", "station", "station"),
+}
+
+
+def tier_of(position: str) -> str:
+    """Access tier of a stored position. An unknown value gets the lowest tier -- never more access than it was meant to have."""
+    return POSITIONS.get(position, ("", "", "station"))[2]
+
+
+def effective_scope(scope_type: str) -> str:
+    """'hq' (HQ staff: no dedicated region / zone / station) filters the data like 'all' -- they see every region for now."""
+    return "all" if scope_type == "hq" else scope_type
+
+
+_VIEW_AS_ROLES = tuple(POSITIONS)
 
 
 async def get_current_user(
@@ -60,7 +99,7 @@ async def get_current_user(
             status_code=403,
             detail="Your account isn't set up yet. Ask your admin to add you.",
         )
-    real_role = row[1]
+    real_role = tier_of(row[1])
     # "View As": an admin can preview a different role/scope's view (Settings ->
     # Role Tester) without changing their own account -- gated on real_role read
     # from the DB via the unspoofable SSO email above, never on the override
@@ -76,24 +115,25 @@ async def get_current_user(
         if target is None:
             raise HTTPException(status_code=422, detail="That user isn't in the user list")
         return CurrentUser(
-            email=target[0], role=target[1], scope_type=target[2], scope_values=parse_scope_values(target[3]),
-            display_name=target[4], is_impersonating=True, real_role=real_role,
+            email=target[0], role=tier_of(target[1]), scope_type=effective_scope(target[2]), scope_values=parse_scope_values(target[3]),
+            display_name=target[4], is_impersonating=True, real_role=real_role, position=target[1],
         )
     if real_role == "admin" and x_view_as_role:
         if x_view_as_role not in _VIEW_AS_ROLES:
             raise HTTPException(status_code=422, detail=f"view-as role must be one of {_VIEW_AS_ROLES}")
         return CurrentUser(
             email=row[0],
-            role=x_view_as_role,
-            scope_type=x_view_as_scope_type or "all",
+            role=tier_of(x_view_as_role),
+            scope_type=effective_scope(x_view_as_scope_type or "all"),
             scope_values=[v for v in (x_view_as_scope_values or "").split(",") if v],
             display_name=row[4],
             is_impersonating=True,
             real_role=real_role,
+            position=x_view_as_role,
         )
     return CurrentUser(
-        email=row[0], role=real_role, scope_type=row[2], scope_values=parse_scope_values(row[3]),
-        display_name=row[4], real_role=real_role,
+        email=row[0], role=real_role, scope_type=effective_scope(row[2]), scope_values=parse_scope_values(row[3]),
+        display_name=row[4], real_role=real_role, position=row[1],
     )
 
 

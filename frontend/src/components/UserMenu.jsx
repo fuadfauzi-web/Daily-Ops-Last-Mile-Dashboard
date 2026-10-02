@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import RoleTester from "./RoleTester";
 import { formatTime } from "../lib/format";
+import { positionLabel } from "../lib/roles";
 
 // Header tidy-up (2026-10-02, staging only, FEATURES.headerTidy): the user block becomes one button that opens a
 // small menu, so the header fits on one row at 1280px. The Role Tester lives in here instead of beside the nav,
@@ -25,7 +26,7 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
     };
   }, [open]);
 
-  const roleLine = `${me.role}${me.scope_type !== "all" ? ` · ${(me.scope_values || []).join(", ")}` : ""}`;
+  const roleLine = `${positionLabel(me.position || me.role)}${me.scope_type !== "all" ? ` · ${(me.scope_values || []).join(", ")}` : ""}`;
 
   return (
     <div className="relative border-l border-slate-200 pl-3" ref={ref}>

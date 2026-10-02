@@ -5,6 +5,7 @@ import { weeklyChanges } from "./lib/changelog";
 import SegmentedControl from "./components/SegmentedControl";
 import BellBadge from "./components/BellBadge";
 import { entryId, markWhatsNewRead, unreadEntries, useWhatsNewUnread } from "./lib/whatsNew";
+import { rankOf } from "./lib/roles";
 
 // In-app onboarding reference (Settings -> Guide, open to everyone).
 //
@@ -14,9 +15,8 @@ import { entryId, markWhatsNewRead, unreadEntries, useWhatsNewUnread } from "./l
 //  * It only describes what the CURRENT build ships (lib/features.js flags), and only
 //    what the signed-in user's role and scope can actually see: a station user is never
 //    told about Region staff, Manager or Admin tools. Gate a section / FAQ / sentence
-//    with ctx.rank (0 station, 1 region, 2 manager, 3 admin) or ctx.wide (scope covers
+//    with ctx.rank (0 station, 1 region, 2 HQ staff / manager, 3 admin; see lib/roles.js) or ctx.wide (scope covers
 //    more than one station).
-const RANK = { station: 0, region: 1, manager: 2, admin: 3 };
 
 function Bullets({ items }) {
   return (
@@ -34,10 +34,10 @@ const SECTIONS = [
     title: "Roles & what you see",
     body: ({ rank }) => {
       const rows = [
-        { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
-        { role: "Region staff", rank: 1, text: "View the dashboard, plus add, edit and remove Station-staff teammates (with more than one station if needed) in Settings → Users." },
-        { role: "Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings." },
-        { role: "Fleet Admin", rank: 2, text: "Sees every region and station like a manager does, but is not a manager: no user management and no SLA / Recovery settings. Works from the Fleet Admin tabs." },
+        { role: "Station staff: Station Head (SH), Fleet Assistant (FA)", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
+        { role: "Region staff: Region Head (RH), Regional Fleet Supervisor (RFS)", rank: 1, text: "View the dashboard for their zone(s) or region(s), plus add, edit and remove Station-staff teammates (SH / FA, with more than one station if needed) in Settings → Users." },
+        { role: "HQ staff: HOD, Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings. HQ staff have no dedicated region, zone or station, so they see every region." },
+        { role: "HQ staff: Fleet Admin, OPEX, Recovery, Restock", rank: 2, text: "See every region and station like a manager does, but are not managers: no user management and no SLA / Recovery settings. Each will get its own tabs for its own work." },
         { role: "Admin", rank: 3, text: `Everything: full user management, all Settings screens, the Admin page (Documents, Station List, KPI Settings, Data Refresh), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
       ].filter((r) => r.rank <= rank);
       return (
@@ -640,7 +640,7 @@ const FAQS = [
 ];
 
 export default function GuideTab({ me }) {
-  const rank = RANK[me?.role] ?? 0;
+  const rank = rankOf(me);
   const wide = me?.scope_type === "all" || (me?.scope_values || []).length > 1;
   const ctx = useMemo(() => ({ rank, wide, me }), [rank, wide, me]);
 
