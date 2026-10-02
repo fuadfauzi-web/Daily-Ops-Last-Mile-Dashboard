@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { formatTime } from "../lib/format";
 import { exportCsv } from "../lib/csv";
+import { FEATURES } from "../lib/features";
+import TnSheet from "./TnSheet";
 
 // The tracking-number drilldown modal. Every tab that has a clickable metric
 // (Station Health, Shipment Details, Shipper Watch) uses this same component,
@@ -36,8 +38,25 @@ export default function TnModal({ state, onClose, fetcher }) {
     );
   };
 
+  const list = tns?.tracking_numbers || [];
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[8vh]" onClick={onClose}>
+    <>
+      {FEATURES.phoneTnSheet && (
+        <TnSheet
+          title={state.stationName}
+          subtitle={state.metricLabel}
+          count={list.length}
+          asOf={tns?.as_of ? formatTime(tns.as_of) : null}
+          loading={!tns && !error}
+          error={error}
+          rows={list.map((tn) => ({ key: tn, primary: tn }))}
+          onClose={onClose}
+          onCopy={copy}
+          onCsv={download}
+          copied={copied}
+        />
+      )}
+    <div className={`fixed inset-0 z-50 items-start justify-center bg-black/50 pt-[8vh] ${FEATURES.phoneTnSheet ? "hidden md:flex" : "flex"}`} onClick={onClose}>
       <div
         className="max-h-[75vh] w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -89,5 +108,6 @@ export default function TnModal({ state, onClose, fetcher }) {
         </div>
       </div>
     </div>
+    </>
   );
 }

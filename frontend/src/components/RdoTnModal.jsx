@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { exportCsv } from "../lib/csv";
 import { formatLocalDateTime, formatTime } from "../lib/format";
+import { FEATURES } from "../lib/features";
+import TnSheet from "./TnSheet";
 
 // B2B Document Compliance drilldown: every tracking number behind one station row's
 // count (Total TN, a status column, or a breach column), with the bundle details --
@@ -72,8 +74,31 @@ export default function RdoTnModal({ state, onClose }) {
     }
   };
 
+  const csvName = () => `daily-ops-rdo-${state.stationName.replace(/\s+/g, "-")}-${state.status}-${new Date().toISOString().slice(0, 10)}.csv`;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-3 pt-[6vh]" onClick={onClose}>
+    <>
+      {FEATURES.phoneTnSheet && (
+        <TnSheet
+          title={state.stationName}
+          subtitle={state.label}
+          count={rows.length}
+          asOf={data?.captured_at ? formatTime(data.captured_at) : null}
+          loading={!data && !error}
+          error={error}
+          rows={rows.map((r, i) => ({
+            key: `${r.tracking_number}-${i}`,
+            primary: r.tracking_number,
+            secondary: [r.document_type, r.rdo_status, r.age != null ? `${r.age}d` : null].filter(Boolean).join(" · "),
+          }))}
+          onClose={onClose}
+          onCopy={() => navigator.clipboard.writeText(rows.map((r) => r.tracking_number).join("\n")).then(() => setCopied(true))}
+          onCsv={() =>
+            exportCsv(csvName(), ["Station", ...COLUMNS.map((c) => c.label)], rows.map((r) => [state.stationName, ...COLUMNS.map((c) => c.text(r))]))
+          }
+          copied={copied}
+        />
+      )}
+    <div className={`fixed inset-0 z-50 items-start justify-center bg-black/50 px-3 pt-[6vh] ${FEATURES.phoneTnSheet ? "hidden md:flex" : "flex"}`} onClick={onClose}>
       <div
         className="max-h-[82vh] w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -162,5 +187,6 @@ export default function RdoTnModal({ state, onClose }) {
         </div>
       </div>
     </div>
+    </>
   );
 }

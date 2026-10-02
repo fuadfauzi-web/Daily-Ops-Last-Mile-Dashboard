@@ -30,5 +30,6 @@ export const FEATURES = {
   detailPanel: true, // staging-only trial (2026-10-02 design review D6): the station detail panel lists metrics under the 9 group headings, says how many are flagged, and can copy / CSV the flagged tracking numbers. NOT approved for production yet.
   filterBar: true, // staging-only trial (2026-10-02 design review D8): the filter bar gets an uppercase FILTERS label, 36px controls and a grey "your scope" chip for people with nothing to pick. NOT approved for production yet.
   alertTidy: true, // staging-only trial (2026-10-02 design review D11): "Beta" becomes small text instead of an amber pill, and the bell badge is an ink count badge instead of red. NOT approved for production yet.
+  phoneTnSheet: true, // staging-only trial (2026-10-02 design review D10): on a phone (<768px) the tracking-number lists open as a full-screen sheet with a sticky top bar, 56px rows and a Copy list / CSV bottom bar. NOT approved for production yet.
   stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };

@@ -70,7 +70,7 @@ export default function DataTable({
           `whitespace-nowrap ${padX} ${dense ? "py-1.5 text-[11px] font-semibold" : "py-2 font-medium"} font-display`,
           align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left",
           sortable ? `cursor-pointer select-none ${headHover}` : "",
-          c.sticky ? `sticky left-0 z-30 ${stickyHeadBg} ${stickyShadow}` : "",
+          c.sticky ? `sticky left-0 z-30 ${stickyHeadBg} ${stickyShadow} ${groupHeaders ? "border-r border-[#7A7476]" : ""}` : "",
           c.groupStart ? "border-l border-[#7A7476]" : groupHeaders && !c.sticky ? "border-l border-[#3A3638]" : "",
           // Reference (unscored) columns render muted even inside the
           // otherwise-white dark header text, so "no SLA" reads at a glance.
@@ -116,7 +116,7 @@ export default function DataTable({
                   <th
                     key={g.key}
                     colSpan={g.span}
-                    className={`${i > 0 ? "border-l border-[#7A7476]" : ""} whitespace-nowrap border-b border-[#5A5456] px-2 py-1 text-center font-display text-[10px] font-bold uppercase tracking-[0.08em] text-[#C9CDD2]`}
+                    className={`${i > 0 ? "border-l border-[#7A7476]" : ""} whitespace-nowrap border-b border-[#5A5456] bg-[#2F2B2C] px-2 py-1.5 text-center font-display text-[11px] font-bold uppercase tracking-[0.1em] text-white`}
                   >
                     {g.label}
                   </th>
@@ -162,7 +162,7 @@ export default function DataTable({
                         `${padX} ${dense ? "py-1.5 text-[12.5px]" : "py-2"} whitespace-nowrap`,
                         alignClass(align),
                         c.groupStart ? "border-l border-slate-200" : "",
-                        c.sticky ? `sticky left-0 z-10 ${stickyBg} font-medium text-slate-800 ${stickyShadow}` : "",
+                        c.sticky ? `sticky left-0 z-10 ${stickyBg} font-medium text-slate-800 ${stickyShadow} ${groupHeaders ? "border-r border-slate-300" : ""}` : "",
                         extraClass,
                       ].join(" ")}
                     >
