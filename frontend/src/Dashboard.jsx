@@ -961,6 +961,12 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {showFilterBar && (
         <FilterBar
+          v2={!!FEATURES.filterBar}
+          scopeChip={
+            me.scope_type !== "all" && (me.scope_values || []).length
+              ? `${{ region: "Region", zone: "Zone", station: "Station" }[me.scope_type] || "Scope"}: ${me.scope_values.join(", ")} (your scope)`
+              : null
+          }
           canPickRegion={canPickRegion}
           canPickZone={canPickZone}
           canToggleEastMalaysia={canToggleEastMalaysia}

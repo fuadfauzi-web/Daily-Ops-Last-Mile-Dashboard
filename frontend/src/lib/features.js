@@ -28,5 +28,6 @@ export const FEATURES = {
   sidebarNav: true, // staging-only trial (2026-10-02 design review D3): a grouped left sidebar as an OPTION (user menu -> Navigation). Top tabs stay the default. NOT approved for production yet.
   jumpSearch: true, // staging-only trial (2026-10-02 design review D4): Ctrl/Cmd+K (or the magnifier in the header) jumps to a page or a station. NOT approved for production yet.
   detailPanel: true, // staging-only trial (2026-10-02 design review D6): the station detail panel lists metrics under the 9 group headings, says how many are flagged, and can copy / CSV the flagged tracking numbers. NOT approved for production yet.
+  filterBar: true, // staging-only trial (2026-10-02 design review D8): the filter bar gets an uppercase FILTERS label, 36px controls and a grey "your scope" chip for people with nothing to pick. NOT approved for production yet.
   stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };

@@ -24,14 +24,27 @@ function FilterControls({
   onSearchChange,
   onClear,
   stacked,
+  v2,
+  scopeChip,
 }) {
   const controlWidth = stacked ? "w-full" : "";
+  // v2 (staging trial, FEATURES.filterBar -- design review D8): 36px controls, an uppercase FILTERS label, and a grey "your scope" chip
+  // when the person has nothing to pick (so a locked filter reads as locked, not missing).
+  const h = v2 && !stacked ? "min-h-[36px]" : "min-h-[44px]";
   return (
     <>
-      {!stacked && <span className="font-display text-xs font-semibold text-slate-700">Filter:</span>}
+      {!stacked &&
+        (v2 ? (
+          <span className="font-display text-[11px] font-bold uppercase tracking-wider text-subtle">Filters</span>
+        ) : (
+          <span className="font-display text-xs font-semibold text-slate-700">Filter:</span>
+        ))}
+      {v2 && scopeChip && !canPickRegion && !canPickZone && (
+        <span className="rounded-full bg-canvas px-3 py-1.5 font-display text-xs font-semibold text-muted ring-1 ring-line">{scopeChip}</span>
+      )}
       {canPickRegion && (
         <select
-          className={`min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${controlWidth}`}
+          className={`${h} rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${controlWidth}`}
           value={regionFilter}
           onChange={(e) => onRegionFilterChange(e.target.value)}
         >
@@ -44,7 +57,7 @@ function FilterControls({
         </select>
       )}
       {canToggleEastMalaysia && (
-        <label className="flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-slate-600">
+        <label className={`flex ${h} items-center gap-1.5 text-xs font-medium text-slate-600`}>
           <input
             type="checkbox"
             checked={includeEastMalaysia}
@@ -55,7 +68,7 @@ function FilterControls({
       )}
       {canPickZone && (
         <select
-          className={`min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${controlWidth}`}
+          className={`${h} rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${controlWidth}`}
           value={zoneFilter}
           onChange={(e) => onZoneFilterChange(e.target.value)}
         >
@@ -70,13 +83,13 @@ function FilterControls({
       {(canPickRegion || canPickZone) && (
         <button
           onClick={onClear}
-          className={`min-h-[44px] rounded-lg bg-ink px-3 py-1.5 font-display text-xs font-medium text-white ${controlWidth}`}
+          className={`${h} rounded-lg bg-ink px-3 py-1.5 font-display text-xs font-medium text-white ${controlWidth}`}
         >
           Clear
         </button>
       )}
       <input
-        className={`min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${stacked ? "w-full" : "w-56"}`}
+        className={`${h} rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm ${stacked ? "w-full" : "w-56"}`}
         placeholder="Search station…"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
@@ -93,7 +106,7 @@ export default function FilterBar(props) {
 
   return (
     <>
-      <div className="hidden flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200 sm:flex">
+      <div className={`hidden flex-wrap items-center gap-2 bg-white sm:flex ${props.v2 ? "rounded-[10px] px-3.5 py-3 shadow-card" : "rounded-xl p-3 ring-1 ring-slate-200"}`}>
         <FilterControls {...props} />
       </div>
 
