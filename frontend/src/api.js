@@ -106,6 +106,7 @@ export const api = {
         shippers?.length ? `&shipper=${encodeURIComponent(shippers.join(","))}` : ""
       }${statuses?.length ? `&status=${encodeURIComponent(statuses.join(","))}` : ""}`
     ),
+  orgChart: (opts) => request("/api/org-chart", opts),
   users: {
     list: (opts) => request("/api/admin/users", opts),
     add: (payload) => request("/api/admin/users", { method: "POST", body: JSON.stringify(payload) }),

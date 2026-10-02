@@ -35,6 +35,44 @@
         "tags": [
           "Dashboard"
         ]
+      },
+      "put": {
+        "summary": "Bulk save of the manager-keyed Capacity columns (PTWH headcount, parcel capacity) and the global parcels-per-sqft density.",
+        "description": "Bulk save of the manager-keyed Capacity columns (PTWH headcount, parcel capacity) and the global parcels-per-sqft\ndensity. Only touches those columns -- a station's mitigation / rescue plan is left as it is.",
+        "operationId": "put_capacity_api_management_view_capacity_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapacityEditIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
       }
     },
     "/api/management-view/notes": {
@@ -2792,6 +2830,16 @@
               "default": "overall",
               "title": "Type"
             }
+          },
+          {
+            "name": "summary",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Summary"
+            }
           }
         ],
         "responses": {
@@ -4267,6 +4315,35 @@
         ]
       }
     },
+    "/api/org-chart": {
+      "get": {
+        "summary": "Org Chart",
+        "operationId": "org_chart_api_org_chart_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/stations": {
       "get": {
         "summary": "List all active/virtual stations nationwide (hub code, name, zone, region) from the station reference data.",
@@ -4957,6 +5034,71 @@
         ],
         "title": "BulkUserResult"
       },
+      "CapacityEdit": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "ptwh_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ptwh Count"
+          },
+          "parcel_capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Capacity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code"
+        ],
+        "title": "CapacityEdit"
+      },
+      "CapacityEditIn": {
+        "properties": {
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/CapacityEdit"
+            },
+            "type": "array",
+            "title": "Edits",
+            "default": []
+          },
+          "parcels_per_sqft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcels Per Sqft"
+          },
+          "set_density": {
+            "type": "boolean",
+            "title": "Set Density",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CapacityEditIn"
+      },
       "CapacityResponse": {
         "properties": {
           "sources": {
@@ -4973,6 +5115,17 @@
             "type": "object",
             "title": "Sources"
           },
+          "parcels_per_sqft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcels Per Sqft"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/CapacityRow"
@@ -4984,6 +5137,7 @@
         "type": "object",
         "required": [
           "sources",
+          "parcels_per_sqft",
           "rows"
         ],
         "title": "CapacityResponse"
@@ -5038,6 +5192,17 @@
               }
             ],
             "title": "Ptwh Count"
+          },
+          "parcel_capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Capacity"
           }
         },
         "type": "object",
@@ -5048,7 +5213,8 @@
           "region",
           "sqft",
           "staff_count",
-          "ptwh_count"
+          "ptwh_count",
+          "parcel_capacity"
         ],
         "title": "CapacityRow"
       },
@@ -7000,16 +7166,38 @@
             ],
             "title": "Rescue Deployment Cost"
           },
-          "ptwh_count": {
+          "plan_status": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Ptwh Count"
+            "title": "Plan Status"
+          },
+          "plan_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Owner"
+          },
+          "plan_target_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Target Date"
           }
         },
         "type": "object",
@@ -10080,16 +10268,38 @@
             ],
             "title": "Rescue Deployment Cost"
           },
-          "ptwh_count": {
+          "plan_status": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Ptwh Count"
+            "title": "Plan Status"
+          },
+          "plan_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Owner"
+          },
+          "plan_target_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Target Date"
           },
           "updated_by": {
             "anyOf": [
@@ -10120,7 +10330,9 @@
           "mitigation_plan",
           "rescue_plan",
           "rescue_deployment_cost",
-          "ptwh_count",
+          "plan_status",
+          "plan_owner",
+          "plan_target_date",
           "updated_by",
           "updated_at"
         ],

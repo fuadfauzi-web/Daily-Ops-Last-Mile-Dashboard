@@ -26,6 +26,15 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-02",
+    title: "New: Staff & Org Chart tab for the Fleet Admin team (staging only), and every Station Head / Fleet Assistant now has access",
+    points: [
+      "The Fleet Admin team keeps the staff list in one place: add a joiner, move someone to another station, change a position, remove a leaver. The same list gives people dashboard access and feeds the PIC box, so the PIC search stays right when staff change.",
+      "An Org chart view shows HQ, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants, with vacant Station Head seats flagged. Managers and admins can open it too.",
+      "All Station Heads and Fleet Assistants from the Fleet Management sheet (about 400 people, every station) were added with access to their own station, so you can try the PIC search by typing any station name.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Roles now follow the job position (staging only)",
     points: [
       "Settings -> Users now uses the real positions, in three groups: HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock), Region staff (Region Head, Regional Fleet Supervisor) and Station staff (Station Head, Fleet Assistant). Your position shows under your name in the header.",

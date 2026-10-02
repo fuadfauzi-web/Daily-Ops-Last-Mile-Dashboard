@@ -3072,7 +3072,7 @@ async def urgent_pic_suggestions(q: str = "", user: CurrentUser = Depends(get_cu
             elif r[3] == "region" and values & regions:
                 tiers[2].append(r)
         for tier in (0, 1, 2):
-            for r in sorted(tiers[tier], key=lambda x: (x[1] or x[0]).lower()):
+            for r in sorted(tiers[tier], key=lambda x: (x[2] != "station_head", (x[1] or x[0]).lower())):  # the Station Head first
                 add(r)
 
     rows = await db.fetch_all(
@@ -3485,8 +3485,8 @@ def _require_admin(user: CurrentUser) -> None:
 
 
 def _require_can_add_users(user: CurrentUser) -> None:
-    if user.role not in ("admin", "manager", "region"):
-        raise HTTPException(status_code=403, detail="Admin, Manager, or Region staff access required")
+    if user.role not in ("admin", "manager", "region") and _grantable_tiers(user) is None:
+        raise HTTPException(status_code=403, detail="Admin, Manager, Fleet Admin or Region staff access required")
 
 
 # 2026-10-02: Region Heads / RFS / Managers now run the Users page for their own people, so what they can see,
@@ -3528,6 +3528,15 @@ def _auto_display_name(email: str, role: str, scope_type: str, scope_values: lis
 # Who may hand out / manage which positions, by the ACTING user's access tier (auth.POSITIONS): a Manager / HOD looks after
 # Region and Station staff, Region staff look after Station staff, only the Admin side (the owner) hands out HQ positions.
 _GRANTABLE_TIERS = {"manager": ("region", "station"), "region": ("station",)}
+
+
+def _grantable_tiers(acting: CurrentUser) -> tuple[str, ...] | None:
+    """What this person may add / edit / remove (None = nothing; admin is handled before this is asked). The Fleet Admin
+    position keeps the staff list for the whole country (2026-10-02: staff change, and the Fleet Admin team maintains
+    them) -- the same reach as a Manager, but only over Region and Station staff, never HQ staff."""
+    if acting.position == "fleet_admin" and acting.role == "hq_staff":
+        return _GRANTABLE_TIERS["manager"]
+    return _GRANTABLE_TIERS.get(acting.role)
 _TIER_NAMES = {"region": "Region staff", "station": "Station staff"}
 
 
@@ -3536,7 +3545,7 @@ def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
     _validate_grant_limits' ceiling."""
     if acting.role == "admin":
         return
-    allowed = _GRANTABLE_TIERS.get(acting.role)
+    allowed = _grantable_tiers(acting)
     if allowed is None:
         raise HTTPException(status_code=403, detail="You can't edit or remove other users")
     if tier_of(target_role) not in allowed:
@@ -3570,7 +3579,7 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     # ...and only the ones inside their own scope (2026-10-02).
     if user.role == "admin":
         return out
-    allowed = _GRANTABLE_TIERS.get(user.role, ())
+    allowed = _grantable_tiers(user) or ()
     return [u for u in out if tier_of(u["role"]) in allowed and _scope_within(user, u["scope_type"], u["scope_values"])]
 
 
@@ -3614,7 +3623,7 @@ def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
     a privilege-escalation hole."""
     if acting.role == "admin":
         return
-    allowed = _GRANTABLE_TIERS.get(acting.role)
+    allowed = _grantable_tiers(acting)
     if allowed is None:
         raise HTTPException(status_code=403, detail="You can't grant access")
     if tier_of(payload.role) not in allowed:
@@ -3713,9 +3722,9 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
     _validate_grant_limits(user, payload)
     _require_can_grant_role(user, payload.role)
     await db.execute(
-        """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=%s
-           WHERE email=%s""",
-        (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), payload.display_name, email),
+        """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=COALESCE(%s, display_name)
+           WHERE email=%s""",  # a form that sends no name keeps the one on file (it used to blank it)
+        (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), (payload.display_name or "").strip() or None, email),
     )
     return {"ok": True}
 
@@ -3739,6 +3748,58 @@ async def delete_user(email: str, user: CurrentUser = Depends(get_current_user))
         (email.lower(),),
     )
     return {"ok": True}
+
+
+# 2026-10-02: the organisation chart -- HQ staff, then each region's manager, each zone's Region Head / RFS and each station's
+# Station Head / Fleet Assistants -- built from the same users table the PIC box reads, so there is one list to keep right.
+# Stations with nobody in a role show up as vacant. Read by HQ staff and above; the Fleet Admin team maintains the list in the
+# Staff & Org Chart tab through the ordinary /api/admin/users calls.
+def _org_person(email: str, role: str, name: str | None) -> dict:
+    return {"email": email, "position": role, "label": POSITIONS.get(role, (role,))[0], "name": name or email}
+
+
+@app.get("/api/org-chart")
+async def org_chart(user: CurrentUser = Depends(get_current_user)):
+    if user.role not in ("admin", "manager", "hq_staff"):
+        raise HTTPException(status_code=403, detail="HQ staff access required")
+    rows = await db.fetch_all("SELECT email, role, scope_type, scope_values, display_name FROM users ORDER BY display_name, email")
+    hq, by_region, by_zone, by_station = [], {}, {}, {}
+    for email, role, scope_type, raw, name in rows:
+        person = _org_person(email, role, name)
+        values = parse_scope_values(raw)
+        if scope_type in ("all", "hq"):
+            if role != "admin":
+                hq.append(person)
+        elif scope_type == "region":
+            for v in values:
+                by_region.setdefault(v, []).append(person)
+        elif scope_type == "zone":
+            for v in values:
+                by_zone.setdefault(v, []).append(person)
+        elif scope_type == "station":
+            for v in values:
+                by_station.setdefault(v, []).append(person)
+    regions = []
+    for region in REGIONS:
+        zones = []
+        for zone in ZONES_BY_REGION.get(region, []):
+            stations = []
+            for name, _full, z, r in sorted(HUBS.values(), key=lambda h: h[0]):
+                if z != zone or r != region:
+                    continue
+                people = by_station.get(name, [])
+                stations.append({
+                    "name": name,
+                    "heads": [p for p in people if p["position"] == "station_head"],
+                    "assistants": [p for p in people if p["position"] != "station_head"],  # Fleet Assistants, and anyone with the old unspecific 'station' title
+                })
+            zones.append({"name": zone, "leads": by_zone.get(zone, []), "stations": stations})
+        regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones})
+    return {
+        "hq": hq,
+        "regions": regions,
+        "can_edit": user.role in ("admin", "manager") or user.position == "fleet_admin",
+    }
 
 
 class StationMeta(BaseModel):

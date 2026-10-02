@@ -330,6 +330,26 @@ const SECTIONS = [
     ),
   },
   {
+    id: "staff",
+    title: "Staff & Org Chart",
+    show: ({ rank, me }) => rank >= 2 || me?.position === "fleet_admin",
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>Staff &amp; Org Chart</strong> tab (staging only for now) is where the Fleet Admin team keeps the staff list right. It is the same list
+          that gives people dashboard access and that the PIC box searches, so a change here shows up everywhere at once.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Staff list</strong> -- every Region Head, RFS, Station Head and Fleet Assistant with their position and where they work. <em>Add a person</em> (email, name, position, station / zone / region), <em>Edit</em> to move someone or change their position, <em>Remove</em> for a leaver (they lose access and drop off the PIC list). Search by name, email, position, station or zone.</>,
+            <><strong>Org chart</strong> -- HQ staff on top, then each region with its manager, each zone with its Region Head / RFS, and each station with its Station Head and Fleet Assistants. A station with no Station Head shows <em>Vacant</em> in red. Click a person to edit them.</>,
+            <>HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock) and Managers are not edited here -- ask an admin. Managers and admins can open the tab too.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "routed",
     title: "Route Monitoring",
     body: () => (

@@ -13,6 +13,7 @@ import { FEATURES } from "./lib/features";
 import { positionLabel } from "./lib/roles";
 import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
+import StaffDirectoryTab from "./StaffDirectoryTab";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
@@ -110,15 +111,18 @@ export default function App() {
   // admin-only (Documents, Data Refresh) -- 2026-09-25 feedback. Each tab inside applies its
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
   const canSeeManagementView = FEATURES.managementView && (me.role === "manager" || me.role === "admin");
+  // The Fleet Admin team's own tab (2026-10-02, staging): keeps the staff list and org chart. Admin and managers can open it too.
+  const canSeeStaff = me.position === "fleet_admin" || me.role === "admin" || me.role === "manager";
   const navTabs = [
     "dashboard",
     ...(canSeeManagementView ? ["management"] : []),
+    ...(canSeeStaff ? ["staff"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
     "settings",
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
-    t === "kpi" || t === "management" ? (
+    t === "staff" ? "Staff & Org Chart" : t === "kpi" || t === "management" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : "Management View"}
         <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
@@ -302,6 +306,7 @@ export default function App() {
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
         {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
+        {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
