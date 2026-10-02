@@ -31,7 +31,7 @@ export const ALL_COLUMNS = [
 // ALL_COLUMNS; short is what the narrow sub-header shows (full label goes in the tooltip). Every ALL_COLUMNS key appears exactly once.
 export const HEALTH_GROUPS = [
   { key: "volume", label: "Volume", columns: [["total_fresh", "Fresh"], ["total_routed", "Routed"], ["routed_pct", "Routed %"]] },
-  { key: "riders", label: "Riders", columns: [["attendance", "Riders"]] },
+  { key: "riders", label: "Attendance", columns: [["attendance", "Attendance"]] },
   { key: "zero", label: "0 Attempt", columns: [["zero_attempt_total", "Total"], ["zero_attempt", "D0"], ["zero_attempt_gt_d0", ">D0"]] },
   { key: "hub", label: "In Hub", columns: [["total_in_hub", "In Hub"], ["age_gt3", "Age >3"], ["on_hold", "On Hold"], ["reschedule", "Resched."]] },
   { key: "ovfd", label: "OVFD & COD", columns: [["still_ovfd", "Still OVFD"], ["cod_pct_hub", "COD % Hub"]] },

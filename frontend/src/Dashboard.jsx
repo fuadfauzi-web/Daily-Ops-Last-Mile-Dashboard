@@ -780,7 +780,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             .filter(Boolean)
             .join("\n\n"),
           subLabel: targetLine(key, t),
-          align: "right",
+          align: "center",
           groupStart: span === 0,
           reference: !t.scored,
         });

@@ -1,4 +1,4 @@
-import { SIDE_GROUPS } from "../lib/sideNav";
+import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
 
 // Grouped left sidebar (staging trial, FEATURES.sidebarNav). `items` is already filtered to what this person may open:
 // [{ id, label, group, beta, code, active, badge, dot }]. 224px wide, or 72px with two-letter codes when collapsed.
@@ -15,7 +15,12 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
           if (!inGroup.length) return null;
           return (
             <div key={g}>
-              {!collapsed && <div className="px-2.5 pb-1 font-display text-[10px] font-bold uppercase tracking-wider text-subtle">{g}</div>}
+              {!collapsed && (
+                <div className="flex items-center gap-1.5 px-2.5 pb-1 font-display text-[10px] font-bold uppercase tracking-wider text-subtle">
+                  <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
+                  {g}
+                </div>
+              )}
               {collapsed && <div className="mx-2 mb-1 border-t border-line first:hidden" />}
               {inGroup.map((i) => (
                 <button
@@ -25,11 +30,15 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
                   title={collapsed ? i.label + (i.beta ? " (Beta)" : "") : undefined}
                   aria-current={i.active ? "page" : undefined}
                   className={`relative flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2.5 text-left font-display text-[13px] ${
-                    i.active ? "bg-brand-tint font-bold text-brand-dark" : "font-semibold text-ink-2 hover:bg-canvas"
-                  } ${collapsed ? "justify-center" : ""}`}
+                    collapsed
+                      ? "justify-center hover:bg-canvas"
+                      : i.active
+                        ? "bg-brand-tint font-bold text-brand-dark"
+                        : "font-semibold text-ink-2 hover:bg-canvas"
+                  }`}
                 >
                   {collapsed ? (
-                    <span className="text-xs">{i.code}</span>
+                    <span className={`flex h-8 w-9 items-center justify-center rounded-md text-xs ${SIDE_GROUP_COLORS[i.group].chip} ${i.active ? "ring-2 ring-brand" : ""}`}>{i.code}</span>
                   ) : (
                     <>
                       <span className="min-w-0 flex-1 truncate">{i.label}</span>

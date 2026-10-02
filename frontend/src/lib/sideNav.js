@@ -3,6 +3,16 @@
 // decides who may see what -- App passes in only the pages this person's role can open.
 export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Analyse", "System"];
 
+// One colour per group, so the collapsed sidebar (two-letter codes) can still be read by colour. chip = the code badge, dot = the group label's marker.
+// Deliberately not brand red / status red-amber-green -- those mean "chrome" and "data" elsewhere.
+export const SIDE_GROUP_COLORS = {
+  Act: { chip: "bg-[#E5E7EB] text-[#231F20]", dot: "bg-[#231F20]" },
+  Monitor: { chip: "bg-[#DBEAFE] text-[#1E40AF]", dot: "bg-[#2563EB]" },
+  Recovery: { chip: "bg-[#CCFBF1] text-[#115E59]", dot: "bg-[#0D9488]" },
+  Analyse: { chip: "bg-[#EDE9FE] text-[#5B21B6]", dot: "bg-[#7C3AED]" },
+  System: { chip: "bg-[#F3F4F6] text-[#4B5563]", dot: "bg-[#9CA3AF]" },
+};
+
 export const SIDE_ITEMS = [
   { id: "action", dash: true, group: "Act", label: "Action Board", code: "AB" },
   { id: "urgent", dash: true, group: "Act", label: "Urgent TN", taskListLabel: "Task List", code: "TL" },
