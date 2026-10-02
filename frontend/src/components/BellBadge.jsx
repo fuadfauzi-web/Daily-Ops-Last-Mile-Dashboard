@@ -1,11 +1,14 @@
 // A small red bell with a number: something needs your attention (an assigned Urgent TN, a
 // reply to your feedback, updates you haven't read in What's new). Shared by the tab bars,
 // the Settings nav item and the Guide's What's new switch.
+import { FEATURES } from "../lib/features";
+
+// FEATURES.alertTidy (staging trial, design review D11): the badge is an ink count badge instead of a critical-red one -- red is kept for critical data.
 export default function BellBadge({ count, title }) {
   if (!count || count < 1) return null;
   return (
     <span
-      className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-status-critical px-1.5 py-0.5 align-middle text-[10px] font-semibold leading-none text-white"
+      className={`ml-1.5 inline-flex items-center gap-0.5 rounded-full ${FEATURES.alertTidy ? "bg-ink" : "bg-status-critical"} px-1.5 py-0.5 align-middle text-[10px] font-semibold leading-none text-white`}
       title={title || `${count} need${count === 1 ? "s" : ""} your attention`}
     >
       <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

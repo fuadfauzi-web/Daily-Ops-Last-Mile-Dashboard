@@ -7,6 +7,7 @@ import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import { FEATURES } from "./lib/features";
 import { taskListBadges } from "./lib/sideNav";
+import BetaTag from "./components/BetaTag";
 import DataTable from "./components/DataTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
@@ -75,7 +76,7 @@ const TABS = [
           label: (
             <span className="inline-flex items-center gap-1.5">
               Processing Time
-              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+              <BetaTag />
             </span>
           ),
         },
@@ -89,7 +90,7 @@ const TABS = [
           label: (
             <span className="inline-flex items-center gap-1.5">
               Daily KPI
-              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+              <BetaTag />
             </span>
           ),
         },
@@ -108,7 +109,7 @@ const TABS = [
           label: (
             <span className="inline-flex items-center gap-1.5">
               DoD
-              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+              <BetaTag />
             </span>
           ),
         },

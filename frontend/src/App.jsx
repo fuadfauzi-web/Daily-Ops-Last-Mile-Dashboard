@@ -3,6 +3,7 @@ import { api } from "./api";
 import Dashboard, { DASHBOARD_TAB_KEYS } from "./Dashboard";
 import SideNav from "./components/SideNav";
 import CommandJump from "./components/CommandJump";
+import BetaTag from "./components/BetaTag";
 import { SIDE_ITEMS, taskListBadges } from "./lib/sideNav";
 import SettingsPanel from "./SettingsPanel";
 import Logo from "./components/Logo";
@@ -196,7 +197,7 @@ export default function App() {
     t === "staff" ? "Staff & Org Chart" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : t === "attendance" ? "Attendance" : "Management View"}
-        <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+        <BetaTag />
       </span>
     ) : (
       t
