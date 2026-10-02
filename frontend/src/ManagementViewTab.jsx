@@ -20,6 +20,16 @@ const SUB_TABS = [
   { key: "backlog", label: "Backlog Radar" },
 ];
 
+// The first refresh after midnight stores the new day with every number at 0 -- left in, it shows as an empty row and drags the
+// weekday / weekend averages down, so a day with no routes and no attendance anywhere is dropped until real numbers arrive.
+function withoutEmptyDays(dod) {
+  const live = new Set();
+  dod.rows.forEach((r) => {
+    if ((r.metrics.total_routed || 0) > 0 || (r.metrics.attendance || 0) > 0) live.add(r.day);
+  });
+  return { ...dod, days: dod.days.filter((d) => live.has(d)), rows: dod.rows.filter((r) => live.has(r.day)) };
+}
+
 export default function ManagementViewTab({ me }) {
   const [sub, setSub] = useState("health");
   const [data, setData] = useState(null);
@@ -31,7 +41,7 @@ export default function ManagementViewTab({ me }) {
       api.dashboard(), api.managementCapacity(), api.managementNotes(), api.managementLhTrips(),
     ])
       .then(([dod, shipper, delivery, ats, zero, dashboard, capacity, notes, lhTrips]) =>
-        setData({ dod, shipper, aging: { delivery, ats, zero_attempt: zero }, dashboard, capacity, notes, lhTrips })
+        setData({ dod: withoutEmptyDays(dod), shipper, aging: { delivery, ats, zero_attempt: zero }, dashboard, capacity, notes, lhTrips })
       )
       .catch((e) => setError(e.message));
   };
