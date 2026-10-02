@@ -25,5 +25,6 @@ export const FEATURES = {
   healthTable: true, // staging-only trial (2026-10-02 design review D5): Station Health under 9 column-group headers with short labels, a target line per column, tinted severity cells, column-group chooser. NOT approved for production yet.
   boardViews: true, // staging-only trial (2026-10-02 design review D9): Action Board searchable grouped metric picker, numbered chips, "My views" saved per person in the browser, tinted badges only on breaching cells. NOT approved for production yet.
   sidebarNav: true, // staging-only trial (2026-10-02 design review D3): a grouped left sidebar as an OPTION (user menu -> Navigation). Top tabs stay the default. NOT approved for production yet.
+  jumpSearch: true, // staging-only trial (2026-10-02 design review D4): Ctrl/Cmd+K (or the magnifier in the header) jumps to a page or a station. NOT approved for production yet.
   stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };

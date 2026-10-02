@@ -304,7 +304,15 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
     }
   };
   useEffect(() => {
-    if (requestedTab && tabs.some((t) => t.key === requestedTab.key)) setTab(requestedTab.key);
+    if (!requestedTab) return;
+    if (tabs.some((t) => t.key === requestedTab.key)) setTab(requestedTab.key);
+    // Jump search -> a station: show every region/zone and search for that station's name.
+    if (requestedTab.station) {
+      setRegionFilter("all");
+      setZoneFilter("all");
+      setSearch(requestedTab.station.station_name);
+      if (requestedTab.station.region === "East Malaysia") setIncludeEastMalaysia(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedTab?.n]);
   useEffect(() => {

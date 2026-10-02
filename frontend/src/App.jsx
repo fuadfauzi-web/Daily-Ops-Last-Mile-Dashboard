@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
 import Dashboard, { DASHBOARD_TAB_KEYS } from "./Dashboard";
 import SideNav from "./components/SideNav";
+import CommandJump from "./components/CommandJump";
 import { SIDE_ITEMS, taskListBadges } from "./lib/sideNav";
 import SettingsPanel from "./SettingsPanel";
 import Logo from "./components/Logo";
@@ -69,6 +70,18 @@ export default function App() {
   }, []);
   const [dashTab, setDashTab] = useState(null); // the Dashboard's active sub-tab, reported up so the sidebar can highlight it
   const [dashRequest, setDashRequest] = useState(null); // { key, n } -- asks the Dashboard to open a sub-tab
+  const [jumpOpen, setJumpOpen] = useState(false);
+  useEffect(() => {
+    if (!FEATURES.jumpSearch) return undefined;
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setJumpOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const stickyRef = useRef(null);
   const [stickyH, setStickyH] = useState(96);
   useLayoutEffect(() => {
@@ -199,6 +212,10 @@ export default function App() {
       dot: bells.dot,
     };
   });
+  const jumpToStation = (station) => {
+    setTab("dashboard");
+    setDashRequest({ key: "health", n: Date.now(), station });
+  };
   const selectSide = (id) => {
     const item = SIDE_ITEMS.find((i) => i.id === id);
     if (item?.dash) {
@@ -276,6 +293,22 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            {FEATURES.jumpSearch && me.provisioned && (
+              <button
+                type="button"
+                onClick={() => setJumpOpen(true)}
+                title="Jump to a page or a station (Ctrl K)"
+                aria-label="Jump to a page or a station"
+                className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 text-xs text-muted hover:bg-white"
+              >
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="8.5" cy="8.5" r="5.5" />
+                  <path d="M13 13l4.5 4.5" strokeLinecap="round" />
+                </svg>
+                <span className="hidden min-[1440px]:inline">Jump to…</span>
+                <kbd className="hidden rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle min-[1440px]:inline">Ctrl K</kbd>
+              </button>
+            )}
             {tidy ? (
               <UserMenu
                 me={me}
@@ -379,6 +412,15 @@ export default function App() {
         )}
         </header>
       </div>
+      {FEATURES.jumpSearch && (
+        <CommandJump
+          open={jumpOpen}
+          onClose={() => setJumpOpen(false)}
+          pages={sideItems.map((i) => ({ id: i.id, label: i.label, group: i.group }))}
+          onPage={selectSide}
+          onStation={jumpToStation}
+        />
+      )}
       <div className={sidebarActive ? "flex" : ""}>
       {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
       <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
