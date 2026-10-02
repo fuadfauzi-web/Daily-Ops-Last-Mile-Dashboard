@@ -14,13 +14,23 @@ import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 const TN_TYPES = ["Hub", "Driver/Rider", "Ship In", "Ship Out", "Other"];
 const DEFAULT_TN_TYPES = TN_TYPES.filter((t) => t !== "Other");
 
-const SUB_TABS = [
-  { key: "missing", label: "Missing Details" },
-  { key: "active", label: "Active Missing" },
-  { key: "b2b", label: "B2B Document Active Missing" },
-  { key: "lostweek", label: "Lost Declared This Week" },
-  { key: "lostsummary", label: "Lost Declared Summary" },
+// Two groups (2026-10-03 feedback): Active Missing (Missing Details, Active Missing, B2B Document Active Missing)
+// and Lost Declared (This Week, Summary).
+const GROUPS = [
+  { key: "activemissing", label: "Active Missing" },
+  { key: "lostdeclared", label: "Lost Declared" },
 ];
+const SUB_TABS = {
+  activemissing: [
+    { key: "missing", label: "Missing Details" },
+    { key: "active", label: "Active Missing" },
+    { key: "b2b", label: "B2B Document Active Missing" },
+  ],
+  lostdeclared: [
+    { key: "lostweek", label: "Lost Declared This Week" },
+    { key: "lostsummary", label: "Lost Declared Summary" },
+  ],
+};
 
 const OVERVIEW_COLUMNS = [
   { key: "hub_count", label: "Hub", render: (r) => r.hub_count.toLocaleString() },
@@ -285,11 +295,15 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
 }
 
 export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  const [subTab, setSubTab] = useState("missing");
+  const [group, setGroup] = useState("activemissing");
+  const [subTabs, setSubTabs] = useState({ activemissing: "missing", lostdeclared: "lostweek" }); // each group remembers its own sub-tab
+  const subTab = subTabs[group];
+  const setSubTab = (key) => setSubTabs((s) => ({ ...s, [group]: key }));
 
   return (
     <div className="space-y-3">
-      <SegmentedControl options={SUB_TABS} value={subTab} onChange={setSubTab} />
+      <SegmentedControl options={GROUPS} value={group} onChange={setGroup} />
+      <SegmentedControl options={SUB_TABS[group]} value={subTab} onChange={setSubTab} />
       {subTab === "missing" && (
         <MissingDetailsView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}

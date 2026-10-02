@@ -17,6 +17,13 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-03",
+    title: "Recovery is now two groups: Active Missing and Lost Declared",
+    points: [
+      "Recovery has two buttons at the top. Active Missing holds Missing Details, Active Missing and B2B Document Active Missing; Lost Declared holds Lost Declared This Week and Lost Declared Summary. Nothing inside the pages changed -- they are just grouped.",
+    ],
+  },
+  {
     date: "2026-10-02",
     title: "Attendance (Beta, staging only): import the PTWH list from the sheet, and PTWH categories C1-C4",
     feature: "attendance",
