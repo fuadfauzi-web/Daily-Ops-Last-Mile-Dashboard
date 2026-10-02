@@ -84,6 +84,7 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
                 {[
                   ["tabs", "Top tabs"],
                   ["sidebar", "Sidebar"],
+                  ["classic", "Classic"],
                 ].map(([k, label]) => (
                   <button
                     key={k}

@@ -3,6 +3,7 @@ import { api } from "./api";
 import Dashboard, { DASHBOARD_TAB_KEYS } from "./Dashboard";
 import SideNav from "./components/SideNav";
 import CommandJump from "./components/CommandJump";
+import CategoryNav from "./components/CategoryNav";
 import BetaTag from "./components/BetaTag";
 import { SIDE_ITEMS, taskListBadges } from "./lib/sideNav";
 import SettingsPanel from "./SettingsPanel";
@@ -35,7 +36,8 @@ export default function App() {
   // below that the existing top tabs / phone menu are used, since the sidebar has no phone layout yet.
   const [navMode, setNavModeState] = useState(() => {
     try {
-      return localStorage.getItem("nav-mode") === "sidebar" ? "sidebar" : "tabs";
+      const m = localStorage.getItem("nav-mode");
+      return m === "sidebar" || m === "classic" ? m : "tabs";
     } catch {
       return "tabs";
     }
@@ -209,6 +211,9 @@ export default function App() {
 
   const tidy = !!FEATURES.headerTidy;
   const sidebarActive = !!FEATURES.sidebarNav && navMode === "sidebar" && wide;
+  // "Top tabs" (the default choice) is the same categories as the sidebar laid out along the top; "Classic" is the original tab strips.
+  const catActive = !!FEATURES.sidebarNav && navMode === "tabs" && wide;
+  const externalNav = sidebarActive || catActive;
   const sideItems = SIDE_ITEMS.filter((i) => (i.dash ? DASHBOARD_TAB_KEYS.includes(i.id) : navTabs.includes(i.id))).map((i) => {
     const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
     return {
@@ -281,7 +286,7 @@ export default function App() {
                 Comfortable
               </button>
             </div>
-            <nav className={`gap-1 rounded-lg bg-slate-100 p-1 text-sm ${sidebarActive ? "hidden" : "flex"}`}>
+            <nav className={`gap-1 rounded-lg bg-slate-100 p-1 text-sm ${externalNav ? "hidden" : "flex"}`}>
               {navTabs.map((t) => (
                 <button
                   key={t}
@@ -312,8 +317,8 @@ export default function App() {
                   <circle cx="8.5" cy="8.5" r="5.5" />
                   <path d="M13 13l4.5 4.5" strokeLinecap="round" />
                 </svg>
-                <span className={`hidden ${sidebarActive ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Jump to…</span>
-                <kbd className={`hidden whitespace-nowrap rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle ${sidebarActive ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Ctrl K</kbd>
+                <span className={`hidden ${externalNav ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Jump to…</span>
+                <kbd className={`hidden whitespace-nowrap rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle ${externalNav ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Ctrl K</kbd>
               </button>
             )}
             {tidy ? (
@@ -428,6 +433,7 @@ export default function App() {
           onStation={jumpToStation}
         />
       )}
+      {catActive && <CategoryNav items={sideItems} onSelect={selectSide} />}
       <div className={sidebarActive ? "flex" : ""}>
       {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
       <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
@@ -438,7 +444,7 @@ export default function App() {
             onCapturedAt={setFreshness}
             onStationsInScope={setStationsInScope}
             notifCounts={notifCounts}
-            sidebar={sidebarActive}
+            sidebar={externalNav}
             requestedTab={dashRequest}
             onTabState={setDashTab}
           />

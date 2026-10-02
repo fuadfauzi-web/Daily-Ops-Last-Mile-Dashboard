@@ -18,9 +18,10 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
     <aside
       aria-label="Main navigation"
       style={{ top, height: `calc(100vh - ${top}px)` }}
-      className={`sticky shrink-0 self-start overflow-y-auto border-r border-line bg-white py-3 ${collapsed ? "w-[72px]" : "w-56"}`}
+      className={`sticky shrink-0 self-start overflow-y-auto border-r border-line bg-white pb-3 ${collapsed ? "w-[72px]" : "w-56"}`}
     >
-      <div className={`mb-3 flex items-center gap-1.5 px-2 ${collapsed ? "flex-col" : ""}`}>
+      {/* The collapse + search row stays put while the pages scroll underneath it. */}
+      <div className={`sticky top-0 z-10 mb-1 flex items-center gap-1.5 border-b border-line/60 bg-white px-2 pb-2 pt-3 ${collapsed ? "flex-col" : ""}`}>
         <button
           type="button"
           onClick={onToggle}
@@ -63,7 +64,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
           </label>
         )}
       </div>
-      <nav className="flex flex-col gap-3 px-2">
+      <nav className="flex flex-col gap-3 px-2 pt-2">
         {q && shown.length === 0 && <div className="px-2.5 text-xs text-subtle">Nothing matches.</div>}
         {SIDE_GROUPS.map((g) => {
           const inGroup = shown.filter((i) => i.group === g);
