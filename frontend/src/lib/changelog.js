@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
+    title: "Attendance (Beta, staging only): import the PTWH list from the sheet, and PTWH categories C1-C4",
+    feature: "attendance",
+    points: [
+      "Workers -> Import from sheet reads the PTWH DETAILS tab (downloaded as CSV): it shows what will be added first, only adds people who are not in the list yet, and never overwrites -- stations can edit anyone afterwards.",
+      "Every PTWH day now has a category instead of a free-text reason: C1 Core Shift, C2 Vacancy Cover, C3 Leave & Rotation Cover, C4 Volume Surge / PM Support. Each worker has a default that pre-fills it; the Month sheet shows cost by category and flags anyone over a category's max days.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "New: Attendance tab (Beta, staging only) -- PTWH clock in / clock out, month sheet and payable",
     feature: "attendance",
     points: [

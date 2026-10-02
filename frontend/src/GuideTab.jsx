@@ -323,9 +323,10 @@ const SECTIONS = [
         </p>
         <Bullets
           items={[
-            <><strong>Today</strong> -- every active PTWH at your station(s): pick the reason (it remembers their last one) and press <em>Clock in</em> when they arrive and <em>Clock out</em> when they leave. <em>Edit</em> adds or corrects a time (a forgotten clock-in, a missed clock-out) for today or an earlier day.</>,
+            <><strong>Today</strong> -- every active PTWH at your station(s): pick the category (it remembers their last one) and press <em>Clock in</em> when they arrive and <em>Clock out</em> when they leave. <em>Edit</em> adds or corrects a time (a forgotten clock-in, a missed clock-out) for today or an earlier day.</>,
             <><strong>Month sheet</strong> -- the old sheet's grid: a row per PTWH, a column per day showing hours worked, then workdays and payable. Green = full day, blue = half day, amber … = clocked in but never clocked out (fix it by clicking the day). Export CSV for payroll.</>,
-            <><strong>Workers</strong> -- the PTWH roster: name, station, IC, phone, daily rate (RM50 by default) and joined date. Untick Active when someone stops -- their history stays.</>,
+            <><strong>Workers</strong> -- the PTWH roster: name, station, IC, phone, default category, daily rate (RM50 by default) and joined date. <em>Import from sheet</em> loads the PTWH DETAILS tab (downloaded as CSV) in one go -- it only adds people who are not in the list yet and never overwrites, so station edits survive a re-import. Untick Active when someone stops -- their history stays.</>,
+            <><strong>Categories</strong> -- every day carries one of the 4 standard PTWH categories: <strong>C1</strong> Core Shift (inbound &amp; push-off), <strong>C2</strong> Vacancy Cover (short of staff), <strong>C3</strong> Leave &amp; Rotation Cover, <strong>C4</strong> Volume Surge / PM Support. They replace the old free-text justification. The Month sheet adds up days and payable by category and flags anyone over a category's max days (C1 and C2 26, C3 20).</>,
             <><strong>How pay works</strong> -- 6 hours or more is a full day at their daily rate; less than 6 hours is a half day; a day with no clock-out pays nothing until it is closed.</>,
           ]}
         />

@@ -209,7 +209,26 @@ export const api = {
   ptwhWorkerAdd: (payload) => request("/api/attendance/ptwh/workers", { method: "POST", body: JSON.stringify(payload) }),
   ptwhWorkerSave: (id, payload) => request(`/api/attendance/ptwh/workers/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   ptwhDay: (date) => request(`/api/attendance/ptwh/day${date ? `?date_=${encodeURIComponent(date)}` : ""}`),
-  ptwhClockIn: (workerId, reason) => request("/api/attendance/ptwh/clock-in", { method: "POST", body: JSON.stringify({ worker_id: workerId, reason }) }),
+  ptwhClockIn: (workerId, category) => request("/api/attendance/ptwh/clock-in", { method: "POST", body: JSON.stringify({ worker_id: workerId, category }) }),
+  // Roster import: the PTWH DETAILS tab downloaded as CSV. dryRun = just report what would be added.
+  ptwhImport: async (file, dryRun) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    // No Content-Type header -- the browser sets the multipart boundary itself.
+    const res = await fetch(`/api/attendance/ptwh/import?dry_run=${dryRun ? "true" : "false"}`, { method: "POST", body: formData, headers: viewAsHeaders() });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* ignore */
+      }
+      const err = new Error(detail);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
   ptwhClockOut: (workerId) => request("/api/attendance/ptwh/clock-out", { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
   ptwhRecordSave: (payload) => request("/api/attendance/ptwh/record", { method: "PUT", body: JSON.stringify(payload) }),
   ptwhRecordDelete: (id) => request(`/api/attendance/ptwh/record/${id}`, { method: "DELETE" }),
