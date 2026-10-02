@@ -6,6 +6,7 @@ import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import { FEATURES } from "./lib/features";
+import { taskListBadges } from "./lib/sideNav";
 import DataTable from "./components/DataTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
@@ -115,6 +116,8 @@ const TABS = [
     : []), // every role, limited to its own scope (the backend filters)
   { key: "urgent", label: "Urgent TN" },
 ];
+// The tab keys, for the staging sidebar (App.jsx) -- which of them a person may open is decided by what Dashboard itself renders.
+export const DASHBOARD_TAB_KEYS = TABS.map((t) => t.key);
 
 // Attendance shows "12 (2 Rescue)" when some of the drivers are rescue, same as Route Monitoring (2026-09-26 feedback).
 function attendanceText(row) {
@@ -268,7 +271,8 @@ function exportStationHealthCsv(rows) {
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts }) {
+// sidebar / requestedTab / onTabState: the staging sidebar (FEATURES.sidebarNav) drives and mirrors the tab from outside -- with `sidebar` on, the tab strip below is hidden.
+export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts, sidebar = false, requestedTab = null, onTabState }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -299,6 +303,13 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       /* private browsing / storage blocked -- choice just won't persist */
     }
   };
+  useEffect(() => {
+    if (requestedTab && tabs.some((t) => t.key === requestedTab.key)) setTab(requestedTab.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedTab?.n]);
+  useEffect(() => {
+    onTabState?.(tab);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
@@ -884,25 +895,22 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         />
       )}
 
-      <TabBar
-        tabs={tabs.map((t) =>
-          t.key === "urgent"
-            ? {
-                ...t,
-                // With the Task List flag on, this tab is the Task List and its bell adds up all four sub-tabs.
-                label: FEATURES.taskList ? "Task List" : t.label,
-                dot: FEATURES.taskList ? (notifCounts?.followups_due_soon || 0) + (notifCounts?.todos_due_soon || 0) + (notifCounts?.tasks_due_soon || 0) : 0,
-                badge:
-                  (notifCounts?.urgent_notify || 0) +
-                  (notifCounts?.urgent_owner_updates || 0) +
-                  (notifCounts?.urgent_owner_reminder || 0) +
-                  (FEATURES.taskList ? (notifCounts?.followups_notify || 0) + (notifCounts?.todos_notify || 0) + (notifCounts?.tasks_notify || 0) : 0),
-              }
-            : t
-        )}
-        activeKey={tab}
-        onSelect={setTab}
-      />
+      {!sidebar && (
+        <TabBar
+          tabs={tabs.map((t) =>
+            t.key === "urgent"
+              ? {
+                  ...t,
+                  // With the Task List flag on, this tab is the Task List and its bell adds up all four sub-tabs.
+                  label: FEATURES.taskList ? "Task List" : t.label,
+                  ...taskListBadges(notifCounts, FEATURES.taskList),
+                }
+              : t
+          )}
+          activeKey={tab}
+          onSelect={setTab}
+        />
+      )}
 
       {tab === "action" && (
         <ActionBoard

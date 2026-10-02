@@ -6,7 +6,7 @@ import { positionLabel } from "../lib/roles";
 // Header tidy-up (2026-10-02, staging only, FEATURES.headerTidy): the user block becomes one button that opens a
 // small menu, so the header fits on one row at 1280px. The Role Tester lives in here instead of beside the nav,
 // and below 1200px the freshness line and the density toggle move in here too.
-export default function UserMenu({ me, initials, freshness, stationsInScope, showFreshness, density, setDensity, onRoleChanged }) {
+export default function UserMenu({ me, initials, freshness, stationsInScope, showFreshness, density, setDensity, onRoleChanged, navMode, setNavMode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -76,6 +76,26 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
               ))}
             </div>
           </div>
+
+          {navMode && (
+            <div className="mb-3 hidden lg:block">
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Navigation (trial)</div>
+              <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
+                {[
+                  ["tabs", "Top tabs"],
+                  ["sidebar", "Sidebar"],
+                ].map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setNavMode(k)}
+                    className={`min-h-[44px] flex-1 px-3 py-1 ${navMode === k ? "bg-ink text-white" : "text-slate-500"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {me.real_role === "admin" && (
             <div>

@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
-import Dashboard from "./Dashboard";
+import Dashboard, { DASHBOARD_TAB_KEYS } from "./Dashboard";
+import SideNav from "./components/SideNav";
+import { SIDE_ITEMS, taskListBadges } from "./lib/sideNav";
 import SettingsPanel from "./SettingsPanel";
 import Logo from "./components/Logo";
 import BellBadge from "./components/BellBadge";
@@ -24,6 +26,60 @@ export default function App() {
   // the instant the app opens, regardless of which tab/sub-tab is active.
   const [freshness, setFreshness] = useState(null);
   const [stationsInScope, setStationsInScope] = useState(null); // shown as a footnote after "Data as of"
+
+  // Staging sidebar trial (FEATURES.sidebarNav): per-person choice kept in this browser; top tabs stay the default. Only applies from 1024px up --
+  // below that the existing top tabs / phone menu are used, since the sidebar has no phone layout yet.
+  const [navMode, setNavModeState] = useState(() => {
+    try {
+      return localStorage.getItem("nav-mode") === "sidebar" ? "sidebar" : "tabs";
+    } catch {
+      return "tabs";
+    }
+  });
+  const setNavMode = (m) => {
+    setNavModeState(m);
+    try {
+      localStorage.setItem("nav-mode", m);
+    } catch {
+      /* storage blocked -- the choice just won't persist */
+    }
+  };
+  const [sideCollapsed, setSideCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("side-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSide = () =>
+    setSideCollapsed((c) => {
+      try {
+        localStorage.setItem("side-collapsed", c ? "0" : "1");
+      } catch {
+        /* storage blocked */
+      }
+      return !c;
+    });
+  const [wide, setWide] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 1024px)").matches : true));
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const [dashTab, setDashTab] = useState(null); // the Dashboard's active sub-tab, reported up so the sidebar can highlight it
+  const [dashRequest, setDashRequest] = useState(null); // { key, n } -- asks the Dashboard to open a sub-tab
+  const stickyRef = useRef(null);
+  const [stickyH, setStickyH] = useState(96);
+  useLayoutEffect(() => {
+    if (!stickyRef.current) return undefined;
+    const el = stickyRef.current;
+    const measure = () => setStickyH(Math.round(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 
   const loadMe = () =>
     api
@@ -132,6 +188,24 @@ export default function App() {
     );
 
   const tidy = !!FEATURES.headerTidy;
+  const sidebarActive = !!FEATURES.sidebarNav && navMode === "sidebar" && wide;
+  const sideItems = SIDE_ITEMS.filter((i) => (i.dash ? DASHBOARD_TAB_KEYS.includes(i.id) : navTabs.includes(i.id))).map((i) => {
+    const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
+    return {
+      ...i,
+      label: i.id === "urgent" && FEATURES.taskList ? i.taskListLabel : i.label,
+      active: i.dash ? tab === "dashboard" && dashTab === i.id : tab === i.id,
+      badge: i.id === "settings" ? (notifCounts?.feedback_replies_unread || 0) + whatsNewUnread : bells.badge,
+      dot: bells.dot,
+    };
+  });
+  const selectSide = (id) => {
+    const item = SIDE_ITEMS.find((i) => i.id === id);
+    if (item?.dash) {
+      setTab("dashboard");
+      setDashRequest({ key: id, n: Date.now() });
+    } else setTab(id);
+  };
   const onRoleChanged = () => {
     setTab("dashboard");
     setViewKey((k) => k + 1);
@@ -140,7 +214,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="sticky top-0 z-40">
+      <div className="sticky top-0 z-40" ref={stickyRef}>
         {FEATURES.stagingBanner && (
           <div className="bg-amber-400 py-1 text-center font-display text-[11px] font-bold uppercase leading-none tracking-wider text-amber-950">
             Staging
@@ -183,7 +257,7 @@ export default function App() {
                 Comfortable
               </button>
             </div>
-            <nav className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+            <nav className={`gap-1 rounded-lg bg-slate-100 p-1 text-sm ${sidebarActive ? "hidden" : "flex"}`}>
               {navTabs.map((t) => (
                 <button
                   key={t}
@@ -212,6 +286,8 @@ export default function App() {
                 density={density}
                 setDensity={setDensity}
                 onRoleChanged={onRoleChanged}
+                navMode={FEATURES.sidebarNav ? navMode : undefined}
+                setNavMode={setNavMode}
               />
             ) : (
               <>
@@ -303,14 +379,28 @@ export default function App() {
         )}
         </header>
       </div>
-      <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
-        {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
+      <div className={sidebarActive ? "flex" : ""}>
+      {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
+      <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
+        {tab === "dashboard" && (
+          <Dashboard
+            key={`dashboard-${viewKey}`}
+            me={me}
+            onCapturedAt={setFreshness}
+            onStationsInScope={setStationsInScope}
+            notifCounts={notifCounts}
+            sidebar={sidebarActive}
+            requestedTab={dashRequest}
+            onTabState={setDashTab}
+          />
+        )}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
         {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
       </main>
+      </div>
     </div>
   );
 }

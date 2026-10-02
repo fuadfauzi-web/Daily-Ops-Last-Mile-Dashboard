@@ -1,0 +1,37 @@
+// Grouped sidebar navigation (staging trial, FEATURES.sidebarNav -- design review D3). The sidebar is only another way to reach the pages that already
+// exist: `dash: true` items are the Dashboard's own sub-tabs (same keys as Dashboard.jsx's TABS), the others are App.jsx's level-1 pages. Nothing here
+// decides who may see what -- App passes in only the pages this person's role can open.
+export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Analyse", "System"];
+
+export const SIDE_ITEMS = [
+  { id: "action", dash: true, group: "Act", label: "Action Board", code: "AB" },
+  { id: "urgent", dash: true, group: "Act", label: "Urgent TN", taskListLabel: "Task List", code: "TL" },
+  { id: "health", dash: true, group: "Monitor", label: "Station Health", code: "SH" },
+  { id: "shipment", dash: true, group: "Monitor", label: "Shipment Details", code: "SD" },
+  { id: "routed", dash: true, group: "Monitor", label: "Route Monitoring", code: "RM" },
+  { id: "aging", dash: true, group: "Monitor", label: "Aging Details", code: "AD" },
+  { id: "rpu", dash: true, group: "Monitor", label: "RPU", code: "RP" },
+  { id: "shipper", dash: true, group: "Monitor", label: "Shipper Radar", code: "SR" },
+  { id: "processingTime", dash: true, group: "Monitor", label: "Processing Time", beta: true, code: "PT" },
+  { id: "recovery", dash: true, group: "Recovery", label: "Recovery", code: "RC" },
+  { id: "dailyKpi", dash: true, group: "Analyse", label: "Daily KPI", beta: true, code: "DK" },
+  { id: "dod", dash: true, group: "Analyse", label: "DoD", beta: true, code: "DD" },
+  { id: "kpi", group: "Analyse", label: "KPI", beta: true, code: "KP" },
+  { id: "management", group: "Analyse", label: "Management View", beta: true, code: "MV" },
+  { id: "staff", group: "System", label: "Staff & Org Chart", code: "SO" },
+  { id: "settings", group: "System", label: "Settings", code: "ST" },
+  { id: "admin", group: "System", label: "Admin", code: "AM" },
+];
+
+// The Task List tab's bell numbers (the same sums the Dashboard's tab strip shows), kept in one place so the strip and the sidebar agree.
+export function taskListBadges(n, taskListOn) {
+  const c = n || {};
+  return {
+    dot: taskListOn ? (c.followups_due_soon || 0) + (c.todos_due_soon || 0) + (c.tasks_due_soon || 0) : 0,
+    badge:
+      (c.urgent_notify || 0) +
+      (c.urgent_owner_updates || 0) +
+      (c.urgent_owner_reminder || 0) +
+      (taskListOn ? (c.followups_notify || 0) + (c.todos_notify || 0) + (c.tasks_notify || 0) : 0),
+  };
+}
