@@ -35,6 +35,7 @@ import kpi_data
 import kpi_targets
 import management_view
 import attendance
+import ptwh_app
 import headcount
 import premises
 import staff
@@ -715,6 +716,8 @@ async def _kpi_fresh() -> None:
 
 
 app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
+app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
+app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
 app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence + tenancy dates, rent per station (premises.py)

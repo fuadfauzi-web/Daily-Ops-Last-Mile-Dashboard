@@ -1,0 +1,562 @@
+"""PTWH app backend (2026-10-03, staging): what the separate PTWH clock-in app talks to, and what the dashboard needs to run it.
+
+Two halves in one module:
+
+1. router  -- /api/ptwh-app/*, called by the PTWH app (its own small backend forwards the phone's calls here). These paths are NOT behind the
+   Google SSO (PTWH are not ninjavan.co staff) -- declare /api/ptwh-app as an SSO-exempt path in the portal's Access tab. They protect themselves:
+     * every call must carry the shared PTWH_APP_KEY (env secret, the same value in both apps) -- no key set = the whole thing is switched off;
+     * everything but login / recover also needs the PTWH's own session token (HMAC-signed with JWT_SECRET, 14 days, dies when the password changes);
+     * passwords and recovery codes are stored hashed (scrypt); 5 wrong tries lock a login for 10 minutes.
+   Clocking in / out needs PROOF the person is at the station -- either the station's QR code (it changes every hour) or the phone's location within
+   the station's radius (default 50 m) -- AND a selfie with the station behind them. The server takes the time itself; the phone's clock is never trusted.
+
+2. admin_router -- /api/attendance/ptwh/* behind the normal SSO: station staff create / reset a PTWH's login, show the hourly QR, set where the station is,
+   and anyone with the station in their scope (station, RH, RFS, manager, HOD, Fleet Admin ...) audits the clock events and their selfies.
+
+The selfie is stored in object storage (storage.py); the table keeps only its key. Retention of the photos is an open question for the Fleet Manager.
+"""
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import math
+import os
+import re
+import secrets
+import time
+import uuid
+from datetime import date, datetime, timedelta
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
+
+import attendance
+import db
+import storage
+from attendance import _can_edit, _now, _require_editor, _visible_stations, _worker, day_pay
+from auth import CurrentUser, get_current_user
+
+log = logging.getLogger("ptwh_app")
+router = APIRouter()  # the PTWH app's calls (no SSO; key + token)
+admin_router = APIRouter()  # the dashboard's side (SSO)
+
+DEFAULT_RADIUS_M = 50
+MAX_GPS_ACCURACY_M = 65  # a fix worse than this can't prove "within 50 m" -- the person is asked to scan the QR or go outside
+QR_GRACE_MIN = 5  # a QR from the previous hour still works for the first minutes of the new hour (someone walked in just before it changed)
+TOKEN_DAYS = 14
+MAX_FAILS = 5
+LOCK_MIN = 10
+SELFIE_MAX_BYTES = 1_000_000
+_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I -- read out loud or copied by hand without mix-ups
+
+
+# ---------------------------------------------------------------- secrets, hashing, tokens
+
+def _secret() -> bytes:
+    return (os.environ.get("JWT_SECRET") or "dev-only-secret").encode()
+
+
+def _hash(secret: str) -> str:
+    salt = secrets.token_bytes(16)
+    h = hashlib.scrypt(secret.encode(), salt=salt, n=2 ** 14, r=8, p=1, dklen=32)
+    return f"scrypt${salt.hex()}${h.hex()}"
+
+
+def _check_hash(secret: str, stored: str) -> bool:
+    try:
+        _, salt, h = stored.split("$")
+        got = hashlib.scrypt(secret.encode(), salt=bytes.fromhex(salt), n=2 ** 14, r=8, p=1, dklen=32)
+        return hmac.compare_digest(got.hex(), h)
+    except (ValueError, TypeError):
+        return False
+
+
+def _b64(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _unb64(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def _sign_token(worker_id: int, version: int, now_ts: float | None = None) -> str:
+    body = _b64(json.dumps({"w": worker_id, "v": version, "exp": int((now_ts or time.time()) + TOKEN_DAYS * 86400)}, separators=(",", ":")).encode())
+    return f"{body}.{_b64(hmac.new(_secret(), body.encode(), hashlib.sha256).digest())}"
+
+
+def _read_token(token: str, now_ts: float | None = None) -> dict | None:
+    try:
+        body, sig = token.split(".")
+        if not hmac.compare_digest(_b64(hmac.new(_secret(), body.encode(), hashlib.sha256).digest()), sig):
+            return None
+        data = json.loads(_unb64(body))
+        return data if data.get("exp", 0) > (now_ts or time.time()) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _random_password() -> str:
+    return "".join(secrets.choice(_ALPHABET) for _ in range(8))
+
+
+def _random_recovery() -> str:
+    raw = "".join(secrets.choice(_ALPHABET) for _ in range(12))
+    return "-".join(raw[i:i + 4] for i in range(0, 12, 4))
+
+
+def _norm_recovery(code: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (code or "").upper())
+
+
+# ---------------------------------------------------------------- the station QR and the location check
+
+def qr_code(station: str, bucket: int) -> str:
+    return hmac.new(_secret(), f"ptwh-qr|{station}|{bucket}".encode(), hashlib.sha256).hexdigest()[:10]
+
+
+def qr_valid(station: str, code: str | None, now_ts: float | None = None) -> bool:
+    """The code for the current hour, or -- for the first QR_GRACE_MIN minutes of a new hour -- the previous one. (Epoch hours are MYT hours: UTC+8 is whole hours.)"""
+    if not code:
+        return False
+    now_ts = now_ts or time.time()
+    bucket = int(now_ts // 3600)
+    if hmac.compare_digest(code, qr_code(station, bucket)):
+        return True
+    return now_ts - bucket * 3600 < QR_GRACE_MIN * 60 and hmac.compare_digest(code, qr_code(station, bucket - 1))
+
+
+def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle (haversine) distance in metres."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 6371000 * 2 * math.asin(math.sqrt(a))
+
+
+# ---------------------------------------------------------------- PTWH app: auth plumbing
+
+def _require_app_key(x_ptwh_app_key: str | None = Header(default=None)) -> None:
+    expected = os.environ.get("PTWH_APP_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="The PTWH app is not switched on yet")
+    if not x_ptwh_app_key or not hmac.compare_digest(x_ptwh_app_key, expected):
+        raise HTTPException(status_code=401, detail="Not allowed")
+
+
+_CRED_COLS = "worker_id, username, password_hash, recovery_hash, cred_version, password_set_by, failed_attempts, locked_until, last_login_at, disabled"
+
+
+async def _session(authorization: str | None = Header(default=None), _k: None = Depends(_require_app_key)):
+    """The PTWH behind this call: (worker row, credentials row). 401 for anything that is not a live session -- a changed password kills old sessions."""
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    data = _read_token(token) if token else None
+    if not data:
+        raise HTTPException(status_code=401, detail="Please log in again")
+    cred = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE worker_id = %s", (data["w"],))
+    if cred is None or cred[9] or cred[4] != data["v"]:
+        raise HTTPException(status_code=401, detail="Please log in again")
+    w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (data["w"],))
+    if w is None or not w[7]:
+        raise HTTPException(status_code=401, detail="Your account is not active -- ask your station")
+    return w, cred
+
+
+async def _fail(worker_id: int, fails: int) -> None:
+    fails += 1
+    locked = _now() + timedelta(minutes=LOCK_MIN) if fails >= MAX_FAILS else None
+    await db.execute("UPDATE ptwh_credentials SET failed_attempts=%s, locked_until=%s WHERE worker_id=%s", (0 if locked else fails, locked, worker_id))
+
+
+def _locked_msg(locked_until: datetime | None) -> str | None:
+    if locked_until and locked_until > _now():
+        mins = max(1, math.ceil((locked_until - _now()).total_seconds() / 60))
+        return f"Too many wrong tries. Try again in {mins} minute{'s' if mins != 1 else ''}, or ask your station to reset your password."
+    return None
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/api/ptwh-app/login")
+async def app_login(p: LoginIn, _k: None = Depends(_require_app_key)):
+    row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
+    bad = HTTPException(status_code=401, detail="Wrong username or password")
+    if row is None or row[9]:
+        raise bad
+    if msg := _locked_msg(row[7]):
+        raise HTTPException(status_code=429, detail=msg)
+    if not _check_hash(p.password, row[2]):
+        await _fail(row[0], row[6])
+        raise bad
+    w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (row[0],))
+    if w is None or not w[7]:
+        raise HTTPException(status_code=403, detail="Your account is not active -- ask your station")
+    await db.execute("UPDATE ptwh_credentials SET failed_attempts=0, locked_until=NULL, last_login_at=%s WHERE worker_id=%s", (_now(), row[0]))
+    return {"token": _sign_token(row[0], row[4]), "name": w[1], "station": w[4], "needs_password_change": row[5] == "station"}
+
+
+def _record_row(r) -> dict | None:
+    """r: id, clock_in, clock_out, in_method, out_method (or None)"""
+    if r is None:
+        return None
+    return {"clock_in": attendance._iso(r[1]), "clock_out": attendance._iso(r[2]), "in_method": r[3], "out_method": r[4]}
+
+
+@router.get("/api/ptwh-app/me")
+async def app_me(s=Depends(_session)):
+    w, cred = s
+    today = _now().date()
+    rec = await db.fetch_one("SELECT id, clock_in, clock_out, in_method, out_method FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], today))
+    geo = await db.fetch_one("SELECT radius_m FROM ptwh_station_geo WHERE station=%s", (w[4],))
+    return {
+        "name": w[1], "station": w[4], "username": cred[1], "needs_password_change": cred[5] == "station",
+        "today": str(today), "now": attendance._iso(_now()), "record": _record_row(rec),
+        "geo_ready": geo is not None, "radius_m": geo[0] if geo else DEFAULT_RADIUS_M, "max_accuracy_m": MAX_GPS_ACCURACY_M,
+    }
+
+
+class ClockIn(BaseModel):
+    action: str  # 'in' | 'out'
+    qr: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    accuracy: float | None = None
+    selfie: str  # base64 JPEG (a data: URL is fine)
+
+
+def _decode_selfie(raw: str) -> bytes:
+    b64 = raw.split(",", 1)[1] if raw.startswith("data:") else raw
+    try:
+        data = base64.b64decode(b64, validate=False)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="The photo could not be read -- take it again")
+    if len(data) < 2000 or data[:3] != b"\xff\xd8\xff":
+        raise HTTPException(status_code=422, detail="Take a selfie with the station behind you")
+    if len(data) > SELFIE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="The photo is too big -- take it again")
+    return data
+
+
+@router.post("/api/ptwh-app/clock")
+async def app_clock(p: ClockIn, s=Depends(_session)):
+    w, _cred = s
+    if p.action not in ("in", "out"):
+        raise HTTPException(status_code=422, detail="action must be in or out")
+    station = w[4]
+    # --- proof of being at the station: the hourly QR, or the phone's location within the radius
+    geo = await db.fetch_one("SELECT lat, lng, radius_m FROM ptwh_station_geo WHERE station=%s", (station,))
+    dist = None
+    if p.lat is not None and p.lng is not None and geo is not None:
+        dist = distance_m(p.lat, p.lng, float(geo[0]), float(geo[1]))
+    method = None
+    if qr_valid(station, (p.qr or "").strip()):
+        method = "qr"
+    elif p.lat is not None and p.lng is not None:
+        if geo is None:
+            raise HTTPException(status_code=422, detail="Your station's location isn't set yet -- scan the station QR code instead, or ask your station")
+        if p.accuracy is not None and p.accuracy > MAX_GPS_ACCURACY_M:
+            raise HTTPException(status_code=422, detail=f"Your phone's location isn't accurate enough ({round(p.accuracy)} m). Go outside, or scan the station QR code")
+        if dist <= geo[2]:
+            method = "geo"
+        else:
+            raise HTTPException(status_code=422, detail=f"You are about {round(dist)} m from {station}. You need to be within {geo[2]} m, or scan the station QR code")
+    if method is None:
+        if p.qr:
+            raise HTTPException(status_code=422, detail="That QR code has expired -- scan the one on the station screen now")
+        raise HTTPException(status_code=422, detail="Scan the station QR code, or allow your location so we can see you are at the station")
+    selfie = _decode_selfie(p.selfie)
+
+    now = _now()
+    today = now.date()
+    rec = await db.fetch_one("SELECT id, clock_in, clock_out FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], today))
+    if p.action == "in" and rec is not None:
+        raise HTTPException(status_code=409, detail="You already clocked in today")
+    if p.action == "out":
+        if rec is None:
+            raise HTTPException(status_code=409, detail="You haven't clocked in today")
+        if rec[2] is not None:
+            raise HTTPException(status_code=409, detail="You already clocked out today")
+    key = storage.safe_key("ptwh", str(today), f"{w[0]}-{p.action}-{uuid.uuid4().hex[:12]}.jpg")
+    try:
+        await run_in_threadpool(storage.put_bytes, key, selfie, content_type="image/jpeg")
+    except Exception:  # noqa: BLE001 -- storage is a network call; nothing is recorded if the photo isn't saved
+        log.exception("selfie upload failed")
+        raise HTTPException(status_code=503, detail="Couldn't save your photo -- try again in a moment")
+    acc = round(p.accuracy) if p.accuracy is not None else None
+    d = round(dist) if dist is not None else None
+    if p.action == "in":
+        await db.execute(
+            """INSERT INTO ptwh_attendance (worker_id, work_date, clock_in, category, source, recorded_by, created_at,
+                                            in_method, in_lat, in_lng, in_acc, in_dist, in_selfie)
+               VALUES (%s, %s, %s, %s, 'app', %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (w[0], today, now, w[8], f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key),
+        )
+    else:
+        await db.execute(
+            """UPDATE ptwh_attendance SET clock_out=%s, edited_by=%s, edited_at=%s, out_method=%s, out_lat=%s, out_lng=%s, out_acc=%s, out_dist=%s, out_selfie=%s
+               WHERE id=%s""",
+            (now, f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key, rec[0]),
+        )
+    return {"ok": True, "action": p.action, "time": attendance._iso(now), "method": method}
+
+
+@router.get("/api/ptwh-app/summary")
+async def app_summary(month: str | None = None, s=Depends(_session)):
+    """The PTWH's own month: days worked, hours, the pay for each day and the total (before any back pay / deductions)."""
+    w, _cred = s
+    today = _now().date()
+    try:
+        y, m = (int(x) for x in (month or today.strftime("%Y-%m")).split("-"))
+        first = date(y, m, 1)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Months look like 2026-10")
+    nxt = date(y + (m == 12), 1 if m == 12 else m + 1, 1)
+    rows = await db.fetch_all(
+        "SELECT work_date, clock_in, clock_out, category, in_method FROM ptwh_attendance WHERE worker_id=%s AND work_date >= %s AND work_date < %s ORDER BY work_date",
+        (w[0], first, nxt),
+    )
+    days, workdays, payable = [], 0.0, 0.0
+    for wd_date, cin, cout, cat, method in rows:
+        wd, pay = day_pay(float(w[5]), cin, cout)
+        workdays += wd
+        payable += pay
+        h = attendance._hours(cin, cout)
+        days.append({"date": str(wd_date), "in": cin.strftime("%H:%M"), "out": cout.strftime("%H:%M") if cout else None,
+                     "hours": round(h, 1) if h is not None else None, "workday": wd, "pay": pay, "category": cat, "method": method})
+    return {"month": first.strftime("%Y-%m"), "daily_rate": float(w[5]), "days": days, "workdays": workdays, "payable": round(payable, 2),
+            "rule": {"half_day_hours": attendance.HALF_DAY_HOURS, "half_day_factor": attendance.HALF_DAY_FACTOR}}
+
+
+class ChangePassword(BaseModel):
+    old_password: str
+    new_password: str
+
+
+def _check_new_password(pw: str, username: str) -> None:
+    if len(pw) < 8:
+        raise HTTPException(status_code=422, detail="Use at least 8 characters")
+    if pw.lower() == username.lower():
+        raise HTTPException(status_code=422, detail="The password can't be the same as your username")
+
+
+@router.post("/api/ptwh-app/change-password")
+async def app_change_password(p: ChangePassword, s=Depends(_session)):
+    w, cred = s
+    if msg := _locked_msg(cred[7]):
+        raise HTTPException(status_code=429, detail=msg)
+    if not _check_hash(p.old_password, cred[2]):
+        await _fail(w[0], cred[6])
+        raise HTTPException(status_code=401, detail="Your current password is wrong")
+    _check_new_password(p.new_password, cred[1])
+    version = cred[4] + 1
+    await db.execute(
+        "UPDATE ptwh_credentials SET password_hash=%s, password_set_by='self', cred_version=%s, failed_attempts=0, updated_at=%s WHERE worker_id=%s",
+        (_hash(p.new_password), version, _now(), w[0]),
+    )
+    return {"ok": True, "token": _sign_token(w[0], version)}  # the old session just died with the version bump; this one carries on
+
+
+class Recover(BaseModel):
+    username: str
+    recovery_code: str
+    new_password: str
+
+
+@router.post("/api/ptwh-app/recover")
+async def app_recover(p: Recover, _k: None = Depends(_require_app_key)):
+    """Forgot the password: the recovery code (given when the login was made) sets a new one, and a fresh recovery code replaces the used one."""
+    row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
+    bad = HTTPException(status_code=401, detail="Username or recovery code is wrong -- or ask your station to reset your password")
+    if row is None or row[9]:
+        raise bad
+    if msg := _locked_msg(row[7]):
+        raise HTTPException(status_code=429, detail=msg)
+    if not _check_hash(_norm_recovery(p.recovery_code), row[3]):
+        await _fail(row[0], row[6])
+        raise bad
+    _check_new_password(p.new_password, row[1])
+    new_code = _random_recovery()
+    await db.execute(
+        """UPDATE ptwh_credentials SET password_hash=%s, recovery_hash=%s, password_set_by='self', cred_version=%s, failed_attempts=0, locked_until=NULL, updated_at=%s
+           WHERE worker_id=%s""",
+        (_hash(p.new_password), _hash(new_code.replace("-", "")), row[4] + 1, _now(), row[0]),
+    )
+    return {"ok": True, "recovery_code": new_code}
+
+
+# ---------------------------------------------------------------- dashboard side: logins
+
+async def _worker_for_editor(worker_id: int, user: CurrentUser):
+    w = await _worker(worker_id)
+    _require_editor(user, w[4])
+    return w
+
+
+_USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,29}")
+
+
+class LoginCreate(BaseModel):
+    username: str
+
+
+@admin_router.get("/api/attendance/ptwh/logins")
+async def list_logins(user: CurrentUser = Depends(get_current_user)):
+    """Which PTWH in scope have an app login (username only -- never the password), so the Workers list can show it."""
+    stations = _visible_stations(user)
+    rows = await db.fetch_all(
+        """SELECT c.worker_id, c.username, c.disabled, c.last_login_at, c.password_set_by, w.station
+           FROM ptwh_credentials c JOIN ptwh_workers w ON w.id = c.worker_id"""
+    )
+    return {"logins": {str(r[0]): {"username": r[1], "disabled": bool(r[2]), "last_login_at": attendance._iso(r[3]), "password_set_by": r[4]} for r in rows if r[5] in stations},
+            "can_edit": _can_edit(user), "app_url": os.environ.get("PTWH_APP_URL") or None}
+
+
+@admin_router.post("/api/attendance/ptwh/workers/{worker_id}/login")
+async def create_login(worker_id: int, p: LoginCreate, user: CurrentUser = Depends(get_current_user)):
+    """Station sets the first username + password (the PTWH changes the password themselves afterwards). The password and recovery code are shown ONCE."""
+    await _worker_for_editor(worker_id, user)
+    username = p.username.strip().lower()
+    if not _USERNAME.fullmatch(username):
+        raise HTTPException(status_code=422, detail="Username: 3-30 letters, numbers, dot, dash or underscore, starting with a letter or number")
+    if await db.fetch_one("SELECT worker_id FROM ptwh_credentials WHERE worker_id=%s", (worker_id,)):
+        raise HTTPException(status_code=409, detail="This PTWH already has a login")
+    if await db.fetch_one("SELECT worker_id FROM ptwh_credentials WHERE username=%s", (username,)):
+        raise HTTPException(status_code=409, detail="That username is taken -- try another")
+    pw, code = _random_password(), _random_recovery()
+    now = _now()
+    await db.execute(
+        """INSERT INTO ptwh_credentials (worker_id, username, password_hash, recovery_hash, created_by, created_at)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (worker_id, username, _hash(pw), _hash(code.replace("-", "")), user.email, now),
+    )
+    return {"username": username, "temp_password": pw, "recovery_code": code}
+
+
+@admin_router.post("/api/attendance/ptwh/workers/{worker_id}/login/reset")
+async def reset_login(worker_id: int, user: CurrentUser = Depends(get_current_user)):
+    """The PTWH forgot the password and has no recovery code: the station gives a new temporary password (and a new recovery code). Old sessions end."""
+    await _worker_for_editor(worker_id, user)
+    row = await db.fetch_one("SELECT cred_version FROM ptwh_credentials WHERE worker_id=%s", (worker_id,))
+    if row is None:
+        raise HTTPException(status_code=404, detail="This PTWH has no login yet")
+    pw, code = _random_password(), _random_recovery()
+    await db.execute(
+        """UPDATE ptwh_credentials SET password_hash=%s, recovery_hash=%s, password_set_by='station', cred_version=%s, failed_attempts=0, locked_until=NULL,
+           disabled=0, updated_at=%s WHERE worker_id=%s""",
+        (_hash(pw), _hash(code.replace("-", "")), row[0] + 1, _now(), worker_id),
+    )
+    return {"temp_password": pw, "recovery_code": code}
+
+
+class DisableIn(BaseModel):
+    disabled: bool
+
+
+@admin_router.post("/api/attendance/ptwh/workers/{worker_id}/login/disable")
+async def disable_login(worker_id: int, p: DisableIn, user: CurrentUser = Depends(get_current_user)):
+    await _worker_for_editor(worker_id, user)
+    row = await db.fetch_one("SELECT cred_version FROM ptwh_credentials WHERE worker_id=%s", (worker_id,))
+    if row is None:
+        raise HTTPException(status_code=404, detail="This PTWH has no login yet")
+    await db.execute("UPDATE ptwh_credentials SET disabled=%s, cred_version=%s, updated_at=%s WHERE worker_id=%s", (1 if p.disabled else 0, row[0] + 1, _now(), worker_id))
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- dashboard side: station QR + location
+
+def _require_station_editor(user: CurrentUser, station: str) -> None:
+    _require_editor(user, station)
+
+
+@admin_router.get("/api/attendance/ptwh/station/{station}")
+async def station_info(station: str, user: CurrentUser = Depends(get_current_user)):
+    """The station screen: the QR code for this hour (it changes on the hour) and where the station is."""
+    _require_station_editor(user, station)
+    now_ts = time.time()
+    bucket = int(now_ts // 3600)
+    code = qr_code(station, bucket)
+    base = (os.environ.get("PTWH_APP_URL") or "").rstrip("/")
+    geo = await db.fetch_one("SELECT lat, lng, radius_m FROM ptwh_station_geo WHERE station=%s", (station,))
+    return {
+        "station": station, "code": code, "url": f"{base}/?s={quote(station)}&c={code}" if base else None,
+        "seconds_left": int((bucket + 1) * 3600 - now_ts), "valid_until": attendance._iso(_now().replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)),
+        "geo": {"lat": float(geo[0]), "lng": float(geo[1]), "radius_m": geo[2]} if geo else None, "default_radius_m": DEFAULT_RADIUS_M,
+    }
+
+
+class GeoIn(BaseModel):
+    lat: float
+    lng: float
+    radius_m: int = DEFAULT_RADIUS_M
+
+
+@admin_router.put("/api/attendance/ptwh/station/{station}/geo")
+async def set_station_geo(station: str, p: GeoIn, user: CurrentUser = Depends(get_current_user)):
+    _require_station_editor(user, station)
+    if not (0.5 <= p.lat <= 8 and 99 <= p.lng <= 120):  # Malaysia; catches a swapped lat / lng or a missing minus sign
+        raise HTTPException(status_code=422, detail="That doesn't look like a location in Malaysia -- check latitude and longitude")
+    if not (20 <= p.radius_m <= 200):
+        raise HTTPException(status_code=422, detail="Radius should be 20 to 200 metres")
+    now = _now()
+    if await db.fetch_one("SELECT station FROM ptwh_station_geo WHERE station=%s", (station,)):
+        await db.execute("UPDATE ptwh_station_geo SET lat=%s, lng=%s, radius_m=%s, updated_by=%s, updated_at=%s WHERE station=%s",
+                         (round(p.lat, 6), round(p.lng, 6), p.radius_m, user.email, now, station))
+    else:
+        await db.execute("INSERT INTO ptwh_station_geo (station, lat, lng, radius_m, updated_by, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+                         (station, round(p.lat, 6), round(p.lng, 6), p.radius_m, user.email, now))
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- dashboard side: audit
+
+@admin_router.get("/api/attendance/ptwh/audit")
+async def audit(from_: str | None = None, to: str | None = None, station: str | None = None, user: CurrentUser = Depends(get_current_user)):
+    """Clock events made in the PTWH app with how each was verified and the selfie -- for everyone whose scope covers the station."""
+    today = _now().date()
+    d_to = attendance._parse_date(to, today)
+    d_from = attendance._parse_date(from_, d_to - timedelta(days=6))
+    if (d_to - d_from).days > 62:
+        raise HTTPException(status_code=422, detail="Pick at most 2 months at a time")
+    stations = _visible_stations(user)
+    rows = await db.fetch_all(
+        """SELECT a.id, a.work_date, w.full_name, w.station, a.clock_in, a.clock_out, a.in_method, a.in_dist, a.in_acc, a.in_selfie,
+                  a.out_method, a.out_dist, a.out_acc, a.out_selfie, a.in_lat, a.in_lng, a.out_lat, a.out_lng
+           FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id
+           WHERE a.source = 'app' AND a.work_date >= %s AND a.work_date <= %s ORDER BY a.work_date DESC, w.station, w.full_name""",
+        (d_from, d_to),
+    )
+    out = []
+    for r in rows:
+        if r[3] not in stations or (station and r[3] != station):
+            continue
+        out.append({
+            "id": r[0], "date": str(r[1]), "name": r[2], "station": r[3], "clock_in": attendance._iso(r[4]), "clock_out": attendance._iso(r[5]),
+            "in": {"method": r[6], "dist": r[7], "acc": r[8], "photo": bool(r[9]), "lat": float(r[14]) if r[14] is not None else None, "lng": float(r[15]) if r[15] is not None else None},
+            "out": {"method": r[10], "dist": r[11], "acc": r[12], "photo": bool(r[13]), "lat": float(r[16]) if r[16] is not None else None, "lng": float(r[17]) if r[17] is not None else None},
+        })
+    return {"from": str(d_from), "to": str(d_to), "events": out[:1000], "stations": sorted(stations)}
+
+
+@admin_router.get("/api/attendance/ptwh/photo/{record_id}/{which}")
+async def photo(record_id: int, which: str, user: CurrentUser = Depends(get_current_user)):
+    if which not in ("in", "out"):
+        raise HTTPException(status_code=404, detail="Not found")
+    row = await db.fetch_one(
+        f"SELECT w.station, a.{which}_selfie FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.id = %s", (record_id,)
+    )
+    if row is None or not row[1]:
+        raise HTTPException(status_code=404, detail="No photo")
+    if row[0] not in _visible_stations(user):
+        raise HTTPException(status_code=403, detail="That station is outside your scope")
+    try:
+        data = await run_in_threadpool(storage.get_bytes, row[1])
+    except Exception:  # noqa: BLE001
+        log.exception("selfie read failed")
+        raise HTTPException(status_code=404, detail="The photo could not be loaded")
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
