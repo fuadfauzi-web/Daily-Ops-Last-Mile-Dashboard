@@ -87,6 +87,11 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // "Copy as image" (staging trial, FEATURES.copyImage): captures <main> as a PNG. A small stamp (page title + "Data as of") is shown inside
+  // <main> only while the picture is taken, so the pasted image says what it is and how fresh it is.
+  const mainRef = useRef(null);
+  const [capturing, setCapturing] = useState(false);
+  const [imgState, setImgState] = useState(null); // null | "busy" | "copied" | "saved" | "error"
   const stickyRef = useRef(null);
   const [stickyH, setStickyH] = useState(96);
   useLayoutEffect(() => {
@@ -228,6 +233,40 @@ export default function App() {
     setTab("dashboard");
     setDashRequest({ key: "health", n: Date.now(), station });
   };
+  const copyAsImage = async () => {
+    if (!mainRef.current || imgState === "busy") return;
+    setImgState("busy");
+    setCapturing(true);
+    try {
+      await new Promise((r) => setTimeout(r, 120)); // let the stamp render before the picture is taken
+      const { toBlob } = await import("html-to-image");
+      // A picture that never finishes (a hidden tab does that) ends in an error after 20s instead of a button stuck on "Working…".
+      const blob = await Promise.race([
+        toBlob(mainRef.current, { pixelRatio: 2, backgroundColor: "#f8fafc", cacheBust: true }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 20000)),
+      ]);
+      if (!blob) throw new Error("no image");
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+        setImgState("copied");
+      } else {
+        // Browsers without image-clipboard support: download the PNG instead.
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `daily-ops-${new Date().toISOString().slice(0, 10)}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setImgState("saved");
+      }
+    } catch {
+      setImgState("error");
+    } finally {
+      setCapturing(false);
+      setTimeout(() => setImgState(null), 2500);
+    }
+  };
+  const pageTitle = sideItems.find((i) => i.active)?.label || "Daily Ops Last Mile";
   const selectSide = (id) => {
     const item = SIDE_ITEMS.find((i) => i.id === id);
     if (item?.dash) {
@@ -319,6 +358,25 @@ export default function App() {
                 </svg>
                 <span className={`hidden ${externalNav ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Jump to…</span>
                 <kbd className={`hidden whitespace-nowrap rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle ${externalNav ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Ctrl K</kbd>
+              </button>
+            )}
+            {FEATURES.copyImage && (
+              <button
+                type="button"
+                onClick={copyAsImage}
+                title="Copy this page as an image (with its title and Data as of) to paste in Gchat"
+                aria-label="Copy this page as an image"
+                className="flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-xs font-medium text-ink-2 hover:bg-canvas"
+              >
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <rect x="2.5" y="5" width="15" height="11" rx="2" />
+                  <circle cx="10" cy="10.5" r="2.8" />
+                  <path d="M7 5l1-1.8h4L13 5" />
+                </svg>
+                <span className="hidden min-[1600px]:inline">
+                  {imgState === "busy" ? "Working…" : imgState === "copied" ? "Copied!" : imgState === "saved" ? "Saved" : imgState === "error" ? "Couldn't copy" : "Copy as image"}
+                </span>
+                {imgState && <span className="min-[1600px]:hidden text-[11px] font-semibold">{imgState === "copied" ? "✓" : imgState === "busy" ? "…" : "!"}</span>}
               </button>
             )}
             {tidy ? (
@@ -436,7 +494,18 @@ export default function App() {
       {catActive && <CategoryNav items={sideItems} onSelect={selectSide} />}
       <div className={sidebarActive ? "flex" : ""}>
       {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
-      <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
+      <main ref={mainRef} className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
+        {capturing && (
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-line pb-2">
+            <div className="font-display text-lg font-bold text-ink">{pageTitle}</div>
+            <div className="text-xs text-muted">
+              {freshness ? `Data as of ${formatTime(freshness)}` : ""}
+              {stationsInScope != null ? ` · ${stationsInScope} station${stationsInScope === 1 ? "" : "s"} in scope` : ""}
+              {" · "}
+              {me.display_name || me.email}
+            </div>
+          </div>
+        )}
         {tab === "dashboard" && (
           <Dashboard
             key={`dashboard-${viewKey}`}
