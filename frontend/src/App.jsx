@@ -17,6 +17,7 @@ import { positionLabel } from "./lib/roles";
 import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
 import StaffDirectoryTab from "./StaffDirectoryTab";
+import AttendanceTab from "./AttendanceTab";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
@@ -184,6 +185,7 @@ export default function App() {
   const canSeeStaff = me.position === "fleet_admin" || me.role === "admin" || me.role === "manager";
   const navTabs = [
     "dashboard",
+    ...(FEATURES.attendance ? ["attendance"] : []),
     ...(canSeeManagementView ? ["management"] : []),
     ...(canSeeStaff ? ["staff"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
@@ -191,9 +193,9 @@ export default function App() {
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
-    t === "staff" ? "Staff & Org Chart" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" ? (
+    t === "staff" ? "Staff & Org Chart" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
-        {t === "kpi" ? "KPI" : "Management View"}
+        {t === "kpi" ? "KPI" : t === "attendance" ? "Attendance" : "Management View"}
         <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
       </span>
     ) : (
@@ -436,6 +438,7 @@ export default function App() {
             onTabState={setDashTab}
           />
         )}
+        {tab === "attendance" && FEATURES.attendance && <AttendanceTab key={`attendance-${viewKey}`} me={me} />}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
         {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}

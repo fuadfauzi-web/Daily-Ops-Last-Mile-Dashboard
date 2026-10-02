@@ -204,6 +204,16 @@ export const api = {
   managementCapacitySave: (payload) => request("/api/management-view/capacity", { method: "PUT", body: JSON.stringify(payload) }),
   managementLhTrips: () => request("/api/management-view/lh-trips"),
   managementNotes: () => request("/api/management-view/notes"),
+  // Attendance -> PTWH (staging): roster, clock in / out, month sheet.
+  ptwhWorkers: () => request("/api/attendance/ptwh/workers"),
+  ptwhWorkerAdd: (payload) => request("/api/attendance/ptwh/workers", { method: "POST", body: JSON.stringify(payload) }),
+  ptwhWorkerSave: (id, payload) => request(`/api/attendance/ptwh/workers/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  ptwhDay: (date) => request(`/api/attendance/ptwh/day${date ? `?date_=${encodeURIComponent(date)}` : ""}`),
+  ptwhClockIn: (workerId, reason) => request("/api/attendance/ptwh/clock-in", { method: "POST", body: JSON.stringify({ worker_id: workerId, reason }) }),
+  ptwhClockOut: (workerId) => request("/api/attendance/ptwh/clock-out", { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
+  ptwhRecordSave: (payload) => request("/api/attendance/ptwh/record", { method: "PUT", body: JSON.stringify(payload) }),
+  ptwhRecordDelete: (id) => request(`/api/attendance/ptwh/record/${id}`, { method: "DELETE" }),
+  ptwhMonth: (month) => request(`/api/attendance/ptwh/month?month=${encodeURIComponent(month)}`),
   managementNoteSave: (stationCode, payload) =>
     request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
   kpiMetabaseCheck: () => request("/api/kpi/metabase-check"),

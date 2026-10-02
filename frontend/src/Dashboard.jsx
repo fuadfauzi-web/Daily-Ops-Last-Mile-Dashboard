@@ -320,6 +320,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
+  const [flaggedBusy, setFlaggedBusy] = useState(false);
+  const [flaggedCopied, setFlaggedCopied] = useState(false);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
   // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
   const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
@@ -686,6 +688,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const isZoneOpen = (key) => (startsExpanded ? !expandedZones.has(key) : expandedZones.has(key));
 
   const combinedRowClassName = (row) => {
+    if (FEATURES.detailPanel && detailRow && row.id === detailRow.id) return "bg-row-selected";
     if (row.type === "region") return FEATURES.healthTable ? "bg-row-region" : "bg-slate-100";
     if (row.type === "zone") return FEATURES.healthTable ? "bg-row-zone" : "bg-slate-50";
     return "";
@@ -817,6 +820,59 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
     }
   };
 
+  // Detail panel trial (FEATURES.detailPanel): the same metrics, under the Station Health group headings, with the count of flagged ones.
+  const flaggedMetrics = [];
+  const detailGroups =
+    FEATURES.detailPanel && detailRow
+      ? HEALTH_GROUPS.map((g) => ({
+          label: g.label,
+          rows: g.columns.map(([key]) => {
+            const c = ALL_COLUMNS.find((col) => col.key === key);
+            const reference = !resolveThreshold(thresholdRows, key, null).scored;
+            const t = resolveThreshold(thresholdRows, key, detailRow.region);
+            const sev = reference ? "reference" : classify(t, detailRow[key], detailRow);
+            if (sev === "critical" || sev === "warning") flaggedMetrics.push({ key, label: c.label, sev });
+            const hasTarget = !reference && !(t.warning_at === 0 && t.critical_at === 0);
+            const percentOfLabel = t.percent_of ? ALL_COLUMNS.find((col) => col.key === t.percent_of)?.label : null;
+            return {
+              label: c.label,
+              value: key === "attendance" ? attendanceText(detailRow) : fmtWithPercentOf(key, detailRow[key], detailRow, t),
+              className: SEVERITY_CLASS[sev],
+              tint: TINT_CLASS[sev],
+              target: hasTarget ? `${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${percentOfLabel ? `% of ${percentOfLabel}` : ""}` : null,
+            };
+          }),
+        }))
+      : null;
+  const copyFlaggedTns = async (asCsv) => {
+    const keys = flaggedMetrics.filter((m) => DRILLDOWN_METRICS.has(m.key));
+    setFlaggedBusy(true);
+    try {
+      const results = await Promise.all(
+        keys.map((m) =>
+          api
+            .drilldown(detailRow.station_code, m.key)
+            .then((r) => ({ ...m, tns: r.tracking_numbers || [] }))
+            .catch(() => ({ ...m, tns: [] }))
+        )
+      );
+      if (asCsv) {
+        const max = Math.max(0, ...results.map((r) => r.tns.length));
+        exportCsv(
+          `daily-ops-${detailRow.station_name.replace(/\s+/g, "-").toLowerCase()}-flagged-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+          results.map((r) => r.label),
+          Array.from({ length: max }, (_, i) => results.map((r) => r.tns[i] || ""))
+        );
+      } else {
+        await navigator.clipboard.writeText(results.map((r) => `${r.label} (${r.tns.length}):\n${r.tns.join("\n")}`).join("\n\n"));
+        setFlaggedCopied(true);
+        setTimeout(() => setFlaggedCopied(false), 2000);
+      }
+    } finally {
+      setFlaggedBusy(false);
+    }
+  };
+
   const detailRows = detailRow
     ? ALL_COLUMNS.map((c) => {
         const isReference = !resolveThreshold(thresholdRows, c.key, null).scored;
@@ -847,8 +903,35 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         open={!!detailRow}
         onClose={() => setDetailRow(null)}
         title={detailRow?.station_name}
-        subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+        subtitle={
+          detailRow
+            ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}${detailGroups ? ` · ${flaggedMetrics.length} metric${flaggedMetrics.length === 1 ? "" : "s"} flagged` : ""}`
+            : null
+        }
         rows={detailRows}
+        groups={detailGroups}
+        footer={
+          detailGroups && flaggedMetrics.some((m) => DRILLDOWN_METRICS.has(m.key)) ? (
+            <>
+              <button
+                type="button"
+                disabled={flaggedBusy}
+                onClick={() => copyFlaggedTns(false)}
+                className="min-h-[44px] flex-1 rounded-lg bg-ink px-3 font-display text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {flaggedCopied ? "Copied!" : flaggedBusy ? "Loading…" : "Copy flagged tracking numbers"}
+              </button>
+              <button
+                type="button"
+                disabled={flaggedBusy}
+                onClick={() => copyFlaggedTns(true)}
+                className="min-h-[44px] rounded-lg border border-slate-300 px-4 font-display text-xs font-medium text-ink-2 disabled:opacity-50"
+              >
+                CSV
+              </button>
+            </>
+          ) : null
+        }
       />
 
       {!FEATURES.hideSummaryCards && showTotalCard && (

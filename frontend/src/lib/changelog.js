@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
+    title: "New: Attendance tab (Beta, staging only) -- PTWH clock in / clock out, month sheet and payable",
+    feature: "attendance",
+    points: [
+      "PTWH attendance moves from the Google Sheet into the dashboard: clock a PTWH in when they arrive and out when they leave, and the day's pay is worked out from the hours (6h or more = full day, less = half day).",
+      "Today, Month sheet (the old grid, with workdays, payable and CSV export) and Workers (the PTWH roster and daily rate). You only see and record for the stations in your scope. Staff and Hybrid attendance will join the same tab later.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "New: Processing Time tab (Beta, staging only) -- when work lands at the station, hour by hour, for the past 7 days",
     feature: "processingTime",
     points: [

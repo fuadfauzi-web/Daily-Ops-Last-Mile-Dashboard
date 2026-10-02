@@ -308,6 +308,32 @@ const SECTIONS = [
     ),
   },
   {
+    id: "attendance",
+    title: "Attendance",
+    show: () => F.attendance,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p className="rounded-lg bg-amber-50 p-2 text-amber-900 ring-1 ring-amber-200">
+          <strong>Beta, staging only for now.</strong> PTWH (part-time warehouse) is built first; <em>Staff</em> and <em>Hybrid</em> attendance will follow in the same tab.
+        </p>
+        <p>
+          The <strong>Attendance</strong> tab replaces the PTWH ATTENDANCE Google Sheet. Instead of typing one amount per person per day, you record a
+          <em> clock in</em> and <em>clock out</em> time and the pay is worked out from the hours. You only see the stations in your scope; station and region
+          staff and managers can record, other HQ roles can view.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Today</strong> -- every active PTWH at your station(s): pick the reason (it remembers their last one) and press <em>Clock in</em> when they arrive and <em>Clock out</em> when they leave. <em>Edit</em> adds or corrects a time (a forgotten clock-in, a missed clock-out) for today or an earlier day.</>,
+            <><strong>Month sheet</strong> -- the old sheet's grid: a row per PTWH, a column per day showing hours worked, then workdays and payable. Green = full day, blue = half day, amber … = clocked in but never clocked out (fix it by clicking the day). Export CSV for payroll.</>,
+            <><strong>Workers</strong> -- the PTWH roster: name, station, IC, phone, daily rate (RM50 by default) and joined date. Untick Active when someone stops -- their history stays.</>,
+            <><strong>How pay works</strong> -- 6 hours or more is a full day at their daily rate; less than 6 hours is a half day; a day with no clock-out pays nothing until it is closed.</>,
+          ]}
+        />
+        <p>Next: PTWH clock themselves in and out in their own app with their own login, and see their days worked, salary and schedule there.</p>
+      </div>
+    ),
+  },
+  {
     id: "management",
     title: "Management View",
     show: ({ rank }) => F.managementView && rank >= 2,

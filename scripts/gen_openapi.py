@@ -26,10 +26,19 @@ TAGS = [  # first matching prefix wins
     ("/api/followups", "Task List"), ("/api/todos", "Task List"), ("/api/tasks", "Task List"), ("/api/reminders", "Task List"),
     ("/api/urgent-tn", "Urgent TN"), ("/api/feedback", "Feedback"), ("/api/notifications", "Feedback"),
     ("/api/admin", "Admin"), ("/api/recovery", "Recovery"), ("/api/shipper", "Shipper Radar"), ("/api/cold-chain", "Shipper Radar"),
-    ("/api/restock", "Shipper Radar"), ("/api/b2b", "Shipper Radar"),
+    ("/api/restock", "Shipper Radar"), ("/api/b2b", "Shipper Radar"), ("/api/attendance", "Attendance"),
 ]
 
 SUMMARIES = {
+    ("get", "/api/attendance/ptwh/workers"): "Attendance -> PTWH (staging): the PTWH roster for the stations in the caller's scope (IC masked except for managers / admins), the stations they may use, and whether they may edit.",
+    ("post", "/api/attendance/ptwh/workers"): "Add a PTWH (name, station, IC, phone, daily rate, joined date) to a station in the caller's scope; station / region staff, managers and admins only.",
+    ("patch", "/api/attendance/ptwh/workers/{worker_id}"): "Edit a PTWH or deactivate them (active=false); their history is kept. A masked IC in the body means 'unchanged'.",
+    ("get", "/api/attendance/ptwh/day"): "Every active PTWH in scope with that day's clock in / out, hours, reason and source (today by default), plus the reasons list and the half-day pay rule.",
+    ("post", "/api/attendance/ptwh/clock-in"): "Clock a PTWH in now (Malaysia time) with a reason; once a day per worker. This is the call the future PTWH app makes for the worker it belongs to.",
+    ("post", "/api/attendance/ptwh/clock-out"): "Clock a PTWH out now; needs a clock-in today and no clock-out yet.",
+    ("put", "/api/attendance/ptwh/record"): "Add or correct one day's clock in / out (HH:MM) for a PTWH -- a forgotten clock-in or missed clock-out. Stamped with who edited it; not for future days.",
+    ("delete", "/api/attendance/ptwh/record/{record_id}"): "Delete one day's attendance record for a PTWH in the caller's scope.",
+    ("get", "/api/attendance/ptwh/month"): "The month sheet: a row per PTWH with hours per day, workdays (1 / 0.5), open days (no clock-out) and payable, for the stations in scope.",
     ("get", "/api/processing-time"): "Processing Time (staging): the last 7 days of hour-of-day timelines (shipment arrival, scan-in, 1st attempt, success, LH arrival) per station, limited to the caller's scope.",
     ("get", "/api/daily-kpi"): "Daily KPI (staging only): today's FIFO D0, Completion D0 and Prior raw counts per station, zone and region, limited to the caller's scope. Latlong parcels excluded; resets at midnight.",
     ("get", "/api/kpi/targets"): "KPI targets for every region (the defaults plus what an admin changed), and whether the caller may edit them.",
