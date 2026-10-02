@@ -197,6 +197,7 @@ def _require_app_key(x_ptwh_app_key: str | None = Header(default=None), lang: st
     if not expected:
         raise _err(503, "not_on", lang)
     if not x_ptwh_app_key or not hmac.compare_digest(x_ptwh_app_key, expected):
+        log.warning("PTWH app call refused: the key it sent does not match PTWH_APP_KEY here (check the same value is set on the PTWH app)")
         raise _err(401, "not_allowed", lang)
 
 
@@ -239,12 +240,16 @@ class LoginIn(BaseModel):
 async def app_login(p: LoginIn, lang: str = Depends(_lang), _k: None = Depends(_require_app_key)):
     row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
     if row is None or row[9]:
+        log.warning("PTWH login refused: %s", "no such username" if row is None else f"login for worker {row[0]} is switched off")
         raise _err(401, "bad_login", lang)
     if (e := _locked(row[7], lang)) is not None:
+        log.warning("PTWH login refused: worker %s is locked after too many wrong tries", row[0])
         raise e
     if not _check_hash(p.password, row[2]):
+        log.warning("PTWH login refused: wrong password for worker %s (try %d of %d)", row[0], row[6] + 1, MAX_FAILS)
         await _fail(row[0], row[6])
         raise _err(401, "bad_login", lang)
+    log.warning("PTWH login ok: worker %s", row[0])
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (row[0],))
     if w is None or not w[7]:
         raise _err(403, "inactive", lang)
