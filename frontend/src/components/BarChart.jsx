@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
+import { FEATURES } from "../lib/features";
 
 // Grouped bars with a value on top of each -- the KPI Dashboard's "2-week daily trend" (On Route vs Delivered + PU).
 //   labels  x-axis labels     series  [{ key, name, tone: "brand" | "slate", values: number[] }]
-const FILL = { brand: "fill-brand", slate: "fill-slate-400" };
-const DOT = { brand: "bg-brand", slate: "bg-slate-400" };
+const FILL_BASE = { brand: "fill-brand", slate: "fill-slate-400" };
+const DOT_BASE = { brand: "bg-brand", slate: "bg-slate-400" };
+// FEATURES.chartStyle (staging trial, design review D13): ink for the primary series, a quiet grey for the comparison, pale gridlines.
+const FILL_V2 = { brand: "fill-ink", slate: "fill-[#9AA1AA]" };
+const DOT_V2 = { brand: "bg-ink", slate: "bg-[#9AA1AA]" };
 
 export default function BarChart({ labels, series, height = 190 }) {
+  const FILL = FEATURES.chartStyle ? FILL_V2 : FILL_BASE;
+  const DOT = FEATURES.chartStyle ? DOT_V2 : DOT_BASE;
   const [wrapEl, setWrapEl] = useState(null);
   const [width, setWidth] = useState(640);
   useEffect(() => {
@@ -58,7 +64,7 @@ export default function BarChart({ labels, series, height = 190 }) {
         <svg width={width} height={height} className="block" role="img" aria-label="Bar chart">
           {[0, 0.5, 1].map((f) => (
             <g key={f}>
-              <line x1={padLeft} x2={width - padRight} y1={y(max * f)} y2={y(max * f)} className="stroke-slate-200" strokeWidth="1" strokeDasharray={f === 0 ? undefined : "3 3"} />
+              <line x1={padLeft} x2={width - padRight} y1={y(max * f)} y2={y(max * f)} className={FEATURES.chartStyle ? "stroke-[#EEF0F3]" : "stroke-slate-200"} strokeWidth="1" strokeDasharray={f === 0 ? undefined : "3 3"} />
               <text x={padLeft - 5} y={y(max * f) + 3} textAnchor="end" className="fill-slate-500 text-xs">
                 {Math.round(max * f).toLocaleString()}
               </text>
