@@ -238,6 +238,15 @@ export const api = {
   ptwhClockOut: (workerId) => request("/api/attendance/ptwh/clock-out", { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
   ptwhRecordSave: (payload) => request("/api/attendance/ptwh/record", { method: "PUT", body: JSON.stringify(payload) }),
   ptwhRecordDelete: (id) => request(`/api/attendance/ptwh/record/${id}`, { method: "DELETE" }),
+  // Attendance -> PTWH -> the PTWH app: logins, the station's hourly QR + location, selfie audit.
+  ptwhLogins: () => request("/api/attendance/ptwh/logins"),
+  ptwhLoginCreate: (workerId, username) => request(`/api/attendance/ptwh/workers/${workerId}/login`, { method: "POST", body: JSON.stringify({ username }) }),
+  ptwhLoginReset: (workerId) => request(`/api/attendance/ptwh/workers/${workerId}/login/reset`, { method: "POST" }),
+  ptwhLoginDisable: (workerId, disabled) => request(`/api/attendance/ptwh/workers/${workerId}/login/disable`, { method: "POST", body: JSON.stringify({ disabled }) }),
+  ptwhStation: (station) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}`),
+  ptwhStationGeo: (station, payload) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}/geo`, { method: "PUT", body: JSON.stringify(payload) }),
+  ptwhAudit: (from, to, station) => request(`/api/attendance/ptwh/audit?${new URLSearchParams({ ...(from ? { from_: from } : {}), ...(to ? { to } : {}), ...(station ? { station } : {}) })}`),
+  ptwhPhotoUrl: (recordId, which) => `/api/attendance/ptwh/photo/${recordId}/${which}`,
   ptwhMonth: (month) => request(`/api/attendance/ptwh/month?month=${encodeURIComponent(month)}`),
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>

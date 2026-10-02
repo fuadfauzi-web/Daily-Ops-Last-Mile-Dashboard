@@ -221,7 +221,7 @@ async def app_me(s=Depends(_session)):
     }
 
 
-class ClockIn(BaseModel):
+class AppClock(BaseModel):
     action: str  # 'in' | 'out'
     qr: str | None = None
     lat: float | None = None
@@ -244,7 +244,7 @@ def _decode_selfie(raw: str) -> bytes:
 
 
 @router.post("/api/ptwh-app/clock")
-async def app_clock(p: ClockIn, s=Depends(_session)):
+async def app_clock(p: AppClock, s=Depends(_session)):
     w, _cred = s
     if p.action not in ("in", "out"):
         raise HTTPException(status_code=422, detail="action must be in or out")

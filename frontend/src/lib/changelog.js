@@ -18,6 +18,16 @@
 export const CHANGELOG = [
   {
     date: "2026-10-03",
+    title: "Attendance (Beta, staging only): PTWH app logins, hourly station QR, 50 m location check and selfie audit",
+    feature: "attendance",
+    points: [
+      "Workers -> Create login gives a PTWH a username and a temporary password (plus a recovery code) for the new PTWH app, where they clock themselves in and out. They can change their password themselves; forgot it -> recovery code, or Reset password here.",
+      "Station QR: a code that changes every hour for the station screen, and the station's location -- a PTWH within 50 m can clock in or out by location instead. Either way they take a selfie with the station behind them.",
+      "Audit: every clock made in the PTWH app with how it was verified (QR / location and metres from the station) and the selfie, for station, RH, RFS, managers, HOD and Fleet Admin within their scope.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Recovery is now two groups: Active Missing and Lost Declared",
     points: [
       "Recovery has two buttons at the top. Active Missing holds Missing Details, Active Missing and B2B Document Active Missing; Lost Declared holds Lost Declared This Week and Lost Declared Summary. Nothing inside the pages changed -- they are just grouped.",

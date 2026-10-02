@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import Skeleton from "../components/Skeleton";
 import SegmentedControl from "../components/SegmentedControl";
+import LoginModal from "./PtwhLogin";
+import AuditView from "./PtwhAudit";
+import StationView from "./PtwhStation";
+import { btnCls, Field, hhmm, inputCls, localMonth, Modal } from "./ui";
 
 // Attendance -> PTWH (2026-10-02, staging). Three views over the same records:
 //   Today   -- who is in, clock people in / out, fix a forgotten time (what the station staff typed into the Google Sheet by hand)
@@ -14,13 +18,12 @@ const VIEWS = [
   { key: "today", label: "Today" },
   { key: "month", label: "Month sheet" },
   { key: "workers", label: "Workers" },
+  { key: "audit", label: "Audit" },
+  { key: "station", label: "Station QR" },
 ];
 
-const hhmm = (iso) => (iso ? iso.slice(11, 16) : "");
 const rm = (n) => `RM${(n || 0).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const thisMonth = () => new Date().toISOString().slice(0, 7);
-const inputCls = "rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm";
-const btnCls = "min-h-[36px] rounded-md px-3 py-1.5 text-sm font-semibold";
+const thisMonth = () => localMonth();
 
 const CAT_CHIP = { C1: "bg-indigo-100 text-indigo-700", C2: "bg-amber-100 text-amber-800", C3: "bg-teal-100 text-teal-700", C4: "bg-rose-100 text-rose-700" };
 
@@ -62,29 +65,6 @@ function dayPay(rate, hours, rule) {
   return rate * (hours >= rule.half_day_hours ? 1 : rule.half_day_factor);
 }
 
-function Modal({ title, onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-display text-base font-semibold text-ink">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-ink" aria-label="Close">✕</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block text-xs font-medium text-slate-600">
-      {label}
-      <div className="mt-1 text-sm font-normal text-ink">{children}</div>
-    </label>
-  );
-}
-
 export default function PtwhAttendance({ me }) {
   const [view, setView] = useState("today");
   const [error, setError] = useState(null);
@@ -93,7 +73,7 @@ export default function PtwhAttendance({ me }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SegmentedControl options={VIEWS} value={view} onChange={setView} />
         <p className="text-xs text-slate-500">
-          Beta · station staff clock PTWH in and out for now; PTWH clocking themselves in their own app comes next.
+          Beta · station staff can clock PTWH in and out, and PTWH can clock themselves in the PTWH app (QR or location, plus a selfie -- see Audit).
         </p>
       </div>
       {error && (
@@ -105,6 +85,8 @@ export default function PtwhAttendance({ me }) {
       {view === "today" && <TodayView setError={setError} />}
       {view === "month" && <MonthView setError={setError} />}
       {view === "workers" && <WorkersView setError={setError} />}
+      {view === "audit" && <AuditView setError={setError} />}
+      {view === "station" && <StationView setError={setError} />}
     </div>
   );
 }
@@ -209,7 +191,7 @@ function TodayView({ setError }) {
                       <CategorySelect className={`${inputCls} max-w-[240px] text-xs`} value={cat} categories={data.categories} onChange={(v) => setCats({ ...cats, [r.id]: v })} />
                     ) : <CatChip code={rec?.category} categories={data.categories} />}
                   </td>
-                  <td className="px-3 py-2 tabular-nums">{rec ? hhmm(rec.clock_in) : "—"}</td>
+                  <td className="px-3 py-2 tabular-nums">{rec ? hhmm(rec.clock_in) : "—"}{rec?.source === "app" && <span title="Clocked in the PTWH app -- see Audit for the selfie" className="ml-1.5 rounded bg-sky-100 px-1 py-0.5 text-[10px] font-semibold text-sky-700">app</span>}</td>
                   <td className="px-3 py-2 tabular-nums">
                     {rec?.clock_out ? hhmm(rec.clock_out) : open ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">Working</span> : "—"}
                   </td>
@@ -428,9 +410,12 @@ function WorkersView({ setError }) {
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState(null); // {id?, ...fields}
   const [importing, setImporting] = useState(false);
+  const [logins, setLogins] = useState({ logins: {}, app_url: null });
+  const [loginFor, setLoginFor] = useState(null);
 
   const load = useCallback(() => {
     api.ptwhWorkers().then(setData).catch((e) => setError(e.message));
+    api.ptwhLogins().then(setLogins).catch(() => {});
   }, [setError]);
   useEffect(load, [load]);
 
@@ -474,10 +459,10 @@ function WorkersView({ setError }) {
       <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Station</th><th className="px-3 py-2">IC</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Category</th><th className="px-3 py-2 text-right">Daily rate</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2" /></tr>
+            <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Station</th><th className="px-3 py-2">IC</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Category</th><th className="px-3 py-2 text-right">Daily rate</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">App login</th><th className="px-3 py-2" /></tr>
           </thead>
           <tbody>
-            {workers.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No PTWH yet.{data.can_edit ? " Use Import from sheet or Add PTWH." : ""}</td></tr>}
+            {workers.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">No PTWH yet.{data.can_edit ? " Use Import from sheet or Add PTWH." : ""}</td></tr>}
             {workers.map((w) => (
               <tr key={w.id} className={`border-t border-slate-100 ${w.active ? "" : "text-slate-400"}`}>
                 <td className="px-3 py-2 font-medium">{w.name}{!w.active && " (inactive)"}</td>
@@ -487,6 +472,15 @@ function WorkersView({ setError }) {
                 <td className="px-3 py-2"><CatChip code={w.category} categories={data.categories} /></td>
                 <td className="px-3 py-2 text-right tabular-nums">{rm(w.daily_rate)}</td>
                 <td className="px-3 py-2">{w.joined_date || "—"}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {logins.logins[w.id] ? (
+                    <button onClick={() => setLoginFor(w)} className={`text-xs underline ${logins.logins[w.id].disabled ? "text-red-600" : "text-emerald-700"}`}>
+                      {logins.logins[w.id].username}{logins.logins[w.id].disabled ? " (off)" : ""}
+                    </button>
+                  ) : data.can_edit && w.active ? (
+                    <button onClick={() => setLoginFor(w)} className="text-xs text-slate-500 underline">Create login</button>
+                  ) : <span className="text-slate-400">—</span>}
+                </td>
                 <td className="px-3 py-2 text-right">{data.can_edit && <button onClick={() => setForm({ ...w, ic_no: w.ic_no || "", phone: w.phone || "", joined_date: w.joined_date || "" })} className="text-xs text-slate-500 underline">Edit</button>}</td>
               </tr>
             ))}
@@ -494,6 +488,7 @@ function WorkersView({ setError }) {
         </table>
       </div>
       <CategoryLegend categories={data.categories} />
+      {loginFor && <LoginModal worker={loginFor} login={logins.logins[loginFor.id]} appUrl={logins.app_url} onClose={() => setLoginFor(null)} onChanged={load} setError={setError} />}
       {importing && <ImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); load(); }} setError={setError} />}
       {form && (
         <Modal title={form.id ? "Edit PTWH" : "Add PTWH"} onClose={() => setForm(null)}>

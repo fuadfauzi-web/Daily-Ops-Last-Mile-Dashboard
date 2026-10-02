@@ -330,7 +330,17 @@ const SECTIONS = [
             <><strong>How pay works</strong> -- 6 hours or more is a full day at their daily rate; less than 6 hours is a half day; a day with no clock-out pays nothing until it is closed.</>,
           ]}
         />
-        <p>Next: PTWH clock themselves in and out in their own app with their own login, and see their days worked, salary and schedule there.</p>
+        <p>
+          <strong>PTWH app</strong> -- PTWH clock themselves in and out in a separate small app on their own phone (not this dashboard), with their own login.
+          They must <em>prove they are at the station</em> and take a selfie with the station behind them:
+        </p>
+        <Bullets
+          items={[
+            <><strong>Workers</strong> -- press <em>Create login</em> next to a PTWH: you give a username, we make a temporary password and a recovery code (shown once -- copy it for WhatsApp). The PTWH changes the password themselves in the app. Forgot it? They use the recovery code in the app, or you press <em>Reset password</em>.</>,
+            <><strong>Station QR</strong> -- keep this page open on a screen at the station. The QR code changes <em>every hour</em>; a PTWH scans it with their phone camera, which opens the app. Below it, set the station's location (stand at the station and press <em>Use this device's location</em>): a PTWH within <strong>50 m</strong> can also clock in or out by location, no QR needed.</>,
+            <><strong>Audit</strong> -- every clock made in the app with how it was verified (QR, or location and how many metres from the station) and the selfie. Open the photo to check the face is clear and the station is visible behind the person. Station, RH, RFS, managers, HOD and Fleet Admin can all see the stations in their scope.</>,
+          ]}
+        />
       </div>
     ),
   },
