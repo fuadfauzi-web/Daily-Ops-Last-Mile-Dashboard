@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-// Headcount (2026-10-02, staging): a station's headcount = the people posted there (Staff & Org Chart) + its TBA seats -- planned seats, or
+// Headcount (2026-10-02, staging): a station's headcount = the people posted there (Staff & Org Chart) + its vacant seats -- planned seats, or
 // people whose email isn't known yet. Management View -> Capacity reads the same numbers. The HOD adds a seat straight away; a Manager's new
 // seat waits for the HOD to approve it; a Manager or the HOD removes a seat with no approval. Removing a PERSON is the Fleet Admin team's job.
 const DESIGNATIONS = [["fleet_assistant", "Fleet Assistant"], ["station_head", "Station Head"]];
@@ -12,6 +12,7 @@ export default function HeadcountView() {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("all");
+  const [sort, setSort] = useState({ key: "station", dir: "asc" });
   const [form, setForm] = useState({ station: "", designation: "fleet_assistant", note: "" });
   const [notice, setNotice] = useState(null);
 
@@ -44,10 +45,16 @@ export default function HeadcountView() {
   const regions = useMemo(() => [...new Set((data?.stations || []).map((s) => s.region))].sort(), [data]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const get = { station: (s) => s.name.toLowerCase(), zone: (s) => s.zone.toLowerCase(), people: (s) => s.filled, vacant: (s) => s.tba + s.pending, total: (s) => s.total }[sort.key];
+    const dir = sort.dir === "asc" ? 1 : -1;
     return (data?.stations || [])
       .filter((s) => region === "all" || s.region === region)
-      .filter((s) => !q || `${s.name} ${s.zone} ${s.region}`.toLowerCase().includes(q));
-  }, [data, search, region]);
+      .filter((s) => !q || `${s.name} ${s.zone} ${s.region}`.toLowerCase().includes(q))
+      .sort((a, b) => (get(a) < get(b) ? -dir : get(a) > get(b) ? dir : a.name.localeCompare(b.name)));
+  }, [data, search, region, sort]);
+  // Click a header to sort; click again to flip. Numbers start high-to-low, names A-Z.
+  const sortBy = (key) => setSort((p) => (p.key === key ? { key, dir: p.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "station" || key === "zone" ? "asc" : "desc" }));
+  const arrow = (key) => (sort.key === key ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
 
   if (error && !data) return <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>;
   if (!data) return <div className="text-sm text-slate-400">Loading…</div>;
@@ -71,12 +78,12 @@ export default function HeadcountView() {
       <div className="flex flex-wrap gap-3 text-sm">
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">Headcount</div><div className="text-lg font-semibold tabular-nums">{totals.filled + totals.tba}</div></div>
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">People in the list</div><div className="text-lg font-semibold tabular-nums">{totals.filled}</div></div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">TBA seats</div><div className="text-lg font-semibold tabular-nums">{totals.tba}</div></div>
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">Vacant seats</div><div className="text-lg font-semibold tabular-nums">{totals.tba}</div></div>
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">Waiting for the HOD</div><div className="text-lg font-semibold tabular-nums">{totals.pending}</div></div>
       </div>
       <p className="text-xs text-slate-500">
-        A station's headcount is the people posted there plus its TBA seats (planned, or someone whose email isn't known yet). Management View → Capacity uses these numbers.
-        When a real person is added to a station, one matching TBA seat there is used up.
+        A station's headcount is the people posted there plus its vacant seats (planned, or someone whose email isn't known yet). Management View → Capacity uses these numbers.
+        When the Fleet Admin team adds a person to a station, one matching vacant seat there is used up; when someone leaves, their seat stays and becomes vacant. Only a Manager or the HOD adds or removes seats.
       </p>
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>}
@@ -91,7 +98,7 @@ export default function HeadcountView() {
           <select value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} className={input}>
             {DESIGNATIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Note (e.g. new hire, TBA)" maxLength={200} className={`${input} lg:col-span-2`} />
+          <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Note (e.g. new hire)" maxLength={200} className={`${input} lg:col-span-2`} />
           <button type="submit" disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
             {data.needs_approval ? "Request headcount" : "Add headcount"}
           </button>
@@ -130,15 +137,18 @@ export default function HeadcountView() {
         <span className="text-xs text-slate-400">{rows.length} of {data.stations.length} stations</span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs text-slate-500">
+          <thead className="text-xs text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_0_#e2e8f0]">
             <tr>
-              <th className="px-3 py-2 font-medium">Station</th>
-              <th className="px-3 py-2 font-medium">Zone</th>
-              <th className="px-3 py-2 text-right font-medium">People</th>
-              <th className="px-3 py-2 font-medium">TBA seats</th>
-              <th className="px-3 py-2 text-right font-medium">Headcount</th>
+              {[["station", "Station", "left"], ["zone", "Zone", "left"], ["people", "People", "center"], ["vacant", "Vacant", "center"], ["total", "Headcount", "center"]].map(([key, label, align]) => (
+                <th key={key} className={`px-3 py-2 font-medium ${align === "center" ? "text-center" : ""}`}>
+                  <button type="button" onClick={() => sortBy(key)} className="font-medium hover:text-ink" title="Click to sort">
+                    {label}{arrow(key)}
+                  </button>
+                </th>
+              ))}
+              <th className="px-3 py-2 font-medium">Vacant seats</th>
             </tr>
           </thead>
           <tbody>
@@ -146,7 +156,9 @@ export default function HeadcountView() {
               <tr key={s.name} className="border-t border-slate-100 align-top">
                 <td className="px-3 py-1.5">{s.name}</td>
                 <td className="px-3 py-1.5 text-slate-500">{s.zone}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{s.filled}</td>
+                <td className="px-3 py-1.5 text-center tabular-nums">{s.filled}</td>
+                <td className="px-3 py-1.5 text-center tabular-nums">{s.tba + s.pending > 0 ? s.tba + (s.pending ? ` (+${s.pending} pending)` : "") : 0}</td>
+                <td className="px-3 py-1.5 text-center font-medium tabular-nums">{s.total}</td>
                 <td className="px-3 py-1.5">
                   {(seatsByStation[s.name] || []).map((seat) => (
                     <span key={seat.id} title={seat.note || ""} className={`mr-1.5 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs ${seat.status === "pending" ? "border-amber-400 text-amber-800" : "border-slate-400 text-slate-600"}`}>
@@ -157,7 +169,6 @@ export default function HeadcountView() {
                     </span>
                   ))}
                 </td>
-                <td className="px-3 py-1.5 text-right font-medium tabular-nums">{s.total}</td>
               </tr>
             ))}
           </tbody>

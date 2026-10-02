@@ -35,9 +35,9 @@ function Person({ p, onEdit }) {
   );
 }
 
-// A TBA seat: planned, or someone whose email isn't known yet (counted in the headcount). Managed in the Headcount view.
-function TbaChip({ n }) {
-  return <span className="mr-1.5 inline-block rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-600">TBA{n > 1 ? ` x${n}` : ""}</span>;
+// A vacant seat: planned, or someone whose email isn't known yet (counted in the headcount). Opened / closed in the Headcount view.
+function VacantChip({ n }) {
+  return <span className="mr-1.5 inline-block rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-600">Vacant{n > 1 ? ` x${n}` : ""}</span>;
 }
 
 function OrgChart({ chart, onEdit }) {
@@ -51,7 +51,7 @@ function OrgChart({ chart, onEdit }) {
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">HQ</div>
         <div className="mt-1.5">{chart.hq.length ? chart.hq.map((p) => <Person key={p.email} p={p} />) : <span className="text-xs text-slate-400">Nobody yet</span>}</div>
         <p className="mt-2 text-xs text-slate-400">
-          {stationCount} stations, {vacancies === 0 ? "every one has a Station Head" : `${vacancies} without a Station Head (shown in red)`}.
+          {stationCount} stations, {vacancies === 0 ? "every one has a Station Head" : `${vacancies} with no Station Head and no vacant seat (shown in red)`}.
           {onEdit ? " Click a person to edit them." : ""}
         </p>
       </div>
@@ -88,12 +88,12 @@ function OrgChart({ chart, onEdit }) {
                           <td className="py-1 pr-3">{s.name}</td>
                           <td className="py-1 pr-3">
                             {s.heads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
-                            {s.tba_heads > 0 && <TbaChip n={s.tba_heads} />}
-                            {s.heads.length === 0 && !s.tba_heads && <span className="text-xs font-medium text-status-critical">Vacant</span>}
+                            {s.tba_heads > 0 && <VacantChip n={s.tba_heads} />}
+                            {s.heads.length === 0 && !s.tba_heads && <span className="text-xs font-medium text-status-critical">No Station Head</span>}
                           </td>
                           <td className="py-1">
                             {s.assistants.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
-                            {s.tba_assistants > 0 && <TbaChip n={s.tba_assistants} />}
+                            {s.tba_assistants > 0 && <VacantChip n={s.tba_assistants} />}
                             {s.assistants.length === 0 && !s.tba_assistants && <span className="text-xs text-slate-400">None</span>}
                           </td>
                         </tr>
@@ -114,6 +114,7 @@ export default function StaffDirectoryTab({ me }) {
   const [view, setView] = useState("list");
   const [chart, setChart] = useState(null);
   const [people, setPeople] = useState(null);
+  const [vacant, setVacant] = useState([]);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -127,7 +128,7 @@ export default function StaffDirectoryTab({ me }) {
 
   const load = () => {
     api.orgChart().then(setChart).catch((e) => setError(e.message));
-    api.staff.list().then((r) => setPeople(r.people)).catch(() => setPeople([]));
+    api.staff.list().then((r) => { setPeople(r.people); setVacant(r.vacant || []); }).catch(() => setPeople([]));
   };
   useEffect(() => {
     load();
@@ -145,6 +146,23 @@ export default function StaffDirectoryTab({ me }) {
       .filter((u) => !q || [u.email, u.name, u.phone, u.employee_id, positionLabel(u.position), ...(u.home.scope_values || [])].join(" ").toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [people, search, roleFilter]);
+
+  // Vacant seats (opened by a Manager / HOD in the Headcount view) show in the list as "Vacant" rows, first, so they get filled.
+  const vacantRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return vacant
+      .filter((v) => roleFilter === "all" || v.designation === roleFilter || POSITIONS[v.designation]?.group === roleFilter)
+      .filter((v) => !q || ["vacant", v.station, v.zone, v.region, v.label, v.note].join(" ").toLowerCase().includes(q));
+  }, [vacant, search, roleFilter]);
+
+  const startFill = (v) => {
+    setEditing(null);
+    setForm({ ...emptyForm, role: v.designation, scope_type: "station", scope_values: [v.station] });
+    setShowForm(true);
+    setShowImport(false);
+    setError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const startEdit = (email) => {
     const u = (people || []).find((x) => x.email.toLowerCase() === email.toLowerCase());
@@ -274,6 +292,11 @@ export default function StaffDirectoryTab({ me }) {
               </div>
               <input placeholder="Mobile (optional)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
               <input placeholder="Employee ID (optional)" value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              {!editing && tier === "station" && (
+                <p className="text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
+                  A station position can only be filled where a Manager or the HOD has opened a vacant seat for it (use <em>Add person</em> on a Vacant row, or ask them to add the headcount first).
+                </p>
+              )}
               <div className="flex items-start gap-2 lg:col-span-3">
                 <button type="submit" disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">{editing ? "Save" : "Add"}</button>
                 <button type="button" onClick={cancel} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600">Cancel</button>
@@ -296,12 +319,12 @@ export default function StaffDirectoryTab({ me }) {
                 <option value="station">Station staff</option>
               </optgroup>
             </select>
-            <span className="text-xs text-slate-400">{people ? `${rows.length} of ${people.length} people` : ""}</span>
+            <span className="text-xs text-slate-400">{people ? `${rows.length} of ${people.length} people${vacant.length ? ` · ${vacantRows.length} of ${vacant.length} vacant` : ""}` : ""}</span>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500">
+              <thead className="text-xs text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_0_#e2e8f0]">
                 <tr>
                   <th className="px-3 py-2 font-medium">Name</th>
                   <th className="px-3 py-2 font-medium">Email</th>
@@ -314,6 +337,20 @@ export default function StaffDirectoryTab({ me }) {
                 </tr>
               </thead>
               <tbody>
+                {vacantRows.map((v) => (
+                  <tr key={`vacant-${v.id}`} className="border-t border-slate-100 bg-amber-50/40">
+                    <td className="px-3 py-1.5"><span className="rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs font-medium text-slate-600">Vacant</span></td>
+                    <td className="px-3 py-1.5 text-xs text-slate-500" colSpan={1}>{v.note || ""}</td>
+                    <td className="px-3 py-1.5">{v.label}</td>
+                    <td className="px-3 py-1.5 text-slate-500">{v.station}</td>
+                    <td className="px-3 py-1.5 text-slate-300">-</td>
+                    <td className="px-3 py-1.5 text-slate-300">-</td>
+                    <td className="px-3 py-1.5 text-xs text-slate-400">Counts in headcount</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right">
+                      {canEdit && <button onClick={() => startFill(v)} className="text-xs text-brand hover:underline">Add person</button>}
+                    </td>
+                  </tr>
+                ))}
                 {rows.map((u) => (
                   <tr key={u.email} className={`border-t border-slate-100 ${editing === u.email ? "bg-blue-50/50" : ""}`}>
                     <td className="px-3 py-1.5">{u.name}</td>
@@ -341,7 +378,7 @@ export default function StaffDirectoryTab({ me }) {
                     </td>
                   </tr>
                 ))}
-                {people && rows.length === 0 && (
+                {people && rows.length === 0 && vacantRows.length === 0 && (
                   <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-400">Nobody matches.</td></tr>
                 )}
               </tbody>

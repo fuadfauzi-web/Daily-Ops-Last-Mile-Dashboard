@@ -155,10 +155,21 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
             "last_seen_at": str(r[7]) if r[7] else None,
             "phone": r[8] or "", "employee_id": r[9] or "",
         })
-    return {"people": out, "can_edit": _can_edit(user)}
+    return {"people": out, "vacant": await headcount.vacant_seats(), "can_edit": _can_edit(user)}
 
 
-async def _insert(payload: StaffIn, email: str, by: str) -> None:
+async def _insert(payload: StaffIn, email: str, actor: CurrentUser) -> None:
+    by = actor.email
+    # The Fleet Admin team adds PEOPLE, not headcount: a station position can only be filled where a Manager / HOD has opened a vacant
+    # seat of that kind (2026-10-02). The Superadmin is not held to this.
+    if actor.role != "admin" and payload.scope_type == "station" and tier_of(payload.role) == "station":
+        short = await headcount.missing_vacant_seat(payload.scope_values, payload.role)
+        if short:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{short} has no vacant {headcount.DESIGNATIONS[headcount.designation_of(payload.role)]} seat. "
+                       "Ask a Manager or the HOD to add the headcount first (Headcount view), then fill it here.",
+            )
     values = _values_json(payload.scope_values)
     phone, emp = _contact(payload.phone, "Phone"), _contact(payload.employee_id, "Employee ID")
     await db.execute(
@@ -203,7 +214,7 @@ async def add_staff(payload: StaffIn, user: CurrentUser = Depends(get_current_us
         raise HTTPException(status_code=422, detail="Type a valid email")
     if await db.fetch_one("SELECT email FROM users WHERE LOWER(email) = %s", (email.lower(),)):
         raise HTTPException(status_code=409, detail="That email is already in the list")
-    await _insert(payload, email, user.email)
+    await _insert(payload, email, user)
     return {"ok": True}
 
 
@@ -241,7 +252,7 @@ async def bulk_staff(payload: StaffBulkIn, user: CurrentUser = Depends(get_curre
                 (email.lower(),),
             )
             if row is None:
-                await _insert(r, email, user.email)
+                await _insert(r, email, user)
                 results.append({"email": email, "status": "added"})
             elif not payload.update_existing:
                 results.append({"email": email, "status": "skipped", "detail": "Already in the list"})
@@ -265,7 +276,12 @@ async def delete_staff(email: str, user: CurrentUser = Depends(get_current_user)
     row = await _target(email)
     if row[0].lower() == _OWNER_EMAIL:
         raise HTTPException(status_code=403, detail="The app owner is managed by the Superadmin")
+    # A leaver's seat stays: the Fleet Admin team does not remove headcount, so it becomes a vacant seat until a Manager / HOD removes it
+    # or someone fills it.
+    home_type, home_values = _home_of(row)
     await purge_user(row[0])
+    if home_type == "station" and tier_of(row[1]) == "station":
+        await headcount.vacate(home_values, row[1], plain_name(row[6]) or row[0], None, user.email)
     return {"ok": True}
 
 

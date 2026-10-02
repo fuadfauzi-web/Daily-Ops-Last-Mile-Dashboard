@@ -10,7 +10,7 @@ import RegionListPanel from "./RegionListPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
-import { GRANTABLE_TIERS, GROUPS, POSITIONS, isHqTier, tierOf } from "./lib/roles";
+import { GROUPS, POSITIONS, canManagePosition, isHqTier } from "./lib/roles";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
@@ -40,23 +40,20 @@ const OWNER_EMAIL = "fuad.mawardi@ninjavan.co";
 // _validate_grant_limits exactly, so the dropdowns/template never offer
 // something the server would reject.
 function allowedRoles(me) {
-  const tiers = GRANTABLE_TIERS[me.role];
   const all = GROUPS.flatMap((g) => g.positions);
-  if (tiers) return all.filter((p) => tiers.includes(tierOf(p)));
-  // admin
-  return me.email === OWNER_EMAIL ? all : all.filter((r) => r !== "admin");
+  // The Superadmin role itself is only ever granted by the owner.
+  return all.filter((p) => canManagePosition(me, p) && (p !== "admin" || me.email === OWNER_EMAIL));
 }
 function allowedScopeTypes(actingRole) {
-  if (actingRole === "manager") return ["station", "zone", "region"];
+  if (actingRole === "manager") return ["station", "zone", "region", "hq"];
   if (actingRole === "region") return ["station"];
   return SCOPE_OPTION_ORDER; // admin
 }
 
 // Edit/delete permission on an existing user -- mirrors backend/main.py's
 // _require_can_manage_target exactly (keyed off the TARGET's current position's tier).
-function canManageTarget(actingRole, targetRole) {
-  if (actingRole === "admin") return true;
-  return (GRANTABLE_TIERS[actingRole] || []).includes(tierOf(targetRole));
+function canManageTarget(me, targetRole) {
+  return canManagePosition(me, targetRole);
 }
 
 // scope_values within one CSV cell is semicolon-separated, e.g. "Southern;Northern".
@@ -65,7 +62,7 @@ function bulkTemplateFor(me) {
   if (me.role === "region") {
     lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,station_head,station,Segambut;Larkin");
   } else if (me.role === "manager") {
-    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,rfs,zone,South 1", "name3@ninjavan.co,region_head,region,Southern;Northern");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,rfs,zone,South 1", "name3@ninjavan.co,region_head,region,Southern;Northern", "name4@ninjavan.co,opex,hq,");
   } else {
     lines.push(
       "name1@ninjavan.co,fleet_assistant,station,Larkin",
@@ -1014,7 +1011,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               {me.role === "region"
                 ? "You can grant Station Head (SH) or Fleet Assistant (FA), with station-level access."
                 : me.role === "manager"
-                  ? "You can grant Region Head (RH), RFS, Station Head (SH) or Fleet Assistant (FA), with any access level except \"sees everything\" / HQ."
+                  ? `You can grant any position except the Superadmin${me.position === "hod" ? "" : " and the HOD"}: HQ staff (scope hq), Region Head / RFS, Station Head / Fleet Assistant.`
                   : "role: hod, manager, fleet_admin, opex, recovery, restock (HQ staff), region_head, rfs (region staff), station_head, fleet_assistant (station staff)" +
                     (me.email === OWNER_EMAIL ? ", or admin (Superadmin)" : " (only the app owner can grant admin)") +
                     ". scope_type: station, zone, region, hq (HQ staff) or all (leave scope_values blank for hq / all)."}
@@ -1137,7 +1134,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                   </td>
                   <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                   <td className="px-4 py-2 text-right">
-                    {canManageTarget(me.role, u.role) && (
+                    {canManageTarget(me, u.role) && (
                       <>
                         <button onClick={() => startEdit(u)} className="mr-3 text-xs text-brand hover:underline">
                           Edit

@@ -3539,32 +3539,39 @@ def _auto_display_name(email: str, role: str, scope_type: str, scope_values: lis
 
 # Who may hand out / manage which positions, by the ACTING user's access tier (auth.POSITIONS): a Manager / HOD looks after
 # Region and Station staff, Region staff look after Station staff, only the Admin side (the owner) hands out HQ positions.
-_GRANTABLE_TIERS = {"manager": ("region", "station"), "region": ("station",)}
+# Who may add / edit / remove whom on the Users page (i.e. who may change ACCESS), by POSITION:
+#   Superadmin   everyone (the Superadmin role itself only by the owner, see _require_can_grant_role);
+#   HOD          everyone except the Superadmin;
+#   Manager      everyone except the HOD and the Superadmin -- HQ staff and other Managers included (2026-10-02: a manager often
+#                covers another manager's work);
+#   Region staff Station staff in their own zone / region only.
+# The Fleet Admin team keeps the staff list (who is posted where) in Staff & Org Chart (staff.py) and does not edit access.
+def _may_manage_position(acting: CurrentUser, target_position: str) -> bool:
+    if acting.role == "admin":
+        return True
+    tier = tier_of(target_position)
+    if acting.role == "manager":
+        if tier == "admin":
+            return False
+        return target_position != "hod" or acting.position == "hod"
+    if acting.role == "region":
+        return tier == "station"
+    return False
 
 
-def _grantable_tiers(acting: CurrentUser) -> tuple[str, ...] | None:
-    """What this person may add / edit / remove on the Users page, i.e. who may change ACCESS (None = nothing; the Superadmin
-    is handled before this is asked). Managers / HOD and Region staff only -- the Fleet Admin team keeps the staff list
-    (who is posted where) in Staff & Org Chart (staff.py) and does not edit access."""
-    return _GRANTABLE_TIERS.get(acting.role)
-
-
-_TIER_NAMES = {"region": "Region staff", "station": "Station staff"}
+def _manageable_label(acting: CurrentUser) -> str:
+    if acting.role == "manager":
+        return "anyone except the Superadmin" if acting.position == "hod" else "anyone except the HOD and the Superadmin"
+    return "Station staff"
 
 
 def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
-    """Edit/delete permission on an existing user -- keyed off the TARGET's current position's tier, mirroring
+    """Edit/delete permission on an existing user -- keyed off the TARGET's current position, mirroring
     _validate_grant_limits' ceiling."""
-    if acting.role == "admin":
-        return
-    allowed = _grantable_tiers(acting)
-    if allowed is None:
+    if acting.role not in ("admin", "manager", "region"):
         raise HTTPException(status_code=403, detail="You can't edit or remove other users")
-    if tier_of(target_role) not in allowed:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only edit or remove " + " or ".join(_TIER_NAMES[t] for t in allowed),
-        )
+    if not _may_manage_position(acting, target_role):
+        raise HTTPException(status_code=403, detail="You can only edit or remove " + _manageable_label(acting))
 
 
 def _require_can_grant_role(acting: CurrentUser, role: str) -> None:
@@ -3591,8 +3598,7 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     # ...and only the ones inside their own scope (2026-10-02).
     if user.role == "admin":
         return out
-    allowed = _grantable_tiers(user) or ()
-    return [u for u in out if tier_of(u["role"]) in allowed and _scope_within(user, u["scope_type"], u["scope_values"])]
+    return [u for u in out if _may_manage_position(user, u["role"]) and _scope_within(user, u["scope_type"], u["scope_values"])]
 
 
 # 2026-10-02: roles are job positions (auth.POSITIONS). HQ staff have no dedicated region / zone / station, so they get the
@@ -3635,12 +3641,11 @@ def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
     a privilege-escalation hole."""
     if acting.role == "admin":
         return
-    allowed = _grantable_tiers(acting)
-    if allowed is None:
+    if acting.role not in ("manager", "region"):
         raise HTTPException(status_code=403, detail="You can't grant access")
-    if tier_of(payload.role) not in allowed:
-        raise HTTPException(status_code=403, detail="You can only grant " + " or ".join(_TIER_NAMES[t] for t in allowed) + " positions")
-    if payload.scope_type in ("all", "hq"):
+    if not _may_manage_position(acting, payload.role):
+        raise HTTPException(status_code=403, detail="You can only grant " + _manageable_label(acting))
+    if payload.scope_type == "all" or (payload.scope_type == "hq" and acting.role != "manager"):
         raise HTTPException(status_code=403, detail="You can't grant 'sees everything' access")
     if acting.role == "region" and payload.scope_type != "station":
         raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")

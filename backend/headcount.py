@@ -58,12 +58,54 @@ async def headcount_by_station() -> dict[str, dict[str, int]]:
     return out
 
 
+def designation_of(role: str) -> str:
+    return "station_head" if role == "station_head" else "fleet_assistant"  # Fleet Assistant, and the old unspecific 'station' title
+
+
+async def missing_vacant_seat(station_names: list[str], role: str) -> str | None:
+    """The first station among these with no vacant (approved) seat for this role's designation, or None when every one has one.
+    The Fleet Admin team can only fill a seat a Manager / HOD has opened -- they cannot add headcount."""
+    designation = designation_of(role)
+    for station in station_names:
+        row = await db.fetch_one(
+            "SELECT id FROM headcount_seats WHERE station = %s AND designation = %s AND status = 'approved' LIMIT 1", (station, designation)
+        )
+        if row is None:
+            return station
+    return None
+
+
+async def vacate(station_names: list[str], role: str, who: str, note: str | None, by: str) -> None:
+    """A person left a station: their seat stays (headcount only changes by a Manager / HOD), now vacant until someone fills it."""
+    now = _now()
+    for station in station_names:
+        await db.execute(
+            """INSERT INTO headcount_seats (station, designation, note, status, requested_by, requested_at, decided_by, decided_at)
+               VALUES (%s, %s, %s, 'approved', %s, %s, %s, %s)""",
+            (station, designation_of(role), note or f"Vacated by {who}", by, now, by, now),
+        )
+
+
+async def vacant_seats() -> list[dict]:
+    """Approved seats, for the Staff list (a vacant row each) -- with the station's zone and region."""
+    out = []
+    for sid, station, designation, note in await db.fetch_all(
+        "SELECT id, station, designation, note FROM headcount_seats WHERE status = 'approved' ORDER BY station, id"
+    ):
+        hub = next((h for h in HUBS.values() if h[0] == station), None)
+        out.append({
+            "id": sid, "station": station, "zone": hub[2] if hub else "", "region": hub[3] if hub else "",
+            "designation": designation, "label": DESIGNATIONS.get(designation, designation), "note": note,
+        })
+    return out
+
+
 async def consume_seat(station_names: list[str], role: str) -> None:
     """A real person was added to these stations: use up one matching approved seat per station (the oldest), so the same
     person is not counted twice -- once as a TBA seat and once as themselves."""
     if tier_of(role) != "station":
         return
-    designation = "station_head" if role == "station_head" else "fleet_assistant"
+    designation = designation_of(role)
     for station in station_names:
         row = await db.fetch_one(
             "SELECT id FROM headcount_seats WHERE station = %s AND designation = %s AND status = 'approved' ORDER BY id LIMIT 1",

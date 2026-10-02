@@ -38,10 +38,10 @@ export const CHANGELOG = [
     title: "Superadmin, Managers see everything, and the PIC list now follows the Staff & Org Chart (staging only)",
     points: [
       "The Admin role is now called Superadmin, so it is not mixed up with the Fleet Admin position. Nothing about what it can do changed.",
-      "A Manager can have a dedicated region -- it places them in the org chart and the PIC list -- but, like HOD, a Manager sees every region's data and can manage Region and Station staff in every region (a manager often covers another manager's region).",
+      "A Manager can have a dedicated region -- it places them in the org chart and the PIC list -- but, like HOD, a Manager sees every region's data and can manage everyone except the HOD and the Superadmin -- Region staff, Station staff and other HQ staff -- in every region (a manager often covers another manager's work). The HOD can manage everyone except the Superadmin.",
       "The Admin page tab is now called Superadmin as well.",
-      "Management View -> Capacity staff headcount now comes from the Staff & Org Chart (people posted at the station + TBA seats, a TBA counts as headcount) instead of an uploaded sheet.",
-      "New Headcount view in Staff & Org Chart: the HOD adds TBA seats directly, a Manager's request waits for the HOD's approval, and a Manager or the HOD removes a seat with no approval.",
+      "Management View -> Capacity staff headcount now comes from the Staff & Org Chart (people posted at the station + vacant seats; a vacant seat counts as headcount) instead of an uploaded sheet.",
+      "New Headcount view in Staff & Org Chart: only a Manager, the HOD or the Superadmin adds or removes headcount: the HOD adds a vacant seat directly, a Manager's request waits for the HOD's approval, and a seat is removed with no approval. The Fleet Admin team fills a vacant seat with a person's details and edits current staff, but cannot add or remove headcount. Tables keep their header in view, and the headcount table sorts by clicking a header.",
       "The PIC search reads the Staff & Org Chart that the Fleet Admin team keeps, not the Fleet Management sheet: when someone joins, moves or leaves there, the PIC box follows straight away.",
     ],
   },

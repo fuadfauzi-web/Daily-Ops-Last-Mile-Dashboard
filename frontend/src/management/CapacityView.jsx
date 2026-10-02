@@ -4,7 +4,7 @@ import DataTable from "../components/DataTable";
 import SegmentedControl from "../components/SegmentedControl";
 import { CardRow, Section, StatCard, SubHead, dayLabel, dec1, int, isWeekend, pct, sum, weekLabel, weekStartOf } from "./shared";
 
-// Capacity (2026-10-02): Hub Size from the uploaded Fleet Management workbook, Staff from the Staff & Org Chart (people posted at the station + TBA seats); PTWH and a parcel-capacity override are keyed
+// Capacity (2026-10-02): Hub Size from the uploaded Fleet Management workbook, Staff from the Staff & Org Chart (people posted at the station + vacant seats); PTWH and a parcel-capacity override are keyed
 // in here by a manager (they change with the roster / the hub, there's no feed for them); driver/rider attendance by weekday vs
 // weekend, per day or per week, from the DoD daily snapshots.
 
@@ -149,7 +149,7 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
         }
       >
         <CardRow>
-          <StatCard label="Staff" value={int(sum(rows, "staff_count"))} sub={`from the Staff & Org Chart, incl. ${int(sum(rows, "staff_tba"))} TBA`} />
+          <StatCard label="Staff" value={int(sum(rows, "staff_count"))} sub={`from the Staff & Org Chart, incl. ${int(sum(rows, "staff_tba"))} vacant`} />
           <StatCard label="PTWH" value={int(sum(rows, "ptwh_count"))} sub="keyed in by managers, below" />
           <StatCard label="Hub size (sqft)" value={rows.some((r) => r.sqft != null) ? int(sum(rows, "sqft")) : "—"} />
           <StatCard
@@ -208,7 +208,7 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
             { key: "station_name", label: "Station", sticky: true, align: "left" },
             { key: "region", label: "Region" },
             { key: "sqft", label: "SQFT", render: (r) => (r.sqft == null ? "—" : int(r.sqft)) },
-            { key: "staff_count", label: "Staff", render: (r) => (r.staff_count == null ? "—" : int(r.staff_count) + (r.staff_tba ? ` (${r.staff_tba} TBA)` : "")) },
+            { key: "staff_count", label: "Staff", render: (r) => (r.staff_count == null ? "—" : int(r.staff_count) + (r.staff_tba ? ` (${r.staff_tba} vacant)` : "")) },
             {
               key: "ptwh_count", label: "PTWH",
               render: (r) => (

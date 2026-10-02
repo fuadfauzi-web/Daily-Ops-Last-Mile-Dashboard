@@ -33,5 +33,12 @@ export const rankOf = (me) => TIER_RANK[me?.role] ?? 0;
 // HQ staff have no dedicated region / zone / station -- scope 'hq' (the data they see is everything, for now).
 export const isHqTier = (position) => ["admin", "manager", "hq_staff"].includes(tierOf(position));
 
-// What each acting tier may hand out / manage -- mirrors backend/main.py's _GRANTABLE_TIERS.
-export const GRANTABLE_TIERS = { manager: ["region", "station"], region: ["station"] };
+// Who may add / edit / remove whom on the Users page -- mirrors backend/main.py's _may_manage_position. Superadmin: everyone; HOD: everyone
+// but the Superadmin; Manager: everyone but the HOD and the Superadmin; Region staff: Station staff only.
+export function canManagePosition(me, targetPosition) {
+  if (me.role === "admin") return true;
+  const tier = tierOf(targetPosition);
+  if (me.role === "manager") return tier !== "admin" && (targetPosition !== "hod" || me.position === "hod");
+  if (me.role === "region") return tier === "station";
+  return false;
+}
