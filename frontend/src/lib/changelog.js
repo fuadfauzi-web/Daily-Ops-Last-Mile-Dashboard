@@ -62,6 +62,14 @@ export const CHANGELOG = [
     ],
   },
   {
+    date: "2026-10-03",
+    title: "Headcount for Region Heads, RFS and the Fleet Admin team (staging only)",
+    points: [
+      "The Headcount view now has three tables: Stations (Station Head, Fleet Assistant), Zones (Region Head, Regional Fleet Supervisor) and HQ (Fleet Admin). Each shows the people posted there, the vacant seats and the headcount; the three RFS seats marked TBA in the sheet (South 1, South 2, Zone B) and the Fleet Admin team's intern seats are in as vacant seats.",
+      "The same rules as for stations: a Manager or the HOD adds or removes seats (a Manager's wait for the HOD), the Fleet Admin team fills a vacant seat by adding the person, and a leaver's seat stays as a vacant seat. The Org chart and the Staff list show the vacant zone and HQ seats too.",
+    ],
+  },
+  {
     date: "2026-10-02",
     title: "New: Fleet Admin tab with Premises (staging only) -- licence and tenancy dates per station, edited in the app",
     points: [

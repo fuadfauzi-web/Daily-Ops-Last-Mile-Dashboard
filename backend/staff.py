@@ -160,10 +160,11 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
 
 async def _insert(payload: StaffIn, email: str, actor: CurrentUser) -> None:
     by = actor.email
-    # The Fleet Admin team adds PEOPLE, not headcount: a station position can only be filled where a Manager / HOD has opened a vacant
-    # seat of that kind (2026-10-02). The Superadmin is not held to this.
-    if actor.role != "admin" and payload.scope_type == "station" and tier_of(payload.role) == "station":
-        short = await headcount.missing_vacant_seat(payload.scope_values, payload.role)
+    # The Fleet Admin team adds PEOPLE, not headcount: a Station Head / Fleet Assistant (at a station), Region Head / RFS (at a zone) or Fleet
+    # Admin (at HQ) can only be added where a Manager / HOD has opened a vacant seat of that kind (2026-10-02). The Superadmin is not held to this.
+    places = headcount.places_for(payload.role, payload.scope_type, payload.scope_values)
+    if actor.role != "admin" and places:
+        short = await headcount.missing_vacant_seat(places, payload.role)
         if short:
             raise HTTPException(
                 status_code=422,
@@ -178,8 +179,8 @@ async def _insert(payload: StaffIn, email: str, actor: CurrentUser) -> None:
         (email, payload.role, payload.scope_type, values, payload.scope_type, values,
          compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), by, phone or None, emp or None),
     )
-    if payload.scope_type == "station":
-        await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
+    if places:
+        await headcount.consume_seat(places, payload.role)  # a vacant seat is used up by the real person
 
 
 async def _apply_update(row, payload: StaffIn) -> bool:
@@ -280,8 +281,9 @@ async def delete_staff(email: str, user: CurrentUser = Depends(get_current_user)
     # or someone fills it.
     home_type, home_values = _home_of(row)
     await purge_user(row[0])
-    if home_type == "station" and tier_of(row[1]) == "station":
-        await headcount.vacate(home_values, row[1], plain_name(row[6]) or row[0], None, user.email)
+    leaving = headcount.places_for(row[1], home_type, home_values)
+    if leaving:
+        await headcount.vacate(leaving, row[1], plain_name(row[6]) or row[0], None, user.email)
     return {"ok": True}
 
 
@@ -347,6 +349,9 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
                     "tba_heads": tba.get((name, "station_head"), 0),
                     "tba_assistants": tba.get((name, "fleet_assistant"), 0),
                 })
-            zones.append({"name": zone, "leads": by_zone.get(zone, []), "stations": stations})
+            zones.append({
+                "name": zone, "leads": by_zone.get(zone, []), "stations": stations,
+                "tba_region_heads": tba.get((zone, "region_head"), 0), "tba_rfs": tba.get((zone, "rfs"), 0),
+            })
         regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones})
-    return {"hq": hq, "regions": regions, "can_edit": _can_edit(user)}
+    return {"hq": hq, "hq_vacant_fleet_admin": tba.get((headcount.HQ_PLACE, "fleet_admin"), 0), "regions": regions, "can_edit": _can_edit(user)}

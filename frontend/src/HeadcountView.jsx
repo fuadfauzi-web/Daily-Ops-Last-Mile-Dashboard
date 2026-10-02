@@ -1,15 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 
-// Headcount (2026-10-02, staging): a station's headcount = the people posted there (Staff & Org Chart) + its vacant seats -- planned seats, or
-// people whose email isn't known yet. Management View -> Capacity reads the same numbers. The HOD adds a seat straight away; a Manager's new
-// seat waits for the HOD to approve it; a Manager or the HOD removes a seat with no approval. Removing a PERSON is the Fleet Admin team's job.
-const DESIGNATIONS = [["fleet_assistant", "Fleet Assistant"], ["station_head", "Station Head"]];
+// Headcount (2026-10-02, staging): a place's headcount = the people posted there (Staff & Org Chart) + its vacant seats -- planned seats, or
+// people whose email isn't known yet. Three tables: STATIONS (Station Head / Fleet Assistant), ZONES (Region Head / Regional Fleet Supervisor) and
+// HQ (Fleet Admin). Management View -> Capacity reads the station numbers. The HOD adds a seat straight away; a Manager's new seat waits for the HOD
+// to approve it; a Manager or the HOD removes a seat with no approval. Removing a PERSON is the Fleet Admin team's job.
+const DESIGNATIONS = [
+  ["fleet_assistant", "Fleet Assistant", "station"],
+  ["station_head", "Station Head", "station"],
+  ["region_head", "Region Head", "zone"],
+  ["rfs", "Regional Fleet Supervisor", "zone"],
+  ["fleet_admin", "Fleet Admin", "hq"],
+];
+const KIND_OF = Object.fromEntries(DESIGNATIONS.map(([k, , kind]) => [k, kind]));
+const SECTIONS = [["stations", "Stations", "Station Head · Fleet Assistant"], ["zones", "Zones", "Region Head · RFS"], ["hq", "HQ", "Fleet Admin"]];
+const KIND_FOR_SECTION = { stations: "station", zones: "zone", hq: "hq" };
+
+const vacantText = (c) => (c.tba + c.pending > 0 ? c.tba + (c.pending ? ` (+${c.pending} pending)` : "") : 0);
+
+function Card({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-4 py-2">
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="text-lg font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
 
 export default function HeadcountView() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [section, setSection] = useState("stations");
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("all");
   const [sort, setSort] = useState({ key: "station", dir: "asc" });
@@ -36,22 +58,46 @@ export default function HeadcountView() {
     }
   };
 
-  const seatsByStation = useMemo(() => {
+  const kind = KIND_FOR_SECTION[section];
+  const seatsByPlace = useMemo(() => {
     const m = {};
-    for (const s of data?.seats || []) (m[s.station] ||= []).push(s);
+    for (const s of data?.seats || []) (m[`${s.place_type || "station"}:${s.station}`] ||= []).push(s);
     return m;
   }, [data]);
 
-  const regions = useMemo(() => [...new Set((data?.stations || []).map((s) => s.region))].sort(), [data]);
+  const switchSection = (key) => {
+    setSection(key);
+    setSort({ key: "station", dir: "asc" });
+    const first = DESIGNATIONS.find(([, , k]) => k === KIND_FOR_SECTION[key])[0];
+    setForm((f) => ({ ...f, designation: first, station: "" }));
+  };
+
+  const regions = useMemo(() => [...new Set((section === "zones" ? data?.zones : data?.stations || []).map((s) => s.region))].sort(), [data, section]);
+
+  // one row shape for the station and zone tables
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const get = { station: (s) => s.name.toLowerCase(), zone: (s) => s.zone.toLowerCase(), people: (s) => s.filled, vacant: (s) => s.tba + s.pending, total: (s) => s.total }[sort.key];
     const dir = sort.dir === "asc" ? 1 : -1;
-    return (data?.stations || [])
-      .filter((s) => region === "all" || s.region === region)
-      .filter((s) => !q || `${s.name} ${s.zone} ${s.region}`.toLowerCase().includes(q))
-      .sort((a, b) => (get(a) < get(b) ? -dir : get(a) > get(b) ? dir : a.name.localeCompare(b.name)));
-  }, [data, search, region, sort]);
+    if (section === "stations") {
+      const get = { station: (s) => s.name.toLowerCase(), zone: (s) => s.zone.toLowerCase(), people: (s) => s.filled, vacant: (s) => s.tba + s.pending, total: (s) => s.total }[sort.key];
+      return (data?.stations || [])
+        .filter((s) => region === "all" || s.region === region)
+        .filter((s) => !q || `${s.name} ${s.zone} ${s.region}`.toLowerCase().includes(q))
+        .sort((a, b) => (get(a) < get(b) ? -dir : get(a) > get(b) ? dir : a.name.localeCompare(b.name)));
+    }
+    if (section === "zones") {
+      const get = {
+        station: (z) => z.name.toLowerCase(), zone: (z) => z.region.toLowerCase(),
+        rh: (z) => z.region_head.filled, rhv: (z) => z.region_head.tba + z.region_head.pending,
+        rfs: (z) => z.rfs.filled, rfsv: (z) => z.rfs.tba + z.rfs.pending, total: (z) => z.total,
+      }[sort.key] || ((z) => z.name.toLowerCase());
+      return (data?.zones || [])
+        .filter((z) => region === "all" || z.region === region)
+        .filter((z) => !q || `${z.name} ${z.region}`.toLowerCase().includes(q))
+        .sort((a, b) => (get(a) < get(b) ? -dir : get(a) > get(b) ? dir : a.name.localeCompare(b.name)));
+    }
+    return [];
+  }, [data, section, search, region, sort]);
   // Click a header to sort; click again to flip. Numbers start high-to-low, names A-Z.
   const sortBy = (key) => setSort((p) => (p.key === key ? { key, dir: p.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "station" || key === "zone" ? "asc" : "desc" }));
   const arrow = (key) => (sort.key === key ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
@@ -59,31 +105,65 @@ export default function HeadcountView() {
   if (error && !data) return <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>;
   if (!data) return <div className="text-sm text-slate-400">Loading…</div>;
 
-  const totals = data.stations.reduce((a, s) => ({ filled: a.filled + s.filled, tba: a.tba + s.tba, pending: a.pending + s.pending }), { filled: 0, tba: 0, pending: 0 });
+  const sum = (list, pick) => list.reduce((a, x) => { const c = pick(x); return { filled: a.filled + c.filled, tba: a.tba + c.tba, pending: a.pending + c.pending }; }, { filled: 0, tba: 0, pending: 0 });
+  const totals =
+    section === "stations" ? sum(data.stations, (s) => s)
+    : section === "zones" ? sum(data.zones.flatMap((z) => [z.region_head, z.rfs]), (c) => c)
+    : data.hq.fleet_admin;
+  // A Region Head / RFS who covers two zones is listed in both rows but is one person: the card counts each once.
+  const peopleCard = section === "zones" ? data.zone_people ?? totals.filled : totals.filled;
   const pending = data.seats.filter((s) => s.status === "pending");
+  const sectionSeats = data.seats.filter((s) => (s.place_type || "station") === kind);
 
   const submit = (e) => {
     e.preventDefault();
-    if (!form.station) return setError("Pick a station");
+    if (kind !== "hq" && !form.station) return setError(kind === "zone" ? "Pick a zone" : "Pick a station");
     act(async () => {
-      const r = await api.headcount.add({ station: form.station, designation: form.designation, note: form.note });
+      const r = await api.headcount.add({ station: kind === "hq" ? "" : form.station, designation: form.designation, note: form.note });
       setForm({ ...form, note: "" });
       setNotice(r.status === "pending" ? "Sent to the HOD for approval. It counts once approved." : "Headcount added.");
     });
   };
 
+  const SeatChips = ({ place, type }) =>
+    (seatsByPlace[`${type}:${place}`] || []).map((seat) => (
+      <span key={seat.id} title={seat.note || ""} className={`mr-1.5 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs ${seat.status === "pending" ? "border-amber-400 text-amber-800" : "border-slate-400 text-slate-600"}`}>
+        {seat.label}{seat.status === "pending" ? " (pending)" : ""}{type === "hq" && seat.note ? ` · ${seat.note}` : ""}
+        {data.can_change && (
+          <button disabled={busy} onClick={() => act(() => api.headcount.remove(seat.id))} aria-label="Remove this seat" className="text-status-critical hover:underline">×</button>
+        )}
+      </span>
+    ));
+
+  const Th = ({ k, children, center }) => (
+    <th className={`px-3 py-2 font-medium ${center ? "text-center" : ""}`}>
+      <button type="button" onClick={() => sortBy(k)} className="font-medium hover:text-ink" title="Click to sort">{children}{arrow(k)}</button>
+    </th>
+  );
+
   const input = "rounded-lg border border-slate-300 px-3 py-1.5 text-sm";
+  const kindDesignations = DESIGNATIONS.filter(([, , k]) => k === kind);
   return (
     <div className="space-y-4">
+      <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold sm:w-fit">
+        {SECTIONS.map(([key, label, sub]) => (
+          <button key={key} onClick={() => switchSection(key)} className={`px-4 py-1.5 text-left ${section === key ? "bg-ink text-white" : "text-slate-500"}`}>
+            {label} <span className={`ml-1 font-normal ${section === key ? "text-slate-300" : "text-slate-400"}`}>{sub}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-3 text-sm">
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">Headcount</div><div className="text-lg font-semibold tabular-nums">{totals.filled + totals.tba}</div></div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">People in the list</div><div className="text-lg font-semibold tabular-nums">{totals.filled}</div></div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">Vacant seats</div><div className="text-lg font-semibold tabular-nums">{totals.tba}</div></div>
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-2"><div className="text-xs text-slate-400">Waiting for the HOD</div><div className="text-lg font-semibold tabular-nums">{totals.pending}</div></div>
+        <Card label="Headcount" value={peopleCard + totals.tba} />
+        <Card label="People in the list" value={peopleCard} />
+        <Card label="Vacant seats" value={totals.tba} />
+        <Card label="Waiting for the HOD" value={totals.pending} />
       </div>
       <p className="text-xs text-slate-500">
-        A station's headcount is the people posted there plus its vacant seats (planned, or someone whose email isn't known yet). Management View → Capacity uses these numbers.
-        When the Fleet Admin team adds a person to a station, one matching vacant seat there is used up; when someone leaves, their seat stays and becomes vacant. Only a Manager or the HOD adds or removes seats.
+        {section === "stations" && "A station's headcount is the people posted there plus its vacant seats (planned, or someone whose email isn't known yet). Management View → Capacity uses these numbers. "}
+        {section === "zones" && "A zone's headcount is its Region Head and Regional Fleet Supervisor (RFS) plus their vacant seats. Someone who covers two zones is listed in both rows and counted once in the cards. "}
+        {section === "hq" && "The Fleet Admin team's headcount is the Fleet Admin people at HQ plus its vacant seats. "}
+        When the Fleet Admin team adds a person where a seat is vacant, that seat is used up; when someone leaves, their seat stays and becomes vacant. Only a Manager or the HOD adds or removes seats.
       </p>
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>}
@@ -91,12 +171,21 @@ export default function HeadcountView() {
 
       {data.can_change && (
         <form onSubmit={submit} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
-          <select value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })} className={input}>
-            <option value="">Station…</option>
-            {data.stations.map((s) => <option key={s.name} value={s.name}>{s.name} ({s.zone})</option>)}
-          </select>
-          <select value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} className={input}>
-            {DESIGNATIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {kind === "station" && (
+            <select value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })} className={input}>
+              <option value="">Station…</option>
+              {data.stations.map((s) => <option key={s.name} value={s.name}>{s.name} ({s.zone})</option>)}
+            </select>
+          )}
+          {kind === "zone" && (
+            <select value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })} className={input}>
+              <option value="">Zone…</option>
+              {data.zones.map((z) => <option key={z.name} value={z.name}>{z.name} ({z.region})</option>)}
+            </select>
+          )}
+          {kind === "hq" && <div className={`${input} bg-slate-50 text-slate-500`}>HQ (the Fleet Admin team)</div>}
+          <select value={KIND_OF[form.designation] === kind ? form.designation : kindDesignations[0][0]} onChange={(e) => setForm({ ...form, designation: e.target.value })} className={input} disabled={kindDesignations.length === 1}>
+            {kindDesignations.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Note (e.g. new hire)" maxLength={200} className={`${input} lg:col-span-2`} />
           <button type="submit" disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
@@ -128,52 +217,104 @@ export default function HeadcountView() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a station, zone or region…" className="w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" />
-        <select value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Filter by region" className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700">
-          <option value="all">All regions</option>
-          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <span className="text-xs text-slate-400">{rows.length} of {data.stations.length} stations</span>
-      </div>
+      {section !== "hq" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={section === "zones" ? "Find a zone or region…" : "Find a station, zone or region…"} className="w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" />
+          <select value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Filter by region" className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700">
+            <option value="all">All regions</option>
+            {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <span className="text-xs text-slate-400">{rows.length} of {section === "zones" ? data.zones.length : data.stations.length} {section === "zones" ? "zones" : "stations"}</span>
+        </div>
+      )}
 
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_0_#e2e8f0]">
-            <tr>
-              {[["station", "Station", "left"], ["zone", "Zone", "left"], ["people", "People", "center"], ["vacant", "Vacant", "center"], ["total", "Headcount", "center"]].map(([key, label, align]) => (
-                <th key={key} className={`px-3 py-2 font-medium ${align === "center" ? "text-center" : ""}`}>
-                  <button type="button" onClick={() => sortBy(key)} className="font-medium hover:text-ink" title="Click to sort">
-                    {label}{arrow(key)}
-                  </button>
-                </th>
-              ))}
-              <th className="px-3 py-2 font-medium">Vacant seats</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.name} className="border-t border-slate-100 align-top">
-                <td className="px-3 py-1.5">{s.name}</td>
-                <td className="px-3 py-1.5 text-slate-500">{s.zone}</td>
-                <td className="px-3 py-1.5 text-center tabular-nums">{s.filled}</td>
-                <td className="px-3 py-1.5 text-center tabular-nums">{s.tba + s.pending > 0 ? s.tba + (s.pending ? ` (+${s.pending} pending)` : "") : 0}</td>
-                <td className="px-3 py-1.5 text-center font-medium tabular-nums">{s.total}</td>
-                <td className="px-3 py-1.5">
-                  {(seatsByStation[s.name] || []).map((seat) => (
-                    <span key={seat.id} title={seat.note || ""} className={`mr-1.5 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs ${seat.status === "pending" ? "border-amber-400 text-amber-800" : "border-slate-400 text-slate-600"}`}>
-                      {seat.label}{seat.status === "pending" ? " (pending)" : ""}
-                      {data.can_change && (
-                        <button disabled={busy} onClick={() => act(() => api.headcount.remove(seat.id))} aria-label="Remove this seat" className="text-status-critical hover:underline">×</button>
-                      )}
-                    </span>
-                  ))}
-                </td>
+      {section === "stations" && (
+        <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_0_#e2e8f0]">
+              <tr>
+                <Th k="station">Station</Th>
+                <Th k="zone">Zone</Th>
+                <Th k="people" center>People</Th>
+                <Th k="vacant" center>Vacant</Th>
+                <Th k="total" center>Headcount</Th>
+                <th className="px-3 py-2 font-medium">Vacant seats</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr key={s.name} className="border-t border-slate-100 align-top">
+                  <td className="px-3 py-1.5">{s.name}</td>
+                  <td className="px-3 py-1.5 text-slate-500">{s.zone}</td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">{s.filled}</td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">{vacantText(s)}</td>
+                  <td className="px-3 py-1.5 text-center font-medium tabular-nums">{s.total}</td>
+                  <td className="px-3 py-1.5"><SeatChips place={s.name} type="station" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {section === "zones" && (
+        <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_0_#e2e8f0]">
+              <tr>
+                <Th k="station">Zone</Th>
+                <Th k="zone">Region</Th>
+                <Th k="rh" center>Region Head</Th>
+                <Th k="rhv" center>RH vacant</Th>
+                <Th k="rfs" center>RFS</Th>
+                <Th k="rfsv" center>RFS vacant</Th>
+                <Th k="total" center>Headcount</Th>
+                <th className="px-3 py-2 font-medium">Vacant seats</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((z) => (
+                <tr key={z.name} className="border-t border-slate-100 align-top">
+                  <td className="px-3 py-1.5">{z.name}</td>
+                  <td className="px-3 py-1.5 text-slate-500">{z.region}</td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">{z.region_head.filled}</td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">{vacantText(z.region_head)}</td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">{z.rfs.filled}</td>
+                  <td className="px-3 py-1.5 text-center tabular-nums">{vacantText(z.rfs)}</td>
+                  <td className="px-3 py-1.5 text-center font-medium tabular-nums">{z.total}</td>
+                  <td className="px-3 py-1.5"><SeatChips place={z.name} type="zone" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {section === "hq" && (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Team</th>
+                <th className="px-3 py-2 text-center font-medium">People</th>
+                <th className="px-3 py-2 text-center font-medium">Vacant</th>
+                <th className="px-3 py-2 text-center font-medium">Headcount</th>
+                <th className="px-3 py-2 font-medium">Vacant seats</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-slate-100 align-top">
+                <td className="px-3 py-1.5">Fleet Admin (HQ)</td>
+                <td className="px-3 py-1.5 text-center tabular-nums">{data.hq.fleet_admin.filled}</td>
+                <td className="px-3 py-1.5 text-center tabular-nums">{vacantText(data.hq.fleet_admin)}</td>
+                <td className="px-3 py-1.5 text-center font-medium tabular-nums">{data.hq.fleet_admin.total}</td>
+                <td className="px-3 py-1.5"><SeatChips place="HQ" type="hq" /></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      {section !== "stations" && sectionSeats.length === 0 && <p className="text-xs text-slate-400">No vacant seats here.</p>}
     </div>
   );
 }

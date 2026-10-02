@@ -36,8 +36,8 @@ function Person({ p, onEdit }) {
 }
 
 // A vacant seat: planned, or someone whose email isn't known yet (counted in the headcount). Opened / closed in the Headcount view.
-function VacantChip({ n }) {
-  return <span className="mr-1.5 inline-block rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-600">Vacant{n > 1 ? ` x${n}` : ""}</span>;
+function VacantChip({ n, label }) {
+  return <span className="mr-1.5 inline-block rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-600">{label ? `${label} ` : ""}Vacant{n > 1 ? ` x${n}` : ""}</span>;
 }
 
 function OrgChart({ chart, onEdit }) {
@@ -49,7 +49,10 @@ function OrgChart({ chart, onEdit }) {
     <div className="space-y-3">
       <div className="rounded-lg border border-slate-200 bg-white p-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">HQ</div>
-        <div className="mt-1.5">{chart.hq.length ? chart.hq.map((p) => <Person key={p.email} p={p} />) : <span className="text-xs text-slate-400">Nobody yet</span>}</div>
+        <div className="mt-1.5">
+          {chart.hq.length ? chart.hq.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />) : <span className="text-xs text-slate-400">Nobody yet</span>}
+          {chart.hq_vacant_fleet_admin > 0 && <VacantChip n={chart.hq_vacant_fleet_admin} label="Fleet Admin" />}
+        </div>
         <p className="mt-2 text-xs text-slate-400">
           {stationCount} stations, {vacancies === 0 ? "every one has a Station Head" : `${vacancies} with no Station Head and no vacant seat (shown in red)`}.
           {onEdit ? " Click a person to edit them." : ""}
@@ -71,7 +74,10 @@ function OrgChart({ chart, onEdit }) {
                   <div className="mb-1 flex flex-wrap items-center gap-x-3">
                     <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{z.name}</span>
                     <span>
-                      {z.leads.length ? z.leads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />) : <span className="text-xs text-status-critical">No Region Head / RFS</span>}
+                      {z.leads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
+                      {z.tba_region_heads > 0 && <VacantChip n={z.tba_region_heads} label="RH" />}
+                      {z.tba_rfs > 0 && <VacantChip n={z.tba_rfs} label="RFS" />}
+                      {z.leads.length === 0 && !z.tba_region_heads && !z.tba_rfs && <span className="text-xs text-status-critical">No Region Head / RFS</span>}
                     </span>
                   </div>
                   <table className="w-full text-left text-sm">
@@ -157,7 +163,8 @@ export default function StaffDirectoryTab({ me }) {
 
   const startFill = (v) => {
     setEditing(null);
-    setForm({ ...emptyForm, role: v.designation, scope_type: "station", scope_values: [v.station] });
+    const type = v.place_type === "zone" ? "zone" : v.place_type === "hq" ? "hq" : "station";
+    setForm({ ...emptyForm, role: v.designation, scope_type: type, scope_values: type === "hq" ? [] : [v.station] });
     setShowForm(true);
     setShowImport(false);
     setError(null);
@@ -292,9 +299,9 @@ export default function StaffDirectoryTab({ me }) {
               </div>
               <input placeholder="Mobile (optional)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
               <input placeholder="Employee ID (optional)" value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
-              {!editing && tier === "station" && (
+              {!editing && ["station_head", "fleet_assistant", "region_head", "rfs", "fleet_admin"].includes(form.role) && (
                 <p className="text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
-                  A station position can only be filled where a Manager or the HOD has opened a vacant seat for it (use <em>Add person</em> on a Vacant row, or ask them to add the headcount first).
+                  A Station Head / Fleet Assistant, Region Head / RFS or Fleet Admin can only be added where a Manager or the HOD has opened a vacant seat for it (use <em>Add person</em> on a Vacant row, or ask them to add the headcount first).
                 </p>
               )}
               <div className="flex items-start gap-2 lg:col-span-3">
