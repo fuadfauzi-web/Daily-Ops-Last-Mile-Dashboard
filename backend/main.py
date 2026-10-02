@@ -68,7 +68,7 @@ from redash_client import (
     QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
     QUERY_ZALORA_NXD, RedashError, fetch_query_results,
 )
-from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
+from stations import ABBR_TO_HUB, HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
 _MYT = timezone(timedelta(hours=8))
 
@@ -2956,13 +2956,54 @@ async def urgent_pic_suggestions(q: str = "", user: CurrentUser = Depends(get_cu
     if len(q) < 2:
         return []
     like = f"%{q}%"
+    me = user.email.lower()
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(r) -> None:
+        if r[0].lower() not in seen:
+            seen.add(r[0].lower())
+            out.append({"email": r[0], "display_name": r[1], "role": r[2]})
+
+    # 2026-10-02: type a STATION (its name, or its 3-letter code) and everyone looking after it comes up -- the station's own
+    # staff first, then the Region Head / RFS of its zone, then the manager of its region -- so the PIC is one search away.
+    # Only when the text names a station (or at most three); a loose "ka" would otherwise match half the country.
+    places = [(name, zone, region) for name, _full, zone, region in HUBS.values() if q in name.lower()]
+    exact = [p for p in places if p[0].lower() == q]
+    abbr = HUBS.get(ABBR_TO_HUB.get(q.upper(), ""))
+    if abbr:
+        exact = [(abbr[0], abbr[2], abbr[3])]
+    places = exact or places
+    if 1 <= len(places) <= 3:
+        names = {p[0] for p in places}
+        zones = {p[1] for p in places}
+        regions = {p[2] for p in places}
+        cover = await db.fetch_all(
+            "SELECT email, display_name, role, scope_type, scope_values FROM users WHERE scope_type <> 'all' AND LOWER(email) <> %s",
+            (me,),
+        )
+        tiers: dict[int, list] = {0: [], 1: [], 2: []}
+        for r in cover:
+            values = set(parse_scope_values(r[4]))
+            if r[3] == "station" and values & names:
+                tiers[0].append(r)
+            elif r[3] == "zone" and values & zones:
+                tiers[1].append(r)
+            elif r[3] == "region" and values & regions:
+                tiers[2].append(r)
+        for tier in (0, 1, 2):
+            for r in sorted(tiers[tier], key=lambda x: (x[1] or x[0]).lower()):
+                add(r)
+
     rows = await db.fetch_all(
         """SELECT email, display_name, role FROM users
            WHERE (LOWER(email) LIKE %s OR LOWER(display_name) LIKE %s) AND LOWER(email) <> %s
            ORDER BY email LIMIT 8""",
-        (like, like, user.email.lower()),
+        (like, like, me),
     )
-    return [{"email": r[0], "display_name": r[1], "role": r[2]} for r in rows]
+    for r in rows:
+        add(r)
+    return out[:15]
 
 
 @app.post("/api/urgent-tn/items", response_model=OkResult)
@@ -3368,6 +3409,41 @@ def _require_can_add_users(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="Admin, Manager, or Region staff access required")
 
 
+# 2026-10-02: Region Heads / RFS / Managers now run the Users page for their own people, so what they can see,
+# grant, edit and remove is limited to places INSIDE their own scope (before, a Region staff member could
+# grant or edit station access anywhere, since only the role was checked, not where).
+def _stations_for_scope(scope_type: str, scope_values: list[str]) -> set[str] | None:
+    """Station names a scope covers; None means everything ('all')."""
+    if scope_type == "all":
+        return None
+    out = set()
+    for name, _full, zone, region in HUBS.values():
+        if (scope_type == "station" and name in scope_values) or (scope_type == "zone" and zone in scope_values) \
+                or (scope_type == "region" and region in scope_values):
+            out.add(name)
+    return out
+
+
+def _scope_within(acting: CurrentUser, scope_type: str, scope_values: list[str]) -> bool:
+    """True when everything the (scope_type, scope_values) covers is also covered by the acting user's own scope."""
+    mine = _stations_for_scope(acting.scope_type, acting.scope_values)
+    if mine is None:
+        return True
+    theirs = _stations_for_scope(scope_type, scope_values)
+    return theirs is not None and theirs <= mine
+
+
+_ROLE_TAG = {"station": "Station staff", "region": "Region staff", "manager": "Manager", "admin": "Admin"}
+
+
+def _auto_display_name(email: str, role: str, scope_type: str, scope_values: list[str]) -> str:
+    """"Afnan Roslan (Station staff - Larkin)" from the email when nobody typed a name, so the PIC box always shows who a
+    person is and where (2026-10-02: the picker searches by station, and a bare email says neither)."""
+    name = " ".join(p.capitalize() for p in email.split("@")[0].replace("_", ".").split(".") if p)
+    where = "Everything" if scope_type == "all" else " & ".join(scope_values)
+    return f"{name} ({_ROLE_TAG.get(role, role)} - {where})" if name else email
+
+
 def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
     """Edit/delete permission on an existing user -- keyed off the TARGET's
     current role, mirroring _validate_grant_limits' ceiling: a Manager can
@@ -3407,12 +3483,13 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     out = [_row_to_user_out(r) for r in rows]
     # Same view mirrors what each role can manage (see _require_can_manage_target) --
     # a Manager/Region user only ever sees the subset they're allowed to act on.
+    # ...and only the ones inside their own scope (2026-10-02).
     if user.role == "admin":
         return out
     if user.role == "manager":
-        return [u for u in out if u["role"] in ("station", "region")]
+        return [u for u in out if u["role"] in ("station", "region") and _scope_within(user, u["scope_type"], u["scope_values"])]
     if user.role == "region":
-        return [u for u in out if u["role"] == "station"]
+        return [u for u in out if u["role"] == "station" and _scope_within(user, u["scope_type"], u["scope_values"])]
     return []
 
 
@@ -3462,6 +3539,13 @@ def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
             raise HTTPException(status_code=403, detail="Region staff can only grant the Station staff role")
         if payload.scope_type != "station":
             raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
+    if not _scope_within(acting, payload.scope_type, payload.scope_values):
+        raise HTTPException(status_code=403, detail="You can only give access to places inside your own scope")
+
+
+def _require_target_in_scope(acting: CurrentUser, target_scope_type: str, target_scope_values: list[str]) -> None:
+    if acting.role != "admin" and not _scope_within(acting, target_scope_type, target_scope_values):
+        raise HTTPException(status_code=403, detail="That person is outside your scope")
 
 
 def _scope_values_json(values: list[str]) -> str | None:
@@ -3481,7 +3565,8 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
         """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
            VALUES (%s, %s, %s, %s, %s, %s)""",
         (payload.email, payload.role, payload.scope_type, _scope_values_json(payload.scope_values),
-         payload.display_name, user.email),
+         (payload.display_name or "").strip() or _auto_display_name(payload.email, payload.role, payload.scope_type, payload.scope_values),
+         user.email),
     )
     return {"ok": True}
 
@@ -3521,7 +3606,8 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
         await db.execute(
             """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
                VALUES (%s, %s, %s, %s, %s, %s)""",
-            (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.display_name, user.email),
+            (email, row.role, row.scope_type, _scope_values_json(row.scope_values),
+             (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email),
         )
         added.append(email)
     return {"added": added, "skipped": skipped, "errors": errors}
@@ -3529,7 +3615,7 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
 
 @app.patch("/api/admin/users/{email}", response_model=OkResult)
 async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(get_current_user)):
-    target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
+    target = await db.fetch_one("SELECT role, scope_type, scope_values FROM users WHERE email=%s", (email,))
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     # The owner's role is fixed -- nobody, including the owner themselves, can change it
@@ -3538,6 +3624,7 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
     if email == _OWNER_EMAIL and payload.role != "admin":
         raise HTTPException(status_code=403, detail="The app owner's role can't be changed")
     _require_can_manage_target(user, target[0])
+    _require_target_in_scope(user, target[1], parse_scope_values(target[2]))
     _validate_user_in(payload)
     _validate_grant_limits(user, payload)
     _require_can_grant_role(user, payload.role)
@@ -3553,10 +3640,11 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
 async def delete_user(email: str, user: CurrentUser = Depends(get_current_user)):
     if email == user.email:
         raise HTTPException(status_code=400, detail="You can't remove your own access")
-    target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
+    target = await db.fetch_one("SELECT role, scope_type, scope_values FROM users WHERE email=%s", (email,))
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     _require_can_manage_target(user, target[0])
+    _require_target_in_scope(user, target[1], parse_scope_values(target[2]))
     await db.execute("DELETE FROM users WHERE email=%s", (email,))
     # Urgent TN items follow their owner: the ones this user created go with them,
     # and any assigned to them are just unassigned (V27 migration).

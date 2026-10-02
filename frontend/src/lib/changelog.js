@@ -18,6 +18,14 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
+    title: "Find the PIC for a station: type the station in any PIC box",
+    points: [
+      "Type a station's name (or its 3-letter code, e.g. LKN) in a PIC box and the people looking after it come up -- the station's own staff, then the Region Head and RFS of its zone, then the manager of its region -- with their role and zone beside the name.",
+      "Region Heads, RFS and Managers now have dashboard access, and Region staff and Managers only see, add, edit or remove people inside their own zone / region (Settings -> Users). A person added without a name gets one built from their email, role and place.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Shipper Radar -> Restock -> B2B Document Compliance now covers every document type, with a real breach classification",
     points: [
       "Switched from the old RDO-only Redash query to a newer one that unions every document type Redash tracks (MYRDO / DO / GRN / PSO so far -- the Document type filter now shows whatever is actually there, instead of only RDO being selectable). Also adds Normal / Potential Breach / Breach columns, Redash's own classification of how long a document has been outstanding since its bundle was delivered -- the \"MPS completed but document still pending\" rule the Fleet Manager's sheet used to compute by hand is now read straight from the source. The tracking-number list and its CSV export show Document Type, Aging and Aging Group per row.",
