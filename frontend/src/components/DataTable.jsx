@@ -59,7 +59,7 @@ export default function DataTable({
 
   const renderTh = (c, rowSpan) => {
     const sortable = c.sortable !== false && !!onSort;
-    const align = c.align || (c.sticky ? "left" : "center");
+    const align = c.headerAlign || c.align || (c.sticky ? "left" : "center");
     return (
       <th
         key={c.key}
@@ -70,7 +70,7 @@ export default function DataTable({
           align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left",
           sortable ? `cursor-pointer select-none ${headHover}` : "",
           c.sticky ? `sticky left-0 z-30 ${stickyHeadBg} ${stickyShadow}` : "",
-          c.groupStart ? "border-l-2 border-[#8A8486]" : groupHeaders && !c.sticky ? "border-l border-[#4A4446]" : "",
+          c.groupStart ? "border-l border-[#7A7476]" : groupHeaders && !c.sticky ? "border-l border-[#3A3638]" : "",
           // Reference (unscored) columns render muted even inside the
           // otherwise-white dark header text, so "no SLA" reads at a glance.
           c.reference ? "text-slate-400" : "",
@@ -107,7 +107,7 @@ export default function DataTable({
                   <th
                     key={g.key}
                     colSpan={g.span}
-                    className={`${i > 0 ? "border-l-2 border-[#8A8486]" : ""} whitespace-nowrap px-2 py-1 text-center font-display text-[10px] font-bold uppercase tracking-[0.08em] text-[#C9CDD2]`}
+                    className={`${i > 0 ? "border-l border-[#7A7476]" : ""} whitespace-nowrap px-2 py-1 text-center font-display text-[10px] font-bold uppercase tracking-[0.08em] text-[#C9CDD2]`}
                   >
                     {g.label}
                   </th>
@@ -152,7 +152,7 @@ export default function DataTable({
                       className={[
                         `${padX} ${dense ? "py-1.5 text-[12.5px]" : "py-2"} whitespace-nowrap`,
                         alignClass(align),
-                        c.groupStart ? "border-l-2 border-slate-300" : groupHeaders && !c.sticky ? "border-l border-slate-100" : "",
+                        c.groupStart ? "border-l border-slate-200" : "",
                         c.sticky ? `sticky left-0 z-10 ${stickyBg} font-medium text-slate-800 ${stickyShadow}` : "",
                         extraClass,
                       ].join(" ")}
@@ -165,7 +165,7 @@ export default function DataTable({
                             e.stopPropagation();
                             c.onClick(row);
                           }}
-                          className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                          className={`underline decoration-dotted underline-offset-2 hover:decoration-solid ${dense ? "decoration-slate-300 hover:decoration-slate-600" : ""}`}
                         >
                           {content}
                         </button>

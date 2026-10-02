@@ -299,14 +299,14 @@ export default function App() {
                 onClick={() => setJumpOpen(true)}
                 title="Jump to a page or a station (Ctrl K)"
                 aria-label="Jump to a page or a station"
-                className="flex min-h-[44px] items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 text-xs text-muted hover:bg-white"
+                className="flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-canvas px-3 text-xs text-muted hover:bg-white"
               >
                 <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <circle cx="8.5" cy="8.5" r="5.5" />
                   <path d="M13 13l4.5 4.5" strokeLinecap="round" />
                 </svg>
-                <span className="hidden min-[1440px]:inline">Jump to…</span>
-                <kbd className="hidden rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle min-[1440px]:inline">Ctrl K</kbd>
+                <span className={`hidden ${sidebarActive ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Jump to…</span>
+                <kbd className={`hidden whitespace-nowrap rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle ${sidebarActive ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Ctrl K</kbd>
               </button>
             )}
             {tidy ? (

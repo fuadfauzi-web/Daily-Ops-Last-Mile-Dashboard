@@ -773,7 +773,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   let healthGroupHeaders;
   if (FEATURES.healthTable) {
     const byKey = Object.fromEntries(combinedColumns.map((c) => [c.key, c]));
-    tableColumns = [combinedColumns[0]];
+    tableColumns = [{ ...combinedColumns[0], headerAlign: "center" }];
     healthGroupHeaders = [];
     orderedGroups.filter((g) => !hiddenGroups.has(g.key)).forEach((g) => {
       let span = 0;
@@ -787,10 +787,11 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           title: [full, METRIC_NOTES[key], t.scored && targetLine(key, t) ? `Target: warning from ${targetLine(key, t).split(" / ")[0]}, critical from ${targetLine(key, t).split(" / ").pop()}` : "No SLA target (reference only)"]
             .filter(Boolean)
             .join("\n\n"),
-          subLabel: targetLine(key, t),
           align: "center",
           groupStart: span === 0,
           reference: !t.scored,
+          // a 0 has no tracking numbers to open -- no underline on it
+          clickable: base.onClick ? (row) => row.type === "station" && row[key] > 0 : undefined,
         });
         span += 1;
       });
@@ -1033,8 +1034,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           />
           {FEATURES.healthTable && (
             <p className="text-xs text-slate-500">
-              Red tint = critical, amber tint = warning · the small grey line under a header is its target from SLA Targets (warning / critical; blank = no
-              SLA) · greyed header = reference only · underlined number → tracking numbers · hover a column name for what it counts.
+              Red tint = critical, amber tint = warning · greyed header = reference only (no SLA) · underlined number → tracking numbers · hover a column name
+              for what it counts and its target from SLA Targets (warning / critical).
             </p>
           )}
           <p className="text-xs text-slate-400">
