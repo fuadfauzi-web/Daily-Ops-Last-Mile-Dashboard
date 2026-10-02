@@ -34,6 +34,7 @@ from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
 import management_view
+import attendance
 import headcount
 import staff
 import recovery_lost
@@ -712,6 +713,7 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
