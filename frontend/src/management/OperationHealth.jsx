@@ -109,23 +109,29 @@ export default function OperationHealth({ dod, shipper, aging, lhTrips, me, relo
     return { ...b, list, count: list.length, parcels: sum(list, "parcels") };
   });
   const openLhBucket = lhBuckets.find((b) => b.key === openLh) || lhBuckets[0];
-  // Driver view (Metabase 127512, uploaded): every completed land-haul trip that arrived at a station that day, bucketed by its own
-  // arrival hour; a driver's volume in a bucket = the parcels on their trips arriving in it.
+  // Driver view (Metabase 127512, uploaded), per destination hub: the hub's LATE trip (its latest arrival that day) decides the bucket
+  // and names the driver; the hub's other trips only add to its day total.
+  const stationInfo = useMemo(() => Object.fromEntries(dod.rows.map((r) => [r.station_code, r])), [dod.rows]);
   const dayTrips = (lhTrips?.trips || []).filter((t) => t.day === lhDay);
-  const tripBucket = (t, b) => b.test(parseInt(t.time.slice(0, 2), 10));
-  const driverRank = (b) => {
+  const lateTrips = useMemo(() => {
     const by = new Map();
-    dayTrips.filter((t) => tripBucket(t, b)).forEach((t) => {
-      const d = by.get(t.driver) || { driver: t.driver, trips: 0, parcels: 0, stations: new Set(), latest: "" };
-      d.trips += 1; d.parcels += t.parcels; d.stations.add(t.station_code);
-      if (t.time > d.latest) d.latest = t.time;
-      by.set(t.driver, d);
+    dayTrips.forEach((t) => {
+      const e = by.get(t.station_code) || { station_code: t.station_code, trips: 0, dayParcels: 0, late: null };
+      e.trips += 1; e.dayParcels += t.parcels;
+      if (!e.late || t.time > e.late.time) e.late = t;
+      by.set(t.station_code, e);
     });
-    return [...by.values()].map((d) => ({ ...d, stationCount: d.stations.size })).sort((a, c) => c.parcels - a.parcels);
-  };
-  const driverBuckets = lhBuckets.map((b) => {
-    const list = driverRank(b);
-    return { ...b, drivers: list, trips: sum(list, "trips"), tripParcels: sum(list, "parcels") };
+    return [...by.values()].map((e) => ({
+      station_code: e.station_code, station_name: stationInfo[e.station_code]?.station_name || e.station_code,
+      region: stationInfo[e.station_code]?.region || "", driver: e.late.driver, time: e.late.time, parcels: e.late.parcels,
+      dayParcels: e.dayParcels, trips: e.trips, hour: parseInt(e.late.time.slice(0, 2), 10),
+    }));
+  }, [dayTrips, stationInfo]);
+  const [lhSort, setLhSort] = useState("volume");
+  const driverBuckets = LH_BUCKETS.map((b) => {
+    const list = lateTrips.filter((t) => b.test(t.hour));
+    const sorted = [...list].sort((x, y) => (lhSort === "volume" ? y.parcels - x.parcels : y.time.localeCompare(x.time)));
+    return { ...b, list: sorted, count: list.length, parcels: sum(list, "dayParcels"), trips: sum(list, "trips") };
   });
   const openDrivers = driverBuckets.find((b) => b.key === openLh) || driverBuckets[0];
   const hasDrivers = dayTrips.length > 0;
@@ -428,35 +434,35 @@ export default function OperationHealth({ dod, shipper, aging, lhTrips, me, relo
             { key: "label", label: "Arrived", align: "left" },
             { key: "count", label: "Stations", render: (r) => int(r.count) },
             { key: "parcels", label: "LH parcels", render: (r) => int(r.parcels) },
-            { key: "share", label: "% of stations", render: (r) => `${dec1(pct(r.count, lhStations.length))}%` },
-            ...(hasDrivers
-              ? [
-                  { key: "trips", label: "Trips", render: (r) => int(r.trips) },
-                  { key: "drivers", label: "Drivers", render: (r) => int(r.drivers.length) },
-                ]
-              : []),
+            { key: "share", label: "% of stations", render: (r) => `${dec1(pct(r.count, hasDrivers ? lateTrips.length : lhStations.length))}%` },
+            ...(hasDrivers ? [{ key: "trips", label: "Trips", render: (r) => int(r.trips) }] : []),
           ]}
-          rows={driverBuckets}
+          rows={hasDrivers ? driverBuckets : lhBuckets}
           rowKey={(r) => r.key}
           rowClassName={(r) => (r.key === openLh ? "bg-brand/10" : "")}
           onRowClick={(r) => setOpenLh(r.key)}
           emptyMessage="No LH trips recorded."
         />
         {hasDrivers ? (
-          <DataTable
-            title={`Top 10 LH drivers by volume -- ${openDrivers.label}`}
-            titleExtra={<span className="text-[10px] text-slate-400">{openDrivers.trips} trips · {openDrivers.drivers.length} drivers in this bucket · {lhTrips.source}</span>}
-            columns={[
-              { key: "driver", label: "Driver", align: "left", sticky: true },
-              { key: "parcels", label: "Parcels", render: (r) => int(r.parcels) },
-              { key: "trips", label: "Trips", render: (r) => int(r.trips) },
-              { key: "stationCount", label: "Stations", render: (r) => int(r.stationCount) },
-              { key: "latest", label: "Latest arrival" },
-            ]}
-            rows={openDrivers.drivers.slice(0, 10)}
-            rowKey={(r) => r.driver}
-            emptyMessage="No LH trips in this bucket."
-          />
+          <div className="space-y-2">
+            <SegmentedControl options={[{ key: "volume", label: "By late-trip volume" }, { key: "late", label: "Latest arrival first" }]} value={lhSort} onChange={setLhSort} />
+            <DataTable
+              title={`Top 10 hubs by late LH trip -- ${openDrivers.label}`}
+              titleExtra={<span className="text-[10px] text-slate-400">{openDrivers.count} hubs · each hub's latest trip and its driver · {lhTrips.source}</span>}
+              columns={[
+                { key: "station_name", label: "Hub", align: "left", sticky: true },
+                { key: "region", label: "Region" },
+                { key: "driver", label: "Driver (late trip)", align: "left" },
+                { key: "time", label: "Late arrival" },
+                { key: "parcels", label: "Late-trip parcels", render: (r) => int(r.parcels) },
+                { key: "dayParcels", label: "Day parcels", render: (r) => int(r.dayParcels) },
+                { key: "trips", label: "Trips", render: (r) => int(r.trips) },
+              ]}
+              rows={openDrivers.list.slice(0, 10)}
+              rowKey={(r) => r.station_code}
+              emptyMessage="No hubs in this bucket."
+            />
+          </div>
         ) : (
           <DataTable
             title={`Top 10 stations by LH volume -- ${openLhBucket.label}`}
