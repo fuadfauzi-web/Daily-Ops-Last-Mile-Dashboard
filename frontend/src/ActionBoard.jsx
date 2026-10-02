@@ -8,6 +8,8 @@ import HeaderNote from "./components/HeaderNote";
 import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
 import MultiSelect from "./components/MultiSelect";
+import MetricPicker from "./components/MetricPicker";
+import { FEATURES } from "./lib/features";
 import SegmentedControl from "./components/SegmentedControl";
 import TnModal from "./components/TnModal";
 
@@ -45,6 +47,12 @@ function exportStationTnsCsv(stationName, breaches, tnsByMetric) {
 }
 
 function pillClass(sev) {
+  if (FEATURES.boardViews) {
+    // Trial (design review D9): only breaching cells get a badge, tinted with a dark text colour; within target is a plain muted number.
+    if (sev === "critical") return "bg-status-critical-fill text-status-critical ring-1 ring-[#F0C4BF]";
+    if (sev === "warning") return "bg-status-warning-fill text-status-warning ring-1 ring-[#F6DDB5]";
+    return "text-slate-500";
+  }
   if (sev === "critical") return "bg-status-critical text-white";
   if (sev === "warning") return "bg-status-warning text-white";
   return "bg-status-good/10 text-status-good";
@@ -151,6 +159,29 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   const [tnByStation, setTnByStation] = useState({});
   const [dragMetric, setDragMetric] = useState(null); // the chip being dragged to a new column position
 
+  // Saved views (staging trial, FEATURES.boardViews -- design review D9): named metric sets, kept in this browser per person for now.
+  // The active view is not stored -- it's whichever saved view has exactly the metrics on the board, so editing the chips deselects it.
+  const viewsKey = `action-board-views-${me.email}`;
+  const [views, setViews] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(viewsKey) || "null");
+      if (Array.isArray(saved)) return saved.filter((v) => v && typeof v.name === "string" && Array.isArray(v.metrics));
+    } catch {
+      /* storage blocked / bad JSON -- no saved views */
+    }
+    return [];
+  });
+  const [namingView, setNamingView] = useState(false);
+  const [viewName, setViewName] = useState("");
+  const persistViews = (next) => {
+    setViews(next);
+    try {
+      localStorage.setItem(viewsKey, JSON.stringify(next));
+    } catch {
+      /* private browsing / storage blocked -- the views just won't persist */
+    }
+  };
+
   // EXTRA_METRICS' own data -- fetched independently of the stations prop (which
   // only carries Station Health), same pattern each of those tabs already uses.
   const [oldRouteData, setOldRouteData] = useState(null);
@@ -226,6 +257,21 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     [selectedMetrics, scoredMetrics]
   );
 
+  const sameMetrics = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
+  const allViews = [
+    { id: "default", name: "Default", metrics: DEFAULT_METRICS },
+    ...views.map((v, i) => ({ id: `v${i}`, name: v.name, metrics: v.metrics, saved: true, index: i })),
+  ];
+  const activeView = allViews.find((v) => sameMetrics(v.metrics.filter((m) => scoredMetrics.some((c) => c.key === m)), activeMetrics));
+  const saveCurrentView = () => {
+    const name = viewName.trim().slice(0, 24);
+    if (!name) return;
+    const without = views.filter((v) => v.name.toLowerCase() !== name.toLowerCase());
+    persistViews([...without, { name, metrics: [...activeMetrics] }]);
+    setNamingView(false);
+    setViewName("");
+  };
+
   // Column order (2026-09-26 feedback): the chips next to the picker can be dragged (or nudged with the arrows) to arrange the
   // heatmap's columns; the order is remembered with the selection.
   const reorderMetrics = (from, to) => {
@@ -287,6 +333,11 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
       return sortDir === "asc" ? av - bv : bv - av;
     });
   }, [todayGroups, activeMetrics, thresholdRows, breachesOnly, sortKey, sortDir, level, breachingStationNames]);
+
+  const breachRowCount = useMemo(
+    () => todayGroups.filter((r) => breachInfo(r, activeMetrics, thresholdRows).count > 0).length,
+    [todayGroups, activeMetrics, thresholdRows]
+  );
 
   const toggleHeatmapSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -456,6 +507,63 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
       <TnModal state={modal} onClose={() => setModal(null)} fetcher={fetchTnsFor} />
 
       <div className="space-y-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+        {FEATURES.boardViews && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-xs font-semibold text-slate-700">My views:</span>
+            {allViews.map((v) => (
+              <span key={v.id} className="inline-flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setMetrics([...v.metrics])}
+                  aria-pressed={activeView?.id === v.id}
+                  className={`min-h-[44px] border px-3 font-display text-xs font-semibold ${v.saved ? "rounded-l-lg" : "rounded-lg"} ${
+                    activeView?.id === v.id ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-ink hover:bg-slate-50"
+                  }`}
+                >
+                  {v.name}
+                </button>
+                {v.saved && (
+                  <button
+                    type="button"
+                    onClick={() => persistViews(views.filter((_, i) => i !== v.index))}
+                    aria-label={`Delete view ${v.name}`}
+                    title="Delete this view"
+                    className="min-h-[44px] rounded-r-lg border border-l-0 border-slate-300 bg-white px-2 text-slate-400 hover:text-status-critical"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))}
+            {namingView ? (
+              <input
+                autoFocus
+                value={viewName}
+                maxLength={24}
+                onChange={(e) => setViewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveCurrentView();
+                  if (e.key === "Escape") {
+                    setNamingView(false);
+                    setViewName("");
+                  }
+                }}
+                placeholder="Name this view, Enter to save"
+                className="min-h-[44px] w-56 rounded-lg border border-ink px-3 text-sm outline-none"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setNamingView(true)}
+                disabled={activeMetrics.length === 0}
+                className="min-h-[44px] rounded-lg border border-dashed border-slate-400 px-3 font-display text-xs font-semibold text-ink hover:bg-slate-50 disabled:opacity-40"
+              >
+                + Save current as view
+              </button>
+            )}
+            <span className="text-[10px] text-slate-400">views are saved in this browser</span>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-display text-xs font-semibold text-slate-700">Metrics:</span>
           {scoredMetrics.length === 0 ? (
@@ -464,14 +572,16 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
             </span>
           ) : (
             <>
-              <div className="w-64">
-                <MultiSelect
-                  options={scoredMetrics.map((c) => ({ value: c.key, label: BOARD_SCOPE[c.key] ? `${c.label} (${BOARD_SCOPE[c.key]})` : c.label }))}
-                  value={selectedMetrics}
-                  onChange={setMetrics}
-                  placeholder="Select metrics"
-                />
-              </div>
+              {!FEATURES.boardViews && (
+                <div className="w-64">
+                  <MultiSelect
+                    options={scoredMetrics.map((c) => ({ value: c.key, label: BOARD_SCOPE[c.key] ? `${c.label} (${BOARD_SCOPE[c.key]})` : c.label }))}
+                    value={selectedMetrics}
+                    onChange={setMetrics}
+                    placeholder="Select metrics"
+                  />
+                </div>
+              )}
               {/* Chosen metrics shown as chips to the right of the picker, not
                   below it -- bold like the old toggle-button style, just
                   smaller (2026-09-24 feedback). */}
@@ -510,6 +620,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                         ‹
                       </button>
                     )}
+                    {FEATURES.boardViews ? `${i + 1}. ` : ""}
                     {findColumn(m).label}
                     {activeMetrics.length > 1 && (
                       <button
@@ -532,6 +643,19 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
                     </button>
                   </span>
                 ))}
+                {FEATURES.boardViews && (
+                  <MetricPicker
+                    options={scoredMetrics}
+                    value={selectedMetrics}
+                    onChange={setMetrics}
+                    hint={(k) => BOARD_SCOPE[k] || ""}
+                    target={(k) => {
+                      const t = resolveThreshold(thresholdRows, k, null);
+                      if (!t.scored || (t.warning_at === 0 && t.critical_at === 0)) return "";
+                      return `${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${t.percent_of ? "%" : ""}`;
+                    }}
+                  />
+                )}
                 {activeMetrics.length > 1 && <span className="text-[10px] text-slate-400">drag a chip (or use ‹ ›) to arrange the columns</span>}
               </div>
             </>
@@ -541,7 +665,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
           <SegmentedControl options={LEVELS} value={level} onChange={setLevel} />
           <label className="flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-slate-600">
             <input type="checkbox" checked={breachesOnly} onChange={(e) => setBreachesOnly(e.target.checked)} />
-            Breaches only
+            {FEATURES.boardViews ? `Only ${level}s breaching (${breachRowCount})` : "Breaches only"}
           </label>
         </div>
       </div>
