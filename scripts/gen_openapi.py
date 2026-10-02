@@ -32,7 +32,7 @@ TAGS = [  # first matching prefix wins
 SUMMARIES = {
     ("post", "/api/ptwh-app/login"): "PTWH app (no SSO; needs the shared X-PTWH-App-Key): log in with the username and password the station set. 5 wrong tries lock the login for 10 minutes.",
     ("get", "/api/ptwh-app/me"): "PTWH app: who is logged in, today's clock record, and whether the station's location is set (needs the PTWH's bearer token).",
-    ("post", "/api/ptwh-app/clock"): "PTWH app: clock in or out. Needs proof of being at the station (the station's hourly QR code, or a phone location within the station radius, 50 m by default) AND a base64 JPEG selfie; the server takes the time.",
+    ("post", "/api/ptwh-app/clock"): "PTWH app: clock in or out. Needs proof of being at the station (the station's hourly QR code, or a phone location within the station radius, 100 m by default) AND a base64 JPEG selfie; the server takes the time.",
     ("get", "/api/ptwh-app/summary"): "PTWH app: the PTWH's own month -- days worked, hours, pay per day and the total before any back pay or deductions.",
     ("post", "/api/ptwh-app/change-password"): "PTWH app: change your own password (needs the current one); other sessions end and a new token is returned.",
     ("post", "/api/ptwh-app/recover"): "PTWH app: forgot password -- the recovery code given with the login sets a new password; a fresh recovery code replaces the used one.",
@@ -41,7 +41,8 @@ SUMMARIES = {
     ("post", "/api/attendance/ptwh/workers/{worker_id}/login/reset"): "Reset a PTWH's password: a new temporary password and recovery code are returned once and old sessions end.",
     ("post", "/api/attendance/ptwh/workers/{worker_id}/login/disable"): "Switch a PTWH's app login off or on (also ends their sessions).",
     ("get", "/api/attendance/ptwh/station/{station}"): "The station screen: this hour's QR code (changes on the hour, with the link into the PTWH app) and the station's saved location.",
-    ("put", "/api/attendance/ptwh/station/{station}/geo"): "Set where a station is (latitude / longitude) and the radius within which a PTWH may clock in by location (20-200 m, default 50).",
+    ("put", "/api/attendance/ptwh/station/{station}/geo"): "Set where a station is (latitude / longitude) and the radius within which a PTWH may clock in by location (20-200 m, default 100).",
+    ("post", "/api/attendance/ptwh/audit/{record_id}/flag"): "Auditor action on a PTWH app clock event: flag it as suspicious (note required), mark it checked OK, or clear the mark. A flagged event keeps its selfies past the 14-day retention.",
     ("get", "/api/attendance/ptwh/audit"): "Clock events made in the PTWH app with how each was verified, distance from the station and whether a selfie exists, for the caller's stations (up to 2 months).",
     ("get", "/api/attendance/ptwh/photo/{record_id}/{which}"): "The selfie (JPEG) taken at clock in or out, for audit; only for stations in the caller's scope.",
     ("get", "/api/attendance/ptwh/workers"): "Attendance -> PTWH (staging): the PTWH roster for the stations in the caller's scope (IC masked except for managers / admins), the stations they may use, and whether they may edit.",

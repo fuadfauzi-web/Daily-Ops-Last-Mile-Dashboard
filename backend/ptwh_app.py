@@ -8,12 +8,13 @@ Two halves in one module:
      * everything but login / recover also needs the PTWH's own session token (HMAC-signed with JWT_SECRET, 14 days, dies when the password changes);
      * passwords and recovery codes are stored hashed (scrypt); 5 wrong tries lock a login for 10 minutes.
    Clocking in / out needs PROOF the person is at the station -- either the station's QR code (it changes every hour) or the phone's location within
-   the station's radius (default 50 m) -- AND a selfie with the station behind them. The server takes the time itself; the phone's clock is never trusted.
+   the station's radius (default 100 m) -- AND a selfie with the station behind them. The server takes the time itself; the phone's clock is never trusted.
 
 2. admin_router -- /api/attendance/ptwh/* behind the normal SSO: station staff create / reset a PTWH's login, show the hourly QR, set where the station is,
    and anyone with the station in their scope (station, RH, RFS, manager, HOD, Fleet Admin ...) audits the clock events and their selfies.
 
-The selfie is stored in object storage (storage.py); the table keeps only its key. Retention of the photos is an open question for the Fleet Manager.
+The selfie is stored in object storage (storage.py); the table keeps only its key. Selfies are deleted after SELFIE_RETENTION_DAYS (purge_old_selfies, run by the
+refresh loop) -- except those of FLAGGED events -- and only the audit facts (time, method, distance) stay.
 """
 import base64
 import hashlib
@@ -44,8 +45,9 @@ log = logging.getLogger("ptwh_app")
 router = APIRouter()  # the PTWH app's calls (no SSO; key + token)
 admin_router = APIRouter()  # the dashboard's side (SSO)
 
-DEFAULT_RADIUS_M = 50
-MAX_GPS_ACCURACY_M = 65  # a fix worse than this can't prove "within 50 m" -- the person is asked to scan the QR or go outside
+DEFAULT_RADIUS_M = 100
+SELFIE_RETENTION_DAYS = 14  # selfies are personal photos kept for audit only; a FLAGGED event keeps them until it is cleared or marked OK
+MAX_GPS_ACCURACY_M = 65  # a fix worse than this can't prove "within 100 m" -- the person is asked to scan the QR or go outside
 QR_GRACE_MIN = 5  # a QR from the previous hour still works for the first minutes of the new hour (someone walked in just before it changed)
 TOKEN_DAYS = 14
 MAX_FAILS = 5
@@ -137,31 +139,82 @@ def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 6371000 * 2 * math.asin(math.sqrt(a))
 
 
+# ---------------------------------------------------------------- PTWH app: messages (English / Bahasa Malaysia)
+# The phone sends X-Lang (en | ms); every message a PTWH can read comes back in that language. Anything else defaults to English.
+
+_MSG = {
+    "not_on": ("The PTWH app is not switched on yet", "Aplikasi PTWH belum diaktifkan"),
+    "not_allowed": ("Not allowed", "Tidak dibenarkan"),
+    "relogin": ("Please log in again", "Sila log masuk semula"),
+    "inactive": ("Your account is not active -- ask your station", "Akaun anda tidak aktif -- sila tanya stesen anda"),
+    "bad_login": ("Wrong username or password", "Nama pengguna atau kata laluan salah"),
+    "locked": ("Too many wrong tries. Try again in {mins} minute(s), or ask your station to reset your password.",
+               "Terlalu banyak cubaan yang salah. Cuba lagi dalam {mins} minit, atau minta stesen anda set semula kata laluan."),
+    "bad_action": ("action must be in or out", "Tindakan mesti masuk atau keluar"),
+    "geo_not_set": ("Your station's location isn't set yet -- scan the station QR code instead, or ask your station",
+                    "Lokasi stesen anda belum ditetapkan -- imbas kod QR stesen, atau tanya stesen anda"),
+    "gps_poor": ("Your phone's location isn't accurate enough ({acc} m). Go outside, or scan the station QR code",
+                 "Lokasi telefon anda kurang tepat ({acc} m). Keluar ke kawasan terbuka, atau imbas kod QR stesen"),
+    "too_far": ("You are about {dist} m from {station}. You need to be within {radius} m, or scan the station QR code",
+                "Anda kira-kira {dist} m dari {station}. Anda mesti berada dalam lingkungan {radius} m, atau imbas kod QR stesen"),
+    "qr_expired": ("That QR code has expired -- scan the one on the station screen now",
+                   "Kod QR itu telah tamat tempoh -- imbas kod yang ada pada skrin stesen sekarang"),
+    "no_proof": ("Scan the station QR code, or allow your location so we can see you are at the station",
+                 "Imbas kod QR stesen, atau benarkan lokasi anda supaya kami dapat lihat anda berada di stesen"),
+    "already_in": ("You already clocked in today", "Anda sudah daftar masuk hari ini"),
+    "not_in": ("You haven't clocked in today", "Anda belum daftar masuk hari ini"),
+    "already_out": ("You already clocked out today", "Anda sudah daftar keluar hari ini"),
+    "photo_save": ("Couldn't save your photo -- try again in a moment", "Gambar anda tidak dapat disimpan -- cuba lagi sebentar"),
+    "photo_unreadable": ("The photo could not be read -- take it again", "Gambar tidak dapat dibaca -- ambil semula"),
+    "photo_missing": ("Take a selfie with the station behind you", "Ambil swafoto dengan stesen di belakang anda"),
+    "photo_big": ("The photo is too big -- take it again", "Gambar terlalu besar -- ambil semula"),
+    "bad_month": ("Months look like 2026-10", "Format bulan seperti 2026-10"),
+    "pw_short": ("Use at least 8 characters", "Guna sekurang-kurangnya 8 aksara"),
+    "pw_same": ("The password can't be the same as your username", "Kata laluan tidak boleh sama dengan nama pengguna"),
+    "pw_wrong": ("Your current password is wrong", "Kata laluan semasa anda salah"),
+    "bad_recover": ("Username or recovery code is wrong -- or ask your station to reset your password",
+                    "Nama pengguna atau kod pemulihan salah -- atau minta stesen anda set semula kata laluan"),
+}
+
+
+def _lang(x_lang: str | None = Header(default=None)) -> str:
+    return "ms" if (x_lang or "").lower().startswith("ms") else "en"
+
+
+def _text(key: str, lang: str, **kw) -> str:
+    en, ms = _MSG[key]
+    return (ms if lang == "ms" else en).format(**kw)
+
+
+def _err(status: int, key: str, lang: str, **kw) -> HTTPException:
+    return HTTPException(status_code=status, detail=_text(key, lang, **kw))
+
+
 # ---------------------------------------------------------------- PTWH app: auth plumbing
 
-def _require_app_key(x_ptwh_app_key: str | None = Header(default=None)) -> None:
+def _require_app_key(x_ptwh_app_key: str | None = Header(default=None), lang: str = Depends(_lang)) -> None:
     expected = os.environ.get("PTWH_APP_KEY")
     if not expected:
-        raise HTTPException(status_code=503, detail="The PTWH app is not switched on yet")
+        raise _err(503, "not_on", lang)
     if not x_ptwh_app_key or not hmac.compare_digest(x_ptwh_app_key, expected):
-        raise HTTPException(status_code=401, detail="Not allowed")
+        raise _err(401, "not_allowed", lang)
 
 
 _CRED_COLS = "worker_id, username, password_hash, recovery_hash, cred_version, password_set_by, failed_attempts, locked_until, last_login_at, disabled"
 
 
-async def _session(authorization: str | None = Header(default=None), _k: None = Depends(_require_app_key)):
+async def _session(authorization: str | None = Header(default=None), lang: str = Depends(_lang), _k: None = Depends(_require_app_key)):
     """The PTWH behind this call: (worker row, credentials row). 401 for anything that is not a live session -- a changed password kills old sessions."""
     token = (authorization or "").removeprefix("Bearer ").strip()
     data = _read_token(token) if token else None
     if not data:
-        raise HTTPException(status_code=401, detail="Please log in again")
+        raise _err(401, "relogin", lang)
     cred = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE worker_id = %s", (data["w"],))
     if cred is None or cred[9] or cred[4] != data["v"]:
-        raise HTTPException(status_code=401, detail="Please log in again")
+        raise _err(401, "relogin", lang)
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (data["w"],))
     if w is None or not w[7]:
-        raise HTTPException(status_code=401, detail="Your account is not active -- ask your station")
+        raise _err(401, "inactive", lang)
     return w, cred
 
 
@@ -171,10 +224,9 @@ async def _fail(worker_id: int, fails: int) -> None:
     await db.execute("UPDATE ptwh_credentials SET failed_attempts=%s, locked_until=%s WHERE worker_id=%s", (0 if locked else fails, locked, worker_id))
 
 
-def _locked_msg(locked_until: datetime | None) -> str | None:
+def _locked(locked_until: datetime | None, lang: str) -> HTTPException | None:
     if locked_until and locked_until > _now():
-        mins = max(1, math.ceil((locked_until - _now()).total_seconds() / 60))
-        return f"Too many wrong tries. Try again in {mins} minute{'s' if mins != 1 else ''}, or ask your station to reset your password."
+        return _err(429, "locked", lang, mins=max(1, math.ceil((locked_until - _now()).total_seconds() / 60)))
     return None
 
 
@@ -184,19 +236,18 @@ class LoginIn(BaseModel):
 
 
 @router.post("/api/ptwh-app/login")
-async def app_login(p: LoginIn, _k: None = Depends(_require_app_key)):
+async def app_login(p: LoginIn, lang: str = Depends(_lang), _k: None = Depends(_require_app_key)):
     row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
-    bad = HTTPException(status_code=401, detail="Wrong username or password")
     if row is None or row[9]:
-        raise bad
-    if msg := _locked_msg(row[7]):
-        raise HTTPException(status_code=429, detail=msg)
+        raise _err(401, "bad_login", lang)
+    if (e := _locked(row[7], lang)) is not None:
+        raise e
     if not _check_hash(p.password, row[2]):
         await _fail(row[0], row[6])
-        raise bad
+        raise _err(401, "bad_login", lang)
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (row[0],))
     if w is None or not w[7]:
-        raise HTTPException(status_code=403, detail="Your account is not active -- ask your station")
+        raise _err(403, "inactive", lang)
     await db.execute("UPDATE ptwh_credentials SET failed_attempts=0, locked_until=NULL, last_login_at=%s WHERE worker_id=%s", (_now(), row[0]))
     return {"token": _sign_token(row[0], row[4]), "name": w[1], "station": w[4], "needs_password_change": row[5] == "station"}
 
@@ -230,24 +281,24 @@ class AppClock(BaseModel):
     selfie: str  # base64 JPEG (a data: URL is fine)
 
 
-def _decode_selfie(raw: str) -> bytes:
+def _decode_selfie(raw: str, lang: str) -> bytes:
     b64 = raw.split(",", 1)[1] if raw.startswith("data:") else raw
     try:
         data = base64.b64decode(b64, validate=False)
     except ValueError:
-        raise HTTPException(status_code=422, detail="The photo could not be read -- take it again")
+        raise _err(422, "photo_unreadable", lang)
     if len(data) < 2000 or data[:3] != b"\xff\xd8\xff":
-        raise HTTPException(status_code=422, detail="Take a selfie with the station behind you")
+        raise _err(422, "photo_missing", lang)
     if len(data) > SELFIE_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="The photo is too big -- take it again")
+        raise _err(413, "photo_big", lang)
     return data
 
 
 @router.post("/api/ptwh-app/clock")
-async def app_clock(p: AppClock, s=Depends(_session)):
+async def app_clock(p: AppClock, s=Depends(_session), lang: str = Depends(_lang)):
     w, _cred = s
     if p.action not in ("in", "out"):
-        raise HTTPException(status_code=422, detail="action must be in or out")
+        raise _err(422, "bad_action", lang)
     station = w[4]
     # --- proof of being at the station: the hourly QR, or the phone's location within the radius
     geo = await db.fetch_one("SELECT lat, lng, radius_m FROM ptwh_station_geo WHERE station=%s", (station,))
@@ -259,35 +310,33 @@ async def app_clock(p: AppClock, s=Depends(_session)):
         method = "qr"
     elif p.lat is not None and p.lng is not None:
         if geo is None:
-            raise HTTPException(status_code=422, detail="Your station's location isn't set yet -- scan the station QR code instead, or ask your station")
+            raise _err(422, "geo_not_set", lang)
         if p.accuracy is not None and p.accuracy > MAX_GPS_ACCURACY_M:
-            raise HTTPException(status_code=422, detail=f"Your phone's location isn't accurate enough ({round(p.accuracy)} m). Go outside, or scan the station QR code")
+            raise _err(422, "gps_poor", lang, acc=round(p.accuracy))
         if dist <= geo[2]:
             method = "geo"
         else:
-            raise HTTPException(status_code=422, detail=f"You are about {round(dist)} m from {station}. You need to be within {geo[2]} m, or scan the station QR code")
+            raise _err(422, "too_far", lang, dist=round(dist), station=station, radius=geo[2])
     if method is None:
-        if p.qr:
-            raise HTTPException(status_code=422, detail="That QR code has expired -- scan the one on the station screen now")
-        raise HTTPException(status_code=422, detail="Scan the station QR code, or allow your location so we can see you are at the station")
-    selfie = _decode_selfie(p.selfie)
+        raise _err(422, "qr_expired" if p.qr else "no_proof", lang)
+    selfie = _decode_selfie(p.selfie, lang)
 
     now = _now()
     today = now.date()
     rec = await db.fetch_one("SELECT id, clock_in, clock_out FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], today))
     if p.action == "in" and rec is not None:
-        raise HTTPException(status_code=409, detail="You already clocked in today")
+        raise _err(409, "already_in", lang)
     if p.action == "out":
         if rec is None:
-            raise HTTPException(status_code=409, detail="You haven't clocked in today")
+            raise _err(409, "not_in", lang)
         if rec[2] is not None:
-            raise HTTPException(status_code=409, detail="You already clocked out today")
+            raise _err(409, "already_out", lang)
     key = storage.safe_key("ptwh", str(today), f"{w[0]}-{p.action}-{uuid.uuid4().hex[:12]}.jpg")
     try:
         await run_in_threadpool(storage.put_bytes, key, selfie, content_type="image/jpeg")
     except Exception:  # noqa: BLE001 -- storage is a network call; nothing is recorded if the photo isn't saved
         log.exception("selfie upload failed")
-        raise HTTPException(status_code=503, detail="Couldn't save your photo -- try again in a moment")
+        raise _err(503, "photo_save", lang)
     acc = round(p.accuracy) if p.accuracy is not None else None
     d = round(dist) if dist is not None else None
     if p.action == "in":
@@ -307,7 +356,7 @@ async def app_clock(p: AppClock, s=Depends(_session)):
 
 
 @router.get("/api/ptwh-app/summary")
-async def app_summary(month: str | None = None, s=Depends(_session)):
+async def app_summary(month: str | None = None, s=Depends(_session), lang: str = Depends(_lang)):
     """The PTWH's own month: days worked, hours, the pay for each day and the total (before any back pay / deductions)."""
     w, _cred = s
     today = _now().date()
@@ -315,7 +364,7 @@ async def app_summary(month: str | None = None, s=Depends(_session)):
         y, m = (int(x) for x in (month or today.strftime("%Y-%m")).split("-"))
         first = date(y, m, 1)
     except ValueError:
-        raise HTTPException(status_code=422, detail="Months look like 2026-10")
+        raise _err(422, "bad_month", lang)
     nxt = date(y + (m == 12), 1 if m == 12 else m + 1, 1)
     rows = await db.fetch_all(
         "SELECT work_date, clock_in, clock_out, category, in_method FROM ptwh_attendance WHERE worker_id=%s AND work_date >= %s AND work_date < %s ORDER BY work_date",
@@ -338,22 +387,22 @@ class ChangePassword(BaseModel):
     new_password: str
 
 
-def _check_new_password(pw: str, username: str) -> None:
+def _check_new_password(pw: str, username: str, lang: str) -> None:
     if len(pw) < 8:
-        raise HTTPException(status_code=422, detail="Use at least 8 characters")
+        raise _err(422, "pw_short", lang)
     if pw.lower() == username.lower():
-        raise HTTPException(status_code=422, detail="The password can't be the same as your username")
+        raise _err(422, "pw_same", lang)
 
 
 @router.post("/api/ptwh-app/change-password")
-async def app_change_password(p: ChangePassword, s=Depends(_session)):
+async def app_change_password(p: ChangePassword, s=Depends(_session), lang: str = Depends(_lang)):
     w, cred = s
-    if msg := _locked_msg(cred[7]):
-        raise HTTPException(status_code=429, detail=msg)
+    if (e := _locked(cred[7], lang)) is not None:
+        raise e
     if not _check_hash(p.old_password, cred[2]):
         await _fail(w[0], cred[6])
-        raise HTTPException(status_code=401, detail="Your current password is wrong")
-    _check_new_password(p.new_password, cred[1])
+        raise _err(401, "pw_wrong", lang)
+    _check_new_password(p.new_password, cred[1], lang)
     version = cred[4] + 1
     await db.execute(
         "UPDATE ptwh_credentials SET password_hash=%s, password_set_by='self', cred_version=%s, failed_attempts=0, updated_at=%s WHERE worker_id=%s",
@@ -369,18 +418,17 @@ class Recover(BaseModel):
 
 
 @router.post("/api/ptwh-app/recover")
-async def app_recover(p: Recover, _k: None = Depends(_require_app_key)):
+async def app_recover(p: Recover, lang: str = Depends(_lang), _k: None = Depends(_require_app_key)):
     """Forgot the password: the recovery code (given when the login was made) sets a new one, and a fresh recovery code replaces the used one."""
     row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
-    bad = HTTPException(status_code=401, detail="Username or recovery code is wrong -- or ask your station to reset your password")
     if row is None or row[9]:
-        raise bad
-    if msg := _locked_msg(row[7]):
-        raise HTTPException(status_code=429, detail=msg)
+        raise _err(401, "bad_recover", lang)
+    if (e := _locked(row[7], lang)) is not None:
+        raise e
     if not _check_hash(_norm_recovery(p.recovery_code), row[3]):
         await _fail(row[0], row[6])
-        raise bad
-    _check_new_password(p.new_password, row[1])
+        raise _err(401, "bad_recover", lang)
+    _check_new_password(p.new_password, row[1], lang)
     new_code = _random_recovery()
     await db.execute(
         """UPDATE ptwh_credentials SET password_hash=%s, recovery_hash=%s, password_set_by='self', cred_version=%s, failed_attempts=0, locked_until=NULL, updated_at=%s
@@ -526,7 +574,8 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
     stations = _visible_stations(user)
     rows = await db.fetch_all(
         """SELECT a.id, a.work_date, w.full_name, w.station, a.clock_in, a.clock_out, a.in_method, a.in_dist, a.in_acc, a.in_selfie,
-                  a.out_method, a.out_dist, a.out_acc, a.out_selfie, a.in_lat, a.in_lng, a.out_lat, a.out_lng
+                  a.out_method, a.out_dist, a.out_acc, a.out_selfie, a.in_lat, a.in_lng, a.out_lat, a.out_lng,
+                  a.flag_status, a.flag_note, a.flagged_by, a.flagged_at, a.selfie_purged
            FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id
            WHERE a.source = 'app' AND a.work_date >= %s AND a.work_date <= %s ORDER BY a.work_date DESC, w.station, w.full_name""",
         (d_from, d_to),
@@ -539,8 +588,10 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
             "id": r[0], "date": str(r[1]), "name": r[2], "station": r[3], "clock_in": attendance._iso(r[4]), "clock_out": attendance._iso(r[5]),
             "in": {"method": r[6], "dist": r[7], "acc": r[8], "photo": bool(r[9]), "lat": float(r[14]) if r[14] is not None else None, "lng": float(r[15]) if r[15] is not None else None},
             "out": {"method": r[10], "dist": r[11], "acc": r[12], "photo": bool(r[13]), "lat": float(r[16]) if r[16] is not None else None, "lng": float(r[17]) if r[17] is not None else None},
+            "flag": {"status": r[18], "note": r[19], "by": r[20], "at": attendance._iso(r[21])} if r[18] else None,
+            "purged": bool(r[22]),
         })
-    return {"from": str(d_from), "to": str(d_to), "events": out[:1000], "stations": sorted(stations)}
+    return {"from": str(d_from), "to": str(d_to), "events": out[:1000], "stations": sorted(stations), "retention_days": SELFIE_RETENTION_DAYS}
 
 
 @admin_router.get("/api/attendance/ptwh/photo/{record_id}/{which}")
@@ -560,3 +611,59 @@ async def photo(record_id: int, which: str, user: CurrentUser = Depends(get_curr
         log.exception("selfie read failed")
         raise HTTPException(status_code=404, detail="The photo could not be loaded")
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
+# ---------------------------------------------------------------- dashboard side: flag a suspicious clock event
+
+class FlagIn(BaseModel):
+    status: str | None = None  # 'flagged' (suspicious, needs a note) | 'ok' (checked, fine) | None = put back to unreviewed
+    note: str | None = None
+
+
+@admin_router.post("/api/attendance/ptwh/audit/{record_id}/flag")
+async def flag_event(record_id: int, p: FlagIn, user: CurrentUser = Depends(get_current_user)):
+    """An auditor (anyone whose scope covers the station) flags a clock event as suspicious, marks it checked OK, or clears the mark. Who and when are kept.
+    A flagged event keeps its selfies past the retention period until someone clears it or marks it OK."""
+    row = await db.fetch_one("SELECT w.station FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.id = %s", (record_id,))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if row[0] not in _visible_stations(user):
+        raise HTTPException(status_code=403, detail="That station is outside your scope")
+    if p.status not in (None, "flagged", "ok"):
+        raise HTTPException(status_code=422, detail="Status is flagged, ok or empty")
+    note = (p.note or "").strip()[:300]
+    if p.status == "flagged" and len(note) < 3:
+        raise HTTPException(status_code=422, detail="Say why you are flagging it")
+    if p.status is None:
+        await db.execute("UPDATE ptwh_attendance SET flag_status=NULL, flag_note=NULL, flagged_by=NULL, flagged_at=NULL WHERE id=%s", (record_id,))
+    else:
+        await db.execute("UPDATE ptwh_attendance SET flag_status=%s, flag_note=%s, flagged_by=%s, flagged_at=%s WHERE id=%s",
+                         (p.status, note or None, user.email, _now(), record_id))
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- selfie retention
+
+async def purge_old_selfies() -> None:
+    """Delete selfies older than SELFIE_RETENTION_DAYS from storage (the audit facts stay). Flagged events keep theirs. Called by the refresh loop; never raises.
+    A photo that can't be deleted is left alone and tried again next time."""
+    try:
+        cutoff = _now().date() - timedelta(days=SELFIE_RETENTION_DAYS)
+        rows = await db.fetch_all(
+            """SELECT id, in_selfie, out_selfie FROM ptwh_attendance
+               WHERE work_date < %s AND (in_selfie IS NOT NULL OR out_selfie IS NOT NULL) AND (flag_status IS NULL OR flag_status <> 'flagged') LIMIT 200""",
+            (cutoff,),
+        )
+        for rec_id, k_in, k_out in rows:
+            try:
+                for key in (k_in, k_out):
+                    if key:
+                        await run_in_threadpool(storage.delete, key)
+            except Exception:  # noqa: BLE001
+                log.exception("selfie delete failed for record %s", rec_id)
+                continue
+            await db.execute("UPDATE ptwh_attendance SET in_selfie=NULL, out_selfie=NULL, selfie_purged=1 WHERE id=%s", (rec_id,))
+        if rows:
+            log.info("PTWH selfies purged for %d records older than %s", len(rows), cutoff)
+    except Exception:  # noqa: BLE001 -- housekeeping must never take the refresh loop down
+        log.exception("PTWH selfie purge failed")

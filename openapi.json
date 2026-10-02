@@ -643,7 +643,7 @@
     },
     "/api/attendance/ptwh/station/{station}/geo": {
       "put": {
-        "summary": "Set where a station is (latitude / longitude) and the radius within which a PTWH may clock in by location (20-200 m, default 50).",
+        "summary": "Set where a station is (latitude / longitude) and the radius within which a PTWH may clock in by location (20-200 m, default 100).",
         "operationId": "set_station_geo_api_attendance_ptwh_station__station__geo_put",
         "parameters": [
           {
@@ -820,11 +820,78 @@
         ]
       }
     },
+    "/api/attendance/ptwh/audit/{record_id}/flag": {
+      "post": {
+        "summary": "Auditor action on a PTWH app clock event: flag it as suspicious (note required), mark it checked OK, or clear the mark. A flagged event keeps its selfies past the 14-day retention.",
+        "description": "An auditor (anyone whose scope covers the station) flags a clock event as suspicious, marks it checked OK, or clears the mark. Who and when are kept.\nA flagged event keeps its selfies past the retention period until someone clears it or marks it OK.",
+        "operationId": "flag_event_api_attendance_ptwh_audit__record_id__flag_post",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Record Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/ptwh-app/login": {
       "post": {
         "summary": "PTWH app (no SSO; needs the shared X-PTWH-App-Key): log in with the username and password the station set. 5 wrong tries lock the login for 10 minutes.",
         "operationId": "app_login_api_ptwh_app_login_post",
         "parameters": [
+          {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
+            }
+          },
           {
             "name": "x-ptwh-app-key",
             "in": "header",
@@ -899,6 +966,22 @@
             }
           },
           {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
+            }
+          },
+          {
             "name": "x-ptwh-app-key",
             "in": "header",
             "required": false,
@@ -942,7 +1025,7 @@
     },
     "/api/ptwh-app/clock": {
       "post": {
-        "summary": "PTWH app: clock in or out. Needs proof of being at the station (the station's hourly QR code, or a phone location within the station radius, 50 m by default) AND a base64 JPEG selfie; the server takes the time.",
+        "summary": "PTWH app: clock in or out. Needs proof of being at the station (the station's hourly QR code, or a phone location within the station radius, 100 m by default) AND a base64 JPEG selfie; the server takes the time.",
         "operationId": "app_clock_api_ptwh_app_clock_post",
         "parameters": [
           {
@@ -959,6 +1042,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
             }
           },
           {
@@ -1052,6 +1151,22 @@
             }
           },
           {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
+            }
+          },
+          {
             "name": "x-ptwh-app-key",
             "in": "header",
             "required": false,
@@ -1115,6 +1230,22 @@
             }
           },
           {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
+            }
+          },
+          {
             "name": "x-ptwh-app-key",
             "in": "header",
             "required": false,
@@ -1172,6 +1303,22 @@
         "description": "Forgot the password: the recovery code (given when the login was made) sets a new one, and a fresh recovery code replaces the used one.",
         "operationId": "app_recover_api_ptwh_app_recover_post",
         "parameters": [
+          {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
+            }
+          },
           {
             "name": "x-ptwh-app-key",
             "in": "header",
@@ -7881,6 +8028,34 @@
         "type": "object",
         "title": "FeedbackUpdate"
       },
+      "FlagIn": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "FlagIn"
+      },
       "FollowUp": {
         "properties": {
           "id": {
@@ -8302,7 +8477,7 @@
           "radius_m": {
             "type": "integer",
             "title": "Radius M",
-            "default": 50
+            "default": 100
           }
         },
         "type": "object",

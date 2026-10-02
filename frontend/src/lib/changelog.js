@@ -18,12 +18,12 @@
 export const CHANGELOG = [
   {
     date: "2026-10-03",
-    title: "Attendance (Beta, staging only): PTWH app logins, hourly station QR, 50 m location check and selfie audit",
+    title: "Attendance (Beta, staging only): PTWH app logins, hourly station QR, 100 m location check and selfie audit",
     feature: "attendance",
     points: [
       "Workers -> Create login gives a PTWH a username and a temporary password (plus a recovery code) for the new PTWH app, where they clock themselves in and out. They can change their password themselves; forgot it -> recovery code, or Reset password here.",
-      "Station QR: a code that changes every hour for the station screen, and the station's location -- a PTWH within 50 m can clock in or out by location instead. Either way they take a selfie with the station behind them.",
-      "Audit: every clock made in the PTWH app with how it was verified (QR / location and metres from the station) and the selfie, for station, RH, RFS, managers, HOD and Fleet Admin within their scope.",
+      "Station QR: a code that changes every hour for the station screen, and the station's location -- a PTWH within 100 m can clock in or out by location instead. Either way they take a selfie with the station behind them.",
+      "Audit: every clock made in the PTWH app with how it was verified (QR / location and metres from the station) and the selfie, for station, RH, RFS, managers, HOD and Fleet Admin within their scope. An auditor can flag a clock-in as suspicious (with a note) or mark it checked OK. Selfies are deleted after 14 days, flagged ones are kept until cleared.",
     ],
   },
   {

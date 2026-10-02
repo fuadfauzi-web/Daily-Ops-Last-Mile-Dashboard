@@ -7,7 +7,7 @@ import { btnCls, Field, inputCls } from "./ui";
 // Attendance -> PTWH -> Station: what a station needs to set up for the PTWH app.
 //   * the QR code for THIS hour (it changes on the hour) -- keep this page open on a screen at the station; a PTWH scans it with their phone's camera
 //     and it opens the PTWH app ready to clock in. A code is useless an hour later, so a photo of it sent to a friend doesn't last.
-//   * where the station is (latitude / longitude) and how close a PTWH must be to clock in by location (50 m by default) -- the other way to prove
+//   * where the station is (latitude / longitude) and how close a PTWH must be to clock in by location (100 m by default) -- the other way to prove
 //     they are at the station. Set it by standing at the station and pressing "Use this device's location".
 
 function QrCard({ station }) {

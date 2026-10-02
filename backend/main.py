@@ -689,6 +689,7 @@ async def _hourly_refresh_loop() -> None:
         except Exception:  # noqa: BLE001 - never let the loop die
             log.exception("Scheduled refresh crashed")
         await recovery_lost.tick()  # Monday 22:00: Lost Declared This Week -> Summary (never raises)
+        await ptwh_app.purge_old_selfies()  # PTWH selfies are kept 14 days (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
 
 
