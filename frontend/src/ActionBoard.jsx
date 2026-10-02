@@ -568,7 +568,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
           <span className="font-display text-xs font-semibold text-slate-700">Metrics:</span>
           {scoredMetrics.length === 0 ? (
             <span className="text-xs text-slate-400">
-              No metrics are scored yet -- set targets in Admin → SLA Targets first.
+              No metrics are scored yet -- set targets in Superadmin → SLA Targets first.
             </span>
           ) : (
             <>

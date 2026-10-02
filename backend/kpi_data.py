@@ -185,13 +185,8 @@ DATASETS: dict[str, dict] = {
     },
     "capacity_hub_size": {
         "kpi": "management_view", "label": "Management View -- Hub Size (sqft)", "link": None,
-        "hint": "the Fleet Management workbook's \"control\" sheet (Station, SQFT, ...) -- upload the same workbook you gave for Staff headcount; it changes whenever a hub relocates, re-upload then",
+        "hint": "the Fleet Management workbook's \"control\" sheet (Station, SQFT, ...) -- it changes whenever a hub relocates, re-upload then",
         "sheet": "control", "required": ["station", "sqft"], "keep": ["station", "sqft"],
-    },
-    "capacity_staff": {
-        "kpi": "management_view", "label": "Management View -- Staff headcount", "link": None,
-        "hint": "the Fleet Management workbook's \"SH & FA Manpower\" sheet (one row per person) -- counted per station by Designation; re-upload whenever someone joins/resigns",
-        "sheet": "SH & FA Manpower", "required": ["station", "designation"], "keep": ["station", "designation"],
     },
     "lh_trips": {
         "kpi": "management_view", "label": "Management View -- LH trips (drivers)", "link": "https://metabase.ninjavan.co/question/127512",

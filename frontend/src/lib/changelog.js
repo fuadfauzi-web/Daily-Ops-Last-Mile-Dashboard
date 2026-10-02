@@ -29,7 +29,10 @@ export const CHANGELOG = [
     title: "Superadmin, Managers see everything, and the PIC list now follows the Staff & Org Chart (staging only)",
     points: [
       "The Admin role is now called Superadmin, so it is not mixed up with the Fleet Admin position. Nothing about what it can do changed.",
-      "A Manager can have a dedicated region -- it places them in the org chart and the PIC list, and it is the region whose staff they manage -- but, like HOD, a Manager now sees every region's data.",
+      "A Manager can have a dedicated region -- it places them in the org chart and the PIC list -- but, like HOD, a Manager sees every region's data and can manage Region and Station staff in every region (a manager often covers another manager's region).",
+      "The Admin page tab is now called Superadmin as well.",
+      "Management View -> Capacity staff headcount now comes from the Staff & Org Chart (people posted at the station + TBA seats, a TBA counts as headcount) instead of an uploaded sheet.",
+      "New Headcount view in Staff & Org Chart: the HOD adds TBA seats directly, a Manager's request waits for the HOD's approval, and a Manager or the HOD removes a seat with no approval.",
       "The PIC search reads the Staff & Org Chart that the Fleet Admin team keeps, not the Fleet Management sheet: when someone joins, moves or leaves there, the PIC box follows straight away.",
     ],
   },

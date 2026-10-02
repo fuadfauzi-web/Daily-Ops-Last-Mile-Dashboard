@@ -6,6 +6,195 @@
     "description": "Live nationwide operations dashboard for Ninja Van Malaysia's last-mile fleet team (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia -- East Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls parcel- and route-level data from Redash every 15 minutes and shows it per region, zone, station and driver: Action Board (SLA heatmap), Shipment Details (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route Monitoring (routed, attendance, OVFD, success and completion rates by driver type, old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU, Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a PIC with in-progress / closed status and notifications), DoD (Station Health day by day), a Task List (follow-ups, to-dos, assigned tasks) and a KPI page (Beta) with the weekly results, the OPEX result and RCA / analysis for Hybrid Productivity, Invalid POD, COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI targets per region that an admin sets. Every count opens its tracking numbers, with CSV export. Access is role-based (admin, manager, region, station) with multi-value region/zone/station scopes enforced in the backend; an admin can preview any role or user with the Role Tester. Users can send feedback (with an attachment) that admins reply to and close. For Fleet Managers and their regional and station teams. Every /api route answers for the signed-in user (Google SSO: the platform adds X-Forwarded-Email) and is limited to that user's role and region / zone / station scope."
   },
   "paths": {
+    "/api/headcount": {
+      "get": {
+        "summary": "Headcount per station (people posted there + TBA seats), the seats, and what the caller may do (add / remove / approve). HQ staff and above.",
+        "operationId": "headcount_api_headcount_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/headcount/seats": {
+      "post": {
+        "summary": "Add a TBA headcount seat to a station. The HOD / Superadmin add it straight away; a Manager's seat is pending until the HOD approves it.",
+        "operationId": "add_seat_api_headcount_seats_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/headcount/seats/{seat_id}": {
+      "delete": {
+        "summary": "Remove a headcount seat -- no approval needed. Manager / HOD / Superadmin.",
+        "description": "Remove a seat -- no approval needed, for a Manager or the HOD.",
+        "operationId": "remove_seat_api_headcount_seats__seat_id__delete",
+        "parameters": [
+          {
+            "name": "seat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Seat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/headcount/seats/{seat_id}/approve": {
+      "post": {
+        "summary": "Approve a Manager's pending headcount seat. HOD / Superadmin only.",
+        "operationId": "approve_seat_api_headcount_seats__seat_id__approve_post",
+        "parameters": [
+          {
+            "name": "seat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Seat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/headcount/seats/{seat_id}/reject": {
+      "post": {
+        "summary": "Reject (delete) a Manager's pending headcount seat. HOD / Superadmin only.",
+        "operationId": "reject_seat_api_headcount_seats__seat_id__reject_post",
+        "parameters": [
+          {
+            "name": "seat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Seat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/staff": {
       "get": {
         "summary": "Staff list for Staff & Org Chart -- every person (not the Superadmin) with position, where they are posted, what they can see (access) and whether that access was set by hand. HQ staff and above.",
@@ -5361,6 +5550,17 @@
             ],
             "title": "Staff Count"
           },
+          "staff_tba": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Tba"
+          },
           "ptwh_count": {
             "anyOf": [
               {
@@ -9766,6 +9966,35 @@
           "total_tn"
         ],
         "title": "RpuStationRow"
+      },
+      "SeatIn": {
+        "properties": {
+          "station": {
+            "type": "string",
+            "title": "Station"
+          },
+          "designation": {
+            "type": "string",
+            "title": "Designation",
+            "default": "fleet_assistant"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station"
+        ],
+        "title": "SeatIn"
       },
       "SettingsIn": {
         "properties": {

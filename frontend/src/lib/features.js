@@ -1,4 +1,4 @@
-// Which features THIS build actually ships, so the in-app Guide (Admin -> Guide) only
+// Which features THIS build actually ships, so the in-app Guide (Superadmin -> Guide) only
 // describes what users can really see. Staging turns everything on; production only
 // what has been released to it -- when a feature is released to production, flip its
 // flag there (and keep the Guide's text for it up to date; see GuideTab.jsx).

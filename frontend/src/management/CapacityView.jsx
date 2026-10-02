@@ -4,7 +4,7 @@ import DataTable from "../components/DataTable";
 import SegmentedControl from "../components/SegmentedControl";
 import { CardRow, Section, StatCard, SubHead, dayLabel, dec1, int, isWeekend, pct, sum, weekLabel, weekStartOf } from "./shared";
 
-// Capacity (2026-10-02): Staff + Hub Size from the uploaded Fleet Management workbook; PTWH and a parcel-capacity override are keyed
+// Capacity (2026-10-02): Hub Size from the uploaded Fleet Management workbook, Staff from the Staff & Org Chart (people posted at the station + TBA seats); PTWH and a parcel-capacity override are keyed
 // in here by a manager (they change with the roster / the hub, there's no feed for them); driver/rider attendance by weekday vs
 // weekend, per day or per week, from the DoD daily snapshots.
 
@@ -145,13 +145,11 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
       <Section
         title="Capacity by hub"
         note={
-          capacity.sources.hub_size || capacity.sources.staff
-            ? `Hub size: ${capacity.sources.hub_size || "not uploaded"} · Staff: ${capacity.sources.staff || "not uploaded"}`
-            : "Not uploaded yet"
+          `Hub size: ${capacity.sources.hub_size || "not uploaded"} · Staff: ${capacity.sources.staff || "Staff & Org Chart"}`
         }
       >
         <CardRow>
-          <StatCard label="Staff" value={rows.some((r) => r.staff_count != null) ? int(sum(rows, "staff_count")) : "—"} sub="from the uploaded manpower sheet" />
+          <StatCard label="Staff" value={int(sum(rows, "staff_count"))} sub={`from the Staff & Org Chart, incl. ${int(sum(rows, "staff_tba"))} TBA`} />
           <StatCard label="PTWH" value={int(sum(rows, "ptwh_count"))} sub="keyed in by managers, below" />
           <StatCard label="Hub size (sqft)" value={rows.some((r) => r.sqft != null) ? int(sum(rows, "sqft")) : "—"} />
           <StatCard
@@ -166,11 +164,6 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
               Upload Hub Size (the "control" sheet)
               <input type="file" accept=".xlsx,.xls,.csv" disabled={!!uploading} onChange={(e) => doUpload("capacity_hub_size", e.target.files[0])} />
               {uploading === "capacity_hub_size" && <span>Uploading…</span>}
-            </label>
-            <label className="flex items-center gap-2">
-              Upload Staff headcount (the "SH &amp; FA Manpower" sheet)
-              <input type="file" accept=".xlsx,.xls,.csv" disabled={!!uploading} onChange={(e) => doUpload("capacity_staff", e.target.files[0])} />
-              {uploading === "capacity_staff" && <span>Uploading…</span>}
             </label>
           </div>
         )}
@@ -215,7 +208,7 @@ export default function CapacityView({ capacity, dod, me, reload, setError }) {
             { key: "station_name", label: "Station", sticky: true, align: "left" },
             { key: "region", label: "Region" },
             { key: "sqft", label: "SQFT", render: (r) => (r.sqft == null ? "—" : int(r.sqft)) },
-            { key: "staff_count", label: "Staff", render: (r) => (r.staff_count == null ? "—" : int(r.staff_count)) },
+            { key: "staff_count", label: "Staff", render: (r) => (r.staff_count == null ? "—" : int(r.staff_count) + (r.staff_tba ? ` (${r.staff_tba} TBA)` : "")) },
             {
               key: "ptwh_count", label: "PTWH",
               render: (r) => (

@@ -191,7 +191,7 @@ export default function App() {
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
-    t === "staff" ? "Staff & Org Chart" : t === "kpi" || t === "management" ? (
+    t === "staff" ? "Staff & Org Chart" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : "Management View"}
         <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>

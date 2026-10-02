@@ -270,7 +270,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
             {filteredTnRows.length.toLocaleString()} tracking numbers · rows in{" "}
             <span className="font-semibold text-status-critical">red</span> have a COD value ≥{" "}
             {data.high_cod_value_threshold.toLocaleString()} or an item description matching a high-value keyword
-            (editable in Admin → Recovery Settings).
+            (editable in Superadmin → Recovery Settings).
             {data.tn_rows_truncated && (
               <span className="ml-1 font-medium text-status-critical">
                 · showing the oldest {filteredTnRows.length.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}

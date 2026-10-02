@@ -107,6 +107,13 @@ export const api = {
       }${statuses?.length ? `&status=${encodeURIComponent(statuses.join(","))}` : ""}`
     ),
   orgChart: (opts) => request("/api/org-chart", opts),
+  headcount: {
+    get: (opts) => request("/api/headcount", opts),
+    add: (payload) => request("/api/headcount/seats", { method: "POST", body: JSON.stringify(payload) }),
+    remove: (id) => request(`/api/headcount/seats/${id}`, { method: "DELETE" }),
+    approve: (id) => request(`/api/headcount/seats/${id}/approve`, { method: "POST" }),
+    reject: (id) => request(`/api/headcount/seats/${id}/reject`, { method: "POST" }),
+  },
   // Staff & Org Chart (staff.py): the Fleet Admin team's list of who is posted where -- separate from access (users above).
   staff: {
     list: (opts) => request("/api/staff", opts),

@@ -11,7 +11,7 @@ import { groupBy, int, pct1, pctOf, selectClass } from "./fmt";
 import { Cards, Panel, PeriodControls, SortTable, TabsBar, TrendPanel, useApi, withPct } from "./rcaUi";
 
 // Invalid POD -- the RCA view (staging). Every failed delivery attempt is validated: FAILURE = the proof of delivery attempt was judged
-// invalid, SUCCESS = valid. The KPI is the invalid share (target under 25% by default, per region in Admin -> KPI Targets); this shows WHERE it comes from -- station, driver, reason, day --
+// invalid, SUCCESS = valid. The KPI is the invalid share (target under 25% by default, per region in Superadmin -> KPI Targets); this shows WHERE it comes from -- station, driver, reason, day --
 // and lists the tracking numbers behind every number.
 //   Overview           stations, why it is invalid, the drivers with the most, tracking numbers
 //   Drivers & reasons  every driver with invalid POD and the reasons behind it, top reason first
@@ -21,7 +21,7 @@ import { Cards, Panel, PeriodControls, SortTable, TabsBar, TrendPanel, useApi, w
 // Time works like Hybrid Productivity (Fleet Manager, 2026-09-26): View = Weekly / Monthly / Daily and a Period (a Monday-Sunday week -- week 38 = last week --, a month or a month
 // day by day); the page opens on the last complete week of the file, and a file that holds several weeks gives the weeks and months inside it. The trend's grain follows the View.
 // Data: the POD validation Raw sheet (Metabase question 69573), uploaded here. Everything follows the viewer's scope.
-// The target is per region (Admin -> KPI Settings; 25% until someone changes it): a row is judged against its own region's, amber = within 5 points of it.
+// The target is per region (Superadmin -> KPI Settings; 25% until someone changes it): a row is judged against its own region's, amber = within 5 points of it.
 const targetOf = (region) => kpiTarget("invalid_pod", region) ?? 25;
 const sev = (p, region) => {
   const t = targetOf(region);

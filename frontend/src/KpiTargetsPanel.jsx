@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { loadKpiTargets, setKpiTargets } from "./lib/kpiTargets";
 
-// Admin -> KPI Settings: what an admin controls for the KPI pages.
+// Superadmin -> KPI Settings: what an admin controls for the KPI pages.
 //   Scope    whether East Malaysia (Retail, not Last Mile) is counted -- off by default
 //   Targets  the target of every KPI per region (backend/kpi_targets.py holds the defaults; what is changed here is stored on top of them).
 //            A change is used by the KPI pages, the Weekly Dashboard and the Invalid POD / COD RTS / Hybrid pages straight away.

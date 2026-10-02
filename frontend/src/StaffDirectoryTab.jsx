@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import HeadcountView from "./HeadcountView";
 import MultiSelect from "./components/MultiSelect";
 import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
 
@@ -33,10 +34,15 @@ function Person({ p, onEdit }) {
   );
 }
 
+// A TBA seat: planned, or someone whose email isn't known yet (counted in the headcount). Managed in the Headcount view.
+function TbaChip({ n }) {
+  return <span className="mr-1.5 inline-block rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-600">TBA{n > 1 ? ` x${n}` : ""}</span>;
+}
+
 function OrgChart({ chart, onEdit }) {
   const [open, setOpen] = useState({});
   const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
-  const vacancies = chart.regions.flatMap((r) => r.zones.flatMap((z) => z.stations)).filter((s) => s.heads.length === 0).length;
+  const vacancies = chart.regions.flatMap((r) => r.zones.flatMap((z) => z.stations)).filter((s) => s.heads.length === 0 && !s.tba_heads).length;
   const stationCount = chart.regions.reduce((n, r) => n + r.zones.reduce((m, z) => m + z.stations.length, 0), 0);
   return (
     <div className="space-y-3">
@@ -80,10 +86,14 @@ function OrgChart({ chart, onEdit }) {
                         <tr key={s.name} className="border-t border-slate-100 align-top">
                           <td className="py-1 pr-3">{s.name}</td>
                           <td className="py-1 pr-3">
-                            {s.heads.length ? s.heads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />) : <span className="text-xs font-medium text-status-critical">Vacant</span>}
+                            {s.heads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
+                            {s.tba_heads > 0 && <TbaChip n={s.tba_heads} />}
+                            {s.heads.length === 0 && !s.tba_heads && <span className="text-xs font-medium text-status-critical">Vacant</span>}
                           </td>
                           <td className="py-1">
-                            {s.assistants.length ? s.assistants.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />) : <span className="text-xs text-slate-400">None</span>}
+                            {s.assistants.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
+                            {s.tba_assistants > 0 && <TbaChip n={s.tba_assistants} />}
+                            {s.assistants.length === 0 && !s.tba_assistants && <span className="text-xs text-slate-400">None</span>}
                           </td>
                         </tr>
                       ))}
@@ -203,7 +213,7 @@ export default function StaffDirectoryTab({ me }) {
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-          {[["list", "Staff list"], ["chart", "Org chart"]].map(([k, label]) => (
+          {[["list", "Staff list"], ["chart", "Org chart"], ["headcount", "Headcount"]].map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "text-slate-500"}`}>
               {label}
             </button>
@@ -213,6 +223,8 @@ export default function StaffDirectoryTab({ me }) {
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>}
       {!chart && !error && <div className="text-sm text-slate-400">Loading…</div>}
+
+      {view === "headcount" && <HeadcountView />}
 
       {chart && view === "chart" && <OrgChart chart={chart} onEdit={canEdit ? startEdit : null} />}
 

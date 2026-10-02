@@ -35,9 +35,9 @@ const MODULES = [
   { key: "compD3", label: "Completion D3", group: "RCA analysis", live: true },
   { key: "terminalT7", label: "Terminal T7", group: "RCA analysis", live: true },
   { key: "codRts", label: "COD RTS", group: "RCA analysis", live: true },
-  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Superadmin → KPI Settings." },
   { key: "invalidPod", label: "Invalid POD", group: "RCA analysis", live: true },
-  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Superadmin → KPI Settings." },
 ];
 
 const int = (v) => Math.round(v).toLocaleString();
@@ -151,7 +151,7 @@ function TrendPage({ me }) {
 
 // ------------------------------------------------------------------------------------------------ Hybrid Productivity
 function HybridProductivity({ me }) {
-  useKpiTargets(); // the low-performer line follows the admin's per-region Hybrid target (Admin -> KPI Settings) once it is known
+  useKpiTargets(); // the low-performer line follows the admin's per-region Hybrid target (Superadmin -> KPI Settings) once it is known
   const [view, setView] = useState("weekly");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);

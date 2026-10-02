@@ -34,6 +34,7 @@ from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
 import management_view
+import headcount
 import staff
 import recovery_lost
 import region_list
@@ -711,6 +712,7 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
@@ -3512,6 +3514,8 @@ def _stations_for_scope(scope_type: str, scope_values: list[str]) -> set[str] | 
 def _scope_within(acting: CurrentUser, scope_type: str, scope_values: list[str]) -> bool:
     """True when everything the (scope_type, scope_values) covers is also covered by the acting user's own scope."""
     # Where the person belongs (a Manager's dedicated region), not the wider scope their data is read with.
+    if acting.role == "manager":  # Managers / HOD manage everyone (2026-10-02: a manager often covers another manager's region)
+        return True
     mine = _stations_for_scope(acting.home_scope_type or acting.scope_type, acting.home_scope_values if acting.home_scope_type else acting.scope_values)
     if mine is None:
         return True
@@ -3668,6 +3672,8 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
          (payload.display_name or "").strip() or _auto_display_name(payload.email, payload.role, payload.scope_type, payload.scope_values),
          user.email),
     )
+    if payload.scope_type == "station":
+        await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
     return {"ok": True}
 
 
@@ -3709,6 +3715,8 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.scope_type, _scope_values_json(row.scope_values),
              (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email),
         )
+        if row.scope_type == "station":
+            await headcount.consume_seat(row.scope_values, row.role)
         added.append(email)
     return {"added": added, "skipped": skipped, "errors": errors}
 

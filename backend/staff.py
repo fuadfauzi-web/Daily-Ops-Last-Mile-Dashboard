@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import db
+import headcount
 from auth import POSITIONS, CurrentUser, get_current_user, parse_scope_values, tier_of
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 from tasklist import on_user_deleted as tasklist_user_deleted
@@ -154,6 +155,8 @@ async def add_staff(payload: StaffIn, user: CurrentUser = Depends(get_current_us
         (email, payload.role, payload.scope_type, values, payload.scope_type, values,
          compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), user.email),
     )
+    if payload.scope_type == "station":
+        await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
     return {"ok": True}
 
 
@@ -222,6 +225,9 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
     rows = await db.fetch_all(
         "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name FROM users ORDER BY display_name, email"
     )
+    tba: dict[tuple[str, str], int] = {}  # approved TBA seats by (station, designation) -- see headcount.py
+    for station, designation in await db.fetch_all("SELECT station, designation FROM headcount_seats WHERE status = 'approved'"):
+        tba[(station, designation)] = tba.get((station, designation), 0) + 1
     hq, by_region, by_zone, by_station = [], {}, {}, {}
     for r in rows:
         if tier_of(r[1]) == "admin":
@@ -252,6 +258,8 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
                     "name": name,
                     "heads": [p for p in people if p["position"] == "station_head"],
                     "assistants": [p for p in people if p["position"] != "station_head"],  # Fleet Assistants, and the old unspecific 'station' title
+                    "tba_heads": tba.get((name, "station_head"), 0),
+                    "tba_assistants": tba.get((name, "fleet_assistant"), 0),
                 })
             zones.append({"name": zone, "leads": by_zone.get(zone, []), "stations": stations})
         regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones})

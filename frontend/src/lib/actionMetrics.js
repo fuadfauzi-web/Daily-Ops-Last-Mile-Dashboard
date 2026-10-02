@@ -2,7 +2,7 @@
 // Watch's Zalora NXD, and Routed View. Kept separate from lib/metrics.js's
 // ALL_COLUMNS (Station Health's own column set) since these don't apply to the
 // Station Health table itself, only to Action Board's heatmap/metric picker and
-// Admin -> SLA Targets (so they're still admin-configurable).
+// Superadmin -> SLA Targets (so they're still admin-configurable).
 //
 // Routed View's numbers are route-level (query 512 has no tracking_id), so
 // routed_current_ovfd can never have a Copy TNs / tracking-number drilldown --

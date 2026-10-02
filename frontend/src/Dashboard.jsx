@@ -661,7 +661,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   if (!data.captured_at)
     return (
       <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
-        No data yet — the first refresh hasn't run. {me.role === "admin" && "Use Admin → Refresh now."}
+        No data yet — the first refresh hasn't run. {me.role === "admin" && "Use Superadmin → Refresh now."}
       </div>
     );
 
@@ -1039,7 +1039,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           )}
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored, shown for context only. Targets are set in Admin → SLA Targets. A region/zone row's
+            SLA, never scored, shown for context only. Targets are set in Superadmin → SLA Targets. A region/zone row's
             raw-count target scales up by how many stations it contains (e.g. a target of 100 becomes 500 for a
             5-station region) — a percentage target (or a metric scored as "% of" another field) never scales, the
             same number applies at every level. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't

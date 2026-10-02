@@ -30,7 +30,7 @@ export const SIDE_ITEMS = [
   { id: "management", group: "Analyse", label: "Management View", beta: true, code: "MV" },
   { id: "staff", group: "System", label: "Staff & Org Chart", code: "SO" },
   { id: "settings", group: "System", label: "Settings", code: "ST" },
-  { id: "admin", group: "System", label: "Admin", code: "AM" },
+  { id: "admin", group: "System", label: "Superadmin", code: "SA" },
 ];
 
 // The Task List tab's bell numbers (the same sums the Dashboard's tab strip shows), kept in one place so the strip and the sidebar agree.

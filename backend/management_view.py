@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import db
+import headcount
 import kpi_data as kd
 from auth import CurrentUser, get_current_user
 from stations import FULL_NAME_TO_HUB, HUBS
@@ -55,19 +56,14 @@ async def _capacity_rows() -> tuple[dict[str, dict], dict[str, str | None]]:
                 except ValueError:
                     pass
 
-    staff_up = await kd.load_rows("capacity_staff")
-    if staff_up:
-        meta, rows = staff_up
-        sources["staff"] = f"{meta['filename']} ({str(meta['uploaded_at'])[:10]})"
-        counts: dict[str, int] = {}
-        for r in rows:
-            idx = {kd.norm(k): v for k, v in r.items()}
-            name = str(idx.get("station") or "").strip().lower()
-            code = name_to_hub.get(name)
-            if code and str(idx.get("designation") or "").strip():
-                counts[code] = counts.get(code, 0) + 1
-        for code, n in counts.items():
-            out[code]["staff_count"] = n
+    # Staff headcount (2026-10-02, Fleet Manager): follows the Staff & Org Chart instead of an uploaded workbook -- the people posted
+    # at the station plus its TBA seats (headcount.py).
+    sources["staff"] = "Staff & Org Chart"
+    for name, c in (await headcount.headcount_by_station()).items():
+        code = name_to_hub.get(name.strip().lower())
+        if code:
+            out[code]["staff_count"] = c["filled"] + c["tba"]
+            out[code]["staff_tba"] = c["tba"]
 
     return out, sources
 
@@ -78,7 +74,8 @@ class CapacityRow(BaseModel):
     zone: str
     region: str
     sqft: float | None
-    staff_count: int | None
+    staff_count: int | None  # people posted at the station + its approved TBA seats (Staff & Org Chart -> Headcount)
+    staff_tba: int | None = None  # of which TBA seats
     ptwh_count: int | None  # manager-keyed (some hubs run a fixed daily PTWH, others only for offdays/backlog)
     parcel_capacity: int | None  # manager-typed override of how many parcels the hub can hold
 
@@ -114,7 +111,7 @@ async def capacity(user: CurrentUser = Depends(get_current_user)):
         ptwh, cap = notes.get(code, (None, None))
         rows.append({
             "station_code": code, "station_name": name, "zone": zone, "region": region,
-            "sqft": c.get("sqft"), "staff_count": c.get("staff_count"), "ptwh_count": ptwh, "parcel_capacity": cap,
+            "sqft": c.get("sqft"), "staff_count": c.get("staff_count"), "staff_tba": c.get("staff_tba"), "ptwh_count": ptwh, "parcel_capacity": cap,
         })
     return {"sources": sources, "parcels_per_sqft": await _parcels_per_sqft(), "rows": rows}
 
