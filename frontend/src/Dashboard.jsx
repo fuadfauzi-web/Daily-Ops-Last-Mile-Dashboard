@@ -638,8 +638,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const isZoneOpen = (key) => (startsExpanded ? !expandedZones.has(key) : expandedZones.has(key));
 
   const combinedRowClassName = (row) => {
-    if (row.type === "region") return "bg-slate-100";
-    if (row.type === "zone") return "bg-slate-50";
+    if (row.type === "region") return FEATURES.healthTable ? "bg-row-region" : "bg-slate-100";
+    if (row.type === "zone") return FEATURES.healthTable ? "bg-row-zone" : "bg-slate-50";
     return "";
   };
   const combinedColumns = [
