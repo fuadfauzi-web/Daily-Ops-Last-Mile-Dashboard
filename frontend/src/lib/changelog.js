@@ -18,6 +18,14 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
+    title: "New: Daily KPI tab (Beta, staging only) -- today's FIFO D0 / Completion D0 / Prior, and how much is left to attempt or deliver",
+    feature: "dailyKpi",
+    points: [
+      "A new tab next to Station Health showing, for today only, each station's FIFO D0, Completion D0 and Prior against its own region target -- the count still needed to hit it, and how many of the remaining parcels are sitting Arrived at Sorting Hub vs On Vehicle for Delivery. Latlong parcels are excluded. Switch between Station / Zone / Region view; Export CSV downloads what's shown. The numbers are not finalized yet -- the underlying logic can still change.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Shipment Details: Total Fresh now always adds up",
     points: [
       "Total Fresh is now Fresh Unscan + the four Within 1h/1-2h/2-3h/3h+ buckets, added together -- they used to come from a separate query that could disagree with the breakdown. A parcel with a missing or inconsistent processing timestamp now falls into 3h+ instead of being silently left out of both.",

@@ -23,6 +23,7 @@ import RecoveryTab from "./RecoveryTab";
 import UrgentTnTab from "./UrgentTnTab";
 import TaskListTab from "./TaskListTab";
 import DodTab from "./DodTab";
+import DailyKpiTab from "./DailyKpiTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -66,6 +67,19 @@ const TABS = [
   { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
   { key: "health", label: "Station Health" },
+  ...(FEATURES.dailyKpi
+    ? [
+        {
+          key: "dailyKpi",
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              Daily KPI
+              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+            </span>
+          ),
+        },
+      ]
+    : []),
   { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "RPU" },
@@ -860,6 +874,14 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             by that percentage.
           </p>
         </>
+      )}
+
+      {FEATURES.dailyKpi && tab === "dailyKpi" && (
+        <DailyKpiTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
+        />
       )}
 
       {FEATURES.dod && tab === "dod" && <DodTab stationCodes={filteredStationCodes} />}

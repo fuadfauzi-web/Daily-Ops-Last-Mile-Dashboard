@@ -2467,6 +2467,37 @@
         ]
       }
     },
+    "/api/daily-kpi": {
+      "get": {
+        "summary": "Daily KPI (staging only): today's FIFO D0, Completion D0 and Prior raw counts per station, zone and region, limited to the caller's scope. Latlong parcels excluded; resets at midnight.",
+        "operationId": "daily_kpi_api_daily_kpi_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyKpiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/routed-view": {
       "get": {
         "summary": "Return the latest Routed View snapshot (Total Routed/Attendance/OVFD/Success/COD%/Success Rate/Completion Rate) at station/zone/region level, plus a driver-level breakdown, scoped to the caller.",
@@ -4856,6 +4887,221 @@
           "matched_tn_count"
         ],
         "title": "ColdChainResponse"
+      },
+      "DailyKpiGroupRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "station_count": {
+            "type": "integer",
+            "title": "Station Count"
+          },
+          "fifo_total": {
+            "type": "integer",
+            "title": "Fifo Total"
+          },
+          "fifo_met": {
+            "type": "integer",
+            "title": "Fifo Met"
+          },
+          "fifo_aash": {
+            "type": "integer",
+            "title": "Fifo Aash"
+          },
+          "fifo_ovfd": {
+            "type": "integer",
+            "title": "Fifo Ovfd"
+          },
+          "completion_total": {
+            "type": "integer",
+            "title": "Completion Total"
+          },
+          "completion_met": {
+            "type": "integer",
+            "title": "Completion Met"
+          },
+          "completion_aash": {
+            "type": "integer",
+            "title": "Completion Aash"
+          },
+          "completion_ovfd": {
+            "type": "integer",
+            "title": "Completion Ovfd"
+          },
+          "prior_total": {
+            "type": "integer",
+            "title": "Prior Total"
+          },
+          "prior_met": {
+            "type": "integer",
+            "title": "Prior Met"
+          },
+          "prior_aash": {
+            "type": "integer",
+            "title": "Prior Aash"
+          },
+          "prior_ovfd": {
+            "type": "integer",
+            "title": "Prior Ovfd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "region",
+          "station_count",
+          "fifo_total",
+          "fifo_met",
+          "fifo_aash",
+          "fifo_ovfd",
+          "completion_total",
+          "completion_met",
+          "completion_aash",
+          "completion_ovfd",
+          "prior_total",
+          "prior_met",
+          "prior_aash",
+          "prior_ovfd"
+        ],
+        "title": "DailyKpiGroupRow"
+      },
+      "DailyKpiResponse": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "stations": {
+            "items": {
+              "$ref": "#/components/schemas/DailyKpiStationRow"
+            },
+            "type": "array",
+            "title": "Stations"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/DailyKpiGroupRow"
+            },
+            "type": "array",
+            "title": "Zones"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/DailyKpiGroupRow"
+            },
+            "type": "array",
+            "title": "Regions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "captured_at",
+          "stations",
+          "zones",
+          "regions"
+        ],
+        "title": "DailyKpiResponse"
+      },
+      "DailyKpiStationRow": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "fifo_total": {
+            "type": "integer",
+            "title": "Fifo Total"
+          },
+          "fifo_met": {
+            "type": "integer",
+            "title": "Fifo Met"
+          },
+          "fifo_aash": {
+            "type": "integer",
+            "title": "Fifo Aash"
+          },
+          "fifo_ovfd": {
+            "type": "integer",
+            "title": "Fifo Ovfd"
+          },
+          "completion_total": {
+            "type": "integer",
+            "title": "Completion Total"
+          },
+          "completion_met": {
+            "type": "integer",
+            "title": "Completion Met"
+          },
+          "completion_aash": {
+            "type": "integer",
+            "title": "Completion Aash"
+          },
+          "completion_ovfd": {
+            "type": "integer",
+            "title": "Completion Ovfd"
+          },
+          "prior_total": {
+            "type": "integer",
+            "title": "Prior Total"
+          },
+          "prior_met": {
+            "type": "integer",
+            "title": "Prior Met"
+          },
+          "prior_aash": {
+            "type": "integer",
+            "title": "Prior Aash"
+          },
+          "prior_ovfd": {
+            "type": "integer",
+            "title": "Prior Ovfd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "fifo_total",
+          "fifo_met",
+          "fifo_aash",
+          "fifo_ovfd",
+          "completion_total",
+          "completion_met",
+          "completion_aash",
+          "completion_ovfd",
+          "prior_total",
+          "prior_met",
+          "prior_aash",
+          "prior_ovfd"
+        ],
+        "title": "DailyKpiStationRow"
       },
       "DashboardResponse": {
         "properties": {

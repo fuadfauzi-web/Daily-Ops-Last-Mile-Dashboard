@@ -56,7 +56,7 @@ from aggregate import (
     build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
     build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
     build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla,
-    merge_routed_into_station_metrics,
+    merge_routed_into_station_metrics, build_daily_kpi, rollup_daily_kpi, DAILY_KPI_KEYS,
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
@@ -169,6 +169,12 @@ _shipment_tn_cache_captured_at: str | None = None
 # filters. Doesn't fit the shipment_details table; rebuilt every refresh like the
 # drilldown caches above.
 _shipment_timelines: dict[str, dict[str, list[int]]] = {}
+
+# Daily KPI (2026-10-02): today's FIFO D0 / Completion D0 / Prior, per station. Not
+# persisted -- rebuilt every refresh from the same tracker_rows as Shipment Details, and
+# only ever meaningful for the current Malaysia day.
+_daily_kpi_by_station: dict[str, dict] = {}
+_daily_kpi_captured_at: str | None = None
 
 # Routed View's driver-level rows. Not persisted -- rebuilt every refresh, like the
 # drilldown caches (a daily driver roster has no need for hourly history).
@@ -296,6 +302,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         tracker_rows = await _fetch(QUERY_SHIPMENT_TRACKER)
         lh_rows = await _fetch(QUERY_LH_TIMING)
         shipment_by_station, shipment_tn_details, shipment_timelines = build_shipment_details(tracker_rows, lh_rows)
+        daily_kpi_by_station = build_daily_kpi(tracker_rows, datetime.now(_MYT).date())
         del tracker_rows, lh_rows
 
         zalora_rows = await _fetch(QUERY_ZALORA_NXD)
@@ -355,10 +362,13 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         global _missing_details_cod_threshold, _missing_details_item_keywords
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
         global _shipment_timelines
+        global _daily_kpi_by_station, _daily_kpi_captured_at
         global _rdo_stations, _rdo_tn_rows, _rdo_captured_at
         global _cold_chain_stations, _cold_chain_rows, _cold_chain_captured_at
         global _cold_chain_source_count, _cold_chain_matched_count, _restock_bundles, _restock_bundles_captured_at
         _shipment_timelines = shipment_timelines
+        _daily_kpi_by_station = daily_kpi_by_station
+        _daily_kpi_captured_at = captured_at.isoformat()
         _tn_cache.clear()
         _tn_cache.update(tn_details)
         _tn_cache_captured_at = captured_at.isoformat()
@@ -1094,6 +1104,82 @@ async def shipment_drilldown(station_code: str, metric: str, user: CurrentUser =
     return {
         "station_code": station_code, "station_name": name, "metric": metric,
         "tracking_numbers": tracking_numbers, "as_of": _shipment_tn_cache_captured_at,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Daily KPI tab (2026-10-02 feedback) -- today's FIFO D0 / Completion D0 / Prior, in
+# memory only (rebuilt every refresh, only ever meaningful for the current Malaysia
+# day, so there's nothing to persist). Current %% / target / "left to go" are computed
+# by the frontend from these raw counts, using the same per-region KPI targets the rest
+# of the KPI page already reads (lib/kpiTargets.js) -- see DAILY_KPI_KEYS.
+# ---------------------------------------------------------------------------
+
+class DailyKpiStationRow(BaseModel):
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    fifo_total: int
+    fifo_met: int
+    fifo_aash: int
+    fifo_ovfd: int
+    completion_total: int
+    completion_met: int
+    completion_aash: int
+    completion_ovfd: int
+    prior_total: int
+    prior_met: int
+    prior_aash: int
+    prior_ovfd: int
+
+
+class DailyKpiGroupRow(BaseModel):
+    key: str
+    region: str
+    station_count: int
+    fifo_total: int
+    fifo_met: int
+    fifo_aash: int
+    fifo_ovfd: int
+    completion_total: int
+    completion_met: int
+    completion_aash: int
+    completion_ovfd: int
+    prior_total: int
+    prior_met: int
+    prior_aash: int
+    prior_ovfd: int
+
+
+class DailyKpiResponse(BaseModel):
+    captured_at: str | None
+    stations: list[DailyKpiStationRow]
+    zones: list[DailyKpiGroupRow]
+    regions: list[DailyKpiGroupRow]
+
+
+@app.get("/api/daily-kpi", response_model=DailyKpiResponse)
+async def daily_kpi(user: CurrentUser = Depends(get_current_user)):
+    if not _daily_kpi_by_station:
+        return {"captured_at": None, "stations": [], "zones": [], "regions": []}
+
+    all_rows = [{"station_code": code, **row} for code, row in _daily_kpi_by_station.items()]
+    scoped = _scope_filter_stations(all_rows, user)
+
+    zone_groups = [{**{k: g[k] for k in DAILY_KPI_KEYS}, "key": g["zone"], "region": g["region"], "station_count": g["station_count"]}
+                    for g in rollup_daily_kpi(scoped, "zone")]
+    region_groups = [{**{k: g[k] for k in DAILY_KPI_KEYS}, "key": g["region"], "region": g["region"], "station_count": g["station_count"]}
+                      for g in rollup_daily_kpi(scoped, "region")]
+
+    return {
+        # Every in-scope station, even one with no fresh volume yet today (0/0) -- the
+        # sheet this mirrors shows every station too, so a 0-row isn't a bug to someone
+        # used to it.
+        "captured_at": _daily_kpi_captured_at,
+        "stations": scoped,
+        "zones": [g for g in zone_groups if g["station_count"] > 0],
+        "regions": [g for g in region_groups if g["station_count"] > 0],
     }
 
 

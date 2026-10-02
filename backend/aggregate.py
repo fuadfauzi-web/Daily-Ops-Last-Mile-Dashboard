@@ -603,6 +603,115 @@ def rollup_shipment_details(station_rows: list[dict], group_key: str) -> list[di
 
 
 # ---------------------------------------------------------------------------
+# Daily KPI tab (2026-10-02 feedback) -- reuses query 1239 Shipment Tracker, already
+# fetched for Shipment Details, no extra Redash query needed. "How many more does this
+# station need to attempt/succeed TODAY" for FIFO D0, Completion D0 and Prior, mirroring
+# the Fleet Manager's own "Today KPI" sheet.
+# ---------------------------------------------------------------------------
+
+_PRIOR_TAG = "PRIOR"
+DAILY_KPI_KEYS = (
+    "fifo_total", "fifo_met", "fifo_aash", "fifo_ovfd",
+    "completion_total", "completion_met", "completion_aash", "completion_ovfd",
+    "prior_total", "prior_met", "prior_aash", "prior_ovfd",
+)
+# granular_status -> the suffix of the not-yet-met counter it adds to (AASH = "Arrived At
+# Sorting Hub", OVFD = "On Vehicle For Delivery", the sheet's own two headline columns;
+# every other status -- En-route to Sorting Hub, On Hold, Pending Reschedule -- isn't
+# singled out, same as the sheet).
+_DAILY_KPI_STATUS_SUFFIX = {"Arrived at Sorting Hub": "aash", "On Vehicle for Delivery": "ovfd"}
+
+
+def _empty_daily_kpi_row(hub_code: str) -> dict:
+    name, _full, zone, region = HUBS[hub_code]
+    row = {"station_code": hub_code, "station_name": name, "zone": zone, "region": region}
+    row.update({k: 0 for k in DAILY_KPI_KEYS})
+    return row
+
+
+def build_daily_kpi(tracker_rows: list[dict], today_myt) -> dict[str, dict]:
+    """Returns {hub_code: row}. today_myt is a date (Malaysia calendar day).
+
+    Start clock = the LATER of shipment_completion_datetime and
+    1st_sweep_at_WM_station_datetime (per the Fleet Manager, 2026-10-02 -- overrides the
+    sheet's own "whichever comes first" note), rolled to the next calendar day when that
+    moment is after noon; end clock = midnight ending that day. Only tracker rows whose
+    start-clock day is TODAY count -- an earlier day's cohort has already resolved either
+    way, so including it would mix historical misses into "still needed today". Latlong
+    parcels (shp_dest_hub_name != dest_hub_name, RTS excluded -- the same rule as
+    Shipment Details' own Latlong metric) are excluded, per the same feedback.
+
+    FIFO D0 is met by ANY delivery attempt (success or fail) before end clock; Completion
+    D0 and Prior need a SUCCESSFUL delivery before end clock. Prior's denominator is only
+    the parcels tagged PRIOR (a subset of fresh, not all of it) -- Completion D0's is every
+    fresh parcel. *_aash / *_ovfd are the NOT-yet-met parcels currently "Arrived at
+    Sorting Hub" / "On Vehicle for Delivery" (the sheet's own two columns); current %% and
+    how many more are needed against the region's target are left to the frontend, which
+    already has the per-region KPI targets (lib/kpiTargets.js)."""
+    by_station = {hub: _empty_daily_kpi_row(hub) for hub in HUBS}
+    for r in tracker_rows:
+        hub = r.get("shp_dest_hub_name")
+        row = by_station.get(hub)
+        if row is None:
+            continue
+
+        tag = (r.get("tag") or "").upper()
+        dest = r.get("dest_hub_name") or ""
+        if r.get("shp_dest_hub_name") != dest and _RTS_TAG not in tag and _RTS_TAG not in dest.upper():
+            continue  # Latlong -- excluded (2026-10-02 feedback)
+
+        completion_dt = _parse_dt(r.get("shipment_completion_datetime"))
+        swept_dt = _parse_dt(r.get("1st_sweep_at_WM_station_datetime"))
+        candidates = [d for d in (completion_dt, swept_dt) if d is not None]
+        if not candidates:
+            continue
+        start_dt = max(candidates)
+        start_date = start_dt.date() + (timedelta(days=1) if start_dt.hour >= 12 else timedelta(0))
+        if start_date != today_myt:
+            continue
+
+        suffix = _DAILY_KPI_STATUS_SUFFIX.get(r.get("granular_status"))
+        is_prior = _PRIOR_TAG in tag
+
+        row["fifo_total"] += 1
+        row["completion_total"] += 1
+        if is_prior:
+            row["prior_total"] += 1
+
+        if r.get("first_attempt_datetime"):
+            row["fifo_met"] += 1
+        elif suffix:
+            row[f"fifo_{suffix}"] += 1
+
+        succeeded = bool(r.get("success_datetime"))
+        if succeeded:
+            row["completion_met"] += 1
+        elif suffix:
+            row[f"completion_{suffix}"] += 1
+
+        if is_prior:
+            if succeeded:
+                row["prior_met"] += 1
+            elif suffix:
+                row[f"prior_{suffix}"] += 1
+
+    return by_station
+
+
+def rollup_daily_kpi(station_rows: list[dict], group_key: str) -> list[dict]:
+    """Sums Daily KPI station_rows up to zone or region level, same pattern as
+    rollup_shipment_details."""
+    groups: dict[str, dict] = {}
+    for row in station_rows:
+        key = row[group_key]
+        g = groups.setdefault(key, {group_key: key, "region": row["region"], "station_count": 0, **{k: 0 for k in DAILY_KPI_KEYS}})
+        for k in DAILY_KPI_KEYS:
+            g[k] += row[k]
+        g["station_count"] += 1
+    return list(groups.values())
+
+
+# ---------------------------------------------------------------------------
 # Routed View tab (query 512)
 # ---------------------------------------------------------------------------
 
