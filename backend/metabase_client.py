@@ -26,17 +26,14 @@ METABASE_API_KEY = _clean(os.getenv("METABASE_API_KEY", ""))
 # Metabase question ids the KPI Dashboard's Hybrid Productivity module reads. These are the ALL-REGIONS copies (2026-09-26) of the
 # Southern questions the team used to download as CSV: identical columns / aggregations / other filters, only the
 # depot_region (hub_region for the driver list) = South filter removed. Originals: 126393 daily, 126389 weekly, 126392 monthly, 126216 data.
-QUESTION_HYBRID_DAILY = 127196  # Hybrid Daily Apps - All Regions (current month)
-QUESTION_HYBRID_WEEKLY = 127194  # Hybrid Weekly Apps - All Regions (current year)
-QUESTION_HYBRID_MONTHLY = 127195  # Hybrid Monthly Apps - All Regions (current year)
-QUESTION_HYBRID_DATA = 127193  # Hybrid Data Current Year - All Regions -- driver details incl. employment start date
-
-# 2026-10-01: sizing %/volume + a corrected Attendance (COUNT DISTINCT route_date, not route count --
-# the three questions above double-count a driver with 2 routes in one day as 2 attendance days). Same
-# filters/join/breakout as their sibling above, so rows line up 1:1 by (driver, period).
-QUESTION_HYBRID_DAILY_SIZING = 127410  # Hybrid Daily Sizing & Volume Add-on - All Regions (current month)
-QUESTION_HYBRID_WEEKLY_SIZING = 127411  # Hybrid Weekly Sizing & Volume + Fixed Attendance - All Regions (current year)
-QUESTION_HYBRID_MONTHLY_SIZING = 127412  # Hybrid Monthly Sizing & Volume + Fixed Attendance - All Regions (current year)
+# 2026-10-03: ONE question per view, carrying everything the page needs (volume, success rate, sizing S/M/L,
+# reservation waypoints, a corrected Attendance = COUNT DISTINCT route_date -- not the old route count that counted
+# a driver's 2 routes in a day as 2 attendance days -- plus the driver's hub name and employment start date), so the
+# Hybrid page takes 3 uploads instead of 7. They replace the old per-grain questions 127194 / 127195 / 127196, the
+# sizing add-ons 127410 / 127411 / 127412 and the driver list 127193 (still in Metabase, no longer read by the app).
+QUESTION_HYBRID_DAILY = 127513  # Hybrid Daily - ALL-IN-ONE feeder (current month)
+QUESTION_HYBRID_WEEKLY = 127514  # Hybrid Weekly - ALL-IN-ONE feeder (current year)
+QUESTION_HYBRID_MONTHLY = 127515  # Hybrid Monthly - ALL-IN-ONE feeder (current year)
 
 _TIMEOUT_SECONDS = 240
 

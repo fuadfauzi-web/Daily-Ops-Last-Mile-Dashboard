@@ -85,40 +85,24 @@ def to_iso_day(value) -> str:
 
 # dataset -> what it is, which KPI page it feeds, which sheet of a workbook to read, and the columns it must have (normalised).
 DATASETS: dict[str, dict] = {
+    # 2026-10-03: ONE all-in-one Metabase question per view -- volume, success rate, sizing S/M/L, reservation waypoints, a corrected
+    # Attendance (distinct days) AND the driver's hub / employment start date -- so Hybrid is 3 uploads, not 7 (it used to be the weekly /
+    # monthly / daily questions + 3 sizing add-ons + the driver list). The dataset keys are unchanged, so an older file in the old layout still loads
+    # (it just has no sizing columns and no start dates).
     "hybrid_weekly": {
-        "kpi": "hybrid", "label": "Hybrid weekly", "hint": "Metabase question 127194 (Hybrid Weekly Apps - All Regions) -- Download results as .csv",
-        "link": "https://metabase.ninjavan.co/question/127194",
+        "kpi": "hybrid", "label": "Hybrid weekly", "hint": "Metabase question 127514 (Hybrid Weekly - ALL-IN-ONE feeder) -- Download results as .csv. One file: volume, sizing, fixed Attendance and each driver's start date",
+        "link": "https://metabase.ninjavan.co/question/127514",
         "sheet": "Weekly Raw", "required": ["courierdisplayname", "routeweek"],
     },
     "hybrid_monthly": {
-        "kpi": "hybrid", "label": "Hybrid monthly", "hint": "Metabase question 127195 (Hybrid Monthly Apps - All Regions) -- Download results as .csv",
-        "link": "https://metabase.ninjavan.co/question/127195",
+        "kpi": "hybrid", "label": "Hybrid monthly", "hint": "Metabase question 127515 (Hybrid Monthly - ALL-IN-ONE feeder) -- Download results as .csv. One file: volume, sizing, fixed Attendance and each driver's start date",
+        "link": "https://metabase.ninjavan.co/question/127515",
         "sheet": "Monthly Raw", "required": ["courierdisplayname", "routemonth"],
     },
     "hybrid_daily": {
-        "kpi": "hybrid", "label": "Hybrid daily", "hint": "Metabase question 127196 (Hybrid Daily Apps - All Regions, current month) -- Download results as .csv",
-        "link": "https://metabase.ninjavan.co/question/127196",
+        "kpi": "hybrid", "label": "Hybrid daily", "hint": "Metabase question 127513 (Hybrid Daily - ALL-IN-ONE feeder, current month) -- Download results as .csv. One file: volume, sizing and each driver's start date",
+        "link": "https://metabase.ninjavan.co/question/127513",
         "sheet": "Daily Raw", "required": ["courierdisplayname", "routedate"],
-    },
-    "hybrid_data": {
-        "kpi": "hybrid", "label": "Hybrid driver list", "hint": "Metabase question 127193 (Hybrid Data Current Year - All Regions) -- Download results as .csv; gives each driver's start date (Service Duration)",
-        "link": "https://metabase.ninjavan.co/question/127193",
-        "sheet": "Hybrid Data", "required": ["displayname"],
-    },
-    "hybrid_weekly_sizing": {
-        "kpi": "hybrid", "label": "Hybrid weekly -- sizing & volume", "hint": "Metabase question 127411 (Hybrid Weekly Sizing & Volume + Fixed Attendance - All Regions) -- Download results as .csv; optional, adds sizing % and the delivered-only / delivered+pickup+RSVN productivity variants, and fixes Attendance to count distinct days",
-        "link": "https://metabase.ninjavan.co/question/127411",
-        "sheet": None, "required": ["courierdisplayname", "routeweek"],
-    },
-    "hybrid_monthly_sizing": {
-        "kpi": "hybrid", "label": "Hybrid monthly -- sizing & volume", "hint": "Metabase question 127412 (Hybrid Monthly Sizing & Volume + Fixed Attendance - All Regions) -- Download results as .csv; optional, same columns as the weekly sizing file",
-        "link": "https://metabase.ninjavan.co/question/127412",
-        "sheet": None, "required": ["courierdisplayname", "routemonth"],
-    },
-    "hybrid_daily_sizing": {
-        "kpi": "hybrid", "label": "Hybrid daily -- sizing & volume", "hint": "Metabase question 127410 (Hybrid Daily Sizing & Volume Add-on - All Regions, current month) -- Download results as .csv; optional, adds sizing % and delivered-only to the Daily Data tab",
-        "link": "https://metabase.ninjavan.co/question/127410",
-        "sheet": None, "required": ["courierdisplayname", "routedate"],
     },
     "invalid_pod_raw": {
         "kpi": "invalid_pod", "label": "POD validation (raw)",
@@ -151,6 +135,7 @@ DATASETS: dict[str, dict] = {
         "kpi": "prior", "label": "Prior KPI (station by day)", "link": "https://metabase.ninjavan.co/question/127199",
         "hint": "Metabase question 127199 (CISP Prior - station by START CLOCK day, last 26 weeks) -- Download results as .csv (the page reads it by week, month or day). PRE-tagged TNs only, open PETs excluded; each TN is measured on its working start clock date, the result is by start clock date; provisional exclusions until OPEX confirms",
         "sheet": None, "required": ["desthubname", "startclock", "measured", "met"],
+        "needs_name": "prior",  # same columns as FIFO D0's file -- only the file name tells them apart (see detect_dataset)
     },
     "cisp_completion": {
         "kpi": "completion", "label": "Completion D0 + D3 (station by day)", "link": "https://metabase.ninjavan.co/question/127200",
@@ -166,6 +151,7 @@ DATASETS: dict[str, dict] = {
         "kpi": "fifo", "label": "FIFO D0 (station by day)", "link": "https://metabase.ninjavan.co/question/127205",
         "hint": "Metabase question 127205 (CISP FIFO D0 - station by start clock day, last 26 weeks) -- Download results as .csv (the page reads it by week, month or day). Built on the Last Mile Push Off report without the third-party / DP-reservation exclusions of the saved FIFO question 118041, so a rate can differ a little from the official one",
         "sheet": None, "required": ["desthubname"],
+        "needs_name": "fifo",  # same columns as Prior's file -- only the file name tells them apart (see detect_dataset)
     },
     "lost_declared": {
         "kpi": "recovery", "label": "Lost declared this week (Recovery)", "link": "https://metabase.ninjavan.co/question/127203",
@@ -352,6 +338,51 @@ def parse_table(filename: str, data: bytes, sheet: str | None, required: list[st
     if not rows:
         raise UploadError("The file has a header but no data rows")
     return header, rows
+
+
+# ------------------------------------------------------------------------------------------------ which dataset is this file?
+
+def _sniff_csv_header(data: bytes) -> set[str] | None:
+    """Normalised column names of a CSV's header row, from its first few KB only (so a 40 MB file costs nothing to look at)."""
+    text = data[:65536].decode("utf-8-sig", errors="ignore")
+    for raw in csv.reader(io.StringIO(text)):
+        if sum(1 for c in raw if str(c).strip()) >= 2:
+            return {norm(_clean_header(c, i)) for i, c in enumerate(raw)}
+    return None
+
+
+def detect_dataset(filename: str, data: bytes, candidates: list[str]) -> str:
+    """Which of `candidates` is this file? Matched by its columns, not its name (a Metabase download is called "Hybrid Weekly - ALL-IN-ONE
+    feeder_2026-10-03T10_12.csv"): a dataset fits when every column it requires is in the file; if several fit, the one that requires the
+    most columns wins (a Completion file also has the one column FIFO D0 needs, and is still Completion). Raises UploadError when
+    none fits or two fit equally well. An Excel workbook is tried dataset by dataset, because its sheet has to be picked first."""
+    name = (filename or "").lower()
+    # a dataset that requires nothing (the OPEX table) never auto-matches; Prior and FIFO D0 have identical columns, so each only auto-matches
+    # a file whose name says so -- guessing would put the wrong KPI's numbers in the other's slot
+    specs = [(d, DATASETS[d]) for d in candidates if DATASETS.get(d, {}).get("required") and DATASETS[d].get("needs_name", "") in name]
+    fits: list[tuple[int, str]] = []
+    if name.endswith(".csv"):
+        have = _sniff_csv_header(data)
+        if have is None:
+            raise UploadError("The file is empty")
+        fits = [(len(spec["required"]), d) for d, spec in specs if set(spec["required"]) <= have]
+    elif name.endswith((".xlsx", ".xlsm")):
+        for d, spec in sorted(specs, key=lambda s: -len(s[1]["required"])):
+            try:
+                parse_table(filename, data, spec["sheet"], spec["required"], spec.get("keep"))
+            except UploadError:
+                continue
+            fits.append((len(spec["required"]), d))
+            break  # the first (most specific) workbook match is taken
+    else:
+        raise UploadError("Upload a .csv or .xlsx file")
+    if not fits:
+        raise UploadError("Couldn't tell which KPI file this is -- its columns don't match any of them. Use the Choose file button on the right row instead")
+    best = max(n for n, _d in fits)
+    top = [d for n, d in fits if n == best]
+    if len(top) > 1:
+        raise UploadError("This file fits more than one KPI file (" + ", ".join(DATASETS[d]["label"] for d in top) + ") -- use the Choose file button on the right row")
+    return top[0]
 
 
 # ------------------------------------------------------------------------------------------------ storage + cache

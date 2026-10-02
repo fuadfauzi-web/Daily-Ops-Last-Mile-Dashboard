@@ -17,6 +17,17 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-03",
+    title: "Data upload: fewer files, fewer clicks",
+    feature: "kpiDashboard",
+    minRank: 3,
+    points: [
+      "Hybrid Productivity now needs 3 files instead of 7: the weekly, monthly and daily Metabase questions each carry everything (volume, sizing, the fixed Attendance and each driver's start date), so the separate driver-list and sizing files are gone.",
+      "Every Data upload box has a drop zone: select or drag all your downloaded CSVs at once and each is matched to its KPI file by its columns (Prior and FIFO D0 by the file name). A file it can't place is listed with the reason and the rest still load.",
+      "One Metabase page now holds every feeder question -- the Data upload box links to it, so you open one link instead of one per file.",
+    ],
+  },
+  {
     date: "2026-10-02",
     title: "Shipper Radar -> Restock -> B2B Document Compliance now covers every document type, with a real breach classification",
     points: [

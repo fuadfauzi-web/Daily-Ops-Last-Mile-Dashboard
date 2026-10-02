@@ -1586,6 +1586,52 @@
         ]
       }
     },
+    "/api/kpi/upload-many": {
+      "post": {
+        "summary": "Several downloaded files at once: each is matched to its dataset by its columns (kd.detect_dataset) and stored exactly like the one-file upload.",
+        "description": "Several downloaded files at once (2026-10-03): each is matched to its dataset by its columns (kd.detect_dataset) and stored exactly like\nthe one-file upload. A file that can't be matched or stored is reported on its own line and never stops the others.",
+        "operationId": "kpi_upload_many_api_kpi_upload_many_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_kpi_upload_many_api_kpi_upload_many_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UploadManyItem"
+                  },
+                  "title": "Response Kpi Upload Many Api Kpi Upload Many Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "KPI page"
+        ]
+      }
+    },
     "/api/kpi/metabase-check": {
       "get": {
         "summary": "Admin only: plain-English diagnosis of the app's Metabase connection (never returns the key).",
@@ -4720,6 +4766,23 @@
           "file"
         ],
         "title": "Body_kpi_upload_api_kpi_uploads__dataset__post"
+      },
+      "Body_kpi_upload_many_api_kpi_upload_many_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_kpi_upload_many_api_kpi_upload_many_post"
       },
       "Body_submit_feedback_api_feedback_post": {
         "properties": {
@@ -10538,6 +10601,51 @@
           "hint"
         ],
         "title": "UploadInfo"
+      },
+      "UploadManyItem": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "ok",
+          "detail"
+        ],
+        "title": "UploadManyItem"
       },
       "UploadResult": {
         "properties": {
