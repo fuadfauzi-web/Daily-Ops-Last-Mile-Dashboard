@@ -14,7 +14,7 @@ export const FEATURES = {
   kpiDashboard: true, // "KPI" page (Beta -- preview only, not to be used until the green light): weekly results, OPEX result, RCA for Hybrid / Invalid POD / COD RTS
   dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; every role, limited to its own scope
   managementView: true, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
-  dailyKpi: true, // "Daily KPI" tab (staging-only for now): today's FIFO D0 / Completion D0 / Prior, how many parcels left to attempt or deliver
+  dailyKpi: true, // "Daily KPI" tab (Beta -- numbers not 100% accurate yet, says so in-app): today's FIFO D0 / Prior / Completion D0, how many parcels left to attempt or deliver
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + To Do List + Task Assigned
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
