@@ -474,7 +474,13 @@ export default function OperationHealth({ dod, shipper, aging, lhTrips, me, relo
         )}
         {me?.role === "admin" && (
           <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-            Upload LH trips (Metabase question 127512, CSV, last 14 days)
+            <span>
+              LH trips (last 14 days): 1) open{" "}
+              <a href="https://metabase.ninjavan.co/question/127512" target="_blank" rel="noreferrer" className="font-bold text-brand underline">
+                Metabase question 127512
+              </a>
+              , 2) Download results as .csv, 3) upload it here
+            </span>
             <input type="file" accept=".csv,.xlsx,.xls" disabled={uploadingLh} onChange={(e) => uploadLh(e.target.files[0])} />
             {uploadingLh && <span>Uploading…</span>}
             {lhTrips?.source && <span className="text-slate-400">current: {lhTrips.source}</span>}
