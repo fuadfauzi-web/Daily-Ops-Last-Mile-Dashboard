@@ -1579,19 +1579,23 @@ def bucket_rpu_aging(rows: list[dict], only_zero_attempt: bool) -> tuple[dict[st
 
 
 # ---------------------------------------------------------------------------
-# B2B Document Compliance (query 1293, RDO Push Off) -- first of 4 planned
-# document types (RDO/GRN/PSO/Reattempt); only RDO's Redash query is ready so
-# far, the rest are scaffolded on the frontend's document-type filter but
-# have no data behind them yet. Objective (2026-09-24 feedback): let a hub
-# see which RDO tracking numbers still need their AWB printed in the morning,
-# or which bundle needs chasing at day's end. Grouped by bundle_last_sweep_hub
-# -- where the underlying bundle physically sits -- same as every other
-# "where does this actually sit" metric in this app. The exact Remarks-style
-# classification the Fleet Manager's own sheet computes (e.g. "MPS completed
-# but RDO still Pending routed") isn't reproduced here yet -- this exposes the
-# raw rdo_granular_status/bundle_granular_status pair instead so the numbers
-# are verifiable against Redash directly; that classification is a follow-up
-# once the exact rule is confirmed.
+# B2B Document Compliance (query 1656, "OPEX: Document Collection Aging" --
+# 2026-10-02 feedback, replaces query 1293 "FLEET: RDO Push Off"). Objective
+# (2026-09-24 feedback): let a hub see which tracking numbers still need
+# their document printed in the morning, or which bundle needs chasing at
+# day's end. Grouped by bundle_last_sweep_hub -- where the underlying bundle
+# physically sits -- same as every other "where does this actually sit"
+# metric in this app.
+#
+# Unlike 1293 (RDO only), 1656 unions every document type into one result set
+# and adds two fields that used to be missing: document_type (whatever
+# Redash actually returns -- MYRDO/DO/GRN/PSO seen so far, not hardcoded, so
+# a new type just shows up) and aging/aging_group, Redash's own precomputed
+# breach classification -- days between the bundle's delivery success and
+# now, bucketed 0 = Normal, 1 = Potential Breach, >1 = Breach. That is the
+# "MPS completed but document still pending" classification the Fleet
+# Manager's sheet used to compute by hand -- now read straight from Redash
+# instead of reproduced here.
 # ---------------------------------------------------------------------------
 
 # 2026-09-24 feedback: the by-station table also breaks Total TN down by RDO
@@ -1605,7 +1609,10 @@ RDO_STATUS_COLUMNS = {
     "enroutetosortinghub": "enroute_sorting",
     "pickupfail": "pickup_fail",
 }
-RDO_COMPLIANCE_KEYS = ("total_tn",) + tuple(RDO_STATUS_COLUMNS.values())
+# aging_group bucket, read straight from Redash's own aging (int days between the
+# bundle's delivery success and now): 0 = Normal, 1 = Potential Breach, >1 = Breach.
+RDO_BREACH_KEYS = ("normal", "potential_breach", "breach")
+RDO_COMPLIANCE_KEYS = ("total_tn",) + tuple(RDO_STATUS_COLUMNS.values()) + RDO_BREACH_KEYS
 RDO_ROWS_CAP = 2000  # same rationale as Aging Details / Old Route -- bound payload size
 
 # hub_bucket is for the views that DO want non-station hubs (Cold Chain: its parcels
@@ -1631,32 +1638,56 @@ def _rdo_status_key(status: str | None) -> str | None:
     return RDO_STATUS_COLUMNS.get(norm)
 
 
-def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
-    """Returns ({hub_code: {..., total_tn, <per-status counts>}}, [tn_row, ...]).
-    Every bundle status is kept (completed or not), but only bundles whose last
-    sweep hub is one of the 143 stations. age = days since the RDO was created."""
-    today = datetime.now(_MYT).date()
+def _rdo_doc_type_key(raw: str | None) -> str:
+    return (raw or "").strip().lower() or "unknown"
+
+
+def _rdo_breach_key(aging) -> str | None:
+    if aging is None:
+        return None
+    aging = int(aging)
+    if aging <= 0:
+        return "normal"
+    if aging == 1:
+        return "potential_breach"
+    return "breach"
+
+
+def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict], list[str]]:
+    """Returns ({hub_code: {..., by_doc_type: {doc_type_key: {total_tn, <per-status
+    counts>, <breach counts>}}}}, [tn_row, ...], [doc_type_key, ...] sorted).
+    Every bundle status is kept (completed or not), but only bundles whose last sweep
+    hub is one of the 143 stations. Counts are kept PER document type (not flattened)
+    so a request can sum just the selected ones -- see main.py's flatten helper call."""
     by_station = {
-        hub: {
-            "station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3],
-            **{k: 0 for k in RDO_COMPLIANCE_KEYS},
-        }
+        hub: {"station_code": hub, "station_name": HUBS[hub][0], "zone": HUBS[hub][2], "region": HUBS[hub][3], "by_doc_type": {}}
         for hub in HUBS
     }
     tn_rows = []
+    doc_types_seen: set[str] = set()
     for r in rows:
         code = r.get("bundle_last_sweep_hub")
         row = by_station.get(code)
         if row is None:
             continue
         name, zone, region = row["station_name"], row["zone"], row["region"]
-        row["total_tn"] += 1
+        doc_type_key = _rdo_doc_type_key(r.get("document_type"))
+        doc_types_seen.add(doc_type_key)
+        bucket = row["by_doc_type"].setdefault(doc_type_key, {k: 0 for k in RDO_COMPLIANCE_KEYS})
+        bucket["total_tn"] += 1
         status_col = _rdo_status_key(r.get("rdo_granular_status"))
         if status_col:
-            row[status_col] += 1
-        created = _parse_dt(r.get("rdo_creation_datetime"))
+            bucket[status_col] += 1
+        aging = r.get("aging")
+        breach_key = _rdo_breach_key(aging)
+        if breach_key:
+            bucket[breach_key] += 1
         tn_rows.append({
-            "age": max(0, (today - created.date()).days) if created else None,
+            "age": aging,
+            "aging_group": r.get("aging_group"),
+            "breach_key": breach_key,
+            "document_type": r.get("document_type"),
+            "document_type_key": doc_type_key,
             "tracking_number": r.get("rdo_tracking_id"),
             "station_code": code,
             "station_name": name,
@@ -1672,7 +1703,22 @@ def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict]]
             "bundle_delivered_at": r.get("bundle_delivery_success_datetime"),
             "bundle_last_sweep_hub": r.get("bundle_last_sweep_hub"),
         })
-    return by_station, tn_rows
+    return by_station, tn_rows, sorted(doc_types_seen)
+
+
+def flatten_rdo_station(row: dict, doc_types: set[str] | None) -> dict:
+    """One by_station entry (station_code/station_name/zone/region/by_doc_type) ->
+    a flat dict with RDO_COMPLIANCE_KEYS, summing just the selected doc_types'
+    sub-buckets (every type when doc_types is None) -- the shape rollup_rdo_compliance
+    and the frontend's station table already expect."""
+    flat = {"station_code": row["station_code"], "station_name": row["station_name"], "zone": row["zone"], "region": row["region"]}
+    flat.update({k: 0 for k in RDO_COMPLIANCE_KEYS})
+    for dt, bucket in row["by_doc_type"].items():
+        if doc_types is not None and dt not in doc_types:
+            continue
+        for k in RDO_COMPLIANCE_KEYS:
+            flat[k] += bucket[k]
+    return flat
 
 
 def rollup_rdo_compliance(station_rows: list[dict], group_key: str) -> list[dict]:

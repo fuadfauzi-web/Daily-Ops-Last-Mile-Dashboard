@@ -3,10 +3,10 @@ import { api } from "../api";
 import { exportCsv } from "../lib/csv";
 import { formatLocalDateTime, formatTime } from "../lib/format";
 
-// B2B Document Compliance drilldown: every RDO tracking number behind one station
-// row's count (Total TN, or one RDO-status column), with the bundle details --
+// B2B Document Compliance drilldown: every tracking number behind one station row's
+// count (Total TN, a status column, or a breach column), with the bundle details --
 // including bundles that are NOT completed yet -- and a full-detail CSV export
-// (2026-09-25 feedback).
+// (2026-09-25 feedback; document_type/aging/aging_group added 2026-10-02).
 export function bundleStatusText(r) {
   if (r.bundle_status === "Completed" && r.bundle_delivered_at) {
     return `Completed · ${formatLocalDateTime(r.bundle_delivered_at)}`;
@@ -16,10 +16,14 @@ export function bundleStatusText(r) {
 
 // `sort` is the raw value a column sorts by (dates by their ISO text, not the pretty label).
 const COLUMNS = [
-  { label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "", sort: (r) => r.tracking_number },
-  { label: "RDO Status", text: (r) => r.rdo_status ?? "", sort: (r) => r.rdo_status },
-  { label: "RDO Created", text: (r) => formatLocalDateTime(r.rdo_created_at), sort: (r) => r.rdo_created_at },
-  { label: "Age (days)", text: (r) => (r.age ?? ""), sort: (r) => r.age },
+  { label: "Tracking Number", text: (r) => r.tracking_number ?? "", sort: (r) => r.tracking_number },
+  { label: "Document Type", text: (r) => r.document_type ?? "", sort: (r) => r.document_type },
+  { label: "Status", text: (r) => r.rdo_status ?? "", sort: (r) => r.rdo_status },
+  { label: "Created", text: (r) => formatLocalDateTime(r.rdo_created_at), sort: (r) => r.rdo_created_at },
+  // String, not the raw number -- `c.text(r) || "—"` below would otherwise treat a
+  // genuine 0 (Normal) as empty and show "—" like it's missing data.
+  { label: "Aging (days)", text: (r) => (r.age != null ? String(r.age) : ""), sort: (r) => r.age },
+  { label: "Aging Group", text: (r) => r.aging_group ?? "", sort: (r) => r.aging_group },
   { label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "", sort: (r) => r.bundle_tracking_number },
   { label: "Bundle Status", text: bundleStatusText, sort: (r) => r.bundle_delivered_at || r.bundle_status },
   { label: "Bundle Last Sweep Hub", text: (r) => r.bundle_last_sweep_hub ?? "", sort: (r) => r.bundle_last_sweep_hub },
@@ -40,7 +44,7 @@ export default function RdoTnModal({ state, onClose }) {
     setError(null);
     setCopied(false);
     api
-      .b2bComplianceTns(state.stationCode, state.status)
+      .b2bComplianceTns(state.stationCode, state.status, state.documentTypes)
       .then(setData)
       .catch((e) => setError(e.message));
   }, [state]);
@@ -77,7 +81,7 @@ export default function RdoTnModal({ state, onClose }) {
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
             <div className="font-semibold text-slate-900">{state.stationName}</div>
-            <div className="text-xs text-slate-500">RDO — {state.label}</div>
+            <div className="text-xs text-slate-500">{state.label}</div>
           </div>
           <button onClick={onClose} className="text-xl leading-none text-slate-400 hover:text-slate-600">
             &times;
@@ -143,7 +147,7 @@ export default function RdoTnModal({ state, onClose }) {
                       rows.map((r, i) => (
                         <tr key={`${r.tracking_number}-${i}`} className="border-t border-slate-100">
                           {COLUMNS.map((c, j) => (
-                            <td key={c.label} className={`whitespace-nowrap px-3 py-1.5 ${j === 0 || j === 4 ? "font-mono" : ""}`}>
+                            <td key={c.label} className={`whitespace-nowrap px-3 py-1.5 ${j === 0 || j === 6 ? "font-mono" : ""}`}>
                               {c.text(r) || "—"}
                             </td>
                           ))}

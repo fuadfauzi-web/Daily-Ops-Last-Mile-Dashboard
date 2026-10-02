@@ -96,7 +96,7 @@ export const api = {
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
   oldRoute: () => request("/api/old-route"),
   b2bCompliance: (documentTypes) =>
-    request(`/api/b2b-compliance?document_type=${encodeURIComponent(documentTypes?.length ? documentTypes.join(",") : "rdo")}`),
+    request(`/api/b2b-compliance?document_type=${encodeURIComponent(documentTypes?.length ? documentTypes.join(",") : "")}`),
   missingDetails: () => request("/api/recovery/missing-details"),
   recoverySettings: {
     get: () => request("/api/recovery/settings"),
@@ -198,8 +198,11 @@ export const api = {
   },
   coldChain: () => request("/api/cold-chain"),
   restockBundles: (view) => request(`/api/restock-bundles?view=${encodeURIComponent(view || "all")}`),
-  b2bComplianceTns: (stationCode, status) =>
-    request(`/api/b2b-compliance/tns?station_code=${encodeURIComponent(stationCode)}&status=${encodeURIComponent(status || "all")}`),
+  b2bComplianceTns: (stationCode, status, documentTypes) =>
+    request(
+      `/api/b2b-compliance/tns?station_code=${encodeURIComponent(stationCode)}&status=${encodeURIComponent(status || "all")}` +
+        `&document_type=${encodeURIComponent(documentTypes?.length ? documentTypes.join(",") : "")}`
+    ),
   driverDetails: {
     status: () => request("/api/admin/driver-details/status"),
     upload: async (file) => {
