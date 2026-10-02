@@ -109,6 +109,7 @@ export function stationRollup(rows) {
     const routedDenom = s.total_routed + s._inHubSum;
     STOCK.forEach((k) => (s[k] = s[k] / s.n));
     s.routed_pct = pct(s.total_routed, routedDenom);
+    s.volume = routedDenom; // routed + in hub summed over the days -- same scale as routed / attendance
     return s;
   });
 }
@@ -117,14 +118,15 @@ export function stationRollup(rows) {
 export function networkTotals(stations) {
   const routed = sum(stations, "total_routed");
   const inHub = sum(stations, "total_in_hub");
+  const volume = sum(stations, "volume");
   const success = sum(stations, "current_success");
   const att = sum(stations, "attendance");
   const hd = sum(stations, "attendance_hd"), hr = sum(stations, "attendance_hr");
   const id = sum(stations, "attendance_id"), ir = sum(stations, "attendance_ir");
   return {
-    routed, inHub, success,
+    routed, inHub, success, volume,
     successRate: pct(success, routed),
-    routedPct: pct(routed, routed + inHub),
+    routedPct: pct(routed, volume),
     att, hybrid: hd + hr, independent: id + ir, rescue: sum(stations, "attendance_rescue"),
     splitKnown: hd + hr + id + ir > 0,
     zeroAttempt: sum(stations, "zero_attempt_total"),

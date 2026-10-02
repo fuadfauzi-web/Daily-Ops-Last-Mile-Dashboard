@@ -63,7 +63,7 @@ export default function OperationHealth({ dod, shipper, aging }) {
     });
   }, [dod.rows, days, weeks, grain]);
 
-  const withVolume = stations.filter((s) => s.total_routed + s.total_in_hub > 0);
+  const withVolume = stations.filter((s) => s.volume > 0);
 
   // ---- routed % buckets, compared with 0 attempt
   const routedBuckets = ROUTED_BUCKETS.map((b) => {
@@ -76,10 +76,10 @@ export default function OperationHealth({ dod, shipper, aging }) {
 
   // ---- attendance vs volume at a productivity target
   const coverageOf = (s, t) => {
-    const required = (s.total_routed + s.total_in_hub) / t;
+    const required = s.volume / t;
     return { required, coverage: required ? (s.attendance / required) * 100 : 100, gap: required - s.attendance };
   };
-  const volume = tot.routed + tot.inHub;
+  const volume = tot.volume;
   const sensitivity = PRODUCTIVITY_TARGETS.map((t) => ({ target: t, required: volume / t, coverage: pct(tot.att, volume / t) }));
   const stationCoverage = withVolume.map((s) => ({ ...s, ...coverageOf(s, target) }));
   const coverageBuckets = COVERAGE_BUCKETS.map((b) => {
@@ -284,7 +284,7 @@ export default function OperationHealth({ dod, shipper, aging }) {
           columns={[
             { key: "station_name", label: "Station", align: "left", sticky: true },
             { key: "region", label: "Region" },
-            { key: "volume", label: "Volume", render: (r) => int(r.total_routed + r.total_in_hub) },
+            { key: "volume", label: "Volume", render: (r) => int(r.volume) },
             { key: "attendance", label: "Attendance", render: (r) => int(r.attendance) },
             { key: "required", label: "Needed", render: (r) => int(r.required) },
             { key: "coverage", label: "Rate", render: (r) => `${dec1(r.coverage)}%` },
