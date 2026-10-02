@@ -1016,7 +1016,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 : me.role === "manager"
                   ? "You can grant Region Head (RH), RFS, Station Head (SH) or Fleet Assistant (FA), with any access level except \"sees everything\" / HQ."
                   : "role: hod, manager, fleet_admin, opex, recovery, restock (HQ staff), region_head, rfs (region staff), station_head, fleet_assistant (station staff)" +
-                    (me.email === OWNER_EMAIL ? ", or admin" : " (only the app owner can grant admin)") +
+                    (me.email === OWNER_EMAIL ? ", or admin (Superadmin)" : " (only the app owner can grant admin)") +
                     ". scope_type: station, zone, region, hq (HQ staff) or all (leave scope_values blank for hq / all)."}
             </p>
 

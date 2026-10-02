@@ -62,7 +62,7 @@ from aggregate import (
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
-from auth import POSITIONS, CurrentUser, effective_scope, get_current_user, parse_scope_values, tier_of
+from auth import POSITIONS, CurrentUser, data_scope, get_current_user, parse_scope_values, tier_of
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
     QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
@@ -779,21 +779,23 @@ async def me(
         )
         if target is None:
             raise HTTPException(status_code=422, detail="That user isn't in the user list")
+        st, sv = data_scope(tier_of(target[1]), target[2], parse_scope_values(target[3]))
         return {
-            "email": target[0], "provisioned": True, "role": tier_of(target[1]), "scope_type": effective_scope(target[2]),
-            "scope_values": parse_scope_values(target[3]), "display_name": target[4],
+            "email": target[0], "provisioned": True, "role": tier_of(target[1]), "scope_type": st,
+            "scope_values": sv, "display_name": target[4],
             "is_impersonating": True, "real_role": real_role, "position": target[1],
         }
     if real_role == "admin" and x_view_as_role:
+        st, sv = data_scope(tier_of(x_view_as_role), x_view_as_scope_type or "all", [v for v in (x_view_as_scope_values or "").split(",") if v])
         return {
             "email": row[0], "provisioned": True, "role": tier_of(x_view_as_role), "position": x_view_as_role,
-            "scope_type": effective_scope(x_view_as_scope_type or "all"),
-            "scope_values": [v for v in (x_view_as_scope_values or "").split(",") if v],
+            "scope_type": st, "scope_values": sv,
             "display_name": row[4], "is_impersonating": True, "real_role": real_role,
         }
+    st, sv = data_scope(real_role, row[2], parse_scope_values(row[3]))
     return {
-        "email": row[0], "provisioned": True, "role": real_role, "scope_type": effective_scope(row[2]),
-        "scope_values": parse_scope_values(row[3]), "display_name": row[4], "real_role": real_role, "position": row[1],
+        "email": row[0], "provisioned": True, "role": real_role, "scope_type": st,
+        "scope_values": sv, "display_name": row[4], "real_role": real_role, "position": row[1],
     }
 
 
@@ -3469,7 +3471,7 @@ class UserIn(BaseModel):
     display_name: str | None = None
 
 
-# Only the app owner can grant the Admin role -- not just any existing admin.
+# Only the app owner can grant the Superadmin (stored as "admin") role -- not just any existing admin.
 # 2026-09-21 feedback: an admin promoted by the owner still can't create more
 # admins themselves, which this single check (keyed off the ACTING user's own
 # email, not their role) gives for free.
@@ -3481,7 +3483,7 @@ def _require_admin(user: CurrentUser) -> None:
     Region staff get scoped add/edit/remove, see _require_can_add_users and
     _require_can_manage_target."""
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(status_code=403, detail="Superadmin access required")
 
 
 def _require_can_add_users(user: CurrentUser) -> None:
@@ -3506,7 +3508,8 @@ def _stations_for_scope(scope_type: str, scope_values: list[str]) -> set[str] | 
 
 def _scope_within(acting: CurrentUser, scope_type: str, scope_values: list[str]) -> bool:
     """True when everything the (scope_type, scope_values) covers is also covered by the acting user's own scope."""
-    mine = _stations_for_scope(acting.scope_type, acting.scope_values)
+    # Where the person belongs (a Manager's dedicated region), not the wider scope their data is read with.
+    mine = _stations_for_scope(acting.home_scope_type or acting.scope_type, acting.home_scope_values if acting.home_scope_type else acting.scope_values)
     if mine is None:
         return True
     theirs = _stations_for_scope(scope_type, scope_values)
@@ -3557,7 +3560,7 @@ def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
 
 def _require_can_grant_role(acting: CurrentUser, role: str) -> None:
     if role == "admin" and acting.email != _OWNER_EMAIL:
-        raise HTTPException(status_code=403, detail="Only the app owner can grant the Admin role")
+        raise HTTPException(status_code=403, detail="Only the app owner can grant the Superadmin role")
 
 
 def _row_to_user_out(r) -> dict:

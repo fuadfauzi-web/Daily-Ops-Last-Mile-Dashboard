@@ -26,6 +26,15 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-02",
+    title: "Superadmin, Managers see everything, and the PIC list now follows the Staff & Org Chart (staging only)",
+    points: [
+      "The Admin role is now called Superadmin, so it is not mixed up with the Fleet Admin position. Nothing about what it can do changed.",
+      "A Manager can have a dedicated region -- it places them in the org chart and the PIC list, and it is the region whose staff they manage -- but, like HOD, a Manager now sees every region's data.",
+      "The PIC search reads the Staff & Org Chart that the Fleet Admin team keeps, not the Fleet Management sheet: when someone joins, moves or leaves there, the PIC box follows straight away.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "New: Staff & Org Chart tab for the Fleet Admin team (staging only), and every Station Head / Fleet Assistant now has access",
     points: [
       "The Fleet Admin team keeps the staff list in one place: add a joiner, move someone to another station, change a position, remove a leaver. The same list gives people dashboard access and feeds the PIC box, so the PIC search stays right when staff change.",

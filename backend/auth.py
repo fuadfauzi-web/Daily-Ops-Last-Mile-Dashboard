@@ -32,6 +32,10 @@ class CurrentUser:
     # 2026-10-02: the job title the account is stored with (users.role), e.g. 'rfs' or 'opex'. `role` above is the access tier
     # that title belongs to -- every permission check keeps reading `role`, so a new position never needs touching them.
     position: str = ""
+    # 2026-10-02: where the person BELONGS, as stored -- e.g. a Manager's dedicated region. For a Manager the scope above is
+    # widened to everything (they see all of the data), but who they may manage on the Users page stays within this.
+    home_scope_type: str = ""
+    home_scope_values: list[str] | None = None
 
 
 def parse_scope_values(raw) -> list[str]:
@@ -52,7 +56,7 @@ def parse_scope_values(raw) -> list[str]:
 #        region (zone / region staff: manage station staff) > station.
 # 'region' and 'station' are the old, unspecific titles -- still valid for people not yet given a position.
 POSITIONS: dict[str, tuple[str, str, str]] = {  # position -> (label, group, tier)
-    "admin": ("Admin", "hq", "admin"),
+    "admin": ("Superadmin", "hq", "admin"),  # stored as 'admin'; shown as Superadmin so it is not mixed up with the Fleet Admin position
     "hod": ("HOD", "hq", "manager"),
     "manager": ("Manager", "hq", "manager"),
     "fleet_admin": ("Fleet Admin", "hq", "hq_staff"),
@@ -76,6 +80,19 @@ def tier_of(position: str) -> str:
 def effective_scope(scope_type: str) -> str:
     """'hq' (HQ staff: no dedicated region / zone / station) filters the data like 'all' -- they see every region for now."""
     return "all" if scope_type == "hq" else scope_type
+
+
+def data_scope(tier: str, scope_type: str, scope_values: list[str]) -> tuple[str, list[str]]:
+    """The scope the DATA is filtered by. A Manager / HOD may have a dedicated region (it places them in the org chart and the PIC
+    list) but still sees everything, so for the manager tier the stored scope is widened to 'all'."""
+    if tier == "manager":
+        return "all", []
+    return effective_scope(scope_type), scope_values
+
+
+def _scope_fields(tier: str, scope_type: str, scope_values: list[str]) -> dict:
+    st, sv = data_scope(tier, scope_type, scope_values)
+    return {"scope_type": st, "scope_values": sv}
 
 
 _VIEW_AS_ROLES = tuple(POSITIONS)
@@ -115,8 +132,9 @@ async def get_current_user(
         if target is None:
             raise HTTPException(status_code=422, detail="That user isn't in the user list")
         return CurrentUser(
-            email=target[0], role=tier_of(target[1]), scope_type=effective_scope(target[2]), scope_values=parse_scope_values(target[3]),
-            display_name=target[4], is_impersonating=True, real_role=real_role, position=target[1],
+            email=target[0], role=tier_of(target[1]), display_name=target[4], is_impersonating=True, real_role=real_role, position=target[1],
+            home_scope_type=target[2], home_scope_values=parse_scope_values(target[3]),
+            **_scope_fields(tier_of(target[1]), target[2], parse_scope_values(target[3])),
         )
     if real_role == "admin" and x_view_as_role:
         if x_view_as_role not in _VIEW_AS_ROLES:
@@ -124,19 +142,21 @@ async def get_current_user(
         return CurrentUser(
             email=row[0],
             role=tier_of(x_view_as_role),
-            scope_type=effective_scope(x_view_as_scope_type or "all"),
-            scope_values=[v for v in (x_view_as_scope_values or "").split(",") if v],
+            home_scope_type=x_view_as_scope_type or "all",
+            home_scope_values=[v for v in (x_view_as_scope_values or "").split(",") if v],
+            **_scope_fields(tier_of(x_view_as_role), x_view_as_scope_type or "all", [v for v in (x_view_as_scope_values or "").split(",") if v]),
             display_name=row[4],
             is_impersonating=True,
             real_role=real_role,
             position=x_view_as_role,
         )
     return CurrentUser(
-        email=row[0], role=real_role, scope_type=effective_scope(row[2]), scope_values=parse_scope_values(row[3]),
-        display_name=row[4], real_role=real_role, position=row[1],
+        email=row[0], role=real_role, display_name=row[4], real_role=real_role, position=row[1],
+        home_scope_type=row[2], home_scope_values=parse_scope_values(row[3]),
+        **_scope_fields(real_role, row[2], parse_scope_values(row[3])),
     )
 
 
 async def require_admin(user: CurrentUser) -> None:
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(status_code=403, detail="Superadmin access required")

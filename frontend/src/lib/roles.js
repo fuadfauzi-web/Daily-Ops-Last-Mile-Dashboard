@@ -3,7 +3,7 @@
 //   tiers: admin > manager (HOD / Manager) > hq_staff (Fleet Admin / OPEX / Recovery / Restock) > region > station
 // 'region' / 'station' are the old, unspecific titles -- still valid, no longer offered when adding someone.
 export const POSITIONS = {
-  admin: { label: "Admin", group: "hq", tier: "admin" },
+  admin: { label: "Superadmin", group: "hq", tier: "admin" },
   hod: { label: "HOD", group: "hq", tier: "manager" },
   manager: { label: "Manager", group: "hq", tier: "manager" },
   fleet_admin: { label: "Fleet Admin", group: "hq", tier: "hq_staff" },

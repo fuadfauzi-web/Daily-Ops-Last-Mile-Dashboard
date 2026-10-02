@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import MultiSelect from "./MultiSelect";
-import { GROUPS, isHqTier, positionLabel } from "../lib/roles";
+import { GROUPS, isHqTier, positionLabel, tierOf } from "../lib/roles";
 
 // Lets the real admin preview the app as somebody else -- without changing their
 // own account -- to check a permission or scoping change actually works, or to
@@ -76,7 +76,7 @@ export default function RoleTester({ me, onChanged }) {
 
   if (me.real_role !== "admin") return null;
 
-  const canApply = mode === "user" ? !!userEmail : role === "admin" || scopeType === "all" || scopeType === "hq" || scopeValues.length > 0;
+  const canApply = mode === "user" ? !!userEmail : role === "admin" || tierOf(role) === "manager" || scopeType === "all" || scopeType === "hq" || scopeValues.length > 0;
 
   return (
     <div className="relative" ref={ref}>
@@ -154,7 +154,7 @@ export default function RoleTester({ me, onChanged }) {
                 ))}
               </select>
 
-              {role !== "admin" && (
+              {role !== "admin" && tierOf(role) !== "manager" && (
                 <>
                   <label className="mb-1 block text-[11px] font-medium text-slate-500">Scope</label>
                   <select
