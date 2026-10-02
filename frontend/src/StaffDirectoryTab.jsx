@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import HeadcountView from "./HeadcountView";
+import StaffImport from "./StaffImport";
 import MultiSelect from "./components/MultiSelect";
 import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
 
@@ -9,7 +10,7 @@ import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
 // see): that starts out the same as the posting and is changed only by a Manager / HOD, a Region Head / RFS or the Superadmin in
 // Settings -> Users, e.g. to give someone sent to rescue another station or region that place's data. The list shows when it differs.
 const SHORT = { region_head: "RH", rfs: "RFS", station_head: "SH", fleet_assistant: "FA" };
-const emptyForm = { email: "", name: "", role: "fleet_assistant", scope_type: "station", scope_values: [] };
+const emptyForm = { email: "", name: "", role: "fleet_assistant", scope_type: "station", scope_values: [], phone: "", employee_id: "" };
 // Every position the Fleet Admin team may set (the Superadmin role is not one of them), grouped like the roles are.
 const POSITION_GROUPS = GROUPS.map((g) => ({ ...g, positions: g.positions.filter((p) => p !== "admin") }));
 
@@ -118,6 +119,7 @@ export default function StaffDirectoryTab({ me }) {
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -140,7 +142,7 @@ export default function StaffDirectoryTab({ me }) {
     const q = search.trim().toLowerCase();
     return (people || [])
       .filter((u) => roleFilter === "all" || u.position === roleFilter || POSITIONS[u.position]?.group === roleFilter)
-      .filter((u) => !q || [u.email, u.name, positionLabel(u.position), ...(u.home.scope_values || [])].join(" ").toLowerCase().includes(q))
+      .filter((u) => !q || [u.email, u.name, u.phone, u.employee_id, positionLabel(u.position), ...(u.home.scope_values || [])].join(" ").toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [people, search, roleFilter]);
 
@@ -148,8 +150,9 @@ export default function StaffDirectoryTab({ me }) {
     const u = (people || []).find((x) => x.email.toLowerCase() === email.toLowerCase());
     if (!u) return;
     setEditing(u.email);
-    setForm({ email: u.email, name: u.name, role: u.position, scope_type: u.home.scope_type === "all" ? "hq" : u.home.scope_type, scope_values: u.home.scope_values || [] });
+    setForm({ email: u.email, name: u.name, role: u.position, scope_type: u.home.scope_type === "all" ? "hq" : u.home.scope_type, scope_values: u.home.scope_values || [], phone: u.phone || "", employee_id: u.employee_id || "" });
     setShowForm(true);
+    setShowImport(false);
     setView("list");
     setError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -175,7 +178,7 @@ export default function StaffDirectoryTab({ me }) {
     try {
       if (!form.name.trim()) throw new Error("Type the person's name");
       if (form.scope_type !== "hq" && form.scope_values.length === 0) throw new Error("Pick where they are based");
-      const payload = { email: form.email.trim(), name: form.name.trim(), role: form.role, scope_type: form.scope_type, scope_values: form.scope_type === "hq" ? [] : form.scope_values };
+      const payload = { email: form.email.trim(), name: form.name.trim(), role: form.role, scope_type: form.scope_type, scope_values: form.scope_type === "hq" ? [] : form.scope_values, phone: form.phone.trim(), employee_id: form.employee_id.trim() };
       if (editing) await api.staff.update(editing, payload);
       else await api.staff.add(payload);
       cancel();
@@ -231,10 +234,16 @@ export default function StaffDirectoryTab({ me }) {
       {chart && view === "list" && (
         <>
           {canEdit && !showForm && (
-            <button onClick={() => { setShowForm(true); setEditing(null); setForm(emptyForm); }} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white">
-              + Add a person
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => { setShowForm(true); setShowImport(false); setEditing(null); setForm(emptyForm); }} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white">
+                + Add a person
+              </button>
+              <button onClick={() => setShowImport((v) => !v)} className="rounded-lg border border-slate-300 bg-white px-4 py-1.5 text-sm font-medium text-slate-700">
+                Paste from sheet
+              </button>
+            </div>
           )}
+          {canEdit && showImport && !showForm && <StaffImport people={people} stations={stations} regions={regions} onClose={() => setShowImport(false)} onDone={load} />}
           {canEdit && showForm && (
             <form onSubmit={submit} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
               <input required type="email" disabled={!!editing} placeholder="name@ninjavan.co" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -263,7 +272,9 @@ export default function StaffDirectoryTab({ me }) {
                   </div>
                 )}
               </div>
-              <div className="flex items-start gap-2">
+              <input placeholder="Mobile (optional)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              <input placeholder="Employee ID (optional)" value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              <div className="flex items-start gap-2 lg:col-span-3">
                 <button type="submit" disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">{editing ? "Save" : "Add"}</button>
                 <button type="button" onClick={cancel} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600">Cancel</button>
               </div>
@@ -296,6 +307,8 @@ export default function StaffDirectoryTab({ me }) {
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Position</th>
                   <th className="px-3 py-2 font-medium">Posted at</th>
+                  <th className="px-3 py-2 font-medium">Mobile</th>
+                  <th className="px-3 py-2 font-medium">Employee ID</th>
                   <th className="px-3 py-2 font-medium">Access</th>
                   <th className="px-3 py-2"></th>
                 </tr>
@@ -307,6 +320,8 @@ export default function StaffDirectoryTab({ me }) {
                     <td className="px-3 py-1.5 text-slate-500">{u.email}</td>
                     <td className="px-3 py-1.5">{positionLabel(u.position)}</td>
                     <td className="px-3 py-1.5 text-slate-500">{whereText(u.home)}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{u.phone}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{u.employee_id}</td>
                     <td className="px-3 py-1.5 text-xs">
                       {u.custom_access ? (
                         <span title="Set by hand in Settings -> Users, e.g. covering another station or region" className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
@@ -327,7 +342,7 @@ export default function StaffDirectoryTab({ me }) {
                   </tr>
                 ))}
                 {people && rows.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-400">Nobody matches.</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-400">Nobody matches.</td></tr>
                 )}
               </tbody>
             </table>

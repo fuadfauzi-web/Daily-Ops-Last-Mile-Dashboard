@@ -63,6 +63,7 @@ SUMMARIES = {
     ("get", "/api/org-chart"): "Staff & Org Chart -- HQ staff, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants (vacant seats show as empty), plus whether the caller can edit. HQ staff and above.",
     ("get", "/api/staff"): "Staff list for Staff & Org Chart -- every person (not the Superadmin) with position, where they are posted, what they can see (access) and whether that access was set by hand. HQ staff and above.",
     ("post", "/api/staff"): "Add a person to the staff list (posting = access to start with). Fleet Admin team and Superadmin only.",
+    ("post", "/api/staff/bulk"): "Paste-in of many people at once for Staff & Org Chart: each row is added, or updated if the email is already in the list; one bad row never stops the others. Returns added / updated / skipped / error per row. Fleet Admin team and Superadmin only.",
     ("patch", "/api/staff/{email}"): "Change a person's name, position or posting. Their access moves with it unless it was set by hand. Fleet Admin team and Superadmin only.",
     ("delete", "/api/staff/{email}"): "Remove a person from the staff list and the dashboard. Fleet Admin team and Superadmin only.",
     ("get", "/api/headcount"): "Headcount per station (people posted there + TBA seats), the seats, and what the caller may do (add / remove / approve). HQ staff and above.",

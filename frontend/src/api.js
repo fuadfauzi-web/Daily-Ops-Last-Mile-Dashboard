@@ -118,6 +118,7 @@ export const api = {
   staff: {
     list: (opts) => request("/api/staff", opts),
     add: (payload) => request("/api/staff", { method: "POST", body: JSON.stringify(payload) }),
+    bulk: (payload) => request("/api/staff/bulk", { method: "POST", body: JSON.stringify(payload) }),
     update: (email, payload) => request(`/api/staff/${encodeURIComponent(email)}`, { method: "PATCH", body: JSON.stringify(payload) }),
     remove: (email) => request(`/api/staff/${encodeURIComponent(email)}`, { method: "DELETE" }),
   },
@@ -203,7 +204,6 @@ export const api = {
   managementCapacity: () => request("/api/management-view/capacity"),
   managementCapacitySave: (payload) => request("/api/management-view/capacity", { method: "PUT", body: JSON.stringify(payload) }),
   managementLhTrips: () => request("/api/management-view/lh-trips"),
-  managementNotes: () => request("/api/management-view/notes"),
   // Attendance -> PTWH (staging): roster, clock in / out, month sheet.
   ptwhWorkers: () => request("/api/attendance/ptwh/workers"),
   ptwhWorkerAdd: (payload) => request("/api/attendance/ptwh/workers", { method: "POST", body: JSON.stringify(payload) }),
@@ -214,6 +214,7 @@ export const api = {
   ptwhRecordSave: (payload) => request("/api/attendance/ptwh/record", { method: "PUT", body: JSON.stringify(payload) }),
   ptwhRecordDelete: (id) => request(`/api/attendance/ptwh/record/${id}`, { method: "DELETE" }),
   ptwhMonth: (month) => request(`/api/attendance/ptwh/month?month=${encodeURIComponent(month)}`),
+  managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>
     request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
   kpiMetabaseCheck: () => request("/api/kpi/metabase-check"),

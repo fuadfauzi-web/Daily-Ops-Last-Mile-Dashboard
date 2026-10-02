@@ -74,6 +74,24 @@ class StaffIn(BaseModel):
     role: str  # a position, see auth.POSITIONS
     scope_type: str  # where they are based: 'hq' | 'region' | 'zone' | 'station'
     scope_values: list[str] = []
+    # Contact details (V55). None = leave what is on file; "" = clear it.
+    phone: str | None = None
+    employee_id: str | None = None
+
+
+_BLANKS = {"", "tba", "n/a", "na", "-", "none", "nil"}
+
+
+def _contact(value: str | None, label: str) -> str | None | bool:
+    """False = not given (keep what is on file); None = clear; else the cleaned value. A sheet's "TBA" counts as empty."""
+    if value is None:
+        return False
+    v = " ".join(value.split())
+    if v.lower() in _BLANKS:
+        return None
+    if len(v) > 30:
+        raise HTTPException(status_code=422, detail=f"{label} is too long (30 characters at most)")
+    return v
 
 
 def _validate(payload: StaffIn) -> None:
@@ -121,7 +139,7 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
     if not _can_view(user):
         raise HTTPException(status_code=403, detail="HQ staff access required")
     rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, last_seen_at FROM users ORDER BY display_name, email"
+        "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, last_seen_at, phone, employee_id FROM users ORDER BY display_name, email"
     )
     out = []
     for r in rows:
@@ -135,8 +153,45 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
             "access": {"scope_type": access[0], "scope_values": access[1]},
             "custom_access": _norm(*access) != _norm(home_st, home_sv),
             "last_seen_at": str(r[7]) if r[7] else None,
+            "phone": r[8] or "", "employee_id": r[9] or "",
         })
     return {"people": out, "can_edit": _can_edit(user)}
+
+
+async def _insert(payload: StaffIn, email: str, by: str) -> None:
+    values = _values_json(payload.scope_values)
+    phone, emp = _contact(payload.phone, "Phone"), _contact(payload.employee_id, "Employee ID")
+    await db.execute(
+        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, phone, employee_id)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (email, payload.role, payload.scope_type, values, payload.scope_type, values,
+         compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), by, phone or None, emp or None),
+    )
+    if payload.scope_type == "station":
+        await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
+
+
+async def _apply_update(row, payload: StaffIn) -> bool:
+    """Change a person's posting / name / contact details. Returns True when their access was set by hand and so left alone."""
+    # The owner stays the owner.
+    if row[0].lower() == _OWNER_EMAIL:
+        raise HTTPException(status_code=403, detail="The app owner is managed by the Superadmin")
+    old_home = _home_of(row)
+    old_access = (row[2], parse_scope_values(row[3]))
+    values = _values_json(payload.scope_values)
+    custom = _norm(*old_access) != _norm(*old_home)
+    name = compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values)
+    sets, args = ["role=%s", "home_scope_type=%s", "home_scope_values=%s", "display_name=%s"], [payload.role, payload.scope_type, values, name]
+    if not custom:  # access still follows the posting; if it was set by hand (rescue cover ...) it is left alone
+        sets += ["scope_type=%s", "scope_values=%s"]
+        args += [payload.scope_type, values]
+    for col, label, raw in (("phone", "Phone", payload.phone), ("employee_id", "Employee ID", payload.employee_id)):
+        v = _contact(raw, label)
+        if v is not False:
+            sets.append(f"{col}=%s")
+            args.append(v)
+    await db.execute(f"UPDATE users SET {', '.join(sets)} WHERE LOWER(email) = %s", (*args, row[0].lower()))
+    return custom
 
 
 @router.post("/api/staff")
@@ -148,15 +203,7 @@ async def add_staff(payload: StaffIn, user: CurrentUser = Depends(get_current_us
         raise HTTPException(status_code=422, detail="Type a valid email")
     if await db.fetch_one("SELECT email FROM users WHERE LOWER(email) = %s", (email.lower(),)):
         raise HTTPException(status_code=409, detail="That email is already in the list")
-    values = _values_json(payload.scope_values)
-    await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-        (email, payload.role, payload.scope_type, values, payload.scope_type, values,
-         compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), user.email),
-    )
-    if payload.scope_type == "station":
-        await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
+    await _insert(payload, email, user.email)
     return {"ok": True}
 
 
@@ -165,26 +212,49 @@ async def update_staff(email: str, payload: StaffIn, user: CurrentUser = Depends
     _require_editor(user)
     row = await _target(email)
     _validate(payload)
-    # The owner stays the owner; and nobody can change their own posting into something that locks them out.
-    if row[0].lower() == _OWNER_EMAIL:
-        raise HTTPException(status_code=403, detail="The app owner is managed by the Superadmin")
-    old_home = _home_of(row)
-    old_access = (row[2], parse_scope_values(row[3]))
-    values = _values_json(payload.scope_values)
-    custom = _norm(*old_access) != _norm(*old_home)
-    if custom:  # access was set by hand (rescue cover ...): leave it, only the posting moves
-        await db.execute(
-            "UPDATE users SET role=%s, home_scope_type=%s, home_scope_values=%s, display_name=%s WHERE LOWER(email) = %s",
-            (payload.role, payload.scope_type, values, compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), row[0].lower()),
-        )
-    else:  # access still follows the posting
-        await db.execute(
-            """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, home_scope_type=%s, home_scope_values=%s, display_name=%s
-               WHERE LOWER(email) = %s""",
-            (payload.role, payload.scope_type, values, payload.scope_type, values,
-             compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), row[0].lower()),
-        )
-    return {"ok": True, "custom_access": custom}
+    return {"ok": True, "custom_access": await _apply_update(row, payload)}
+
+
+class StaffBulkIn(BaseModel):
+    rows: list[StaffIn]
+    update_existing: bool = True
+
+
+@router.post("/api/staff/bulk")
+async def bulk_staff(payload: StaffBulkIn, user: CurrentUser = Depends(get_current_user)):
+    """Paste-in of many people at once (the Staff & Org Chart tab parses the pasted sheet rows). One row failing never stops the
+    others; each row comes back as added / updated / skipped / error with the reason."""
+    _require_editor(user)
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="No rows given")
+    if len(payload.rows) > 500:
+        raise HTTPException(status_code=422, detail="500 rows at most in one go")
+    results = []
+    for r in payload.rows:
+        email = r.email.strip()
+        try:
+            _validate(r)
+            if "@" not in email:
+                raise HTTPException(status_code=422, detail="Type a valid email")
+            row = await db.fetch_one(
+                "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name FROM users WHERE LOWER(email) = %s",
+                (email.lower(),),
+            )
+            if row is None:
+                await _insert(r, email, user.email)
+                results.append({"email": email, "status": "added"})
+            elif not payload.update_existing:
+                results.append({"email": email, "status": "skipped", "detail": "Already in the list"})
+            elif tier_of(row[1]) == "admin":
+                raise HTTPException(status_code=403, detail="Superadmin accounts are managed by the Superadmin")
+            elif email.lower() == user.email.lower() and r.role != row[1]:
+                raise HTTPException(status_code=403, detail="You can't change your own position")
+            else:
+                results.append({"email": email, "status": "updated", "custom_access": await _apply_update(row, r)})
+        except HTTPException as exc:
+            results.append({"email": email, "status": "error", "detail": exc.detail})
+    count = lambda st: sum(1 for x in results if x["status"] == st)
+    return {"results": results, "added": count("added"), "updated": count("updated"), "skipped": count("skipped"), "errors": count("error")}
 
 
 @router.delete("/api/staff/{email}")

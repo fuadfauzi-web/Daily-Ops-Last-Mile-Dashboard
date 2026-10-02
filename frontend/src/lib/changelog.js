@@ -47,6 +47,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-02",
+    title: "Staff & Org Chart: mobile, employee ID and paste-from-sheet (staging only)",
+    points: [
+      "Each person now has a mobile number and an employee ID in the staff list (filled in for the Station Heads and Fleet Assistants from the sheet). Only HQ staff, Managers and the Superadmin see them.",
+      "Paste from sheet: copy rows from the Fleet Management sheet, check the preview (New / Update / Skipped with the reason) and import many people at once, including their mobile and employee ID.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Staff & Org Chart: edit HQ staff too, and posting is now separate from access (staging only)",
     points: [
       "The Fleet Admin team can now add, move and remove HQ staff (HOD, Manager, OPEX, Recovery, Restock, other Fleet Admins) as well as Region and Station staff. Posting is where a person works; their access (what they can see) starts the same.",

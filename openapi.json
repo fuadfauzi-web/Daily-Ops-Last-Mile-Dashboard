@@ -721,7 +721,7 @@
     },
     "/api/staff/bulk": {
       "post": {
-        "summary": "Paste-in of many people at once (the Staff & Org Chart tab parses the pasted sheet rows).",
+        "summary": "Paste-in of many people at once for Staff & Org Chart: each row is added, or updated if the email is already in the list; one bad row never stops the others. Returns added / updated / skipped / error per row. Fleet Admin team and Superadmin only.",
         "description": "Paste-in of many people at once (the Staff & Org Chart tab parses the pasted sheet rows). One row failing never stops the\nothers; each row comes back as added / updated / skipped / error with the reason.",
         "operationId": "bulk_staff_api_staff_bulk_post",
         "requestBody": {
