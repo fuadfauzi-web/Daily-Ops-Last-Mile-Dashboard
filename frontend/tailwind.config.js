@@ -12,12 +12,15 @@ export default {
         ink: {
           DEFAULT: "#231F20", // Ninja Black -- body text, table header bar, app header bar
         },
+        "ref-header": "#9AA1AA", // reference-column header text / target line on the ink table header (design review D1)
         status: {
           // Deliberately distinct from brand red so "critical" never reads as "on-brand".
           critical: "#8C1D18",
           warning: "#B45309",
           good: "#166534",
           neutral: "#475569",
+          "critical-fill": "#FBEAE8", // tinted cell background behind a critical value (design review D1/D5)
+          "warning-fill": "#FEF3E2",
         },
       },
       fontFamily: {

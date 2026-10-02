@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
-import { ALL_COLUMNS } from "./lib/metrics";
+import { ALL_COLUMNS, HEALTH_GROUPS } from "./lib/metrics";
 import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
@@ -138,6 +138,18 @@ function fmtWithPercentOf(key, value, row, threshold) {
   const pct = denom ? (value / denom) * 100 : 0;
   return `${base} (${pct.toFixed(1)}%)`;
 }
+
+// Station Health trial (FEATURES.healthTable): the small target line under a column's header, read from the SLA Targets page (nationwide row; region
+// overrides still apply to the cells). "" = no SLA. ■ n = warning from n, ▲ n = critical from n (≤ when lower is worse); a % target / "% of" metric adds %.
+function targetLine(key, t) {
+  if (!t.scored || (t.warning_at === 0 && t.critical_at === 0)) return "";
+  const unit = PERCENT_METRICS.has(key) || t.percent_of ? "%" : "";
+  const op = t.direction === "lower-is-worse" ? "≤" : "";
+  return `■${op}${t.warning_at}${unit} ▲${op}${t.critical_at}${unit}`;
+}
+const HEALTH_SHORT = Object.fromEntries(HEALTH_GROUPS.flatMap((g) => g.columns));
+const TINT_CLASS = { critical: "bg-status-critical-fill", warning: "bg-status-warning-fill", good: "", reference: "" };
+const MARK_CHAR = { critical: "▲", warning: "■", good: "", reference: "" };
 
 function sumMetrics(rows) {
   const zero = Object.fromEntries(METRIC_KEYS.map((k) => [k, 0]));
@@ -320,6 +332,29 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       const next = { ...prev, [level]: value };
       try {
         localStorage.setItem(levelsKey, JSON.stringify(next));
+      } catch {
+        /* private browsing / storage blocked -- the choice just won't persist */
+      }
+      return next;
+    });
+  // Station Health trial (FEATURES.healthTable): which column groups are hidden -- remembered per person, like the region/zone row switches.
+  const groupsKey = `station-health-groups-${me.email}`;
+  const [hiddenGroups, setHiddenGroups] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(groupsKey) || "null");
+      if (Array.isArray(saved)) return new Set(saved);
+    } catch {
+      /* storage blocked / bad JSON -- show every group */
+    }
+    return new Set();
+  });
+  const toggleGroup = (key) =>
+    setHiddenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(groupsKey, JSON.stringify([...next]));
       } catch {
         /* private browsing / storage blocked -- the choice just won't persist */
       }
@@ -643,8 +678,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       const isReference = !natThreshold.scored;
       const label = (
         <span className="inline-flex items-center gap-1">
-          {c.label}
-          {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
+          {FEATURES.healthTable ? HEALTH_SHORT[c.key] || c.label : c.label}
+          {METRIC_NOTES[c.key] && <HeaderNote small={!!FEATURES.healthTable}>{METRIC_NOTES[c.key]}</HeaderNote>}
           {!isReference && natThreshold.percent_of &&
             sortBasisToggle(c.key, ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of)?.label || natThreshold.percent_of)}
         </span>
@@ -655,7 +690,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           key: c.key,
           label,
           render: (row) => (c.key === "attendance" ? attendanceText(row) : fmt(c.key, row[c.key])),
-          className: () => "text-slate-700",
+          className: () => (FEATURES.healthTable ? "text-slate-500" : "text-slate-700"),
           onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
           clickable,
         };
@@ -672,18 +707,52 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         render: (row) => {
           const t = scaledThreshold(row);
           const sev = classify(t, row[c.key], row);
+          if (FEATURES.healthTable)
+            return (
+              <>
+                <span className="inline-block w-3 text-center">{MARK_CHAR[sev]}</span>
+                {fmtWithPercentOf(c.key, row[c.key], row, t)}
+              </>
+            );
           return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, row[c.key], row, t)}`;
         },
         className: (row) => {
           const t = scaledThreshold(row);
           const sev = classify(t, row[c.key], row);
-          return SEVERITY_CLASS[sev];
+          return FEATURES.healthTable ? `${SEVERITY_CLASS[sev]} ${TINT_CLASS[sev]}` : SEVERITY_CLASS[sev];
         },
         onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
         clickable,
       };
     }),
   ];
+  // Station Health trial (FEATURES.healthTable): short sub-labels under 9 group headers, a target line per column, and the person's chosen column groups.
+  let tableColumns = combinedColumns;
+  let healthGroupHeaders;
+  if (FEATURES.healthTable) {
+    const byKey = Object.fromEntries(combinedColumns.map((c) => [c.key, c]));
+    tableColumns = [combinedColumns[0]];
+    healthGroupHeaders = [];
+    HEALTH_GROUPS.filter((g) => !hiddenGroups.has(g.key)).forEach((g) => {
+      let span = 0;
+      g.columns.forEach(([key]) => {
+        const base = byKey[key];
+        if (!base) return;
+        const full = ALL_COLUMNS.find((col) => col.key === key)?.label || key;
+        const t = resolveThreshold(thresholdRows, key, null);
+        tableColumns.push({
+          ...base,
+          title: full,
+          subLabel: targetLine(key, t),
+          align: "right",
+          groupStart: span === 0,
+          reference: !t.scored,
+        });
+        span += 1;
+      });
+      if (span) healthGroupHeaders.push({ key: g.key, label: g.label, span });
+    });
+  }
   const activeSortPercentOf =
     combinedSortBasis === "percent" ? resolveThreshold(thresholdRows, combinedSortKey, null).percent_of : null;
   const combinedRows = buildCombinedRows(
@@ -831,6 +900,27 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {tab === "health" && (
         <>
+          {FEATURES.healthTable && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-[11px] font-semibold uppercase tracking-wider text-slate-500">Column groups</span>
+              {HEALTH_GROUPS.map((g) => {
+                const shown = !hiddenGroups.has(g.key);
+                return (
+                  <button
+                    key={g.key}
+                    type="button"
+                    aria-pressed={shown}
+                    onClick={() => toggleGroup(g.key)}
+                    className={`min-h-[32px] rounded-full border px-3 font-display text-xs font-semibold ${
+                      shown ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-500 hover:bg-slate-50"
+                    }`}
+                  >
+                    {g.label} <span className={shown ? "text-white/60" : "text-slate-400"}>{g.columns.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <DataTable
             title={
               <>
@@ -865,7 +955,9 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
               </div>
             }
             maxHeight="75vh"
-            columns={combinedColumns}
+            columns={tableColumns}
+            groupHeaders={healthGroupHeaders}
+            dense={!!FEATURES.healthTable}
             rows={combinedRows}
             rowKey={(r) => r.id}
             rowClassName={combinedRowClassName}
@@ -876,6 +968,12 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             emptyMessage="No stations match."
             footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
           />
+          {FEATURES.healthTable && (
+            <p className="text-xs text-slate-500">
+              ▲ critical · ■ warning · the small line under a header is its target from SLA Targets (■ n = warning from n, ▲ n = critical from n; blank = no
+              SLA) · greyed header = reference only · underlined number → tracking numbers. Hover a short column name for its full name.
+            </p>
+          )}
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
             SLA, never scored, shown for context only. Targets are set in Admin → SLA Targets. A region/zone row's

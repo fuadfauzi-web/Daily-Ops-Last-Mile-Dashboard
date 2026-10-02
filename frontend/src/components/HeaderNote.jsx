@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 // and a plain position:absolute popover gets clipped at that container's
 // edge no matter its z-index. Closes on scroll rather than tracking live
 // position, since this is a brief look-up, not a persistent panel.
-export default function HeaderNote({ children }) {
+export default function HeaderNote({ children, small = false }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
@@ -54,7 +54,7 @@ export default function HeaderNote({ children }) {
         ref={btnRef}
         type="button"
         onClick={toggle}
-        className="ml-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[9px] font-normal normal-case leading-none opacity-60 hover:opacity-100"
+        className={`${small ? "ml-0.5 h-3 w-3" : "ml-1 h-3.5 w-3.5"} inline-flex items-center justify-center rounded-full border border-current text-[9px] font-normal normal-case leading-none opacity-60 hover:opacity-100`}
         aria-label="What this metric means"
       >
         i

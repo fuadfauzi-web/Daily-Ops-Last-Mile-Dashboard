@@ -22,5 +22,6 @@ export const FEATURES = {
   roleTester: true, // admin Role Tester in the header (preview a role / scope)
   roleTesterUser: true, // ...and view as one specific user
   headerTidy: true, // staging-only trial (2026-10-02 design review): header fits one row at 1280px -- title/freshness/density hide at narrower widths, user block + Role Tester become one menu. NOT approved for production yet.
+  healthTable: true, // staging-only trial (2026-10-02 design review D5): Station Health under 9 column-group headers with short labels, a target line per column, tinted severity cells, column-group chooser. NOT approved for production yet.
   stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };
