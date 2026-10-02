@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-const ROLE_LABEL = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
+const ROLE_LABEL = { station: "Station staff", region: "Region staff", manager: "Manager", fleet_admin: "Fleet Admin", admin: "Admin" };
 
 // The Urgent TN "PIC" email box with suggestions: type two or more letters of a name or email and
 // pick a dashboard user from the list (2026-09-25 feedback -- no more copying emails from the

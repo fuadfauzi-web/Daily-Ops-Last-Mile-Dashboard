@@ -15,6 +15,7 @@ import MultiSelect from "./MultiSelect";
 const ROLES = [
   { value: "admin", label: "Admin" },
   { value: "manager", label: "Manager" },
+  { value: "fleet_admin", label: "Fleet Admin" },
   { value: "region", label: "Region staff" },
   { value: "station", label: "Station staff" },
 ];

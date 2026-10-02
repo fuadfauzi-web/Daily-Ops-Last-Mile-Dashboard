@@ -22,8 +22,8 @@ const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Prod
 const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
 const emptyForm = { email: "", role: "station", scope_type: "station", scope_values: [] };
-const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
-const ROLE_OPTION_ORDER = ["station", "region", "manager", "admin"];
+const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", fleet_admin: "Fleet Admin", admin: "Admin" };
+const ROLE_OPTION_ORDER = ["station", "region", "manager", "fleet_admin", "admin"];
 // "Sees: a station/zone/region" -- can be granted more than one, see the
 // multi-select in the add/edit form below.
 const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything" };
@@ -893,7 +893,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
             <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500"
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              onChange={(e) => setForm({ ...form, role: e.target.value, ...(e.target.value === "fleet_admin" ? { scope_type: "all", scope_values: [] } : {}) })}
               disabled={editingEmail === OWNER_EMAIL}
               title={editingEmail === OWNER_EMAIL ? "The app owner's role can't be changed" : undefined}
             >

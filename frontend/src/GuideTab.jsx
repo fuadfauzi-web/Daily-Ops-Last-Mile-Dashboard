@@ -37,6 +37,7 @@ const SECTIONS = [
         { role: "Station staff", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
         { role: "Region staff", rank: 1, text: "View the dashboard, plus add, edit and remove Station-staff teammates (with more than one station if needed) in Settings → Users." },
         { role: "Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings." },
+        { role: "Fleet Admin", rank: 2, text: "Sees every region and station like a manager does, but is not a manager: no user management and no SLA / Recovery settings. Works from the Fleet Admin tabs." },
         { role: "Admin", rank: 3, text: `Everything: full user management, all Settings screens, the Admin page (Documents, Station List, KPI Settings, Data Refresh), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
       ].filter((r) => r.rank <= rank);
       return (

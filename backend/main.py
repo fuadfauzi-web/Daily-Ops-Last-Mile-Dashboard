@@ -3506,7 +3506,7 @@ def _scope_within(acting: CurrentUser, scope_type: str, scope_values: list[str])
     return theirs is not None and theirs <= mine
 
 
-_ROLE_TAG = {"station": "Station staff", "region": "Region staff", "manager": "Manager", "admin": "Admin"}
+_ROLE_TAG = {"station": "Station staff", "region": "Region staff", "manager": "Manager", "fleet_admin": "Fleet Admin", "admin": "Admin"}
 
 
 def _auto_display_name(email: str, role: str, scope_type: str, scope_values: list[str]) -> str:
@@ -3566,7 +3566,10 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     return []
 
 
-_VALID_ROLES = {"admin", "manager", "region", "station"}
+# 2026-10-02: "fleet_admin" -- the Fleet Admin / support team. Sees every region (scope 'all') but is NOT a manager: no user
+# management, no SLA / recovery settings. Every manager-only check in the code is an allow-list of role names, so a new role
+# is refused there by default; the tabs that are theirs (asset / vehicle / premise lists ...) come later.
+_VALID_ROLES = {"admin", "manager", "fleet_admin", "region", "station"}
 _VALID_SCOPE_TYPES = {"all", "region", "zone", "station"}
 
 

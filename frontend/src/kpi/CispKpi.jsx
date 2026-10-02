@@ -147,7 +147,7 @@ function DayByDay({ data, kpi, label, periodLabel, hub, setHub, onlyMissed, setO
 
 export default function CispKpi({ me, kpi }) {
   const canUpload = me.role === "admin";
-  const rank = { station: 0, region: 1, manager: 2, admin: 3 }[me.role] ?? 0;
+  const rank = { station: 0, region: 1, manager: 2, fleet_admin: 2, admin: 3 }[me.role] ?? 0;
   const [tab, setTab] = useState("overview");
   const [view, setView] = useState("weekly");
   const [period, setPeriod] = useState(null); // null = the view's default (the newest complete week / month, the current month for Daily)

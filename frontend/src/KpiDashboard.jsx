@@ -169,7 +169,7 @@ function HybridProductivity({ me }) {
   const [trendFilter, setTrendFilter] = useState("all"); // "all" | "up" | "down": only rows whose productivity rose / dropped against the last week / month
   const [monthlyData, setMonthlyData] = useState(null); // the monthly rows, for "vs last month" on Daily Data when View is Weekly
   const [showUpload, setShowUpload] = useState(false);
-  const rank = { station: 0, region: 1, manager: 2, admin: 3 }[me.role] ?? 0; // station staff see up to stations, region staff up to zones, managers / admins up to regions
+  const rank = { station: 0, region: 1, manager: 2, fleet_admin: 2, admin: 3 }[me.role] ?? 0; // station staff see up to stations, region staff up to zones, managers / Fleet Admin / admins up to regions
 
   const canRefresh = me.role === "admin" || me.role === "manager";
   const canUpload = me.role === "admin";

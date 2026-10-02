@@ -39,7 +39,7 @@ def parse_scope_values(raw) -> list[str]:
     return json.loads(raw)  # asyncmy returns JSON columns as a raw string
 
 
-_VIEW_AS_ROLES = ("admin", "manager", "region", "station")
+_VIEW_AS_ROLES = ("admin", "manager", "fleet_admin", "region", "station")
 
 
 async def get_current_user(
