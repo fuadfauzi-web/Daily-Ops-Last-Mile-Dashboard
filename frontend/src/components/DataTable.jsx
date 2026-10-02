@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import HoverTip from "./HoverTip";
 
 // Shared shell for every sortable, sticky-header table in the app. Callers own
 // their data/sort state and hand over a fully resolved column list -- this
@@ -77,7 +78,15 @@ export default function DataTable({
         ].join(" ")}
         onClick={sortable ? () => onSort(c.key) : undefined}
       >
-        {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+        {c.tip ? (
+          <HoverTip content={c.tip}>
+            {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+          </HoverTip>
+        ) : (
+          <>
+            {c.label} {sortKey === c.key && (sortDir === "asc" ? "↑" : "↓")}
+          </>
+        )}
         {c.subLabel !== undefined && (
           <div className="min-h-[12px] text-[10px] font-normal leading-3 text-ref-header">{c.subLabel}</div>
         )}
@@ -107,7 +116,7 @@ export default function DataTable({
                   <th
                     key={g.key}
                     colSpan={g.span}
-                    className={`${i > 0 ? "border-l border-[#7A7476]" : ""} whitespace-nowrap px-2 py-1 text-center font-display text-[10px] font-bold uppercase tracking-[0.08em] text-[#C9CDD2]`}
+                    className={`${i > 0 ? "border-l border-[#7A7476]" : ""} whitespace-nowrap border-b border-[#5A5456] px-2 py-1 text-center font-display text-[10px] font-bold uppercase tracking-[0.08em] text-[#C9CDD2]`}
                   >
                     {g.label}
                   </th>

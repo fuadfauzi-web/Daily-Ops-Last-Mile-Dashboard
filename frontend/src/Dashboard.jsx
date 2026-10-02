@@ -787,9 +787,29 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         const t = resolveThreshold(thresholdRows, key, null);
         tableColumns.push({
           ...base,
-          title: [full, METRIC_NOTES[key], t.scored && targetLine(key, t) ? `Target: warning from ${targetLine(key, t).split(" / ")[0]}, critical from ${targetLine(key, t).split(" / ").pop()}` : "No SLA target (reference only)"]
-            .filter(Boolean)
-            .join("\n\n"),
+          tip: (
+            <>
+              <div className="font-display text-[13px] font-semibold text-ink">{full}</div>
+              {METRIC_NOTES[key] && <p className="mt-1">{METRIC_NOTES[key]}</p>}
+              <div className="mt-2 border-t border-line pt-2">
+                {t.scored && targetLine(key, t) ? (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="font-display text-[10px] font-bold uppercase tracking-wider text-subtle">Target</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm bg-status-warning" />
+                      Warning {t.direction === "lower-is-worse" ? "≤" : "≥"} {targetLine(key, t).replace("≤", "").split(" / ")[0]}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm bg-status-critical" />
+                      Critical {t.direction === "lower-is-worse" ? "≤" : "≥"} {targetLine(key, t).replace("≤", "").split(" / ").pop()}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-subtle">Reference only — no SLA target</span>
+                )}
+              </div>
+            </>
+          ),
           align: "center",
           groupStart: span === 0,
           reference: !t.scored,
@@ -858,13 +878,17 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       );
       if (asCsv) {
         const max = Math.max(0, ...results.map((r) => r.tns.length));
+        // Station name on the first line, then the metric names, then the tracking numbers.
         exportCsv(
           `daily-ops-${detailRow.station_name.replace(/\s+/g, "-").toLowerCase()}-flagged-tns-${new Date().toISOString().slice(0, 10)}.csv`,
-          results.map((r) => r.label),
-          Array.from({ length: max }, (_, i) => results.map((r) => r.tns[i] || ""))
+          [`${detailRow.station_name} (${detailRow.station_code}) — ${detailRow.region} · ${detailRow.zone}`, ...results.slice(1).map(() => "")],
+          [results.map((r) => `${r.label} (${r.tns.length})`), ...Array.from({ length: max }, (_, i) => results.map((r) => r.tns[i] || ""))]
         );
       } else {
-        await navigator.clipboard.writeText(results.map((r) => `${r.label} (${r.tns.length}):\n${r.tns.join("\n")}`).join("\n\n"));
+        await navigator.clipboard.writeText(
+          `${detailRow.station_name} (${detailRow.station_code}) — ${detailRow.region} · ${detailRow.zone}\n\n` +
+            results.map((r) => `${r.label} (${r.tns.length}):\n${r.tns.join("\n")}`).join("\n\n")
+        );
         setFlaggedCopied(true);
         setTimeout(() => setFlaggedCopied(false), 2000);
       }
