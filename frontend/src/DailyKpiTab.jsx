@@ -73,7 +73,7 @@ function notYetText(row, b) {
 }
 
 export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  useKpiTargets(); // re-render once per-region targets arrive
+  const kpiTargetsData = useKpiTargets(); // re-render once per-region targets arrive
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [view, setView] = useState("station");
@@ -98,7 +98,11 @@ export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excl
     return data.regions.map((r) => ({ ...r, name: r.key, region: r.key }));
   }, [data, view]);
 
-  const enrichedRows = useMemo(() => sourceRows.map(withKpiFields), [sourceRows]);
+  // kpiTargetsData isn't read directly -- withKpiFields reads the shared kpiTarget()
+  // singleton -- but it must be a dependency here, or targets that arrive AFTER the
+  // first render (the common case: a separate fetch) never retrigger this memo, and
+  // every % / Left column is stuck showing "--" forever.
+  const enrichedRows = useMemo(() => sourceRows.map(withKpiFields), [sourceRows, kpiTargetsData]);
 
   const filteredRows = useMemo(() => {
     let rows = enrichedRows;
