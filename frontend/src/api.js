@@ -205,6 +205,22 @@ export const api = {
     }
     return res.json();
   },
+  // Several downloaded files at once (2026-10-03): the server matches each to its dataset by its columns -> [{filename, dataset, label, ok, detail}]
+  kpiUploadMany: async (files) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+    const res = await fetch("/api/kpi/upload-many", { method: "POST", body: formData, headers: viewAsHeaders() });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return res.json();
+  },
   kpiUploadRemove: (dataset) => request(`/api/kpi/uploads/${dataset}`, { method: "DELETE" }),
   // Management View (2026-10-01): managers/admins only
   managementCapacity: () => request("/api/management-view/capacity"),

@@ -1,8 +1,8 @@
 """KPI Dashboard (staging, 2026-09-26): the Hybrid Productivity module.
 
 Ported from the Fleet Manager's Google Sheet + Apps Script web app ("Southern Region Hybrid Performance"): driver-level Weekly /
-Monthly / Daily rows from Metabase (the All-Regions copies 127194 / 127195 / 127196) plus the hybrid driver list (127193) for tenure,
-now for ALL stations, not only Southern. A driver's station comes from the station code in their name ("LKN - HD - FAUZI" -> Larkin, the
+Monthly / Daily rows from Metabase -- since 2026-10-03 one all-in-one question per view (127514 / 127515 / 127513) that also carries each
+driver's hub and employment start date (tenure) -- now for ALL stations, not only Southern. A driver's station comes from the station code in their name ("LKN - HD - FAUZI" -> Larkin, the
 same rule Route Monitoring uses), so the sheet's Control tab is not needed.
 
 Data source per dataset: an UPLOADED file (Data upload, kpi_data.py) wins -- an explicit, newer act -- otherwise Metabase. So the page
@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 import kpi_data as kd
@@ -29,11 +30,8 @@ router = APIRouter()
 
 CACHE_TTL_SECONDS = 30 * 60  # the source is refreshed daily; half an hour is plenty and keeps Metabase load low
 _QUESTION_FOR_VIEW = {"weekly": mb.QUESTION_HYBRID_WEEKLY, "monthly": mb.QUESTION_HYBRID_MONTHLY}
-# 2026-10-01: sizing %/volume + corrected Attendance -- optional companions to the questions above (see
-# metabase_client.py). Missing (not configured / not uploaded) just means those columns stay at 0 for a driver.
-_QUESTION_FOR_VIEW_SIZING = {"weekly": mb.QUESTION_HYBRID_WEEKLY_SIZING, "monthly": mb.QUESTION_HYBRID_MONTHLY_SIZING}
 
-# view -> {"at": datetime, "perf": rows, "daily": rows, "hybrid": rows}; one lock so concurrent page loads share one fetch.
+# view -> {"at": datetime, "perf": rows, "daily": rows}; one lock so concurrent page loads share one fetch.
 _cache: dict[str, dict] = {}
 _lock = asyncio.Lock()
 
@@ -93,44 +91,39 @@ def _station_for(name: str, hub_name: str | None) -> tuple[str | None, str, str,
     return None, "Unknown", "Unknown", "Unknown"
 
 
-def build_payload(
-    view: str, perf_rows: list[dict], daily_rows: list[dict], hybrid_rows: list[dict],
-    sizing_rows: list[dict] | None = None, daily_sizing_rows: list[dict] | None = None,
-) -> dict:
+def _volume(idx: dict) -> dict | None:
+    """The all-in-one feeders (2026-10-03) carry the raw volume on every row: delivered, picked up, reservation waypoints and
+    the delivered-size buckets. None for a row from the older layout, which only had "Delivered + Pickup"."""
+    if _get(idx, "sumofparcelsdelivered") is None:
+        return None
+    return {
+        "delivered": _num(_get(idx, "sumofparcelsdelivered")),
+        "picked_up": _num(_get(idx, "sumofparcelspickedup")),
+        "rsvn": _num(_get(idx, "sumofreservationsuccesswaypoints")),
+        "size_s": _num(_get(idx, "sumofparcelsdeliveredsizes")),
+        "size_m": _num(_get(idx, "sumofparcelsdeliveredsizem")),
+        "size_l": _num(_get(idx, "sumofparcelsdeliveredsizel")),
+    }
+
+
+def build_payload(view: str, perf_rows: list[dict], daily_rows: list[dict]) -> dict:
     """Compact columnar payload: a driver list once, then rows that point into it.
 
-    sizing_rows / daily_sizing_rows (2026-10-01, optional) are the companion feeders keyed the same way
-    (driver, period) / (driver, day) -- when a driver+period is missing from them (Metabase sizing question
-    not configured, or no upload yet), that row's sizing/extra-productivity fields are just 0, same as any
-    other missing-data case in this file."""
-    sizing_by_key: dict[tuple[str, float], dict] = {}
-    for r in sizing_rows or []:
-        idx = _index(r)
-        name = _name(_get(idx, "courierdisplayname"))
-        period = _get(idx, "routeweek", "routemonth", "routeperiod")
-        if not name or period is None:
-            continue
-        sizing_by_key[(name, _num(period))] = idx
-
-    daily_sizing_by_key: dict[tuple[str, str], dict] = {}
-    for r in daily_sizing_rows or []:
-        idx = _index(r)
-        name = _name(_get(idx, "courierdisplayname"))
-        day = kd.to_iso_day(_get(idx, "routedate"))
-        if not name or not day:
-            continue
-        daily_sizing_by_key[(name, day)] = idx
-
+    Each row of the all-in-one feeders (Metabase 127513 / 127514 / 127515) already holds the volume, the sizing buckets, the corrected
+    Attendance (distinct days) and the driver's hub name / employment start date, so there is nothing to join. A file in the older layout
+    (Delivered + Pickup only, no start date) still loads: its sizing / extra-productivity fields are 0 and Service Duration is blank."""
     starts: dict[str, str] = {}
     hub_of: dict[str, str] = {}
-    for r in hybrid_rows:
+    for r in [*perf_rows, *daily_rows]:
         idx = _index(r)
-        name = _name(_get(idx, "displayname"))
+        name = _name(_get(idx, "courierdisplayname"))
         if not name:
             continue
-        starts[name] = kd.to_iso_day(_get(idx, "employmentstartdate"))
-        hub = _get(idx, "hubname")
-        if hub:
+        start = kd.to_iso_day(_get(idx, "employmentstartdate", "driversenrichedemploymentstartdate"))
+        if start and name not in starts:
+            starts[name] = start
+        hub = _get(idx, "hubname", "driversenrichedhubname")
+        if hub and name not in hub_of:
             hub_of[name] = str(hub)
 
     drivers: list[dict] = []
@@ -153,23 +146,18 @@ def build_payload(
         period = _get(idx, "routeweek", "routemonth", "routeperiod")
         if not name or period is None:
             continue
-        s = sizing_by_key.get((name, _num(period)))
-        if s:
-            delivered = _num(_get(s, "sumofparcelsdelivered"))
-            picked_up = _num(_get(s, "sumofparcelspickedup"))
-            rsvn = _num(_get(s, "sumofreservationsuccesswaypoints"))
-            size_s, size_m, size_l = _num(_get(s, "sumofparcelsdeliveredsizes")), _num(_get(s, "sumofparcelsdeliveredsizem")), _num(_get(s, "sumofparcelsdeliveredsizel"))
+        v = _volume(idx)
+        attendance = _num(_get(idx, "attendance"))
+        if v:
+            delivered, picked_up, rsvn = v["delivered"], v["picked_up"], v["rsvn"]
+            size_s, size_m, size_l = v["size_s"], v["size_m"], v["size_l"]
             delivered_pickup = delivered + picked_up
-            # The fix: COUNT DISTINCT route_date (this question), not the sibling's own COUNT(route_id) --
-            # a driver with 2 routes in one day was counted as 2 attendance days instead of 1.
-            attendance = _num(_get(s, "attendance")) or _num(_get(idx, "attendance"))
         else:
             delivered = picked_up = rsvn = size_s = size_m = size_l = 0.0
             delivered_pickup = _num(_get(idx, "deliveredpickup"))
-            attendance = _num(_get(idx, "attendance"))
         productivity = (delivered_pickup / attendance) if attendance else 0.0
-        prod_delivered_only = (delivered / attendance) if (s and attendance) else 0.0
-        prod_delivered_pickup_rsvn = ((delivered + picked_up + rsvn) / attendance) if (s and attendance) else 0.0
+        prod_delivered_only = (delivered / attendance) if (v and attendance) else 0.0
+        prod_delivered_pickup_rsvn = ((delivered + picked_up + rsvn) / attendance) if (v and attendance) else 0.0
         rows.append([
             _num(period), driver_idx(name), delivered_pickup, _num(_get(idx, "sumofparcelsonroute")),
             attendance, productivity, _pct(_get(idx, "successrate")),
@@ -183,13 +171,11 @@ def build_payload(
         day = kd.to_iso_day(_get(idx, "routedate"))
         if not name or not day:
             continue
-        s = daily_sizing_by_key.get((name, day))
-        if s:
-            delivered = _num(_get(s, "sumofparcelsdelivered"))
-            picked_up = _num(_get(s, "sumofparcelspickedup"))
-            rsvn = _num(_get(s, "sumofreservationsuccesswaypoints"))
-            size_s, size_m, size_l = _num(_get(s, "sumofparcelsdeliveredsizes")), _num(_get(s, "sumofparcelsdeliveredsizem")), _num(_get(s, "sumofparcelsdeliveredsizel"))
-            delivered_pickup = delivered + picked_up
+        v = _volume(idx)
+        if v:
+            delivered, rsvn = v["delivered"], v["rsvn"]
+            size_s, size_m, size_l = v["size_s"], v["size_m"], v["size_l"]
+            delivered_pickup = delivered + v["picked_up"]
         else:
             delivered = rsvn = size_s = size_m = size_l = 0.0
             delivered_pickup = _num(_get(idx, "deliveredpickup"))
@@ -284,15 +270,8 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
     force = refresh and user.role in ("admin", "manager")
     plan = [
         ("performance", f"hybrid_{view}", _QUESTION_FOR_VIEW[view]),
-        ("sizing", f"hybrid_{view}_sizing", _QUESTION_FOR_VIEW_SIZING[view]),
         ("daily", "hybrid_daily", mb.QUESTION_HYBRID_DAILY),
-        ("daily_sizing", "hybrid_daily_sizing", mb.QUESTION_HYBRID_DAILY_SIZING),
-        ("drivers", "hybrid_data", mb.QUESTION_HYBRID_DATA),
     ]
-    # sizing / daily_sizing are optional companions (2026-10-01) -- a failure fetching them shouldn't surface as
-    # the page's error when the core performance/daily/drivers data loaded fine; build_payload already falls
-    # back cleanly to the old numbers for any driver+period they don't cover.
-    optional = {"sizing", "daily_sizing"}
     got: dict[str, list[dict]] = {}
     sources: dict[str, str] = {}
     whens: list[str] = []
@@ -301,10 +280,7 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
         try:
             rows, label, when = await _source(dataset, card, force)
         except mb.MetabaseError as exc:
-            if name in optional:
-                log.warning("Hybrid Productivity sizing feeder (%s) unavailable -- falling back to the old numbers: %s", name, exc)
-            else:
-                errors.append(str(exc))
+            errors.append(str(exc))
             continue
         if rows is not None:
             got[name] = rows
@@ -314,7 +290,7 @@ async def kpi_hybrid(view: str = "weekly", refresh: bool = False, user: CurrentU
     base = {"configured": mb.configured(), "view": view, "sources": sources}
     if "performance" not in got:
         return {**base, "has_data": False, "error": errors[0] if errors else None}
-    payload = build_payload(view, got["performance"], got.get("daily", []), got.get("drivers", []), got.get("sizing", []), got.get("daily_sizing", []))
+    payload = build_payload(view, got["performance"], got.get("daily", []))
     keep = {i for i, d in enumerate(payload["drivers"]) if _in_scope(d, user)}
     remap = {old: new for new, old in enumerate(sorted(keep))}
     return {
@@ -369,14 +345,10 @@ class UploadResult(BaseModel):
     detail: str
 
 
-@router.post("/api/kpi/uploads/{dataset}", response_model=UploadResult)
-async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
-    _require_uploader(user, dataset)
-    if dataset not in kd.DATASETS:
-        raise HTTPException(status_code=404, detail="Unknown dataset")
-    data = await file.read()
+async def _store_upload(dataset: str, filename: str, data: bytes, user: CurrentUser) -> str:
+    """Parse + store one file for a dataset and run what that dataset needs afterwards; the confirmation text, or an HTTPException."""
     try:
-        info = await kd.save_upload(dataset, file.filename or "upload", data, user.email)
+        info = await kd.save_upload(dataset, filename or "upload", data, user.email)
     except kd.UploadError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception:  # noqa: BLE001
@@ -393,7 +365,51 @@ async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUs
         except Exception:  # noqa: BLE001
             log.exception("Lost declared sync failed")
             raise HTTPException(status_code=503, detail="The file was stored but Lost Declared This Week could not be updated -- try again")
-    return {"ok": True, "detail": detail}
+    return detail
+
+
+@router.post("/api/kpi/uploads/{dataset}", response_model=UploadResult)
+async def kpi_upload(dataset: str, file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
+    _require_uploader(user, dataset)
+    if dataset not in kd.DATASETS:
+        raise HTTPException(status_code=404, detail="Unknown dataset")
+    data = await file.read()
+    return {"ok": True, "detail": await _store_upload(dataset, file.filename or "upload", data, user)}
+
+
+class UploadManyItem(BaseModel):
+    filename: str
+    dataset: str | None = None
+    label: str | None = None
+    ok: bool
+    detail: str
+
+
+@router.post("/api/kpi/upload-many", response_model=list[UploadManyItem])
+async def kpi_upload_many(files: list[UploadFile] = File(...), user: CurrentUser = Depends(get_current_user)):
+    """Several downloaded files at once (2026-10-03): each is matched to its dataset by its columns (kd.detect_dataset) and stored exactly like
+    the one-file upload. A file that can't be matched or stored is reported on its own line and never stops the others."""
+    if len(files) > 25:
+        raise HTTPException(status_code=422, detail="At most 25 files at a time")
+    out: list[dict] = []
+    for f in files:
+        name = f.filename or "upload"
+        try:
+            data = await f.read()
+            if not data:
+                raise kd.UploadError("The file is empty")
+            if len(data) > kd.MAX_UPLOAD_BYTES:
+                raise kd.UploadError(f"The file is too large (max {kd.MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
+            dataset = await run_in_threadpool(kd.detect_dataset, name, data, list(kd.DATASETS))
+            if user.role not in _uploader_roles(dataset):
+                raise HTTPException(status_code=403, detail=f"{kd.DATASETS[dataset]['label']}: " + ("only admins can upload this file" if _uploader_roles(dataset) == ("admin",) else "only admins and managers can upload this file"))
+            detail = await _store_upload(dataset, name, data, user)
+            out.append({"filename": name, "dataset": dataset, "label": kd.DATASETS[dataset]["label"], "ok": True, "detail": detail})
+        except kd.UploadError as exc:
+            out.append({"filename": name, "ok": False, "detail": str(exc)})
+        except HTTPException as exc:
+            out.append({"filename": name, "ok": False, "detail": str(exc.detail)})
+    return out
 
 
 @router.delete("/api/kpi/uploads/{dataset}", response_model=UploadResult)
