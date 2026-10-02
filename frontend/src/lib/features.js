@@ -16,6 +16,7 @@ export const FEATURES = {
   managementView: true, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
   processingTime: true, // "Processing Time" tab (Beta, staging-only for now): the past 7 days of hour-of-day timelines per station
   dailyKpi: true, // "Daily KPI" tab (Beta -- numbers not 100% accurate yet, says so in-app): today's FIFO D0 / Prior / Completion D0, how many parcels left to attempt or deliver
+  attendance: true, // "Attendance" page (Beta, staging-only for now): PTWH clock in / out, month sheet and payable first; Staff and Hybrid attendance come later
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + To Do List + Task Assigned
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
