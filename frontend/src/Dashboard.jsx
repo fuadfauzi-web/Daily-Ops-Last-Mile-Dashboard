@@ -140,16 +140,15 @@ function fmtWithPercentOf(key, value, row, threshold) {
 }
 
 // Station Health trial (FEATURES.healthTable): the small target line under a column's header, read from the SLA Targets page (nationwide row; region
-// overrides still apply to the cells). "" = no SLA. ■ n = warning from n, ▲ n = critical from n (≤ when lower is worse); a % target / "% of" metric adds %.
+// overrides still apply to the cells). "" = no SLA. "warning / critical" (≤ when lower is worse); a % target / "% of" metric adds %.
 function targetLine(key, t) {
   if (!t.scored || (t.warning_at === 0 && t.critical_at === 0)) return "";
   const unit = PERCENT_METRICS.has(key) || t.percent_of ? "%" : "";
   const op = t.direction === "lower-is-worse" ? "≤" : "";
-  return `■${op}${t.warning_at}${unit} ▲${op}${t.critical_at}${unit}`;
+  return t.warning_at === t.critical_at ? `${op}${t.critical_at}${unit}` : `${op}${t.warning_at}${unit} / ${t.critical_at}${unit}`;
 }
 const HEALTH_SHORT = Object.fromEntries(HEALTH_GROUPS.flatMap((g) => g.columns));
 const TINT_CLASS = { critical: "bg-status-critical-fill", warning: "bg-status-warning-fill", good: "", reference: "" };
-const MARK_CHAR = { critical: "▲", warning: "■", good: "", reference: "" };
 
 function sumMetrics(rows) {
   const zero = Object.fromEntries(METRIC_KEYS.map((k) => [k, 0]));
@@ -348,6 +347,36 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
     }
     return new Set();
   });
+  // ...and in what order: the pills above the table can be dragged (or nudged with the arrows) to arrange the column groups, per person.
+  const orderKey = `station-health-group-order-${me.email}`;
+  const [groupOrder, setGroupOrder] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(orderKey) || "null");
+      if (Array.isArray(saved)) return saved;
+    } catch {
+      /* storage blocked / bad JSON -- default order */
+    }
+    return [];
+  });
+  const [dragGroup, setDragGroup] = useState(null);
+  // Saved order first (ignoring groups that no longer exist), then any group the person has not placed yet in its default position.
+  const orderedGroups = useMemo(() => {
+    const byKey = new Map(HEALTH_GROUPS.map((g) => [g.key, g]));
+    const placed = groupOrder.filter((k) => byKey.has(k));
+    return [...placed.map((k) => byKey.get(k)), ...HEALTH_GROUPS.filter((g) => !placed.includes(g.key))];
+  }, [groupOrder]);
+  const moveGroup = (from, to) => {
+    if (from < 0 || to < 0 || from >= orderedGroups.length || to >= orderedGroups.length || from === to) return;
+    const next = orderedGroups.map((g) => g.key);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setGroupOrder(next);
+    try {
+      localStorage.setItem(orderKey, JSON.stringify(next));
+    } catch {
+      /* private browsing / storage blocked -- the order just won't persist */
+    }
+  };
   const toggleGroup = (key) =>
     setHiddenGroups((prev) => {
       const next = new Set(prev);
@@ -679,7 +708,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       const label = (
         <span className="inline-flex items-center gap-1">
           {FEATURES.healthTable ? HEALTH_SHORT[c.key] || c.label : c.label}
-          {METRIC_NOTES[c.key] && <HeaderNote small={!!FEATURES.healthTable}>{METRIC_NOTES[c.key]}</HeaderNote>}
+          {METRIC_NOTES[c.key] && !FEATURES.healthTable && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
           {!isReference && natThreshold.percent_of &&
             sortBasisToggle(c.key, ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of)?.label || natThreshold.percent_of)}
         </span>
@@ -707,13 +736,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         render: (row) => {
           const t = scaledThreshold(row);
           const sev = classify(t, row[c.key], row);
-          if (FEATURES.healthTable)
-            return (
-              <>
-                <span className="inline-block w-3 text-center">{MARK_CHAR[sev]}</span>
-                {fmtWithPercentOf(c.key, row[c.key], row, t)}
-              </>
-            );
+          if (FEATURES.healthTable) return fmtWithPercentOf(c.key, row[c.key], row, t);
           return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, row[c.key], row, t)}`;
         },
         className: (row) => {
@@ -733,7 +756,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
     const byKey = Object.fromEntries(combinedColumns.map((c) => [c.key, c]));
     tableColumns = [combinedColumns[0]];
     healthGroupHeaders = [];
-    HEALTH_GROUPS.filter((g) => !hiddenGroups.has(g.key)).forEach((g) => {
+    orderedGroups.filter((g) => !hiddenGroups.has(g.key)).forEach((g) => {
       let span = 0;
       g.columns.forEach(([key]) => {
         const base = byKey[key];
@@ -742,7 +765,9 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         const t = resolveThreshold(thresholdRows, key, null);
         tableColumns.push({
           ...base,
-          title: full,
+          title: [full, METRIC_NOTES[key], t.scored && targetLine(key, t) ? `Target: warning from ${targetLine(key, t).split(" / ")[0]}, critical from ${targetLine(key, t).split(" / ").pop()}` : "No SLA target (reference only)"]
+            .filter(Boolean)
+            .join("\n\n"),
           subLabel: targetLine(key, t),
           align: "right",
           groupStart: span === 0,
@@ -903,22 +928,44 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           {FEATURES.healthTable && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-display text-[11px] font-semibold uppercase tracking-wider text-slate-500">Column groups</span>
-              {HEALTH_GROUPS.map((g) => {
+              {orderedGroups.map((g, i) => {
                 const shown = !hiddenGroups.has(g.key);
+                const arrow = shown ? "text-white/60 hover:text-white" : "text-slate-400 hover:text-ink";
                 return (
-                  <button
+                  <span
                     key={g.key}
-                    type="button"
-                    aria-pressed={shown}
-                    onClick={() => toggleGroup(g.key)}
-                    className={`min-h-[32px] rounded-full border px-3 font-display text-xs font-semibold ${
-                      shown ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-500 hover:bg-slate-50"
-                    }`}
+                    draggable
+                    onDragStart={(e) => {
+                      setDragGroup(g.key);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", g.key);
+                    }}
+                    onDragOver={(e) => {
+                      if (dragGroup) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (dragGroup) moveGroup(orderedGroups.findIndex((x) => x.key === dragGroup), i);
+                      setDragGroup(null);
+                    }}
+                    onDragEnd={() => setDragGroup(null)}
+                    className={`inline-flex min-h-[32px] cursor-grab items-center rounded-full border font-display text-xs font-semibold ${
+                      shown ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-500"
+                    } ${dragGroup === g.key ? "opacity-40" : ""}`}
                   >
-                    {g.label} <span className={shown ? "text-white/60" : "text-slate-400"}>{g.columns.length}</span>
-                  </button>
+                    <button type="button" onClick={() => moveGroup(i, i - 1)} disabled={i === 0} aria-label={`Move ${g.label} left`} className={`pl-2.5 pr-0.5 disabled:opacity-25 ${arrow}`}>
+                      ‹
+                    </button>
+                    <button type="button" aria-pressed={shown} onClick={() => toggleGroup(g.key)} title={shown ? "Click to hide this group" : "Click to show this group"} className="px-1.5">
+                      {g.label} <span className={shown ? "text-white/60" : "text-slate-400"}>{g.columns.length}</span>
+                    </button>
+                    <button type="button" onClick={() => moveGroup(i, i + 1)} disabled={i === orderedGroups.length - 1} aria-label={`Move ${g.label} right`} className={`pl-0.5 pr-2.5 disabled:opacity-25 ${arrow}`}>
+                      ›
+                    </button>
+                  </span>
                 );
               })}
+              <span className="text-[10px] text-slate-400">click to show / hide · drag a pill (or use ‹ ›) to reorder the columns · saved for you</span>
             </div>
           )}
           <DataTable
@@ -970,8 +1017,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           />
           {FEATURES.healthTable && (
             <p className="text-xs text-slate-500">
-              ▲ critical · ■ warning · the small line under a header is its target from SLA Targets (■ n = warning from n, ▲ n = critical from n; blank = no
-              SLA) · greyed header = reference only · underlined number → tracking numbers. Hover a short column name for its full name.
+              Red tint = critical, amber tint = warning · the small grey line under a header is its target from SLA Targets (warning / critical; blank = no
+              SLA) · greyed header = reference only · underlined number → tracking numbers · hover a column name for what it counts.
             </p>
           )}
           <p className="text-xs text-slate-400">
