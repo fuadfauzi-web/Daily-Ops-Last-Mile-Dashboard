@@ -28,7 +28,9 @@ export default function App() {
       .then(setMe)
       .catch(() => setMe(null));
 
-  useEffect(loadMe, []);
+  useEffect(() => {
+    loadMe();
+  }, []);
 
   // Updates in Guide -> What's new the user hasn't read yet (clears once they open it).
   const whatsNewUnread = useWhatsNewUnread(me?.provisioned ? me : null);
