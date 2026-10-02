@@ -78,27 +78,94 @@ class CapacityRow(BaseModel):
     region: str
     sqft: float | None
     staff_count: int | None
-    ptwh_count: int | None
+    ptwh_count: int | None  # manager-keyed (some hubs run a fixed daily PTWH, others only for offdays/backlog)
+    parcel_capacity: int | None  # manager-typed override of how many parcels the hub can hold
 
 
 class CapacityResponse(BaseModel):
     sources: dict[str, str | None]
+    parcels_per_sqft: float | None  # global density; capacity = sqft x this unless a station has its own parcel_capacity
     rows: list[CapacityRow]
+
+
+_SETTING_PARCELS_PER_SQFT = "parcels_per_sqft"
+
+
+async def _parcels_per_sqft() -> float | None:
+    row = await db.fetch_one("SELECT setting_value FROM management_settings WHERE setting_key=%s", (_SETTING_PARCELS_PER_SQFT,))
+    try:
+        return float(row[0]) if row and row[0] not in (None, "") else None
+    except ValueError:
+        return None
 
 
 @router.get("/api/management-view/capacity", response_model=CapacityResponse)
 async def capacity(user: CurrentUser = Depends(get_current_user)):
     _require_manager(user)
     by_hub, sources = await _capacity_rows()
-    notes = {r[0]: r[1] for r in await db.fetch_all("SELECT station_code, ptwh_count FROM station_notes")}
+    notes = {r[0]: (r[1], r[2]) for r in await db.fetch_all("SELECT station_code, ptwh_count, parcel_capacity FROM station_notes")}
     rows = []
     for code, (name, _full, zone, region) in HUBS.items():
         c = by_hub.get(code, {})
+        ptwh, cap = notes.get(code, (None, None))
         rows.append({
             "station_code": code, "station_name": name, "zone": zone, "region": region,
-            "sqft": c.get("sqft"), "staff_count": c.get("staff_count"), "ptwh_count": notes.get(code),
+            "sqft": c.get("sqft"), "staff_count": c.get("staff_count"), "ptwh_count": ptwh, "parcel_capacity": cap,
         })
-    return {"sources": sources, "rows": rows}
+    return {"sources": sources, "parcels_per_sqft": await _parcels_per_sqft(), "rows": rows}
+
+
+class CapacityEdit(BaseModel):
+    station_code: str
+    ptwh_count: int | None = None
+    parcel_capacity: int | None = None
+
+
+class CapacityEditIn(BaseModel):
+    edits: list[CapacityEdit] = []
+    parcels_per_sqft: float | None = None
+    set_density: bool = False  # true = write parcels_per_sqft (null clears it)
+
+
+@router.put("/api/management-view/capacity")
+async def put_capacity(payload: CapacityEditIn, user: CurrentUser = Depends(get_current_user)):
+    """Bulk save of the manager-keyed Capacity columns (PTWH headcount, parcel capacity) and the global parcels-per-sqft
+    density. Only touches those columns -- a station's mitigation / rescue plan is left as it is."""
+    _require_manager(user)
+    now = datetime.now(timezone.utc)
+    for e in payload.edits:
+        if e.station_code not in HUBS:
+            raise HTTPException(status_code=404, detail=f"Unknown station {e.station_code}")
+        if (e.ptwh_count is not None and e.ptwh_count < 0) or (e.parcel_capacity is not None and e.parcel_capacity < 0):
+            raise HTTPException(status_code=422, detail="Counts can't be negative")
+        if await db.fetch_one("SELECT station_code FROM station_notes WHERE station_code=%s", (e.station_code,)):
+            await db.execute(
+                "UPDATE station_notes SET ptwh_count=%s, parcel_capacity=%s, updated_by=%s, updated_at=%s WHERE station_code=%s",
+                (e.ptwh_count, e.parcel_capacity, user.email, now, e.station_code),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO station_notes (station_code, ptwh_count, parcel_capacity, updated_by, updated_at) VALUES (%s, %s, %s, %s, %s)",
+                (e.station_code, e.ptwh_count, e.parcel_capacity, user.email, now),
+            )
+    if payload.set_density:
+        if payload.parcels_per_sqft is not None and payload.parcels_per_sqft <= 0:
+            raise HTTPException(status_code=422, detail="Parcels per sqft must be above 0")
+        value = None if payload.parcels_per_sqft is None else str(payload.parcels_per_sqft)
+        if await db.fetch_one("SELECT setting_key FROM management_settings WHERE setting_key=%s", (_SETTING_PARCELS_PER_SQFT,)):
+            await db.execute(
+                "UPDATE management_settings SET setting_value=%s, updated_by=%s, updated_at=%s WHERE setting_key=%s",
+                (value, user.email, now, _SETTING_PARCELS_PER_SQFT),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO management_settings (setting_key, setting_value, updated_by, updated_at) VALUES (%s, %s, %s, %s)",
+                (_SETTING_PARCELS_PER_SQFT, value, user.email, now),
+            )
+    return {"saved": len(payload.edits)}
+
+
+PLAN_STATUSES = ("planned", "in_progress", "done")
 
 
 class StationNote(BaseModel):
@@ -106,31 +173,37 @@ class StationNote(BaseModel):
     mitigation_plan: str | None
     rescue_plan: str | None
     rescue_deployment_cost: str | None
-    ptwh_count: int | None
+    plan_status: str | None
+    plan_owner: str | None
+    plan_target_date: str | None
     updated_by: str | None
     updated_at: str | None
+
+
+_NOTE_COLS = "station_code, mitigation_plan, rescue_plan, rescue_deployment_cost, plan_status, plan_owner, plan_target_date, updated_by, updated_at"
+
+
+def _note_row(r) -> dict:
+    return {
+        "station_code": r[0], "mitigation_plan": r[1], "rescue_plan": r[2], "rescue_deployment_cost": r[3],
+        "plan_status": r[4], "plan_owner": r[5], "plan_target_date": str(r[6])[:10] if r[6] else None,
+        "updated_by": r[7], "updated_at": str(r[8]) if r[8] else None,
+    }
 
 
 @router.get("/api/management-view/notes", response_model=list[StationNote])
 async def list_notes(user: CurrentUser = Depends(get_current_user)):
     _require_manager(user)
-    rows = await db.fetch_all(
-        "SELECT station_code, mitigation_plan, rescue_plan, rescue_deployment_cost, ptwh_count, updated_by, updated_at FROM station_notes"
-    )
-    return [
-        {
-            "station_code": r[0], "mitigation_plan": r[1], "rescue_plan": r[2], "rescue_deployment_cost": r[3],
-            "ptwh_count": r[4], "updated_by": r[5], "updated_at": str(r[6]) if r[6] else None,
-        }
-        for r in rows
-    ]
+    return [_note_row(r) for r in await db.fetch_all(f"SELECT {_NOTE_COLS} FROM station_notes")]
 
 
 class NoteIn(BaseModel):
     mitigation_plan: str | None = None
     rescue_plan: str | None = None
     rescue_deployment_cost: str | None = None
-    ptwh_count: int | None = None
+    plan_status: str | None = None
+    plan_owner: str | None = None
+    plan_target_date: str | None = None  # YYYY-MM-DD
 
 
 @router.put("/api/management-view/notes/{station_code}", response_model=StationNote)
@@ -138,22 +211,29 @@ async def put_note(station_code: str, payload: NoteIn, user: CurrentUser = Depen
     _require_manager(user)
     if station_code not in HUBS:
         raise HTTPException(status_code=404, detail="Unknown station")
+    if payload.plan_status and payload.plan_status not in PLAN_STATUSES:
+        raise HTTPException(status_code=422, detail=f"plan_status must be one of {list(PLAN_STATUSES)}")
+    target = None
+    if payload.plan_target_date:
+        try:
+            target = datetime.strptime(payload.plan_target_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="plan_target_date must be YYYY-MM-DD")
     now = datetime.now(timezone.utc)
-    existing = await db.fetch_one("SELECT station_code FROM station_notes WHERE station_code=%s", (station_code,))
-    if existing:
+    values = (
+        payload.mitigation_plan, payload.rescue_plan, payload.rescue_deployment_cost,
+        payload.plan_status or None, payload.plan_owner or None, target, user.email, now,
+    )
+    if await db.fetch_one("SELECT station_code FROM station_notes WHERE station_code=%s", (station_code,)):
         await db.execute(
             """UPDATE station_notes SET mitigation_plan=%s, rescue_plan=%s, rescue_deployment_cost=%s,
-               ptwh_count=%s, updated_by=%s, updated_at=%s WHERE station_code=%s""",
-            (payload.mitigation_plan, payload.rescue_plan, payload.rescue_deployment_cost, payload.ptwh_count, user.email, now, station_code),
+               plan_status=%s, plan_owner=%s, plan_target_date=%s, updated_by=%s, updated_at=%s WHERE station_code=%s""",
+            (*values, station_code),
         )
     else:
         await db.execute(
-            """INSERT INTO station_notes (station_code, mitigation_plan, rescue_plan, rescue_deployment_cost, ptwh_count, updated_by, updated_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (station_code, payload.mitigation_plan, payload.rescue_plan, payload.rescue_deployment_cost, payload.ptwh_count, user.email, now),
+            """INSERT INTO station_notes (mitigation_plan, rescue_plan, rescue_deployment_cost, plan_status, plan_owner,
+               plan_target_date, updated_by, updated_at, station_code) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (*values, station_code),
         )
-    return {
-        "station_code": station_code, "mitigation_plan": payload.mitigation_plan, "rescue_plan": payload.rescue_plan,
-        "rescue_deployment_cost": payload.rescue_deployment_cost, "ptwh_count": payload.ptwh_count,
-        "updated_by": user.email, "updated_at": now.isoformat(),
-    }
+    return _note_row((station_code, *values))

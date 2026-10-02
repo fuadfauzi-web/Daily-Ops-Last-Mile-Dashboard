@@ -82,6 +82,7 @@ export const api = {
       `/api/shipper-drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`
     ),
   agingDetails: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}`),
+  agingSummary: (type) => request(`/api/aging-details?type=${encodeURIComponent(type)}&summary=true`),
   oldRoute: () => request("/api/old-route"),
   b2bCompliance: (documentTypes) =>
     request(`/api/b2b-compliance?document_type=${encodeURIComponent(documentTypes?.length ? documentTypes.join(",") : "")}`),
@@ -185,6 +186,7 @@ export const api = {
   kpiUploadRemove: (dataset) => request(`/api/kpi/uploads/${dataset}`, { method: "DELETE" }),
   // Management View (2026-10-01): managers/admins only
   managementCapacity: () => request("/api/management-view/capacity"),
+  managementCapacitySave: (payload) => request("/api/management-view/capacity", { method: "PUT", body: JSON.stringify(payload) }),
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>
     request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
