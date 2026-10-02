@@ -26,7 +26,8 @@ QUERY_RESTOCK_NXD = 1585  # Restock NXD -- Shipper Watch
 QUERY_UNSWEEP = 58  # Unswept tracking numbers -- Station Health's Unsweep column
 QUERY_OLD_ROUTE = 1451  # "XB: Aging OVFD Parcels" -- TNs stuck on an old Route ID/date
 QUERY_RPU = 1397  # OPEX: LM RPU Monitoring -- RPU tab
-QUERY_RDO_PUSH_OFF = 1293  # FLEET: RDO Push Off -- B2B Document Compliance (RDO type)
+QUERY_RDO_PUSH_OFF = 1656  # OPEX: Document Collection Aging -- B2B Document Compliance, every
+# document type in one result (replaces 1293 "FLEET: RDO Push Off", RDO-only, 2026-10-02 feedback)
 QUERY_COLD_CHAIN = 1410  # CC Daily Orders -- Cold Chain tab (only its tracking_id column is used)
 
 _JOB_POLL_INTERVAL_SECONDS = 2

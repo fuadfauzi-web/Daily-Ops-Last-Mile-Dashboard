@@ -427,10 +427,13 @@ const SECTIONS = [
               <em>On hold (single piece)</em>: a one-piece bundle on hold. This rule is provisional -- tell us if a bundle is flagged wrongly.
             </p>
             <p>
-              <strong>B2B Document Compliance</strong> (RDO for now): RDO tracking numbers by station and RDO status (Pending Pickup, Van
-              En-route to Pickup, En-route to Sorting Hub, Pickup Fail), grouped by where the bundle last swept. Only the 143 stations are
-              counted; every bundle status is included, completed or not. Click a count for its tracking numbers and a CSV with the bundle
-              details; the list shows Age (days since the RDO was created).
+              <strong>B2B Document Compliance</strong>: every document type Redash hands back (MYRDO / DO / GRN / PSO so far -- filter with
+              <em> Document type</em> above the table, empty = every type) by station and status (Pending Pickup, Van En-route to Pickup,
+              En-route to Sorting Hub, Pickup Fail), grouped by where the bundle last swept. Only the 143 stations are counted; every bundle
+              status is included, completed or not. <strong>Normal / Potential Breach / Breach</strong> is Redash's own classification of
+              Aging (days since the bundle's delivery was marked successful): 0 days Normal, 1 day Potential Breach, more than 1 day Breach --
+              the "MPS completed but document still pending" rule the Fleet Manager's sheet used to compute by hand. Click a count for its
+              tracking numbers and a CSV with the bundle details.
             </p>
             <p>Restock views only include bundles sitting at one of the 143 stations.</p>
           </>

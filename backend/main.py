@@ -55,6 +55,7 @@ from aggregate import (
     SHIPMENT_DETAIL_KEYS, SHIPMENT_DRILLDOWN_METRICS, SHIPPER_DRILLDOWN_METRICS, SHIPPER_WATCH_KEYS,
     DEFAULT_HIGH_COD_VALUE_THRESHOLD, DEFAULT_HIGH_VALUE_ITEM_KEYWORDS, bucket_rpu_aging, build_aging_details,
     build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
+    RDO_BREACH_KEYS, flatten_rdo_station,
     build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
     build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla,
     merge_routed_into_station_metrics, build_daily_kpi, rollup_daily_kpi, DAILY_KPI_KEYS,
@@ -110,7 +111,7 @@ _QUERY_LABELS = {
     QUERY_RESTOCK_NXD: "Restock NXD (Shipper Watch)",
     QUERY_OLD_ROUTE: "Old Route / Aging OVFD",
     QUERY_RPU: "RPU Monitoring",
-    QUERY_RDO_PUSH_OFF: "RDO Push Off (B2B Document Compliance)",
+    QUERY_RDO_PUSH_OFF: "Document Collection Aging (B2B Document Compliance)",
     QUERY_COLD_CHAIN: "Cold Chain Daily Orders",
 }
 
@@ -207,6 +208,7 @@ _rpu_rows_captured_at: str | None = None
 # pattern as _old_route_rows.
 _rdo_stations: list[dict] = []
 _rdo_tn_rows: list[dict] = []
+_rdo_document_types: list[str] = []
 _rdo_captured_at: str | None = None
 
 # Cold Chain tab (query 1410's tracking numbers joined to query 78) and the Restock
@@ -347,7 +349,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         del rpu_raw_rows
 
         rdo_raw_rows = await _fetch(QUERY_RDO_PUSH_OFF)
-        rdo_by_station, rdo_tn_rows = build_rdo_compliance(rdo_raw_rows)
+        rdo_by_station, rdo_tn_rows, rdo_document_types = build_rdo_compliance(rdo_raw_rows)
         del rdo_raw_rows
 
         # microsecond=0: station_metrics/etc.'s captured_at column is a plain
@@ -365,7 +367,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         global _health_v3_by_tn, _health_v3_by_tn_captured_at
         global _shipment_timelines
         global _daily_kpi_by_station, _daily_kpi_captured_at
-        global _rdo_stations, _rdo_tn_rows, _rdo_captured_at
+        global _rdo_stations, _rdo_tn_rows, _rdo_captured_at, _rdo_document_types
         global _cold_chain_stations, _cold_chain_rows, _cold_chain_captured_at
         global _cold_chain_source_count, _cold_chain_matched_count, _restock_bundles, _restock_bundles_captured_at
         _shipment_timelines = shipment_timelines
@@ -392,6 +394,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         _rpu_rows_captured_at = captured_at.isoformat()
         _rdo_stations = list(rdo_by_station.values())
         _rdo_tn_rows = rdo_tn_rows
+        _rdo_document_types = rdo_document_types
         _rdo_captured_at = captured_at.isoformat()
         _restock_bundles = restock_bundle_rows
         _restock_bundles_captured_at = captured_at.isoformat()
@@ -1888,10 +1891,10 @@ async def old_route(user: CurrentUser = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# B2B Document Compliance (query 1293, RDO type only so far -- GRN/PSO/
-# Reattempt aren't wired up yet). document_type is accepted now so the
-# frontend's multi-select filter has something real to send, even though
-# only "rdo" currently does anything.
+# B2B Document Compliance (query 1656, every document type Redash hands back --
+# not just RDO, see aggregate.py's build_rdo_compliance / flatten_rdo_station).
+# document_type is a comma-separated filter of the lowercased keys in
+# document_types below; empty/omitted means every type.
 # ---------------------------------------------------------------------------
 
 class RdoStationRow(BaseModel):
@@ -1904,6 +1907,9 @@ class RdoStationRow(BaseModel):
     van_enroute: int
     enroute_sorting: int
     pickup_fail: int
+    normal: int
+    potential_breach: int
+    breach: int
 
 
 class RdoGroupRow(BaseModel):
@@ -1915,6 +1921,9 @@ class RdoGroupRow(BaseModel):
     van_enroute: int
     enroute_sorting: int
     pickup_fail: int
+    normal: int
+    potential_breach: int
+    breach: int
 
 
 class RdoTnRow(BaseModel):
@@ -1927,6 +1936,10 @@ class RdoTnRow(BaseModel):
     status_key: str | None = None
     bundle_last_sweep_hub: str | None = None
     age: int | None = None
+    aging_group: str | None = None
+    breach_key: str | None = None
+    document_type: str | None = None
+    document_type_key: str | None = None
     rdo_created_at: str | None
     rdo_latest_start_date: str | None
     bundle_tracking_number: str | None
@@ -1946,18 +1959,22 @@ class RdoComplianceResponse(BaseModel):
     tn_rows_truncated: bool
 
 
+def _parse_doc_types(document_type: str) -> set[str] | None:
+    requested = {t.strip().lower() for t in document_type.split(",") if t.strip()}
+    return requested or None  # None = every type
+
+
 @app.get("/api/b2b-compliance", response_model=RdoComplianceResponse)
-async def b2b_compliance(document_type: str = "rdo", user: CurrentUser = Depends(get_current_user)):
-    document_types = [t for t in document_type.split(",") if t] or ["rdo"]
-    if any(t not in ("rdo",) for t in document_types):
-        raise HTTPException(status_code=422, detail="document_type must be 'rdo' (the only type wired up so far)")
-    if _rdo_captured_at is None or "rdo" not in document_types:
+async def b2b_compliance(document_type: str = "", user: CurrentUser = Depends(get_current_user)):
+    selected = _parse_doc_types(document_type)
+    if _rdo_captured_at is None:
         return {
-            "captured_at": None, "document_types": ["rdo"], "stations": [], "zones": [], "regions": [],
+            "captured_at": None, "document_types": _rdo_document_types, "stations": [], "zones": [], "regions": [],
             "tn_rows": [], "tn_rows_total": 0, "tn_rows_truncated": False,
         }
 
-    scoped = _scope_filter_stations(_rdo_stations, user)
+    flat_stations = [flatten_rdo_station(s, selected) for s in _rdo_stations]
+    scoped = _scope_filter_stations(flat_stations, user)
     scoped_codes = {r["station_code"] for r in scoped}
 
     def to_group(rows, key):
@@ -1967,7 +1984,10 @@ async def b2b_compliance(document_type: str = "rdo", user: CurrentUser = Depends
             for g in rows if g["station_count"] > 0
         ]
 
-    tn_rows = [r for r in _rdo_tn_rows if r["station_code"] in scoped_codes]
+    tn_rows = [
+        r for r in _rdo_tn_rows
+        if r["station_code"] in scoped_codes and (selected is None or r["document_type_key"] in selected)
+    ]
     tn_rows_total = len(tn_rows)
     tn_rows_truncated = tn_rows_total > RDO_ROWS_CAP
     if tn_rows_truncated:
@@ -1975,7 +1995,7 @@ async def b2b_compliance(document_type: str = "rdo", user: CurrentUser = Depends
 
     return {
         "captured_at": _rdo_captured_at,
-        "document_types": ["rdo"],
+        "document_types": _rdo_document_types,
         "stations": scoped,
         "zones": to_group(rollup_rdo_compliance(scoped, "zone"), "zone"),
         "regions": to_group(rollup_rdo_compliance(scoped, "region"), "region"),
@@ -1994,26 +2014,33 @@ class RdoTnListResponse(BaseModel):
 
 
 @app.get("/api/b2b-compliance/tns", response_model=RdoTnListResponse)
-async def b2b_compliance_tns(station_code: str, status: str = "all", user: CurrentUser = Depends(get_current_user)):
-    """Every RDO tracking number behind one station row's count (all of them --
-    unlike the main table this isn't capped), with the bundle details, for the
-    click-a-number modal and its CSV export. status: 'all' (Total TN) or one of
-    the per-status columns."""
-    valid = ("all",) + tuple(RDO_STATUS_COLUMNS.values())
+async def b2b_compliance_tns(
+    station_code: str, status: str = "all", document_type: str = "", user: CurrentUser = Depends(get_current_user)
+):
+    """Every tracking number behind one station row's count (all of them -- unlike
+    the main table this isn't capped), with the bundle details, for the click-a-number
+    modal and its CSV export. status: 'all' (Total TN), one of the per-status columns,
+    or one of the breach columns (normal/potential_breach/breach). document_type: the
+    same filter the station table is currently showing (empty = every type)."""
+    valid = ("all",) + tuple(RDO_STATUS_COLUMNS.values()) + RDO_BREACH_KEYS
     if status not in valid:
         raise HTTPException(status_code=422, detail=f"status must be one of {list(valid)}")
-    station = next((s for s in _rdo_stations if s["station_code"] == station_code), None)
-    if station is None:
+    selected = _parse_doc_types(document_type)
+    station_row = next((s for s in _rdo_stations if s["station_code"] == station_code), None)
+    if station_row is None:
         raise HTTPException(status_code=404, detail="Unknown station")
-    if not _scope_filter_stations([station], user):
+    flat_station = flatten_rdo_station(station_row, selected)
+    if not _scope_filter_stations([flat_station], user):
         raise HTTPException(status_code=403, detail="That station isn't in your scope")
     rows = [
         r for r in _rdo_tn_rows
-        if r["station_code"] == station_code and (status == "all" or r["status_key"] == status)
+        if r["station_code"] == station_code
+        and (selected is None or r["document_type_key"] in selected)
+        and (status == "all" or r["status_key"] == status or r["breach_key"] == status)
     ]
     rows.sort(key=lambda r: r["rdo_created_at"] or "", reverse=True)
     return {
-        "captured_at": _rdo_captured_at, "station_code": station_code, "station_name": station["station_name"],
+        "captured_at": _rdo_captured_at, "station_code": station_code, "station_name": flat_station["station_name"],
         "status": status, "tn_rows": rows,
     }
 

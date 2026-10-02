@@ -2906,7 +2906,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "default": "rdo",
+              "default": "",
               "title": "Document Type"
             }
           }
@@ -2941,7 +2941,7 @@
     "/api/b2b-compliance/tns": {
       "get": {
         "summary": "Every RDO tracking number behind one station row's count, with bundle details, uncapped, for the click-a-number modal and CSV export.",
-        "description": "Every RDO tracking number behind one station row's count (all of them --\nunlike the main table this isn't capped), with the bundle details, for the\nclick-a-number modal and its CSV export. status: 'all' (Total TN) or one of\nthe per-status columns.",
+        "description": "Every tracking number behind one station row's count (all of them -- unlike\nthe main table this isn't capped), with the bundle details, for the click-a-number\nmodal and its CSV export. status: 'all' (Total TN), one of the per-status columns,\nor one of the breach columns (normal/potential_breach/breach). document_type: the\nsame filter the station table is currently showing (empty = every type).",
         "operationId": "b2b_compliance_tns_api_b2b_compliance_tns_get",
         "parameters": [
           {
@@ -2961,6 +2961,16 @@
               "type": "string",
               "default": "all",
               "title": "Status"
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Document Type"
             }
           }
         ],
@@ -7665,6 +7675,18 @@
           "pickup_fail": {
             "type": "integer",
             "title": "Pickup Fail"
+          },
+          "normal": {
+            "type": "integer",
+            "title": "Normal"
+          },
+          "potential_breach": {
+            "type": "integer",
+            "title": "Potential Breach"
+          },
+          "breach": {
+            "type": "integer",
+            "title": "Breach"
           }
         },
         "type": "object",
@@ -7676,7 +7698,10 @@
           "pending_pickup",
           "van_enroute",
           "enroute_sorting",
-          "pickup_fail"
+          "pickup_fail",
+          "normal",
+          "potential_breach",
+          "breach"
         ],
         "title": "RdoGroupRow"
       },
@@ -7717,6 +7742,18 @@
           "pickup_fail": {
             "type": "integer",
             "title": "Pickup Fail"
+          },
+          "normal": {
+            "type": "integer",
+            "title": "Normal"
+          },
+          "potential_breach": {
+            "type": "integer",
+            "title": "Potential Breach"
+          },
+          "breach": {
+            "type": "integer",
+            "title": "Breach"
           }
         },
         "type": "object",
@@ -7729,7 +7766,10 @@
           "pending_pickup",
           "van_enroute",
           "enroute_sorting",
-          "pickup_fail"
+          "pickup_fail",
+          "normal",
+          "potential_breach",
+          "breach"
         ],
         "title": "RdoStationRow"
       },
@@ -7848,6 +7888,50 @@
               }
             ],
             "title": "Age"
+          },
+          "aging_group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aging Group"
+          },
+          "breach_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breach Key"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type"
+          },
+          "document_type_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type Key"
           },
           "rdo_created_at": {
             "anyOf": [

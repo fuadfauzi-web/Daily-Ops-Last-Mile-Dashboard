@@ -18,6 +18,13 @@
 export const CHANGELOG = [
   {
     date: "2026-10-02",
+    title: "Shipper Radar -> Restock -> B2B Document Compliance now covers every document type, with a real breach classification",
+    points: [
+      "Switched from the old RDO-only Redash query to a newer one that unions every document type Redash tracks (MYRDO / DO / GRN / PSO so far -- the Document type filter now shows whatever is actually there, instead of only RDO being selectable). Also adds Normal / Potential Breach / Breach columns, Redash's own classification of how long a document has been outstanding since its bundle was delivered -- the \"MPS completed but document still pending\" rule the Fleet Manager's sheet used to compute by hand is now read straight from the source. The tracking-number list and its CSV export show Document Type, Aging and Aging Group per row.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "New: Daily KPI tab (Beta) -- today's FIFO D0 / Prior / Completion D0, and how much is left to attempt or deliver",
     feature: "dailyKpi",
     points: [

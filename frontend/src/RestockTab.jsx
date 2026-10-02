@@ -162,22 +162,23 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
   );
 }
 
-// Document type is a real multi-select filter already (2026-09-24 feedback),
-// even though RDO is the only type with data behind it so far -- GRN/PSO/
-// Reattempt just aren't selectable options yet, not disabled ones, so there's
-// nothing to explain about them in the UI.
-const DOCUMENT_TYPES = [{ value: "rdo", label: "RDO" }];
+// Document type options come from the data itself now (2026-10-02 feedback, query 1656
+// replacing 1293) -- whatever Redash's document_type column actually returns (so far
+// MYRDO / DO / GRN / PSO), not a hardcoded list. See documentTypeOptions() below.
+const docTypeLabel = (key) => (key === "unknown" ? "Unknown" : key.toUpperCase());
 
 const RDO_TN_COLUMNS = [
-  { key: "tracking_number", label: "RDO Tracking Number", text: (r) => r.tracking_number ?? "—" },
-  { key: "rdo_status", label: "RDO Status", text: (r) => r.rdo_status ?? "—" },
-  { key: "age", label: "Age (days)", text: (r) => (r.age ?? "—") },
+  { key: "tracking_number", label: "Tracking Number", text: (r) => r.tracking_number ?? "—" },
+  { key: "document_type", label: "Document Type", text: (r) => r.document_type ?? "—" },
+  { key: "rdo_status", label: "Status", text: (r) => r.rdo_status ?? "—" },
+  { key: "age", label: "Aging (days)", text: (r) => (r.age ?? "—") },
+  { key: "aging_group", label: "Aging Group", text: (r) => r.aging_group ?? "—" },
   { key: "bundle_tracking_number", label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "—" },
   { key: "bundle_delivered_at", label: "Bundle Status", text: bundleStatusText },
   { key: "bundle_last_sweep_at", label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at) },
 ];
 
-// Station-table breakdown of Total TN by RDO status (backend/aggregate.py's
+// Station-table breakdown of Total TN by status (backend/aggregate.py's
 // RDO_STATUS_COLUMNS). Any other status only counts in Total TN.
 const RDO_STATUS_COLUMNS = [
   { key: "pending_pickup", label: "Pending Pickup" },
@@ -186,8 +187,18 @@ const RDO_STATUS_COLUMNS = [
   { key: "pickup_fail", label: "Pickup Fail" },
 ];
 
+// Breach classification (2026-10-02 feedback): read straight from Redash's own aging_group
+// -- 0 days since the bundle's delivery success = Normal, 1 day = Potential Breach, >1 = Breach.
+// This is the "MPS completed but document still pending" rule the Fleet Manager's sheet used
+// to compute by hand.
+const RDO_BREACH_COLUMNS = [
+  { key: "normal", label: "Normal" },
+  { key: "potential_breach", label: "Potential Breach" },
+  { key: "breach", label: "Breach", critical: true },
+];
+
 function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  const [documentTypes, setDocumentTypes] = useState(["rdo"]);
+  const [documentTypes, setDocumentTypes] = useState([]); // [] = every document type
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState("total_tn");
@@ -203,6 +214,11 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
   const hideRegionCol = regionFilter !== "all" || (me.scope_type !== "all" && me.scope_values.length <= 1);
   const hideZoneCol =
     zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
+
+  const documentTypeOptions = useMemo(
+    () => (data?.document_types || []).map((t) => ({ value: t, label: docTypeLabel(t) })),
+    [data]
+  );
 
   // Blink fix (2026-09-25): only a real change of what's being shown (a filter / sub-view)
   // resets to the loading skeleton. The 60-second auto-refresh tick just re-fetches in
@@ -297,14 +313,21 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
       label: "Total TN",
       className: () => "font-semibold text-status-critical",
       render: (r) => r.total_tn.toLocaleString(),
-      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: "all", label: "Total TN" }),
+      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: "all", label: "Total TN", documentTypes }),
     },
     ...RDO_STATUS_COLUMNS.map((c) => ({
       key: c.key,
       label: c.label,
       className: (r) => (r[c.key] > 0 ? "text-slate-800" : "text-slate-400"),
       render: (r) => r[c.key].toLocaleString(),
-      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: c.key, label: c.label }),
+      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: c.key, label: c.label, documentTypes }),
+    })),
+    ...RDO_BREACH_COLUMNS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      className: (r) => (r[c.key] > 0 ? (c.critical ? "font-semibold text-status-critical" : "text-slate-800") : "text-slate-400"),
+      render: (r) => r[c.key].toLocaleString(),
+      onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: c.key, label: c.label, documentTypes }),
     })),
   ];
 
@@ -318,15 +341,13 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-display text-xs font-semibold text-slate-700">Document type:</span>
         <div className="w-48">
-          <MultiSelect options={DOCUMENT_TYPES} value={documentTypes} onChange={setDocumentTypes} placeholder="Select document type(s)" />
+          <MultiSelect options={documentTypeOptions} value={documentTypes} onChange={setDocumentTypes} placeholder="All document types" />
         </div>
       </div>
 
       <RdoTnModal state={tnModal} onClose={() => setTnModal(null)} />
       {!data.captured_at ? (
-        <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
-          {documentTypes.length === 0 ? "Pick at least one document type above." : "No data yet."}
-        </div>
+        <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">No data yet.</div>
       ) : (
         <>
           <DetailPanel
@@ -343,9 +364,10 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
                 onClick={() =>
                   exportCsv(
                     `daily-ops-b2b-compliance-stations-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ["Region", "Zone", "Station", "Total TN", ...RDO_STATUS_COLUMNS.map((c) => c.label)],
+                    ["Region", "Zone", "Station", "Total TN", ...RDO_STATUS_COLUMNS.map((c) => c.label), ...RDO_BREACH_COLUMNS.map((c) => c.label)],
                     filteredStations.map((r) => [
-                      r.region, r.zone, r.station_name, r.total_tn, ...RDO_STATUS_COLUMNS.map((c) => r[c.key]),
+                      r.region, r.zone, r.station_name, r.total_tn,
+                      ...RDO_STATUS_COLUMNS.map((c) => r[c.key]), ...RDO_BREACH_COLUMNS.map((c) => r[c.key]),
                     ])
                   )
                 }
@@ -373,7 +395,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
                   <MultiSelect options={tnStationOptions} value={tnStationFilter} onChange={setTnStationFilter} placeholder="Search station (this table only)…" />
                 </div>
                 <div className="w-48">
-                  <MultiSelect options={tnStatusOptions} value={tnStatusFilter} onChange={setTnStatusFilter} placeholder="All RDO statuses" />
+                  <MultiSelect options={tnStatusOptions} value={tnStatusFilter} onChange={setTnStatusFilter} placeholder="All statuses" />
                 </div>
                 <div className="w-48">
                   <MultiSelect options={tnBundleOptions} value={tnBundleFilter} onChange={setTnBundleFilter} placeholder="All bundle statuses" />
@@ -403,9 +425,8 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
             footer={
               <>
                 {filteredTnRows.length.toLocaleString()} tracking numbers · grouped by bundle_last_sweep_hub (where
-                the bundle physically sits; bundles whose last sweep hub isn't one of the 143 stations are left out) · every bundle status is included, completed or not · Age = days since the RDO was created · click a count in the station table for its tracking numbers + CSV · Bundle Status shows the date the bundle completed · RDO Status is raw from Redash -- the "MPS
-                completed but RDO still pending" style classification from the Fleet Manager's own sheet isn't
-                reproduced here yet.
+                the bundle physically sits; bundles whose last sweep hub isn't one of the 143 stations are left out) · every bundle status is included, completed or not · Aging = days since the bundle's delivery was marked successful, and Aging Group (Normal / Potential Breach / Breach) is Redash's own classification of it -- the "MPS
+                completed but document still pending" rule the Fleet Manager's sheet used to compute by hand · click a count in the station table for its tracking numbers + CSV · Bundle Status shows the date the bundle completed · Status is raw from Redash.
                 {data.tn_rows_truncated && (
                   <span className="ml-1 font-medium text-status-critical">
                     · showing the newest {filteredTnRows.length.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
