@@ -150,8 +150,8 @@ export default function App() {
         <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Logo />
-            <div className={`hidden h-6 w-px bg-slate-200 ${tidy ? "min-[1440px]:block" : "lg:block"}`} />
-            <h1 className={`hidden font-display text-sm font-semibold tracking-tight text-ink ${tidy ? "min-[1440px]:block" : "lg:block"}`}>Daily Ops Last Mile</h1>
+            <div className={`hidden h-6 w-px bg-slate-200 ${tidy ? "min-[1600px]:block" : "lg:block"}`} />
+            <h1 className={`hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight text-ink ${tidy ? "min-[1600px]:block" : "lg:block"}`}>Daily Ops Last Mile</h1>
           </div>
 
           {/* Desktop chrome: freshness, density toggle, nav, user block all inline.
@@ -159,7 +159,7 @@ export default function App() {
               they live in the user menu), the station count only from 1536px, and the Role Tester moves into the user menu. */}
           <div className="hidden items-center gap-3 lg:flex">
             {tab === "dashboard" && freshness && (
-              <div className={`items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 ${tidy ? "hidden min-[1360px]:flex" : "flex"}`}>
+              <div className={`items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 ${tidy ? "hidden min-[1440px]:flex" : "flex"}`}>
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
                 {stationsInScope != null && (

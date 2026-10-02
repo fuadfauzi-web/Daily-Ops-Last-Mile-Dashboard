@@ -54,7 +54,7 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
           {/* Freshness stops fitting in the header row below 1360px, density below 1200px. */}
           <div>
             {showFreshness && freshness && (
-              <div className="mb-3 min-[1360px]:hidden flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+              <div className="mb-3 min-[1440px]:hidden flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
                 {stationsInScope != null && (
