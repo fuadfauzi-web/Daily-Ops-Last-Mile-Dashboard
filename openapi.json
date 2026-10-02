@@ -122,9 +122,61 @@
         ]
       }
     },
+    "/api/attendance/ptwh/import": {
+      "post": {
+        "summary": "Import the PTWH DETAILS tab (CSV upload): adds only people not already in the list, for stations in the caller's scope, never overwrites. dry_run=true (default) only reports what would be added.",
+        "description": "Roster import from the PTWH DETAILS tab downloaded as CSV (File -> Download -> .csv). Matches columns by header (Full Name, IC No, Station,\nPhone No, Joined Date, Rate; an optional Category or Justification column fills the default category). Only people NOT already in the list are\nadded -- nobody is overwritten, so a station's later edits survive a re-import -- and only for stations in the caller's scope. With dry_run\n(the default) nothing is written: it just says what would happen, so the screen can show it before the person confirms.",
+        "operationId": "import_workers_api_attendance_ptwh_import_post",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Dry Run"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_workers_api_attendance_ptwh_import_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/ptwh/day": {
       "get": {
-        "summary": "Every active PTWH in scope with that day's clock in / out, hours, reason and source (today by default), plus the reasons list and the half-day pay rule.",
+        "summary": "Every active PTWH in scope with that day's clock in / out, hours, category and source (today by default), plus the 4 categories and the half-day pay rule.",
         "description": "Every active PTWH in scope with that day's clock times (today by default).",
         "operationId": "day_view_api_attendance_ptwh_day_get",
         "parameters": [
@@ -172,7 +224,7 @@
     },
     "/api/attendance/ptwh/clock-in": {
       "post": {
-        "summary": "Clock a PTWH in now (Malaysia time) with a reason; once a day per worker. This is the call the future PTWH app makes for the worker it belongs to.",
+        "summary": "Clock a PTWH in now (Malaysia time) with a category (C1-C4, defaults to the worker's); once a day per worker. This is the call the future PTWH app makes for the worker it belongs to.",
         "operationId": "clock_in_api_attendance_ptwh_clock_in_post",
         "requestBody": {
           "required": true,
@@ -331,7 +383,7 @@
     "/api/attendance/ptwh/month": {
       "get": {
         "summary": "The month sheet: a row per PTWH with hours per day, workdays (1 / 0.5), open days (no clock-out) and payable, for the stations in scope.",
-        "description": "The old sheet's grid: a row per PTWH, a column per day (hours worked), workdays and payable for the month.",
+        "description": "The old sheet's grid: a row per PTWH, a column per day (hours worked), workdays and payable for the month, and the same split by category.",
         "operationId": "month_view_api_attendance_ptwh_month_get",
         "parameters": [
           {
@@ -764,6 +816,125 @@
         "summary": "Staff & Org Chart -- HQ staff, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants (vacant seats show as empty), plus whether the caller can edit. HQ staff and above.",
         "description": "HQ staff, then each region's manager, each zone's Region Head / RFS and each station's Station Head / Fleet Assistants --\nby where they are POSTED (not by what they can see), so someone covering another station for a week still shows at home.\nStations with nobody in a role show up as vacant.",
         "operationId": "org_chart_api_org_chart_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/premises": {
+      "get": {
+        "summary": "Fleet Admin -> Premises: every station's address, size, launch date, business licence and tenancy dates (days left worked out), rent, deposit and document links; stations with no record yet come back blank. HQ staff and above.",
+        "operationId": "list_premises_api_premises_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/premises/{station}": {
+      "put": {
+        "summary": "Create or change one station's premises record; only the fields sent are changed and an empty value clears a field. Fleet Admin team and Superadmin only.",
+        "operationId": "save_premises_api_premises__station__put",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PremisesIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/premises/bulk": {
+      "post": {
+        "summary": "Paste-in of many stations at once for Fleet Admin -> Premises: each row is saved (only the fields it has), one bad row never stops the others; returns added / updated / error per row. Fleet Admin team and Superadmin only.",
+        "description": "Paste-in of many stations at once (the tab parses the pasted sheet rows). A bad row never stops the others; fields a row leaves out\nare left as they are.",
+        "operationId": "bulk_premises_api_premises_bulk_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PremisesBulkIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5718,6 +5889,20 @@
         ],
         "title": "AgingStationRow"
       },
+      "Body_import_workers_api_attendance_ptwh_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_workers_api_attendance_ptwh_import_post"
+      },
       "Body_kpi_upload_api_kpi_uploads__dataset__post": {
         "properties": {
           "file": {
@@ -6013,7 +6198,7 @@
             "type": "integer",
             "title": "Worker Id"
           },
-          "reason": {
+          "category": {
             "anyOf": [
               {
                 "type": "string"
@@ -6022,7 +6207,7 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
+            "title": "Category"
           }
         },
         "type": "object",
@@ -8659,6 +8844,402 @@
         ],
         "title": "PicSuggestion"
       },
+      "PremisesBulkIn": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PremisesRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "PremisesBulkIn"
+      },
+      "PremisesIn": {
+        "properties": {
+          "station_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Code"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "sqft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sqft"
+          },
+          "launched_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launched Date"
+          },
+          "license_expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expiry"
+          },
+          "license_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Doc Url"
+          },
+          "tenancy_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenancy End"
+          },
+          "rental": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental"
+          },
+          "deposit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit"
+          },
+          "tenancy_doc_urls": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenancy Doc Urls"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "chat_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Url"
+          },
+          "contract_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Ref"
+          }
+        },
+        "type": "object",
+        "title": "PremisesIn",
+        "description": "Only the fields that are sent are changed; \"\" clears a field."
+      },
+      "PremisesRow": {
+        "properties": {
+          "station_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Code"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "sqft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sqft"
+          },
+          "launched_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launched Date"
+          },
+          "license_expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expiry"
+          },
+          "license_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Doc Url"
+          },
+          "tenancy_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenancy End"
+          },
+          "rental": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rental"
+          },
+          "deposit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit"
+          },
+          "tenancy_doc_urls": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenancy Doc Urls"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "chat_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Url"
+          },
+          "contract_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Ref"
+          },
+          "station": {
+            "type": "string",
+            "title": "Station"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station"
+        ],
+        "title": "PremisesRow"
+      },
       "ProcessingTimeResponse": {
         "properties": {
           "today": {
@@ -9261,7 +9842,7 @@
             ],
             "title": "Clock Out"
           },
-          "reason": {
+          "category": {
             "anyOf": [
               {
                 "type": "string"
@@ -9270,7 +9851,7 @@
                 "type": "null"
               }
             ],
-            "title": "Reason"
+            "title": "Category"
           },
           "note": {
             "anyOf": [
@@ -13088,6 +13669,17 @@
             "type": "boolean",
             "title": "Active",
             "default": true
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
           }
         },
         "type": "object",

@@ -56,6 +56,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-02",
+    title: "New: Fleet Admin tab with Premises (staging only) -- licence and tenancy dates per station, edited in the app",
+    points: [
+      "One record per station: address, size, launch date, business licence and tenancy dates (with the days left worked out), rent, deposit and links to the documents. Loaded from the Fleet Management sheet's Address tab; from now on the Fleet Admin team edits it here instead of the sheet.",
+      "Chips for Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days and Dates missing, plus Region / Zone filters and search. HQ staff and above can read it; only the Fleet Admin team and the Superadmin edit. You can also paste rows from the sheet.",
+    ],
+  },
+  {
+    date: "2026-10-02",
     title: "Staff & Org Chart: mobile, employee ID and paste-from-sheet (staging only)",
     points: [
       "Each person now has a mobile number and an employee ID in the staff list (filled in for the Station Heads and Fleet Assistants from the sheet). Only HQ staff, Managers and the Superadmin see them.",

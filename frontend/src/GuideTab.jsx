@@ -383,6 +383,28 @@ const SECTIONS = [
     ),
   },
   {
+    id: "fleetadmin",
+    title: "Fleet Admin: Premises",
+    show: ({ rank }) => rank >= 2,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>Fleet Admin</strong> tab (staging only for now) holds the lists the Fleet Admin team used to keep in Google Sheets. <strong>Premises</strong> is
+          first: one record per station with its address, size, launch date, business licence and tenancy dates, rent, deposit and document links. HQ staff and
+          above can read it; only the Fleet Admin team and the Superadmin can edit.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Chips on top</strong> -- Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days, Dates missing. Click one to see just those stations. The days left are worked out from the dates, so there is no "Expires In" column to keep right.</>,
+            <><strong>Edit</strong> a station to change any field (leave a field empty to clear it). Document links must start with http:// or https://; put one tenancy document link per line.</>,
+            <><strong>Paste from sheet</strong> -- copy rows of the Fleet Management sheet's Address tab with the heading row and paste them in. A preview shows what will be saved and why a row is skipped (station not recognised, a date that can't be read). Only cells with something in them are saved: a blank, TBA or N/A never wipes what is already in the app.</>,
+            <>Vehicles and Assets will follow in this tab.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "routed",
     title: "Route Monitoring",
     body: () => (

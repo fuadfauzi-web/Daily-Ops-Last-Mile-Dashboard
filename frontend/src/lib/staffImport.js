@@ -23,28 +23,34 @@ const HEADERS = {
 };
 const DEFAULT_ORDER = ["name", "email", "position", "place", "phone", "employee_id"];
 
-// A tiny CSV / TSV splitter that understands "quoted, cells".
+// A tiny CSV / TSV splitter that understands "quoted, cells" -- including cells with line breaks inside, as Google Sheets quotes them on copy.
 export function splitRows(text) {
-  const lines = String(text || "").replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "");
-  if (!lines.length) return [];
-  const delim = lines[0].includes("\t") ? "\t" : ",";
-  return lines.map((line) => {
-    const cells = [];
-    let cur = "";
-    let quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (quoted) {
-        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-        else if (ch === '"') quoted = false;
-        else cur += ch;
-      } else if (ch === '"') quoted = true;
-      else if (ch === delim) { cells.push(cur); cur = ""; }
-      else cur += ch;
-    }
+  const src = String(text || "").replace(/\r\n?/g, "\n");
+  const firstLine = src.split("\n").find((l) => l.trim() !== "") || "";
+  const delim = firstLine.includes("\t") ? "\t" : ",";
+  const rows = [];
+  let cells = [];
+  let cur = "";
+  let quoted = false;
+  const endRow = () => {
     cells.push(cur);
-    return cells;
-  });
+    cur = "";
+    if (cells.some((c) => c.trim() !== "")) rows.push(cells);
+    cells = [];
+  };
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (quoted) {
+      if (ch === '"' && src[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cur += ch;
+    } else if (ch === '"' && cur === "") quoted = true;
+    else if (ch === delim) { cells.push(cur); cur = ""; }
+    else if (ch === "\n") endRow();
+    else cur += ch;
+  }
+  if (cur !== "" || cells.length) endRow();
+  return rows;
 }
 
 function mapHeader(cells) {

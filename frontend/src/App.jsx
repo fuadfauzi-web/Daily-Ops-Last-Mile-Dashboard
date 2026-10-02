@@ -18,6 +18,7 @@ import { positionLabel } from "./lib/roles";
 import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
 import StaffDirectoryTab from "./StaffDirectoryTab";
+import FleetAdminTab from "./FleetAdminTab";
 import AttendanceTab from "./AttendanceTab";
 
 export default function App() {
@@ -184,17 +185,20 @@ export default function App() {
   const canSeeManagementView = FEATURES.managementView && (me.role === "manager" || me.role === "admin");
   // The Fleet Admin team's own tab (2026-10-02, staging): keeps the staff list and org chart. Admin and managers can open it too.
   const canSeeStaff = me.position === "fleet_admin" || me.role === "admin" || me.role === "manager";
+  // Fleet Admin (2026-10-02, staging): the lists the Fleet Admin team keeps (premises first). HQ staff and above can read; only the Fleet Admin team edits.
+  const canSeeFleetAdmin = ["admin", "manager", "hq_staff"].includes(me.role);
   const navTabs = [
     "dashboard",
     ...(FEATURES.attendance ? ["attendance"] : []),
     ...(canSeeManagementView ? ["management"] : []),
     ...(canSeeStaff ? ["staff"] : []),
+    ...(canSeeFleetAdmin ? ["fleetadmin"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
     "settings",
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
-    t === "staff" ? "Staff & Org Chart" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
+    t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? "Fleet Admin" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : t === "attendance" ? "Attendance" : "Management View"}
         <BetaTag />
@@ -442,6 +446,7 @@ export default function App() {
         {tab === "attendance" && FEATURES.attendance && <AttendanceTab key={`attendance-${viewKey}`} me={me} />}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
         {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
+        {tab === "fleetadmin" && canSeeFleetAdmin && <FleetAdminTab key={`fleetadmin-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
