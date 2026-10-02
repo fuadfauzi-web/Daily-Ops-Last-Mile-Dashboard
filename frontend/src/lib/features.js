@@ -19,4 +19,5 @@ export const FEATURES = {
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
   roleTester: true, // admin Role Tester in the header (preview a role / scope)
   roleTesterUser: true, // ...and view as one specific user
+  stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };

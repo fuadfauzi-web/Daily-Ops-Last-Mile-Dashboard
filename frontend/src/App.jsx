@@ -125,7 +125,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-40 border-b-[3px] border-brand bg-white">
+      <div className="sticky top-0 z-40">
+        {FEATURES.stagingBanner && (
+          <div className="bg-amber-400 py-1 text-center font-display text-[11px] font-bold uppercase leading-none tracking-wider text-amber-950">
+            Staging
+          </div>
+        )}
+        <header className="border-b-[3px] border-brand bg-white">
         <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <Logo />
@@ -270,7 +276,8 @@ export default function App() {
             </div>
           </div>
         )}
-      </header>
+        </header>
+      </div>
       <main className="mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6">
         {tab === "dashboard" && <Dashboard key={`dashboard-${viewKey}`} me={me} onCapturedAt={setFreshness} onStationsInScope={setStationsInScope} notifCounts={notifCounts} />}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
