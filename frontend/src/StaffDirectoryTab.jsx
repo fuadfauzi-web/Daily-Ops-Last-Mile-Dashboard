@@ -164,7 +164,7 @@ export default function StaffDirectoryTab({ me }) {
   const startFill = (v) => {
     setEditing(null);
     const type = v.place_type === "zone" ? "zone" : v.place_type === "hq" ? "hq" : "station";
-    setForm({ ...emptyForm, role: v.designation, scope_type: type, scope_values: type === "hq" ? [] : [v.station] });
+    setForm({ ...emptyForm, role: v.designation, scope_type: type, scope_values: type === "hq" ? [] : v.places || [v.station] });
     setShowForm(true);
     setShowImport(false);
     setError(null);

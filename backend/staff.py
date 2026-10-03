@@ -314,8 +314,9 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
         "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name FROM users ORDER BY display_name, email"
     )
     tba: dict[tuple[str, str], int] = {}  # approved TBA seats by (station, designation) -- see headcount.py
-    for station, designation in await db.fetch_all("SELECT station, designation FROM headcount_seats WHERE status = 'approved'"):
-        tba[(station, designation)] = tba.get((station, designation), 0) + 1
+    for seat in await headcount._seats("WHERE status = 'approved'"):
+        for place in seat["places"]:  # a seat that covers two zones shows in both
+            tba[(place, seat["designation"])] = tba.get((place, seat["designation"]), 0) + 1
     hq, by_region, by_zone, by_station = [], {}, {}, {}
     for r in rows:
         if tier_of(r[1]) == "admin":

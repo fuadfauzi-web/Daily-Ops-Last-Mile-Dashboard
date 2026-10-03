@@ -6,12 +6,16 @@ Three kinds of place, by the seat's designation (V60): a STATION holds Station H
 Regional Fleet Supervisor seats, and HQ holds Fleet Admin seats. headcount_seats.station keeps the place's name (a station, a zone, or
 "HQ") and place_type says which.
 
+A seat can cover more than one place (V67): a Regional Fleet Supervisor who looks after South 1 and South 2 is ONE seat that sits in both zone
+rows (headcount_seats.places holds the list; `station` keeps the first). The tables show it in each place; the cards count it once.
+
 Who may change the seats (Manager and HOD, per the Fleet Manager):
   * the HOD (and the Superadmin) add a seat straight away;
   * a Manager's new seat is 'pending' until the HOD (or Superadmin) approves it;
   * a Manager or the HOD removes a seat with no approval.
 People are not removed here -- a leaver is removed from the Staff & Org Chart by the Fleet Admin team.
 """
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,6 +34,7 @@ DESIGNATIONS = {
 }
 PLACE_TYPES = {"station_head": "station", "fleet_assistant": "station", "region_head": "zone", "rfs": "zone", "fleet_admin": "hq"}
 HQ_PLACE = "HQ"
+_ZONES = {z for zs in ZONES_BY_REGION.values() for z in zs}
 
 
 def _can_view(user: CurrentUser) -> bool:
@@ -48,6 +53,31 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def seat_places(station: str, places_raw) -> list[str]:
+    """The places a seat covers: the `places` list (V67), or just `station` for seats from before."""
+    if places_raw:
+        try:
+            got = json.loads(places_raw) if isinstance(places_raw, str) else list(places_raw)
+            if got:
+                return [str(p) for p in got]
+        except ValueError:
+            pass
+    return [station]
+
+
+_SEAT_COLS = "id, station, places, place_type, designation, note, status, requested_by, requested_at, decided_by"
+
+
+async def _seats(where: str = "", params: tuple = ()) -> list[dict]:
+    out = []
+    for r in await db.fetch_all(f"SELECT {_SEAT_COLS} FROM headcount_seats {where} ORDER BY station, id", params):
+        out.append({
+            "id": r[0], "station": r[1], "places": seat_places(r[1], r[2]), "place_type": r[3] or PLACE_TYPES.get(r[4], "station"),
+            "designation": r[4], "note": r[5], "status": r[6], "requested_by": r[7], "requested_at": r[8], "decided_by": r[9],
+        })
+    return out
+
+
 async def headcount_by_station() -> dict[str, dict[str, int]]:
     """{station name: {"filled": people posted there, "tba": approved seats, "pending": seats waiting for the HOD}}."""
     out: dict[str, dict[str, int]] = {name: {"filled": 0, "tba": 0, "pending": 0} for name, *_ in HUBS.values()}
@@ -62,9 +92,10 @@ async def headcount_by_station() -> dict[str, dict[str, int]]:
         for v in values:
             if v in out:
                 out[v]["filled"] += 1
-    for station, status in await db.fetch_all("SELECT station, status FROM headcount_seats"):
-        if station in out:
-            out[station]["tba" if status == "approved" else "pending"] += 1
+    for seat in await _seats():
+        for place in seat["places"]:
+            if place in out:
+                out[place]["tba" if seat["status"] == "approved" else "pending"] += 1
     return out
 
 
@@ -87,32 +118,53 @@ def places_for(role: str, scope_type: str, values: list[str]) -> list[str]:
     return list(values) if scope_type == kind else []
 
 
+async def _plan(designation: str, places: list[str]) -> tuple[list[int], list[str]]:
+    """Which vacant seats would a person posted at `places` use up, and which places have none?  Seats are taken one at a time, the one that covers
+    the most of what is still uncovered first (an exact match wins, then the oldest); a seat that covers two zones covers both of them."""
+    seats = [s for s in await _seats("WHERE designation = %s AND status = 'approved'", (designation,))]
+    remaining = list(places)
+    take: list[int] = []
+    while remaining:
+        best = None
+        for s in seats:
+            hit = len(set(s["places"]) & set(remaining))
+            if hit == 0:
+                continue
+            key = (hit, set(s["places"]) <= set(places), -s["id"])  # most covered, then not spilling over, then oldest
+            if best is None or key > best[0]:
+                best = (key, s)
+        if best is None:
+            break
+        seats.remove(best[1])
+        take.append(best[1]["id"])
+        remaining = [p for p in remaining if p not in best[1]["places"]]
+    return take, remaining
+
+
 async def missing_vacant_seat(station_names: list[str], role: str) -> str | None:
     """The first place among these with no vacant (approved) seat for this role's designation, or None when every one has one.
     The Fleet Admin team can only fill a seat a Manager / HOD has opened -- they cannot add headcount."""
     designation = designation_of(role)
     if designation is None:
         return None
-    for station in station_names:
-        row = await db.fetch_one(
-            "SELECT id FROM headcount_seats WHERE station = %s AND designation = %s AND status = 'approved' LIMIT 1", (station, designation)
-        )
-        if row is None:
-            return station
-    return None
+    _take, uncovered = await _plan(designation, list(station_names))
+    return uncovered[0] if uncovered else None
 
 
 async def vacate(station_names: list[str], role: str, who: str, note: str | None, by: str) -> None:
-    """A person left a place: their seat stays (headcount only changes by a Manager / HOD), now vacant until someone fills it."""
+    """A person left a place: their seat stays (headcount only changes by a Manager / HOD), now vacant until someone fills it.
+    Someone who covered two zones leaves one seat that covers both."""
     designation = designation_of(role)
-    if designation is None:
+    if designation is None or not station_names:
         return
     now = _now()
-    for station in station_names:
+    kind = PLACE_TYPES[designation]
+    groups = [[p] for p in station_names] if kind == "station" else [list(station_names)]
+    for places in groups:
         await db.execute(
-            """INSERT INTO headcount_seats (station, place_type, designation, note, status, requested_by, requested_at, decided_by, decided_at)
-               VALUES (%s, %s, %s, %s, 'approved', %s, %s, %s, %s)""",
-            (station, PLACE_TYPES[designation], designation, note or f"Vacated by {who}", by, now, by, now),
+            """INSERT INTO headcount_seats (station, places, place_type, designation, note, status, requested_by, requested_at, decided_by, decided_at)
+               VALUES (%s, %s, %s, %s, %s, 'approved', %s, %s, %s, %s)""",
+            (places[0], json.dumps(places), kind, designation, note or f"Vacated by {who}", by, now, by, now),
         )
 
 
@@ -133,36 +185,31 @@ def _place_info(place: str, place_type: str) -> tuple[str, str]:
 async def vacant_seats() -> list[dict]:
     """Approved seats, for the Staff list (a vacant row each) -- with the place's zone and region."""
     out = []
-    for sid, station, place_type, designation, note in await db.fetch_all(
-        "SELECT id, station, place_type, designation, note FROM headcount_seats WHERE status = 'approved' ORDER BY station, id"
-    ):
-        zone, region = _place_info(station, place_type)
+    for s in await _seats("WHERE status = 'approved'"):
+        zone, region = _place_info(s["station"], s["place_type"])
         out.append({
-            "id": sid, "station": station, "place_type": place_type, "zone": zone, "region": region,
-            "designation": designation, "label": DESIGNATIONS.get(designation, designation), "note": note,
+            "id": s["id"], "station": ", ".join(s["places"]), "places": s["places"], "place_type": s["place_type"], "zone": zone, "region": region,
+            "designation": s["designation"], "label": DESIGNATIONS.get(s["designation"], s["designation"]), "note": s["note"],
         })
     return out
 
 
 async def consume_seat(station_names: list[str], role: str) -> None:
-    """A real person was added to these stations: use up one matching approved seat per station (the oldest), so the same
-    person is not counted twice -- once as a TBA seat and once as themselves."""
+    """A real person was added to these places: use up the matching vacant seat(s), so the same person is not counted twice -- once as a
+    vacant seat and once as themselves."""
     designation = designation_of(role)
     if designation is None:
         return
-    for station in station_names:
-        row = await db.fetch_one(
-            "SELECT id FROM headcount_seats WHERE station = %s AND designation = %s AND status = 'approved' ORDER BY id LIMIT 1",
-            (station, designation),
-        )
-        if row:
-            await db.execute("DELETE FROM headcount_seats WHERE id = %s", (row[0],))
+    take, _uncovered = await _plan(designation, list(station_names))
+    for sid in take:
+        await db.execute("DELETE FROM headcount_seats WHERE id = %s", (sid,))
 
 
-def _seat_out(r) -> dict:
+def _seat_out(s: dict) -> dict:
     return {
-        "id": r[0], "station": r[1], "designation": r[2], "label": DESIGNATIONS.get(r[2], r[2]), "note": r[3], "status": r[4],
-        "requested_by": r[5], "requested_at": str(r[6]), "decided_by": r[7], "place_type": r[8] or PLACE_TYPES.get(r[2], "station"),
+        "id": s["id"], "station": s["station"], "places": s["places"], "designation": s["designation"],
+        "label": DESIGNATIONS.get(s["designation"], s["designation"]), "note": s["note"], "status": s["status"],
+        "requested_by": s["requested_by"], "requested_at": str(s["requested_at"]), "decided_by": s["decided_by"], "place_type": s["place_type"],
     }
 
 
@@ -187,15 +234,35 @@ async def headcount_by_place() -> tuple[dict[str, dict], dict[str, int], int]:
             elif place in zones:
                 zones[place][role]["filled"] += 1
                 zone_people.add(email.lower())
-    for place, designation, status in await db.fetch_all(
-        "SELECT station, designation, status FROM headcount_seats WHERE designation IN ('region_head', 'rfs', 'fleet_admin')"
-    ):
-        key = "tba" if status == "approved" else "pending"
-        if designation == "fleet_admin" and place == HQ_PLACE:
-            hq[key] += 1
-        elif designation != "fleet_admin" and place in zones:
-            zones[place][designation][key] += 1
+    for seat in await _seats("WHERE designation IN ('region_head', 'rfs', 'fleet_admin')"):
+        key = "tba" if seat["status"] == "approved" else "pending"
+        for place in seat["places"]:
+            if seat["designation"] == "fleet_admin" and place == HQ_PLACE:
+                hq[key] += 1
+            elif seat["designation"] != "fleet_admin" and place in zones:
+                zones[place][seat["designation"]][key] += 1
     return zones, hq, len(zone_people)
+
+
+async def _distinct_totals(seats: list[dict]) -> dict[str, dict[str, int]]:
+    """Cards: each person and each seat counted once, even when it covers two places."""
+    people = {"stations": set(), "zones": set(), "hq": set()}
+    for email, role, st, raw, home_st, home_raw in await db.fetch_all(
+        "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values FROM users"
+    ):
+        designation = designation_of(role)
+        if designation is None:
+            continue
+        scope_type, values = (home_st, parse_scope_values(home_raw)) if home_st else (st, parse_scope_values(raw))
+        if places_for(role, scope_type, values):
+            people[{"station": "stations", "zone": "zones", "hq": "hq"}[PLACE_TYPES[designation]]].add(email.lower())
+    out = {k: {"filled": len(v), "tba": 0, "pending": 0} for k, v in people.items()}
+    for s in seats:
+        key = {"station": "stations", "zone": "zones", "hq": "hq"}[s["place_type"]]
+        out[key]["tba" if s["status"] == "approved" else "pending"] += 1
+    for v in out.values():
+        v["total"] = v["filled"] + v["tba"]
+    return out
 
 
 @router.get("/api/headcount")
@@ -207,12 +274,8 @@ async def headcount(user: CurrentUser = Depends(get_current_user)):
     for name, _full, zone, region in sorted(HUBS.values(), key=lambda h: h[0]):
         c = counts[name]
         stations.append({"name": name, "zone": zone, "region": region, **c, "total": c["filled"] + c["tba"]})
-    seats = [
-        _seat_out(r)
-        for r in await db.fetch_all(
-            "SELECT id, station, designation, note, status, requested_by, requested_at, decided_by, place_type FROM headcount_seats ORDER BY station, id"
-        )
-    ]
+    raw_seats = await _seats()
+    seats = [_seat_out(s) for s in raw_seats]
     zone_counts, hq_counts, zone_people = await headcount_by_place()
     zones = []
     for r in REGIONS:
@@ -225,6 +288,7 @@ async def headcount(user: CurrentUser = Depends(get_current_user)):
         "stations": stations,
         "zones": zones,
         "zone_people": zone_people,
+        "totals": await _distinct_totals(raw_seats),
         "hq": {"fleet_admin": {**hq_counts, "total": hq_counts["filled"] + hq_counts["tba"]}},
         "seats": seats,
         "can_change": _can_change(user),
@@ -234,7 +298,8 @@ async def headcount(user: CurrentUser = Depends(get_current_user)):
 
 
 class SeatIn(BaseModel):
-    station: str = ""  # the place: a station for SH / FA seats, a zone for RH / RFS seats; ignored for Fleet Admin (HQ)
+    station: str = ""  # one place (kept for older callers); `places` is the list
+    places: list[str] = []  # the places the seat covers: stations for SH / FA, zones for RH / RFS (several allowed), nothing for Fleet Admin (HQ)
     designation: str = "fleet_assistant"
     note: str | None = None
 
@@ -246,20 +311,25 @@ async def add_seat(payload: SeatIn, user: CurrentUser = Depends(get_current_user
     if payload.designation not in DESIGNATIONS:
         raise HTTPException(status_code=422, detail=f"designation must be one of {sorted(DESIGNATIONS)}")
     place_type = PLACE_TYPES[payload.designation]
-    place = HQ_PLACE if place_type == "hq" else payload.station
-    if place_type == "station" and place not in {h[0] for h in HUBS.values()}:
-        raise HTTPException(status_code=422, detail="Pick a station")
-    if place_type == "zone" and place not in {z for zs in ZONES_BY_REGION.values() for z in zs}:
+    asked = [p for p in (payload.places or ([payload.station] if payload.station else [])) if p]
+    places = [HQ_PLACE] if place_type == "hq" else list(dict.fromkeys(asked))
+    if place_type == "station":
+        valid = {h[0] for h in HUBS.values()}
+        if not places or any(p not in valid for p in places):
+            raise HTTPException(status_code=422, detail="Pick a station")
+    if place_type == "zone" and (not places or any(p not in _ZONES for p in places)):
         raise HTTPException(status_code=422, detail="Pick a zone")
+    if len(places) > 6:
+        raise HTTPException(status_code=422, detail="A seat can cover 6 places at most")
     note = (payload.note or "").strip() or None
     if note and len(note) > 200:
         raise HTTPException(status_code=422, detail="Note is too long (max 200 characters)")
     now = _now()
     approved = _is_hod(user)
     await db.execute(
-        """INSERT INTO headcount_seats (station, place_type, designation, note, status, requested_by, requested_at, decided_by, decided_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (place, place_type, payload.designation, note, "approved" if approved else "pending", user.email, now,
+        """INSERT INTO headcount_seats (station, places, place_type, designation, note, status, requested_by, requested_at, decided_by, decided_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        (places[0], json.dumps(places), place_type, payload.designation, note, "approved" if approved else "pending", user.email, now,
          user.email if approved else None, now if approved else None),
     )
     return {"ok": True, "status": "approved" if approved else "pending"}

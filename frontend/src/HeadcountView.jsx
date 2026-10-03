@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import MultiSelect from "./components/MultiSelect";
 
 // Headcount (2026-10-02, staging): a place's headcount = the people posted there (Staff & Org Chart) + its vacant seats -- planned seats, or
 // people whose email isn't known yet. Three tables: STATIONS (Station Head / Fleet Assistant), ZONES (Region Head / Regional Fleet Supervisor) and
-// HQ (Fleet Admin). Management View -> Capacity reads the station numbers. The HOD adds a seat straight away; a Manager's new seat waits for the HOD
+// HQ (Fleet Admin). A seat can cover more than one place (a Regional Fleet Supervisor for South 1 and South 2 is one seat): it shows in each place's row
+// and the cards count it once. Management View -> Capacity reads the station numbers. The HOD adds a seat straight away; a Manager's new seat waits for the HOD
 // to approve it; a Manager or the HOD removes a seat with no approval. Removing a PERSON is the Fleet Admin team's job.
 const DESIGNATIONS = [
   ["fleet_assistant", "Fleet Assistant", "station"],
@@ -35,7 +37,7 @@ export default function HeadcountView() {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("all");
   const [sort, setSort] = useState({ key: "station", dir: "asc" });
-  const [form, setForm] = useState({ station: "", designation: "fleet_assistant", note: "" });
+  const [form, setForm] = useState({ places: [], designation: "fleet_assistant", note: "" });
   const [notice, setNotice] = useState(null);
 
   const load = () => api.headcount.get().then(setData).catch((e) => setError(e.message));
@@ -68,8 +70,6 @@ export default function HeadcountView() {
   const switchSection = (key) => {
     setSection(key);
     setSort({ key: "station", dir: "asc" });
-    const first = DESIGNATIONS.find(([, , k]) => k === KIND_FOR_SECTION[key])[0];
-    setForm((f) => ({ ...f, designation: first, station: "" }));
   };
 
   const regions = useMemo(() => [...new Set((section === "zones" ? data?.zones : data?.stations || []).map((s) => s.region))].sort(), [data, section]);
@@ -105,30 +105,29 @@ export default function HeadcountView() {
   if (error && !data) return <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>;
   if (!data) return <div className="text-sm text-slate-400">Loading…</div>;
 
-  const sum = (list, pick) => list.reduce((a, x) => { const c = pick(x); return { filled: a.filled + c.filled, tba: a.tba + c.tba, pending: a.pending + c.pending }; }, { filled: 0, tba: 0, pending: 0 });
-  const totals =
-    section === "stations" ? sum(data.stations, (s) => s)
-    : section === "zones" ? sum(data.zones.flatMap((z) => [z.region_head, z.rfs]), (c) => c)
-    : data.hq.fleet_admin;
-  // A Region Head / RFS who covers two zones is listed in both rows but is one person: the card counts each once.
-  const peopleCard = section === "zones" ? data.zone_people ?? totals.filled : totals.filled;
+  // The cards count each person and each seat once, even when it covers two places (a table row per place would count it twice).
+  const totals = data.totals?.[section] || { filled: 0, tba: 0, pending: 0 };
+  const peopleCard = totals.filled;
   const pending = data.seats.filter((s) => s.status === "pending");
   const sectionSeats = data.seats.filter((s) => (s.place_type || "station") === kind);
 
+  const formKind = KIND_OF[form.designation];
   const submit = (e) => {
     e.preventDefault();
-    if (kind !== "hq" && !form.station) return setError(kind === "zone" ? "Pick a zone" : "Pick a station");
+    if (formKind !== "hq" && form.places.length === 0) return setError(formKind === "zone" ? "Pick a zone" : "Pick a station");
     act(async () => {
-      const r = await api.headcount.add({ station: kind === "hq" ? "" : form.station, designation: form.designation, note: form.note });
-      setForm({ ...form, note: "" });
+      const r = await api.headcount.add({ places: formKind === "hq" ? [] : form.places, designation: form.designation, note: form.note });
+      setForm({ ...form, places: [], note: "" });
+      setSection(formKind === "zone" ? "zones" : formKind === "hq" ? "hq" : "stations"); // show where the seat landed
       setNotice(r.status === "pending" ? "Sent to the HOD for approval. It counts once approved." : "Headcount added.");
     });
   };
+  const placeOptions = formKind === "station" ? data.stations.map((s) => ({ value: s.name, label: `${s.name} (${s.zone})` })) : formKind === "zone" ? data.zones.map((z) => ({ value: z.name, label: `${z.name} (${z.region})` })) : [];
 
   const SeatChips = ({ place, type }) =>
     (seatsByPlace[`${type}:${place}`] || []).map((seat) => (
       <span key={seat.id} title={seat.note || ""} className={`mr-1.5 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs ${seat.status === "pending" ? "border-amber-400 text-amber-800" : "border-slate-400 text-slate-600"}`}>
-        {seat.label}{seat.status === "pending" ? " (pending)" : ""}{type === "hq" && seat.note ? ` · ${seat.note}` : ""}
+        {seat.label}{(seat.places || []).length > 1 ? ` · ${seat.places.join(" + ")}` : ""}{seat.status === "pending" ? " (pending)" : ""}{type === "hq" && seat.note ? ` · ${seat.note}` : ""}
         {data.can_change && (
           <button disabled={busy} onClick={() => act(() => api.headcount.remove(seat.id))} aria-label="Remove this seat" className="text-status-critical hover:underline">×</button>
         )}
@@ -142,7 +141,6 @@ export default function HeadcountView() {
   );
 
   const input = "rounded-lg border border-slate-300 px-3 py-1.5 text-sm";
-  const kindDesignations = DESIGNATIONS.filter(([, , k]) => k === kind);
   return (
     <div className="space-y-4">
       <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold sm:w-fit">
@@ -171,27 +169,22 @@ export default function HeadcountView() {
 
       {data.can_change && (
         <form onSubmit={submit} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
-          {kind === "station" && (
-            <select value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })} className={input}>
-              <option value="">Station…</option>
-              {data.stations.map((s) => <option key={s.name} value={s.name}>{s.name} ({s.zone})</option>)}
-            </select>
-          )}
-          {kind === "zone" && (
-            <select value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })} className={input}>
-              <option value="">Zone…</option>
-              {data.zones.map((z) => <option key={z.name} value={z.name}>{z.name} ({z.region})</option>)}
-            </select>
-          )}
-          {kind === "hq" && <div className={`${input} bg-slate-50 text-slate-500`}>HQ (the Fleet Admin team)</div>}
-          <select value={KIND_OF[form.designation] === kind ? form.designation : kindDesignations[0][0]} onChange={(e) => setForm({ ...form, designation: e.target.value })} className={input} disabled={kindDesignations.length === 1}>
-            {kindDesignations.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          <select value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value, places: KIND_OF[e.target.value] === KIND_OF[form.designation] ? form.places : [] })} className={input} aria-label="Role">
+            {DESIGNATIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
+          {formKind === "hq" ? (
+            <div className={`${input} bg-slate-50 text-slate-500`}>HQ (the Fleet Admin team)</div>
+          ) : (
+            <MultiSelect placeholder={formKind === "zone" ? "Zone(s)… pick two if it covers both" : "Station(s)…"} options={placeOptions} value={form.places} onChange={(v) => setForm({ ...form, places: v })} />
+          )}
           <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Note (e.g. new hire)" maxLength={200} className={`${input} lg:col-span-2`} />
           <button type="submit" disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50">
             {data.needs_approval ? "Request headcount" : "Add headcount"}
           </button>
-          {data.needs_approval && <p className="text-xs text-slate-400 sm:col-span-2 lg:col-span-5">As a Manager, headcount you add waits for the HOD's approval. Removing a seat needs no approval.</p>}
+          <p className="text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
+            Pick the role, then where it sits: station(s) for a Station Head / Fleet Assistant, zone(s) for a Region Head / RFS (a seat for two zones, e.g. South 1 and South 2, is one seat), HQ for Fleet Admin.
+            {data.needs_approval ? " As a Manager, headcount you add waits for the HOD's approval. Removing a seat needs no approval." : ""}
+          </p>
         </form>
       )}
 

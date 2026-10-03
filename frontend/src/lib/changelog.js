@@ -124,6 +124,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-03",
+    title: "Headcount seats can cover two zones, and one form for every role (staging only)",
+    points: [
+      "Add headcount now has one Role list (Station Head, Fleet Assistant, Region Head, RFS, Fleet Admin) and a Location picker: station(s), zone(s) or HQ. An RFS who looks after South 1 and South 2 is one seat that shows in both zone rows, while the cards count it once.",
+      "Adding the person uses the seat up (one person for both zones uses the one seat); when they leave, one seat covering both zones comes back.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Headcount for Region Heads, RFS and the Fleet Admin team (staging only)",
     points: [
       "The Headcount view now has three tables: Stations (Station Head, Fleet Assistant), Zones (Region Head, Regional Fleet Supervisor) and HQ (Fleet Admin). Each shows the people posted there, the vacant seats and the headcount; the three RFS seats marked TBA in the sheet (South 1, South 2, Zone B) and the Fleet Admin team's intern seats are in as vacant seats.",
