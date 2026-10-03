@@ -24,6 +24,7 @@ import io
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -379,6 +380,8 @@ async def update_case(case_type: str, case_id: int, payload: CasePatch, user: Cu
         if not _can_edit_field(user, f, code):
             raise HTTPException(status_code=403, detail=f"You cannot edit \"{f['label']}\" on this row")
         cv = _clean(f, v)
+        if cv is not None and f["kind"] == "file" and not re.match(r"https?://\S+$", cv, re.I):
+            raise HTTPException(status_code=422, detail=f"{f['label']}: upload a photo, or paste the full link (https://...)")
         if cv is None or f["kind"] == "file":
             await _drop_blob(data.get(k))  # clearing, or replacing an uploaded file with a typed link
         if cv is None:

@@ -25,6 +25,8 @@ const isImage = (type) => (type || "").startsWith("image/");
 function FileCell({ type, field, row, disabled, onRow, onError }) {
   const value = row.data[field.key];
   const [busy, setBusy] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [link, setLink] = useState("");
   const url = (download) => api.recoveryCaseFileUrl(type, row.id, field.key, download);
   const pick = async (e) => {
     const file = e.target.files?.[0];
@@ -46,11 +48,33 @@ function FileCell({ type, field, row, disabled, onRow, onError }) {
       onError(err.message);
     }
   };
+  const saveLink = async () => {
+    const v = link.trim();
+    if (!/^https?:\/\/\S+$/i.test(v)) return onError("Paste the full link, starting with https://");
+    try {
+      onRow((await api.recoveryCaseSave(type, row.id, { fields: { [field.key]: v } })).row);
+      setLinking(false);
+      setLink("");
+    } catch (err) {
+      onError(err.message);
+    }
+  };
   const uploadBtn = !disabled && (
-    <label className="cursor-pointer text-[11px] font-medium text-brand underline">
-      {busy ? "Uploading…" : value ? "Replace" : "Upload photo"}
-      <input type="file" accept="image/*,.pdf" className="hidden" onChange={pick} disabled={busy} />
-    </label>
+    linking ? (
+      <div className="flex items-center gap-1">
+        <input value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveLink()} placeholder="Paste Google Drive link" autoFocus className={`${inputBase} w-44`} />
+        <button onClick={saveLink} className="text-[11px] font-medium text-brand underline">Save</button>
+        <button onClick={() => { setLinking(false); setLink(""); }} className="text-[11px] text-slate-400">Cancel</button>
+      </div>
+    ) : (
+      <span className="flex items-center gap-2">
+        <label className="cursor-pointer text-[11px] font-medium text-brand underline">
+          {busy ? "Uploading…" : value ? "Replace" : "Upload photo"}
+          <input type="file" accept="image/*,.pdf" className="hidden" onChange={pick} disabled={busy} />
+        </label>
+        <button onClick={() => setLinking(true)} className="text-[11px] font-medium text-brand underline">{value ? "Use link" : "Paste link"}</button>
+      </span>
+    )
   );
   if (value && typeof value === "object") {
     return (
@@ -74,7 +98,7 @@ function FileCell({ type, field, row, disabled, onRow, onError }) {
     const isUrl = /^https?:\/\//i.test(value);
     return (
       <div className="flex flex-col items-start gap-0.5">
-        {isUrl ? <a href={value} target="_blank" rel="noreferrer" className="max-w-[10rem] truncate text-[11px] font-medium text-slate-700 underline">Old link</a> : <span className="max-w-[10rem] truncate text-[11px] text-slate-600" title={value}>{value}</span>}
+        {isUrl ? <a href={value} target="_blank" rel="noreferrer" className="max-w-[10rem] truncate text-[11px] font-medium text-slate-700 underline">Open link</a> : <span className="max-w-[10rem] truncate text-[11px] text-slate-600" title={value}>{value}</span>}
         {uploadBtn}
         {!disabled && <button onClick={remove} className="text-[11px] text-slate-400 hover:text-status-critical">Remove</button>}
       </div>
