@@ -17,6 +17,14 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-04",
+    title: "Schedule (Beta, staging only): Middle shift added, no fixed shift times",
+    feature: "attendance",
+    points: [
+      "The Schedule now has a Middle shift next to AM and PM (PTWH and Staff). The shift hours are no longer shown, since each station runs its own AM / Middle / PM times.",
+    ],
+  },
+  {
     date: "2026-10-03",
     title: "Recovery: PDCNR, Damage and No Label from Hub (staging only)",
     points: [

@@ -16,7 +16,7 @@ const GROUPS = [
   { key: "hybrid", label: "Hybrid" },
 ];
 const SHIFT_CLS = {
-  AM: "bg-indigo-50 text-indigo-800", HD: "bg-sky-50 text-sky-800", PM: "bg-violet-50 text-violet-800",
+  AM: "bg-indigo-50 text-indigo-800", MD: "bg-teal-50 text-teal-800", HD: "bg-sky-50 text-sky-800", PM: "bg-violet-50 text-violet-800",
   WK: "bg-emerald-50 text-emerald-800", OFF: "bg-slate-100 text-slate-500", AL: "bg-amber-50 text-amber-800",
 };
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return localDay(d); };
@@ -165,7 +165,6 @@ export default function ScheduleView({ setError }) {
       )}
 
       <p className="text-xs text-slate-500">
-        Shifts: {Object.entries(Object.fromEntries(data.shifts[group].map((s) => [s.code, s]))).map(([, s]) => `${s.label}${s.hours ? ` ${s.hours}` : ""}`).join(" · ")}.
         {group === "ptwh" && " Each PTWH sees their own next two weeks in the PTWH app (My month → My schedule)."}
         {group === "staff" && " Staff come from the Staff & Org Chart (Station Head and Fleet Assistants posted at this station)."}
       </p>

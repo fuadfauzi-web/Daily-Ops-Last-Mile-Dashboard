@@ -23,16 +23,18 @@ from auth import CurrentUser, get_current_user
 log = logging.getLogger("work_schedule")
 router = APIRouter()
 
-# code -> (label, hours). Per group, the shifts that make sense for that group (the PTWH ones are the template's: AM, half-day push-off, PM).
+# code -> (label, hours). The hours are deliberately blank: every station runs its own AM / Middle / PM times (an AM can start at 5am in one station and 8am in the next),
+# so the schedule only says WHICH shift, never when it starts. (The field stays so the PTWH app and the API keep their shape.)
 SHIFTS = {
-    "AM": ("AM", "05:00-14:00"),
-    "HD": ("Half day", "06:00-10:00"),
-    "PM": ("PM", "13:00-21:00"),
+    "AM": ("AM", ""),
+    "MD": ("Middle", ""),
+    "HD": ("Half day", ""),
+    "PM": ("PM", ""),
     "WK": ("Working", ""),
     "OFF": ("Off", ""),
     "AL": ("Leave", ""),
 }
-GROUP_SHIFTS = {"ptwh": ["AM", "HD", "PM", "OFF"], "staff": ["AM", "PM", "OFF", "AL"], "hybrid": ["WK", "OFF", "AL"]}
+GROUP_SHIFTS = {"ptwh": ["AM", "MD", "PM", "HD", "OFF"], "staff": ["AM", "MD", "PM", "OFF", "AL"], "hybrid": ["WK", "OFF", "AL"]}
 EDIT_POSITIONS = ("station_head", "region_head", "hod", "manager", "admin")
 STAFF_POSITIONS = ("station_head", "fleet_assistant", "station")
 
