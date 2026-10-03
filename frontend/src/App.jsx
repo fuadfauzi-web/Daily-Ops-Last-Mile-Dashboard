@@ -75,6 +75,7 @@ export default function App() {
   }, []);
   const [dashTab, setDashTab] = useState(null); // the Dashboard's active sub-tab, reported up so the sidebar can highlight it
   const [dashRequest, setDashRequest] = useState(null); // { key, n } -- asks the Dashboard to open a sub-tab
+  const [recGroup, setRecGroup] = useState("activemissing"); // which Recovery group the sidebar / category row has selected
   const [jumpOpen, setJumpOpen] = useState(false);
   useEffect(() => {
     if (!FEATURES.jumpSearch) return undefined;
@@ -219,12 +220,12 @@ export default function App() {
   // "Top tabs" (the default choice) is the same categories as the sidebar laid out along the top; "Classic" is the original tab strips.
   const catActive = !!FEATURES.sidebarNav && navMode === "tabs" && wide;
   const externalNav = sidebarActive || catActive;
-  const sideItems = SIDE_ITEMS.filter((i) => (i.dash ? DASHBOARD_TAB_KEYS.includes(i.id) : navTabs.includes(i.id))).map((i) => {
+  const sideItems = SIDE_ITEMS.filter((i) => (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
     const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
     return {
       ...i,
       label: i.id === "urgent" && FEATURES.taskList ? i.taskListLabel : i.label,
-      active: i.dash ? tab === "dashboard" && dashTab === i.id : tab === i.id,
+      active: i.dash ? tab === "dashboard" && dashTab === (i.dashKey || i.id) && (!i.recGroup || recGroup === i.recGroup) : tab === i.id,
       badge: i.id === "settings" ? (notifCounts?.feedback_replies_unread || 0) + whatsNewUnread : i.id === "attendance" ? (notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) : bells.badge,
       dot: bells.dot,
     };
@@ -271,7 +272,8 @@ export default function App() {
     const item = SIDE_ITEMS.find((i) => i.id === id);
     if (item?.dash) {
       setTab("dashboard");
-      setDashRequest({ key: id, n: Date.now() });
+      if (item.recGroup) setRecGroup(item.recGroup);
+      setDashRequest({ key: item.dashKey || id, n: Date.now() });
     } else setTab(id);
   };
   const onRoleChanged = () => {
@@ -380,6 +382,7 @@ export default function App() {
                 {imgState && <span className="min-[1600px]:hidden text-[11px] font-semibold">{imgState === "copied" ? "✓" : imgState === "busy" ? "…" : "!"}</span>}
               </button>
             )}
+            {catActive && <CategoryNav items={sideItems} onSelect={selectSide} />}
             {tidy ? (
               <UserMenu
                 me={me}
@@ -493,7 +496,6 @@ export default function App() {
           onStation={jumpToStation}
         />
       )}
-      {catActive && <CategoryNav items={sideItems} onSelect={selectSide} />}
       <div className={sidebarActive ? "flex" : ""}>
       {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
       <main ref={mainRef} className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
@@ -516,6 +518,7 @@ export default function App() {
             onStationsInScope={setStationsInScope}
             notifCounts={notifCounts}
             sidebar={externalNav}
+            recoveryGroup={recGroup}
             requestedTab={dashRequest}
             onTabState={setDashTab}
           />

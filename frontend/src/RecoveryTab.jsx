@@ -299,15 +299,18 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   );
 }
 
-export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  const [group, setGroup] = useState("activemissing");
+// externalGroup: set while the sidebar / category row drives the groups (staging navigation trial) -- the group strip is then hidden, because the
+// groups are already listed under the Recovery category and showing them twice would duplicate it.
+export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, externalGroup }) {
+  const [ownGroup, setGroup] = useState("activemissing");
+  const group = externalGroup || ownGroup;
   const [subTabs, setSubTabs] = useState({ activemissing: "missing", lostdeclared: "lostweek" }); // each group remembers its own sub-tab
   const subTab = subTabs[group];
   const setSubTab = (key) => setSubTabs((s) => ({ ...s, [group]: key }));
 
   return (
     <div className="space-y-3">
-      <SegmentedControl options={GROUPS} value={group} onChange={setGroup} />
+      {!externalGroup && <SegmentedControl options={GROUPS} value={group} onChange={setGroup} />}
       {SUB_TABS[group] && <SegmentedControl options={SUB_TABS[group]} value={subTab} onChange={setSubTab} />}
       {CASE_GROUPS.includes(group) && (
         <RecoveryCases

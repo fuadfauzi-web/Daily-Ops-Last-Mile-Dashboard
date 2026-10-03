@@ -274,7 +274,7 @@ function exportStationHealthCsv(rows) {
 }
 
 // sidebar / requestedTab / onTabState: the staging sidebar (FEATURES.sidebarNav) drives and mirrors the tab from outside -- with `sidebar` on, the tab strip below is hidden.
-export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts, sidebar = false, requestedTab = null, onTabState }) {
+export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts, sidebar = false, requestedTab = null, onTabState, recoveryGroup }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -1234,6 +1234,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {tab === "recovery" && (
         <RecoveryTab
+          externalGroup={sidebar ? recoveryGroup : undefined}
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}
