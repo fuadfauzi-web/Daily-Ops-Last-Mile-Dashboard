@@ -22,7 +22,7 @@ import staff
 from attendance import _hours, _iso, _now, _visible_stations, _zone_region
 from auth import CurrentUser, get_current_user, parse_scope_values
 from ptwh_app import MAX_GPS_ACCURACY_M, RADIUS_M, _station_geo, distance_m
-from work_schedule import SHIFTS, STAFF_POSITIONS
+from work_schedule import SHIFTS, STAFF_POSITIONS, hours_text, station_times
 
 log = logging.getLogger("staff_attendance")
 router = APIRouter()
@@ -55,11 +55,10 @@ def _record_json(r) -> dict:
 
 
 async def _shift_today(email: str, day: date) -> dict | None:
-    r = await db.fetch_one("SELECT shift FROM schedule_entries WHERE person_type = 'staff' AND person_ref = %s AND work_date = %s", (email.lower(), day))
+    r = await db.fetch_one("SELECT shift, station FROM schedule_entries WHERE person_type = 'staff' AND person_ref = %s AND work_date = %s", (email.lower(), day))
     if not r:
         return None
-    label, hours = SHIFTS.get(r[0], (r[0], ""))
-    return {"code": r[0], "label": label, "hours": hours}
+    return {"code": r[0], "label": SHIFTS.get(r[0], (r[0], ""))[0], "hours": hours_text(await station_times(r[1]), r[0])}
 
 
 async def _open_or_today(email: str, today: date, now: datetime):
@@ -181,11 +180,12 @@ async def day(date_: str | None = Query(default=None, alias="date"), user: Curre
     people = await _people(user)
     recs = {r[1]: r for r in await db.fetch_all(f"SELECT {_COLS} FROM staff_attendance WHERE work_date = %s", (d,))}
     shifts = {r[0]: r[1] for r in await db.fetch_all("SELECT person_ref, shift FROM schedule_entries WHERE person_type = 'staff' AND work_date = %s", (d,))}
+    times = {st: await station_times(st) for st in {p["station"] for p in people}}
     rows = []
     for p in people:
         rec = recs.get(p["email"])
         sh = shifts.get(p["email"])
-        rows.append({**p, "shift": ({"code": sh, "label": SHIFTS.get(sh, (sh, ""))[0], "hours": SHIFTS.get(sh, (sh, ""))[1]} if sh else None),
+        rows.append({**p, "shift": ({"code": sh, "label": SHIFTS.get(sh, (sh, ""))[0], "hours": hours_text(times[p["station"]], sh)} if sh else None),
                      "record": _record_json(rec) if rec else None})
     return {"date": str(d), "rows": rows, "can_fix": _can_fix(user)}
 

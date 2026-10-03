@@ -9,6 +9,7 @@ Who may EDIT: Station Heads, Region Heads, Managers / HOD and the Superadmin, fo
 The PTWH app's "My schedule" shows a PTWH their next two weeks from here (ptwh_app.py).
 """
 import logging
+import re
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -37,6 +38,21 @@ SHIFTS = {
 GROUP_SHIFTS = {"ptwh": ["AM", "MD", "PM", "HD", "OFF"], "staff": ["AM", "MD", "PM", "OFF", "AL"], "hybrid": ["WK", "OFF", "AL"]}
 EDIT_POSITIONS = ("station_head", "region_head", "hod", "manager", "admin")
 STAFF_POSITIONS = ("station_head", "fleet_assistant", "station")
+
+
+TIMED_SHIFTS = ("AM", "MD", "PM")  # the shifts a station writes its own hours for
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+async def station_times(station: str) -> dict[str, dict]:
+    """{'AM': {'start': '05:00', 'end': '14:00'}, ...} -- the hours this station wrote down (only the shifts it has set)."""
+    rows = await db.fetch_all("SELECT shift, start_time, end_time FROM station_shift_times WHERE station = %s", (station,))
+    return {r[0]: {"start": r[1], "end": r[2]} for r in rows}
+
+
+def hours_text(times: dict[str, dict], code: str | None) -> str:
+    t = times.get(code or "")
+    return f"{t['start']}-{t['end']}" if t else ""
 
 
 def can_edit(user: CurrentUser) -> bool:
@@ -102,12 +118,42 @@ async def get_schedule(station: str | None = None, week_start: str | None = None
     groups = {}
     for g in ("ptwh", "staff", "hybrid"):
         groups[g] = [{"ref": ref, "name": name, "cells": cells.get((g, ref), {})} for ref, name in await roster(st, g)]
+    times = await station_times(st)
     return {
-        "station": st, "stations": stations, "week_start": str(ws), "can_edit": can_edit(user),
+        "station": st, "stations": stations, "week_start": str(ws), "can_edit": can_edit(user), "shift_times": times,
         "days": [{"date": str(d), "dow": d.strftime("%a"), "day": d.day} for d in days],
-        "shifts": {g: [{"code": c, "label": SHIFTS[c][0], "hours": SHIFTS[c][1]} for c in codes] for g, codes in GROUP_SHIFTS.items()},
+        "shifts": {g: [{"code": c, "label": SHIFTS[c][0], "hours": hours_text(times, c)} for c in codes] for g, codes in GROUP_SHIFTS.items()},
         "groups": groups,
     }
+
+
+class ShiftTimeIn(BaseModel):
+    station: str
+    shift: str  # AM | MD | PM
+    start: str | None = None  # HH:MM; start and end both empty = take the hours off
+    end: str | None = None
+
+
+@router.put("/api/attendance/schedule/shift-times")
+async def set_shift_time(p: ShiftTimeIn, user: CurrentUser = Depends(get_current_user)):
+    """Write down (or clear) this station's own hours for its AM, Middle or PM shift. Same people who can edit the schedule."""
+    _require_edit(user, p.station)
+    if p.shift not in TIMED_SHIFTS:
+        raise HTTPException(status_code=422, detail="Hours can be set for AM, Middle and PM")
+    if not p.start and not p.end:
+        await db.execute("DELETE FROM station_shift_times WHERE station = %s AND shift = %s", (p.station, p.shift))
+        return {"ok": True, "cleared": True}
+    if not p.start or not p.end or not _HHMM.match(p.start) or not _HHMM.match(p.end):
+        raise HTTPException(status_code=422, detail="Give a start and an end time like 05:00 and 14:00")
+    if p.start == p.end:
+        raise HTTPException(status_code=422, detail="The start and end can't be the same")
+    now = _now()
+    existing = await db.fetch_one("SELECT id FROM station_shift_times WHERE station = %s AND shift = %s", (p.station, p.shift))
+    if existing:
+        await db.execute("UPDATE station_shift_times SET start_time = %s, end_time = %s, updated_by = %s, updated_at = %s WHERE id = %s", (p.start, p.end, user.email, now, existing[0]))
+    else:
+        await db.execute("INSERT INTO station_shift_times (station, shift, start_time, end_time, updated_by, updated_at) VALUES (%s,%s,%s,%s,%s,%s)", (p.station, p.shift, p.start, p.end, user.email, now))
+    return {"ok": True}
 
 
 class CellIn(BaseModel):
@@ -210,7 +256,7 @@ async def remove_hybrid_driver(station: str, name: str, user: CurrentUser = Depe
     return {"ok": True}
 
 
-async def ptwh_upcoming(worker_id: int, days: int = 14) -> list[dict]:
+async def ptwh_upcoming(worker_id: int, days: int = 14, station: str | None = None) -> list[dict]:
     """The next `days` days for one PTWH (the PTWH app's My schedule): every date, with the shift (code, label, hours) or None when nothing is scheduled."""
     today = _now().date()
     rows = {
@@ -220,9 +266,10 @@ async def ptwh_upcoming(worker_id: int, days: int = 14) -> list[dict]:
             (str(worker_id), today, today + timedelta(days=days)),
         )
     }
+    times = await station_times(station) if station else {}
     out = []
     for i in range(days):
         d = today + timedelta(days=i)
         code = rows.get(str(d))
-        out.append({"date": str(d), "shift": code, "label": SHIFTS[code][0] if code in SHIFTS else None, "hours": SHIFTS[code][1] if code in SHIFTS else None})
+        out.append({"date": str(d), "shift": code, "label": SHIFTS[code][0] if code in SHIFTS else None, "hours": (hours_text(times, code) or None) if code in SHIFTS else None})
     return out

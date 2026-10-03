@@ -301,6 +301,7 @@ export const api = {
   ptwhFlag: (recordId, status, note) => request(`/api/attendance/ptwh/audit/${recordId}/flag`, { method: "POST", body: JSON.stringify({ status, note }) }),
   ptwhPhotoUrl: (recordId, which) => `/api/attendance/ptwh/photo/${recordId}/${which}`,
   schedule: (station, weekStart) => request(`/api/attendance/schedule?${new URLSearchParams({ ...(station ? { station } : {}), ...(weekStart ? { week_start: weekStart } : {}) })}`),
+  scheduleShiftTime: (payload) => request("/api/attendance/schedule/shift-times", { method: "PUT", body: JSON.stringify(payload) }),
   scheduleCell: (payload) => request("/api/attendance/schedule/cell", { method: "PUT", body: JSON.stringify(payload) }),
   scheduleCopy: (payload) => request("/api/attendance/schedule/copy-week", { method: "POST", body: JSON.stringify(payload) }),
   scheduleAddDriver: (station, name) => request("/api/attendance/schedule/hybrid-driver", { method: "POST", body: JSON.stringify({ station, name }) }),

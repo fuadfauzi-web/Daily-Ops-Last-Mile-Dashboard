@@ -21,6 +21,50 @@ const SHIFT_CLS = {
 };
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return localDay(d); };
 
+// Each station writes down its own AM / Middle / PM hours (an AM starts at 5am in one station and 8am in the next). They show here, on the Staff clock and in the PTWH app.
+const TIMED = [{ code: "AM", label: "AM" }, { code: "MD", label: "Middle" }, { code: "PM", label: "PM" }];
+
+function ShiftTimes({ data, reload, setError }) {
+  const [draft, setDraft] = useState({});
+  useEffect(() => { setDraft({}); }, [data.station, data.shift_times]);
+  const val = (code, k) => draft[code]?.[k] ?? data.shift_times?.[code]?.[k] ?? "";
+  const set = (code, k, v) => setDraft((d) => ({ ...d, [code]: { start: val(code, "start"), end: val(code, "end"), ...d[code], [k]: v } }));
+  const save = async (code) => {
+    try {
+      await api.scheduleShiftTime({ station: data.station, shift: code, start: val(code, "start") || null, end: val(code, "end") || null });
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const dirty = (code) => draft[code] && (val(code, "start") !== (data.shift_times?.[code]?.start || "") || val(code, "end") !== (data.shift_times?.[code]?.end || ""));
+  return (
+    <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+      <div className="mb-2 text-sm font-semibold text-ink">Shift times at {data.station}</div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        {TIMED.map((s) => (
+          <div key={s.code} className="flex items-center gap-2 text-sm">
+            <span className="w-14 font-semibold text-slate-600">{s.label}</span>
+            {data.can_edit ? (
+              <>
+                <input type="time" className={`${inputCls} w-[110px]`} value={val(s.code, "start")} onChange={(e) => set(s.code, "start", e.target.value)} aria-label={`${s.label} start`} />
+                <span className="text-slate-400">to</span>
+                <input type="time" className={`${inputCls} w-[110px]`} value={val(s.code, "end")} onChange={(e) => set(s.code, "end", e.target.value)} aria-label={`${s.label} end`} />
+                {dirty(s.code) && <button onClick={() => save(s.code)} className={`${btnCls} bg-brand py-1 text-white`}>Save</button>}
+              </>
+            ) : (
+              <span className="tabular-nums text-slate-700">{data.shift_times?.[s.code] ? `${data.shift_times[s.code].start} – ${data.shift_times[s.code].end}` : <span className="text-slate-400">not set</span>}</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        {data.can_edit ? "Write this station's own hours once; leave both boxes empty to clear one. " : ""}They show next to the shift for this station's PTWH (in their app) and Staff.
+      </p>
+    </div>
+  );
+}
+
 export default function ScheduleView({ setError }) {
   const [station, setStation] = useState("");
   const [week, setWeek] = useState(localDay());
@@ -108,6 +152,8 @@ export default function ScheduleView({ setError }) {
       {!data.can_edit && (
         <p className="text-xs text-slate-500">You can read the schedule. Only Station Heads, Region Heads and Managers can change it.</p>
       )}
+
+      <ShiftTimes data={data} reload={load} setError={setError} />
 
       <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
         <table className="min-w-full text-sm">

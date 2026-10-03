@@ -2061,6 +2061,46 @@
         ]
       }
     },
+    "/api/attendance/schedule/shift-times": {
+      "put": {
+        "summary": "Write down (or clear) a station's own hours for its AM, Middle or PM shift; Station Heads, Region Heads, Managers and the Superadmin for stations in scope.",
+        "description": "Write down (or clear) this station's own hours for its AM, Middle or PM shift. Same people who can edit the schedule.",
+        "operationId": "set_shift_time_api_attendance_schedule_shift_times_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShiftTimeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/schedule/cell": {
       "put": {
         "summary": "Set (or clear) one person's shift on one day for a station; Station Heads, Region Heads, Managers and the Superadmin only, within their scope.",
@@ -14267,6 +14307,46 @@
         },
         "type": "object",
         "title": "SettingsIn"
+      },
+      "ShiftTimeIn": {
+        "properties": {
+          "station": {
+            "type": "string",
+            "title": "Station"
+          },
+          "shift": {
+            "type": "string",
+            "title": "Shift"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station",
+          "shift"
+        ],
+        "title": "ShiftTimeIn"
       },
       "ShipmentDetailsResponse": {
         "properties": {

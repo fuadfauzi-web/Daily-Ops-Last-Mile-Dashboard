@@ -445,7 +445,9 @@ async def app_summary(month: str | None = None, s=Depends(_session), lang: str =
 async def app_schedule(s=Depends(_session)):
     """My schedule: the next 14 days from the station's schedule (Attendance -> Schedule). Days with no shift are listed with shift = null."""
     w, _cred = s
-    return {"station": w[4], "days": await work_schedule.ptwh_upcoming(w[0], 14), "shifts": {c: {"label": v[0], "hours": v[1]} for c, v in work_schedule.SHIFTS.items()}}
+    times = await work_schedule.station_times(w[4])
+    return {"station": w[4], "days": await work_schedule.ptwh_upcoming(w[0], 14, w[4]),
+            "shifts": {c: {"label": v[0], "hours": work_schedule.hours_text(times, c)} for c, v in work_schedule.SHIFTS.items()}}
 
 
 class ChangePassword(BaseModel):

@@ -18,10 +18,11 @@
 export const CHANGELOG = [
   {
     date: "2026-10-04",
-    title: "Schedule (Beta, staging only): Middle shift added, no fixed shift times",
+    title: "Schedule (Beta, staging only): Middle shift, and each station sets its own shift hours",
     feature: "attendance",
     points: [
-      "The Schedule now has a Middle shift next to AM and PM (PTWH and Staff). The shift hours are no longer shown, since each station runs its own AM / Middle / PM times.",
+      "The Schedule now has a Middle shift next to AM and PM (PTWH and Staff).",
+      "Each station writes down its own AM / Middle / PM hours in the new Shift times box above the grid (Station Heads, Region Heads and Managers can set them). Those hours show next to the shift in the PTWH app's My schedule and on the Staff clock.",
     ],
   },
   {

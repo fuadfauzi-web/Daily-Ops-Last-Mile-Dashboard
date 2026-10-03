@@ -59,6 +59,7 @@ SUMMARIES = {
     ("post", "/api/attendance/ptwh/workers/{worker_id}/decision"): "Approve or reject a NEW PTWH hire: the Region Head decides first, then a Manager / HOD (the Superadmin may do either). The final approval makes the worker active; a rejection needs a note.",
     ("post", "/api/attendance/ptwh/workers/{worker_id}/rehire"): "Bring back an ended or inactive PTWH (at the same or another station): needs the same Region Head then Manager approval as a new hire; clears the end date.",
     ("get", "/api/attendance/schedule"): "Attendance -> Schedule: one station's week -- every PTWH, Staff and Hybrid person with the shift on each of the 7 days, the shifts allowed per group and whether the caller may edit (Station / Region Heads and Managers only).",
+    ("put", "/api/attendance/schedule/shift-times"): "Write down (or clear) a station's own hours for its AM, Middle or PM shift; Station Heads, Region Heads, Managers and the Superadmin for stations in scope.",
     ("put", "/api/attendance/schedule/cell"): "Set (or clear) one person's shift on one day for a station; Station Heads, Region Heads, Managers and the Superadmin only, within their scope.",
     ("post", "/api/attendance/schedule/copy-week"): "Copy one week's shifts onto another for a group at a station (replaces the target week); editors only.",
     ("post", "/api/attendance/schedule/hybrid-driver"): "Add a Hybrid driver, by name, to a station's schedule (stopgap until the Fleet Admin Hybrid driver list exists).",
