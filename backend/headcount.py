@@ -249,11 +249,18 @@ def _seat_out(s: dict) -> dict:
 _EMPTY = {"filled": 0, "tba": 0, "pending": 0}
 
 
+async def _org_support_people() -> int:
+    """People on the org chart under the Admin & Support team who have no dashboard access (the Admin (LM) interns): they are Fleet Admin headcount."""
+    row = await db.fetch_one("SELECT COUNT(*) FROM org_people WHERE branch = 'admin_support'")
+    return int(row[0]) if row else 0
+
+
 async def headcount_by_place() -> tuple[dict[str, dict], dict[str, int], int]:
     """Zone and HQ headcount: ({zone: {"region", "region_head": {filled, tba, pending}, "rfs": {...}}}, HQ's Fleet Admin {filled, tba, pending},
     how many different Region Heads / RFS are posted at a zone). Someone who covers two zones is counted in each zone's row but once in the last number."""
     zones = {z: {"region": r, "region_head": dict(_EMPTY), "rfs": dict(_EMPTY)} for r in REGIONS for z in ZONES_BY_REGION.get(r, [])}
     hq = dict(_EMPTY)
+    hq["filled"] += await _org_support_people()
     zone_people: set[str] = set()
     for email, role, st, raw, home_st, home_raw in await db.fetch_all(
         "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values FROM users"
@@ -291,6 +298,8 @@ async def _distinct_totals(seats: list[dict], allowed: set[str] | None = None) -
         if mine and _in_scope(mine, allowed):
             people[{"station": "stations", "zone": "zones", "hq": "hq"}[PLACE_TYPES[designation]]].add(email.lower())
     out = {k: {"filled": len(v), "tba": 0, "pending": 0} for k, v in people.items()}
+    if allowed is None:
+        out["hq"]["filled"] += await _org_support_people()
     for s in seats:
         if not _in_scope(s["places"], allowed):
             continue

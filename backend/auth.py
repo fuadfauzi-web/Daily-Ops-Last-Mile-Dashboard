@@ -58,7 +58,7 @@ def parse_scope_values(raw) -> list[str]:
 POSITIONS: dict[str, tuple[str, str, str]] = {  # position -> (label, group, tier)
     "admin": ("Superadmin", "hq", "admin"),  # stored as 'admin'; shown as Superadmin so it is not mixed up with the Fleet Admin position
     "hod": ("HOD", "hq", "manager"),
-    "manager": ("Manager", "hq", "manager"),
+    "manager": ("Fleet Manager", "hq", "manager"),
     "fleet_admin": ("Fleet Admin", "hq", "hq_staff"),
     "opex": ("OPEX", "hq", "hq_staff"),
     "recovery": ("Recovery", "hq", "hq_staff"),

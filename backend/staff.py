@@ -89,6 +89,9 @@ class StaffIn(BaseModel):
     # Contact details (V55). None = leave what is on file; "" = clear it.
     phone: str | None = None
     employee_id: str | None = None
+    # The title on the org chart ("Team Lead (Admin & Ops Support- LM)") and, for a Region Head / RFS, the station they sit at (V73). Same None / "" rule.
+    job_title: str | None = None
+    based_station: str | None = None
 
 
 _BLANKS = {"", "tba", "n/a", "na", "-", "none", "nil"}
@@ -103,6 +106,18 @@ def _contact(value: str | None, label: str) -> str | None | bool:
         return None
     if len(v) > 30:
         raise HTTPException(status_code=422, detail=f"{label} is too long (30 characters at most)")
+    return v
+
+
+def _text(value: str | None, label: str, limit: int) -> str | None | bool:
+    """False = not given (keep); None = clear; else the cleaned text."""
+    if value is None:
+        return False
+    v = " ".join(value.split())
+    if not v:
+        return None
+    if len(v) > limit:
+        raise HTTPException(status_code=422, detail=f"{label} is too long ({limit} characters at most)")
     return v
 
 
@@ -149,7 +164,7 @@ async def _target(email: str):
 @router.get("/api/staff")
 async def list_staff(user: CurrentUser = Depends(get_current_user)):
     rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, last_seen_at, phone, employee_id FROM users ORDER BY display_name, email"
+        "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, last_seen_at, phone, employee_id, job_title, based_station FROM users ORDER BY display_name, email"
     )
     hq = _hq_view(user)
     out = []
@@ -161,11 +176,11 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
         out.append({
             "email": r[0], "name": plain_name(r[6]) or r[0], "position": r[1],
             "home": {"scope_type": home_st, "scope_values": home_sv},
-            # what a person can access, their employee ID and last sign-in are for HQ tiers; everyone else sees who is posted where and a phone number
+            # what a person can access and their last sign-in are for HQ tiers; everyone else sees who is posted where, a phone number and the employee ID
             "access": {"scope_type": access[0], "scope_values": access[1]} if hq else {"scope_type": home_st, "scope_values": home_sv},
             "custom_access": hq and _norm(*access) != _norm(home_st, home_sv),
             "last_seen_at": (str(r[7]) if r[7] else None) if hq else None,
-            "phone": r[8] or "", "employee_id": (r[9] or "") if hq else "",
+            "phone": r[8] or "", "employee_id": r[9] or "", "job_title": r[10] or "", "based_station": r[11] or "",
         })
     return {"people": out, "vacant": await headcount.vacant_seats(), "can_edit": _can_edit(user), "hq_view": hq}
 
@@ -185,11 +200,12 @@ async def _insert(payload: StaffIn, email: str, actor: CurrentUser) -> None:
             )
     values = _values_json(payload.scope_values)
     phone, emp = _contact(payload.phone, "Phone"), _contact(payload.employee_id, "Employee ID")
+    title, based = _text(payload.job_title, "Title", 80), _text(payload.based_station, "Based station", 100)
     await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, phone, employee_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, phone, employee_id, job_title, based_station)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (email, payload.role, payload.scope_type, values, payload.scope_type, values,
-         compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), by, phone or None, emp or None),
+         compose_display_name(payload.name, payload.role, payload.scope_type, payload.scope_values), by, phone or None, emp or None, title or None, based or None),
     )
     if places:
         await headcount.consume_seat(places, payload.role)  # a vacant seat is used up by the real person
@@ -211,6 +227,11 @@ async def _apply_update(row, payload: StaffIn) -> bool:
         args += [payload.scope_type, values]
     for col, label, raw in (("phone", "Phone", payload.phone), ("employee_id", "Employee ID", payload.employee_id)):
         v = _contact(raw, label)
+        if v is not False:
+            sets.append(f"{col}=%s")
+            args.append(v)
+    for col, label, raw, limit in (("job_title", "Title", payload.job_title, 80), ("based_station", "Based station", payload.based_station, 100)):
+        v = _text(raw, label, limit)
         if v is not False:
             sets.append(f"{col}=%s")
             args.append(v)
@@ -311,30 +332,59 @@ async def purge_user(email: str) -> None:
     )
 
 
-def _person(email: str, role: str, name: str | None) -> dict:
-    return {"email": email, "position": role, "label": POSITIONS.get(role, (role,))[0], "name": name or email}
+def _station_code(station: str) -> str:
+    """The 3-letter code of a station (BEN, GBG ...), the second part of its hub code."""
+    for hub, (name, *_rest) in HUBS.items():
+        if name == station:
+            parts = hub.split("-")
+            return parts[1] if len(parts) > 1 else ""
+    return ""
+
+
+def _person(row, org: bool = False) -> dict:
+    """One person for the chart / popup. `row` is a users row (see _CHART_COLS) or, for org=True, an org_people row."""
+    if org:
+        pid, name, title, email, phone, emp, branch, region = row[:8]
+        return {
+            "email": email or "", "position": "org", "label": title or "", "title": title or "", "name": name, "phone": phone or "",
+            "employee_id": emp or "", "based_station": "", "posted": region or "HQ", "source": "org", "org_id": pid, "branch": branch,
+        }
+    email, role, name, phone, emp, job_title, based, home_type, home_values = row
+    label = POSITIONS.get(role, (role,))[0]
+    where = "HQ" if home_type in ("all", "hq") else ", ".join(home_values)
+    return {
+        "email": email, "position": role, "label": label, "title": job_title or label, "name": plain_name(name) or email, "phone": phone or "",
+        "employee_id": emp or "", "based_station": based or "", "posted": where, "source": "user", "covers": home_values if home_type == "zone" else [],
+    }
+
+
+_CHART_COLS = "email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, phone, employee_id, job_title, based_station"
 
 
 @router.get("/api/org-chart")
 async def org_chart(user: CurrentUser = Depends(get_current_user)):
-    """HQ staff, then each region's manager, each zone's Region Head / RFS and each station's Station Head / Fleet Assistants --
-    by where they are POSTED (not by what they can see), so someone covering another station for a week still shows at home.
-    Stations with nobody in a role show up as vacant."""
-    rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name FROM users ORDER BY display_name, email"
-    )
-    tba: dict[tuple[str, str], int] = {}  # approved TBA seats by (station, designation) -- see headcount.py
+    """The organisation as a picture (2026-10-03): HQ (HOO, HOD), the Fleet Strategist, the Fleet Managers with their regions, the Admin & Support team; under each
+    region its zones' Region Head / RFS, under each zone its stations with their Station Head / Fleet Assistants. People are placed by where they are POSTED, not by
+    what they can see. Stations with nobody in a role show as vacant; vacant seats show for everyone."""
+    rows = await db.fetch_all(f"SELECT {_CHART_COLS} FROM users ORDER BY display_name, email")
+    org = await db.fetch_all("SELECT id, name, title, email, phone, employee_id, branch, region FROM org_people ORDER BY sort_no, id")
+    codes = {r[0]: r[1] for r in await db.fetch_all("SELECT station, station_code FROM premises")}
+    tba: dict[tuple[str, str], int] = {}  # approved vacant seats by (place, designation) -- see headcount.py
     for seat in await headcount._seats("WHERE status = 'approved'"):  # vacant seats show for everyone (2026-10-03)
         for place in seat["places"]:  # a seat that covers two zones shows in both
             tba[(place, seat["designation"])] = tba.get((place, seat["designation"]), 0) + 1
-    hq, by_region, by_zone, by_station = [], {}, {}, {}
+    hq, hod, support, by_region, by_zone, by_station = [], [], [], {}, {}, {}
     for r in rows:
         if tier_of(r[1]) == "admin" or _is_test_account(r[0]):
             continue
-        person = _person(r[0], r[1], r[6])
+        person = _person((r[0], r[1], r[6], r[7], r[8], r[9], r[10], *_home_of(r)[:2]))
         scope_type, values = _home_of(r)
         if scope_type in ("all", "hq"):
             hq.append(person)
+            if r[1] == "hod":
+                hod.append(person)
+            elif r[1] == "fleet_admin":
+                support.append(person)
         elif scope_type == "region":
             for v in values:
                 by_region.setdefault(v, []).append(person)
@@ -344,9 +394,19 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
         elif scope_type == "station":
             for v in values:
                 by_station.setdefault(v, []).append(person)
+    top = {"hoo": [], "hod": hod, "strategist": [], "admin_support": support}
+    for o in org:
+        p = _person(o, org=True)
+        if o[6] == "region_manager" and o[7]:
+            by_region.setdefault(o[7], []).append(p)
+        elif o[6] in top:
+            top[o[6]].append(p)
+    lead = next((p for p in support if (p["title"] or "").lower().startswith("team lead")), None)
+    members = [p for p in top["admin_support"] if p is not lead]
     regions = []
     for region in REGIONS:
         zones = []
+        stations_in_region = 0
         for zone in ZONES_BY_REGION.get(region, []):
             stations = []
             for name, _full, z, rg in sorted(HUBS.values(), key=lambda h: h[0]):
@@ -354,15 +414,83 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
                     continue
                 people = by_station.get(name, [])
                 stations.append({
-                    "name": name,
+                    "name": name, "code": _station_code(name), "station_id": codes.get(name) or "",
                     "heads": [p for p in people if p["position"] == "station_head"],
                     "assistants": [p for p in people if p["position"] != "station_head"],  # Fleet Assistants, and the old unspecific 'station' title
                     "tba_heads": tba.get((name, "station_head"), 0),
                     "tba_assistants": tba.get((name, "fleet_assistant"), 0),
                 })
+            stations_in_region += len(stations)
             zones.append({
                 "name": zone, "leads": by_zone.get(zone, []), "stations": stations,
                 "tba_region_heads": tba.get((zone, "region_head"), 0), "tba_rfs": tba.get((zone, "rfs"), 0),
             })
-        regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones})
-    return {"hq": hq, "hq_vacant_fleet_admin": tba.get((headcount.HQ_PLACE, "fleet_admin"), 0), "regions": regions, "can_edit": _can_edit(user)}
+        regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones, "station_count": stations_in_region})
+    return {
+        "hq": hq, "hq_vacant_fleet_admin": tba.get((headcount.HQ_PLACE, "fleet_admin"), 0), "regions": regions, "can_edit": _can_edit(user),
+        "top": {"hoo": top["hoo"], "hod": top["hod"], "strategist": top["strategist"], "admin_lead": lead, "admin_members": members},
+    }
+
+
+class OrgPersonIn(BaseModel):
+    name: str
+    title: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    employee_id: str | None = None
+    branch: str  # hoo | hod | strategist | region_manager | admin_support
+    region: str | None = None
+
+
+_BRANCHES = {"hoo", "hod", "strategist", "region_manager", "admin_support"}
+
+
+def _org_clean(p: OrgPersonIn) -> tuple:
+    name = " ".join(p.name.split())
+    if not name or len(name) > 120:
+        raise HTTPException(status_code=422, detail="Type the person's name (120 characters at most)")
+    if p.branch not in _BRANCHES:
+        raise HTTPException(status_code=422, detail=f"branch must be one of {sorted(_BRANCHES)}")
+    if p.branch == "region_manager" and p.region not in REGIONS:
+        raise HTTPException(status_code=422, detail="A region manager needs a region")
+    def one(v, n, label):
+        s = " ".join((v or "").split())
+        if len(s) > n:
+            raise HTTPException(status_code=422, detail=f"{label} is too long ({n} characters at most)")
+        return s or None
+    return (name, one(p.title, 120, "Title"), one(p.email, 255, "Email"), one(p.phone, 40, "Mobile"), one(p.employee_id, 30, "Employee ID"),
+            p.branch, p.region if p.branch == "region_manager" else None)
+
+
+@router.post("/api/org-people")
+async def add_org_person(payload: OrgPersonIn, user: CurrentUser = Depends(get_current_user)):
+    """People who are on the org chart but have no dashboard access (HOO, HOD, Fleet Strategist, the Fleet Manager of a region, Admin & Support interns)."""
+    _require_editor(user)
+    c = _org_clean(payload)
+    await db.execute(
+        "INSERT INTO org_people (name, title, email, phone, employee_id, branch, region, sort_no, updated_by, updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (*c, 999, user.email, headcount._now()),
+    )
+    return {"ok": True}
+
+
+@router.patch("/api/org-people/{pid}")
+async def update_org_person(pid: int, payload: OrgPersonIn, user: CurrentUser = Depends(get_current_user)):
+    _require_editor(user)
+    if not await db.fetch_one("SELECT id FROM org_people WHERE id = %s", (pid,)):
+        raise HTTPException(status_code=404, detail="Not found")
+    c = _org_clean(payload)
+    await db.execute(
+        "UPDATE org_people SET name=%s, title=%s, email=%s, phone=%s, employee_id=%s, branch=%s, region=%s, updated_by=%s, updated_at=%s WHERE id=%s",
+        (*c, user.email, headcount._now(), pid),
+    )
+    return {"ok": True}
+
+
+@router.delete("/api/org-people/{pid}")
+async def delete_org_person(pid: int, user: CurrentUser = Depends(get_current_user)):
+    _require_editor(user)
+    if not await db.fetch_one("SELECT id FROM org_people WHERE id = %s", (pid,)):
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.execute("DELETE FROM org_people WHERE id = %s", (pid,))
+    return {"ok": True}

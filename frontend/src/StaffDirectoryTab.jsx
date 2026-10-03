@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import HeadcountView from "./HeadcountView";
 import OrgChartVisual from "./OrgChartVisual";
+import OrgDetailsList from "./OrgDetailsList";
+import OrgPeoplePanel from "./OrgPeoplePanel";
 import StaffImport from "./StaffImport";
 import MultiSelect from "./components/MultiSelect";
 import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
@@ -10,112 +12,11 @@ import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
 // and where they are posted, HQ staff included. It feeds the PIC box and the org chart. It does NOT edit access (what a person may
 // see): that starts out the same as the posting and is changed only by a Manager / HOD, a Region Head / RFS or the Superadmin in
 // Settings -> Users, e.g. to give someone sent to rescue another station or region that place's data. The list shows when it differs.
-const SHORT = { region_head: "RH", rfs: "RFS", station_head: "SH", fleet_assistant: "FA" };
-const emptyForm = { email: "", name: "", role: "fleet_assistant", scope_type: "station", scope_values: [], phone: "", employee_id: "" };
+const emptyForm = { email: "", name: "", role: "fleet_assistant", scope_type: "station", scope_values: [], phone: "", employee_id: "", job_title: "", based_station: "" };
 // Every position the Fleet Admin team may set (the Superadmin role is not one of them), grouped like the roles are.
 const POSITION_GROUPS = GROUPS.map((g) => ({ ...g, positions: g.positions.filter((p) => p !== "admin") }));
 
 const whereText = (sc) => (!sc || sc.scope_type === "all" || sc.scope_type === "hq" ? "HQ" : (sc.scope_values || []).join(", "));
-
-function Person({ p, onEdit }) {
-  const label = (p.name || "").replace(/\s*\([^)]*\)\s*$/, "").trim() || p.email;
-  const body = (
-    <>
-      <span className="font-medium text-ink">{label}</span>
-      <span className="ml-1 text-[10px] uppercase text-slate-400">{SHORT[p.position] || p.label}</span>
-    </>
-  );
-  return onEdit ? (
-    <button type="button" title={p.email} onClick={() => onEdit(p.email)} className="mr-1.5 inline-block rounded bg-slate-100 px-2 py-0.5 text-xs hover:bg-slate-200">
-      {body}
-    </button>
-  ) : (
-    <span title={p.email} className="mr-1.5 inline-block rounded bg-slate-100 px-2 py-0.5 text-xs">
-      {body}
-    </span>
-  );
-}
-
-// A vacant seat: planned, or someone whose email isn't known yet (counted in the headcount). Opened / closed in the Headcount view.
-function VacantChip({ n, label }) {
-  return <span className="mr-1.5 inline-block rounded border border-dashed border-slate-400 px-2 py-0.5 text-xs text-slate-600">{label ? `${label} ` : ""}Vacant{n > 1 ? ` x${n}` : ""}</span>;
-}
-
-function OrgChart({ chart, onEdit }) {
-  const [open, setOpen] = useState({});
-  const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }));
-  const vacancies = chart.regions.flatMap((r) => r.zones.flatMap((z) => z.stations)).filter((s) => s.heads.length === 0 && !s.tba_heads).length;
-  const stationCount = chart.regions.reduce((n, r) => n + r.zones.reduce((m, z) => m + z.stations.length, 0), 0);
-  return (
-    <div className="space-y-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">HQ</div>
-        <div className="mt-1.5">
-          {chart.hq.length ? chart.hq.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />) : <span className="text-xs text-slate-400">Nobody yet</span>}
-          {chart.hq_vacant_fleet_admin > 0 && <VacantChip n={chart.hq_vacant_fleet_admin} label="Fleet Admin" />}
-        </div>
-        <p className="mt-2 text-xs text-slate-400">
-          {stationCount} stations, {vacancies === 0 ? "every one has a Station Head" : `${vacancies} with no Station Head and no vacant seat (shown in red)`}.
-          {onEdit ? " Click a person to edit them." : ""}
-        </p>
-      </div>
-      {chart.regions.map((r) => (
-        <div key={r.name} className="rounded-lg border border-slate-200 bg-white">
-          <button type="button" onClick={() => toggle(r.name)} className="flex w-full items-center justify-between px-3 py-2 text-left">
-            <span className="text-sm font-semibold text-ink">
-              {open[r.name] ? "▾" : "▸"} {r.name}
-              <span className="ml-2 text-xs font-normal text-slate-400">{r.zones.length} zones</span>
-            </span>
-            <span>{r.managers.map((p) => <Person key={p.email} p={p} />)}</span>
-          </button>
-          {open[r.name] && (
-            <div className="space-y-3 border-t border-slate-100 px-3 py-3">
-              {r.zones.map((z) => (
-                <div key={z.name}>
-                  <div className="mb-1 flex flex-wrap items-center gap-x-3">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{z.name}</span>
-                    <span>
-                      {z.leads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
-                      {z.tba_region_heads > 0 && <VacantChip n={z.tba_region_heads} label="RH" />}
-                      {z.tba_rfs > 0 && <VacantChip n={z.tba_rfs} label="RFS" />}
-                      {z.leads.length === 0 && !z.tba_region_heads && !z.tba_rfs && <span className="text-xs text-status-critical">No Region Head / RFS</span>}
-                    </span>
-                  </div>
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="text-xs text-slate-400">
-                        <th className="w-40 py-1 pr-3 font-medium">Station</th>
-                        <th className="w-72 py-1 pr-3 font-medium">Station Head</th>
-                        <th className="py-1 font-medium">Fleet Assistants</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {z.stations.map((s) => (
-                        <tr key={s.name} className="border-t border-slate-100 align-top">
-                          <td className="py-1 pr-3">{s.name}</td>
-                          <td className="py-1 pr-3">
-                            {s.heads.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
-                            {s.tba_heads > 0 && <VacantChip n={s.tba_heads} />}
-                            {s.heads.length === 0 && !s.tba_heads && <span className="text-xs font-medium text-status-critical">No Station Head</span>}
-                          </td>
-                          <td className="py-1">
-                            {s.assistants.map((p) => <Person key={p.email} p={p} onEdit={onEdit} />)}
-                            {s.tba_assistants > 0 && <VacantChip n={s.tba_assistants} />}
-                            {s.assistants.length === 0 && !s.tba_assistants && <span className="text-xs text-slate-400">None</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // Headcount is for the Manager, the HOD and the Fleet Admin role (and the Superadmin); other HQ roles -- OPEX, Recovery, Restock ... -- do not see it.
 const HEADCOUNT_POSITIONS = ["hod", "manager", "fleet_admin"];
@@ -182,7 +83,7 @@ export default function StaffDirectoryTab({ me }) {
     const u = (people || []).find((x) => x.email.toLowerCase() === email.toLowerCase());
     if (!u) return;
     setEditing(u.email);
-    setForm({ email: u.email, name: u.name, role: u.position, scope_type: u.home.scope_type === "all" ? "hq" : u.home.scope_type, scope_values: u.home.scope_values || [], phone: u.phone || "", employee_id: u.employee_id || "" });
+    setForm({ email: u.email, name: u.name, role: u.position, scope_type: u.home.scope_type === "all" ? "hq" : u.home.scope_type, scope_values: u.home.scope_values || [], phone: u.phone || "", employee_id: u.employee_id || "", job_title: u.job_title || "", based_station: u.based_station || "" });
     setShowForm(true);
     setShowImport(false);
     setView("list");
@@ -210,7 +111,7 @@ export default function StaffDirectoryTab({ me }) {
     try {
       if (!form.name.trim()) throw new Error("Type the person's name");
       if (form.scope_type !== "hq" && form.scope_values.length === 0) throw new Error("Pick where they are based");
-      const payload = { email: form.email.trim(), name: form.name.trim(), role: form.role, scope_type: form.scope_type, scope_values: form.scope_type === "hq" ? [] : form.scope_values, phone: form.phone.trim(), employee_id: form.employee_id.trim() };
+      const payload = { email: form.email.trim(), name: form.name.trim(), role: form.role, scope_type: form.scope_type, scope_values: form.scope_type === "hq" ? [] : form.scope_values, phone: form.phone.trim(), employee_id: form.employee_id.trim(), job_title: form.job_title.trim(), based_station: form.based_station };
       if (editing) await api.staff.update(editing, payload);
       else await api.staff.add(payload);
       cancel();
@@ -268,7 +169,8 @@ export default function StaffDirectoryTab({ me }) {
               <button key={k} onClick={() => setChartMode(k)} className={`px-3 py-1 ${chartMode === k ? "bg-ink text-white" : "text-slate-500"}`}>{label}</button>
             ))}
           </div>
-          {chartMode === "visual" ? <OrgChartVisual chart={chart} onEdit={canEdit ? startEdit : null} /> : <OrgChart chart={chart} onEdit={canEdit ? startEdit : null} />}
+          {chartMode === "visual" ? <OrgChartVisual chart={chart} me={me} /> : <OrgDetailsList chart={chart} />}
+          <OrgPeoplePanel chart={chart} onChanged={load} />
         </div>
       )}
 
@@ -315,6 +217,14 @@ export default function StaffDirectoryTab({ me }) {
               </div>
               <input placeholder="Mobile (optional)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
               <input placeholder="Employee ID (optional)" value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              <input placeholder="Title on the org chart (optional)" maxLength={80} value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              {tier === "region" && (
+                <select value={form.based_station} onChange={(e) => setForm({ ...form, based_station: e.target.value })} aria-label="Based station" className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
+                  <option value="">Based station (optional)</option>
+                  {form.based_station && !stations.some((x) => x.station_name === form.based_station) && <option value={form.based_station}>{form.based_station}</option>}
+                  {stations.map((x) => <option key={x.station_name} value={x.station_name}>{x.station_name}</option>)}
+                </select>
+              )}
               {!editing && ["station_head", "fleet_assistant", "region_head", "rfs", "fleet_admin"].includes(form.role) && (
                 <p className="text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
                   A Station Head / Fleet Assistant, Region Head / RFS or Fleet Admin can only be added where a Manager or the HOD has opened a vacant seat for it (use <em>Add person</em> on a Vacant row, or ask them to add the headcount first).

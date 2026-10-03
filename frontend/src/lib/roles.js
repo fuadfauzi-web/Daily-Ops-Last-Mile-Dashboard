@@ -5,7 +5,7 @@
 export const POSITIONS = {
   admin: { label: "Superadmin", group: "hq", tier: "admin" },
   hod: { label: "HOD", group: "hq", tier: "manager" },
-  manager: { label: "Manager", group: "hq", tier: "manager" },
+  manager: { label: "Fleet Manager", group: "hq", tier: "manager" },
   fleet_admin: { label: "Fleet Admin", group: "hq", tier: "hq_staff" },
   opex: { label: "OPEX", group: "hq", tier: "hq_staff" },
   recovery: { label: "Recovery", group: "hq", tier: "hq_staff" },

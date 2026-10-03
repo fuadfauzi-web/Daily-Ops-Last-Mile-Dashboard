@@ -19,6 +19,17 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-04",
+    title: "Staff & Org Chart: the org chart now looks like the org picture, with details on click (staging only)",
+    points: [
+      "Org chart is now drawn like the Fleet Management org pictures: HQ on top (HOO, HOD, Fleet Strategist, Last Mile Operation with the four Fleet Managers, LM Administrator & Support), then one block per region with its Fleet Manager, and each zone's Region Head, Region Supervisor and stations (3-letter code boxes, down to station level). Vacant seats show as *Vacant.",
+      "Click any person (or a station box) to see their details -- position, where they are posted and based, email, mobile and employee ID. Everyone can click; nobody edits from the chart any more.",
+      "View settings: Everything, Region only or Station only (your own region / station comes first and is remembered), and a search for a station, zone, region or person.",
+      "Details list is now a table like the sheet: Station ID, Zone, Station, Designation, Name, Email, Mobile, Employee ID, plus the station a Region Head / Supervisor is based at. Search and filter by region or vacant seats.",
+      "The Manager position is now called Fleet Manager. The Fleet Admin team can also keep a title shown on the chart and a based station per person, and add people who are on the chart but have no dashboard access (HOO, HOD, Fleet Strategist, interns) under the chart.",
+    ],
+  },
+  {
     date: "2026-10-05",
     title: "Attendance (Beta, staging only): Launch Timeline, Hybrid attendance keyed in by station staff, half day by shift",
     feature: "attendance",

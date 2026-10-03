@@ -159,6 +159,405 @@
         ]
       }
     },
+    "/api/attendance/launch": {
+      "get": {
+        "summary": "Settings -> Launch Timeline: every region, zone and station with its own Attendance launch date, the date it ends up with and its state today (off / test run / live); Superadmin, HOD and Managers only.",
+        "description": "Every region, zone and station with its own launch date (if any), the date it ends up with and its state today.",
+        "operationId": "list_launch_api_attendance_launch_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      },
+      "put": {
+        "summary": "Set (or clear) the Attendance launch date of one region, zone or station; the most specific rule wins and a station with no date cannot see Attendance; Superadmin, HOD and Managers only.",
+        "description": "Set (or clear) the launch date of one region, zone or station.",
+        "operationId": "set_launch_api_attendance_launch_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/launch/me": {
+      "get": {
+        "summary": "Whether the caller can see Attendance at all, and which of their stations are in the test-run day before launch.",
+        "description": "Whether this person can see Attendance at all, and which of their stations are only in the test run (with the launch date).",
+        "operationId": "my_launch_api_attendance_launch_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/hybrid/drivers": {
+      "get": {
+        "summary": "Attendance -> Hybrid -> Drivers: the Hybrid drivers (details keyed in by station staff) at the caller's stations.",
+        "operationId": "list_drivers_api_attendance_hybrid_drivers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      },
+      "post": {
+        "summary": "Add a Hybrid driver (name, driver ID, phone, vehicle, joined / end date) to a station the caller may key for.",
+        "operationId": "add_driver_api_attendance_hybrid_drivers_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/hybrid/drivers/{driver_id}": {
+      "patch": {
+        "summary": "Edit or switch off a Hybrid driver; a name change follows onto the Schedule and an end date in the past switches them off.",
+        "description": "Edit a driver's details. Only the fields sent change (\"\" clears one). A name change follows the driver onto the Schedule. Ending or switching a driver off keeps their history.",
+        "operationId": "edit_driver_api_attendance_hybrid_drivers__driver_id__patch",
+        "parameters": [
+          {
+            "name": "driver_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Driver Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/hybrid/record": {
+      "put": {
+        "summary": "Key in or change one Hybrid driver's day (present / absent / leave, optional times, note); up to 35 days back, never in the future; who keyed it is kept.",
+        "description": "Key in (or change) one driver's day: Present / Absent / Leave, with optional clock in / out. Replaces what was there; who did it is kept.",
+        "operationId": "save_record_api_attendance_hybrid_record_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      },
+      "delete": {
+        "summary": "Take one Hybrid driver's day entry off (keyed on the wrong driver or day).",
+        "description": "Take a day's entry off (keyed on the wrong driver or day).",
+        "operationId": "clear_record_api_attendance_hybrid_record_delete",
+        "parameters": [
+          {
+            "name": "driver_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Driver Id"
+            }
+          },
+          {
+            "name": "work_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Work Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/hybrid/day": {
+      "get": {
+        "summary": "Every Hybrid driver on the list that day at the caller's stations with the scheduled shift and what was keyed in (Present / Absent / Leave, optional clock in / out).",
+        "description": "Every Hybrid driver at the caller's stations who is on the list that day, with what was keyed in (nothing yet = no entry).",
+        "operationId": "day_view_api_attendance_hybrid_day_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/hybrid/month": {
+      "get": {
+        "summary": "The Hybrid month grid: a row per driver with Present / Absent / Leave per day and the totals.",
+        "description": "The month grid: a row per Hybrid driver with Present / Absent / Leave per day and the totals.",
+        "operationId": "month_view_api_attendance_hybrid_month_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/staff/me": {
       "get": {
         "summary": "Attendance -> Staff: the signed-in Station Head / Fleet Assistant's own clock -- whether they can clock, their station(s), today's record and scheduled shift.",
@@ -2180,92 +2579,6 @@
         ]
       }
     },
-    "/api/attendance/schedule/hybrid-driver": {
-      "post": {
-        "summary": "Add a Hybrid driver, by name, to a station's schedule (stopgap until the Fleet Admin Hybrid driver list exists).",
-        "operationId": "add_hybrid_driver_api_attendance_schedule_hybrid_driver_post",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DriverIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Attendance"
-        ]
-      },
-      "delete": {
-        "summary": "Take a Hybrid driver off a station's schedule and remove their scheduled days.",
-        "operationId": "remove_hybrid_driver_api_attendance_schedule_hybrid_driver_delete",
-        "parameters": [
-          {
-            "name": "station",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Station"
-            }
-          },
-          {
-            "name": "name",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Attendance"
-        ]
-      }
-    },
     "/api/headcount": {
       "get": {
         "summary": "Headcount per station (people posted there + TBA seats), the seats, and what the caller may do (add / remove / approve). HQ staff and above.",
@@ -3030,9 +3343,137 @@
     },
     "/api/org-chart": {
       "get": {
-        "summary": "Staff & Org Chart -- HQ staff, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants (vacant seats show as empty), plus whether the caller can edit. HQ staff and above.",
-        "description": "HQ staff, then each region's manager, each zone's Region Head / RFS and each station's Station Head / Fleet Assistants --\nby where they are POSTED (not by what they can see), so someone covering another station for a week still shows at home.\nStations with nobody in a role show up as vacant.",
+        "summary": "The org chart as a picture -- HOO / HOD / Fleet Strategist, the Admin & Support team, each region's Fleet Manager, each zone's Region Head / Supervisor (with where they are based) and each station (code, ID, Station Head, Fleet Assistants, vacant seats), plus whether the caller can edit. Every signed-in role.",
+        "description": "The organisation as a picture (2026-10-03): HQ (HOO, HOD), the Fleet Strategist, the Fleet Managers with their regions, the Admin & Support team; under each\nregion its zones' Region Head / RFS, under each zone its stations with their Station Head / Fleet Assistants. People are placed by where they are POSTED, not by\nwhat they can see. Stations with nobody in a role show as vacant; vacant seats show for everyone.",
         "operationId": "org_chart_api_org_chart_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/org-people": {
+      "post": {
+        "summary": "Add a person who is on the org chart but has no dashboard access (HOO, HOD, Fleet Strategist, a region's Fleet Manager, Admin & Support intern). Fleet Admin role only.",
+        "description": "People who are on the org chart but have no dashboard access (HOO, HOD, Fleet Strategist, the Fleet Manager of a region, Admin & Support interns).",
+        "operationId": "add_org_person_api_org_people_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgPersonIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/org-people/{pid}": {
+      "patch": {
+        "summary": "Change a chart-only person's name, title, contact details or place on the chart. Fleet Admin role only.",
+        "operationId": "update_org_person_api_org_people__pid__patch",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgPersonIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "delete": {
+        "summary": "Take a chart-only person off the org chart. Fleet Admin role only.",
+        "operationId": "delete_org_person_api_org_people__pid__delete",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Pid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3958,7 +4399,7 @@
     "/api/kpi/settings": {
       "put": {
         "summary": "Admin only: switch a KPI setting -- for now whether the KPI pages count East Malaysia (default off; Retail, not Last Mile).",
-        "description": "Admin only: switch KPI settings -- whether the KPI pages count East Malaysia and whether they count Sarawak (both default off; Retail, not Last Mile).",
+        "description": "HOD / OPEX / Manager (or the Superadmin): whether the KPI pages count East Malaysia, Sarawak included (default off; Retail, not Last Mile).",
         "operationId": "put_kpi_settings_api_kpi_settings_put",
         "requestBody": {
           "required": true,
@@ -9713,6 +10154,83 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "driver_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Id"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Type"
+          },
+          "vehicle_plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Plate"
+          },
+          "joined_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           }
         },
         "type": "object",
@@ -9721,6 +10239,111 @@
           "name"
         ],
         "title": "DriverIn"
+      },
+      "DriverPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "driver_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Id"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "vehicle_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Type"
+          },
+          "vehicle_plate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Plate"
+          },
+          "joined_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "DriverPatch"
       },
       "FeedbackRow": {
         "properties": {
@@ -10794,6 +11417,35 @@
         ],
         "title": "LHTrip"
       },
+      "LaunchIn": {
+        "properties": {
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type"
+          },
+          "scope_value": {
+            "type": "string",
+            "title": "Scope Value"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope_type",
+          "scope_value"
+        ],
+        "title": "LaunchIn"
+      },
       "LhTrip": {
         "properties": {
           "day": {
@@ -11513,6 +12165,11 @@
             "title": "Ptwh Corrections",
             "default": 0
           },
+          "attendance_visible": {
+            "type": "boolean",
+            "title": "Attendance Visible",
+            "default": true
+          },
           "ptwh_review": {
             "type": "integer",
             "title": "Ptwh Review",
@@ -11854,6 +12511,79 @@
           "shipper_name"
         ],
         "title": "OldRouteTnRow"
+      },
+      "OrgPersonIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "employee_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Id"
+          },
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "branch"
+        ],
+        "title": "OrgPersonIn"
       },
       "PendingYesterdayResponse": {
         "properties": {
@@ -12576,6 +13306,17 @@
               }
             ],
             "title": "Fetched At"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
           }
         },
         "type": "object",
@@ -13031,6 +13772,62 @@
         ],
         "title": "RdoTnRow"
       },
+      "RecordIn": {
+        "properties": {
+          "driver_id": {
+            "type": "integer",
+            "title": "Driver Id"
+          },
+          "work_date": {
+            "type": "string",
+            "title": "Work Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "clock_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock In"
+          },
+          "clock_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Out"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "driver_id",
+          "work_date",
+          "status"
+        ],
+        "title": "RecordIn"
+      },
       "Recover": {
         "properties": {
           "username": {
@@ -13161,6 +13958,11 @@
             },
             "type": "array",
             "title": "Queries"
+          },
+          "can_refresh": {
+            "type": "boolean",
+            "title": "Can Refresh",
+            "default": false
           }
         },
         "type": "object",
@@ -15096,6 +15898,28 @@
               }
             ],
             "title": "Employee Id"
+          },
+          "job_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Title"
+          },
+          "based_station": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based Station"
           }
         },
         "type": "object",
