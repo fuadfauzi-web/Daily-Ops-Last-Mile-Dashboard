@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
 
 // Categorised top navigation (staging trial, FEATURES.sidebarNav -- the "Top tabs" choice): the same groups as the sidebar (Act / Monitor / Recovery /
-// Analyse / People / System) as buttons that sit in the header beside the user menu. Each opens a vertical dropdown of its pages; only one is open at a
+// Dashboard / People / System) as buttons that sit in the header beside the user menu. Each opens a vertical dropdown of its pages; only one is open at a
 // time (opening another closes the first), and it closes on choosing a page, clicking elsewhere or Esc. The category holding the current page is tinted.
 // `items` = [{ id, label, group, beta, active, badge, dot }], already limited to what this person may open.
 export default function CategoryNav({ items, onSelect }) {

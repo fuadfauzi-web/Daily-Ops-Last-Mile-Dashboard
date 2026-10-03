@@ -2,7 +2,7 @@
 // exist: `dash: true` items are the Dashboard's own sub-tabs (same keys as Dashboard.jsx's TABS), the others are App.jsx's level-1 pages. Nothing here
 // decides who may see what -- App passes in only the pages this person's role can open.
 // People = the workforce pages (Attendance now; Overtime for hybrid and staff is planned after it; Staff & Org Chart lives here too).
-export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Analyse", "People", "System"];
+export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Dashboard", "People", "System"];
 
 // One colour per group, so the collapsed sidebar (two-letter codes) can still be read by colour. chip = the code badge, dot = the group label's marker.
 // Deliberately not brand red / status red-amber-green -- those mean "chrome" and "data" elsewhere.
@@ -10,7 +10,7 @@ export const SIDE_GROUP_COLORS = {
   Act: { chip: "bg-[#E5E7EB] text-[#231F20]", dot: "bg-[#231F20]" },
   Monitor: { chip: "bg-[#DBEAFE] text-[#1E40AF]", dot: "bg-[#2563EB]" },
   Recovery: { chip: "bg-[#CCFBF1] text-[#115E59]", dot: "bg-[#0D9488]" },
-  Analyse: { chip: "bg-[#EDE9FE] text-[#5B21B6]", dot: "bg-[#7C3AED]" },
+  Dashboard: { chip: "bg-[#EDE9FE] text-[#5B21B6]", dot: "bg-[#7C3AED]" },
   People: { chip: "bg-[#FAE8FF] text-[#86198F]", dot: "bg-[#C026D3]" },
   System: { chip: "bg-[#F3F4F6] text-[#4B5563]", dot: "bg-[#9CA3AF]" },
 };
@@ -25,7 +25,7 @@ export const SIDE_ITEMS = [
   { id: "aging", dash: true, group: "Monitor", label: "Aging Details", code: "AD" },
   { id: "rpu", dash: true, group: "Monitor", label: "RPU", code: "RP" },
   { id: "shipper", dash: true, group: "Monitor", label: "Shipper Radar", code: "SR" },
-  { id: "processingTime", dash: true, group: "Monitor", label: "Processing Time", beta: true, code: "PT" },
+  { id: "processingTime", dash: true, group: "Dashboard", label: "Processing Time", beta: true, code: "PT" },
   // The Recovery page's own groups, promoted so the category and its page are not the same word twice (dashKey = the Dashboard tab they open,
   // recGroup = which of its groups).
   { id: "rec:activemissing", dash: true, dashKey: "recovery", recGroup: "activemissing", group: "Recovery", label: "Active Missing", code: "AM" },
@@ -33,9 +33,9 @@ export const SIDE_ITEMS = [
   { id: "rec:pdcnr", dash: true, dashKey: "recovery", recGroup: "pdcnr", group: "Recovery", label: "PDCNR", code: "PD" },
   { id: "rec:damage", dash: true, dashKey: "recovery", recGroup: "damage", group: "Recovery", label: "Damage", code: "DM" },
   { id: "rec:nolabel", dash: true, dashKey: "recovery", recGroup: "nolabel", group: "Recovery", label: "No Label from Hub", code: "NL" },
-  { id: "dod", dash: true, group: "Analyse", label: "DoD", beta: true, code: "DD" },
-  { id: "kpi", group: "Analyse", label: "KPI", beta: true, code: "KP" },
-  { id: "management", group: "Analyse", label: "Management View", beta: true, code: "MV" },
+  { id: "dod", dash: true, group: "Dashboard", label: "DoD", beta: true, code: "DD" },
+  { id: "kpi", group: "Dashboard", label: "KPI", beta: true, code: "KP" },
+  { id: "management", group: "Dashboard", label: "Management View", beta: true, code: "MV" },
   { id: "attendance", group: "People", label: "Attendance", beta: true, code: "AT" },
   { id: "staff", group: "People", label: "Staff & Org Chart", code: "SO" },
   { id: "fleetadmin", group: "People", label: "Fleet Admin", code: "FA" },
