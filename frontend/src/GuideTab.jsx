@@ -335,6 +335,19 @@ const SECTIONS = [
           ]}
         />
         <p>
+          <strong>Launch Timeline</strong> -- Attendance goes live in <strong>batches</strong>. A <strong>Superadmin, HOD or Manager</strong> sets a launch date for a region, a zone or a single station in
+          <em> Settings → Launch Timeline</em> (the most specific date wins). A station with <strong>no date can't see Attendance at all</strong>. From <strong>the day before</strong> its date the station can see it and
+          <strong> test-run</strong> it if it wants to start early; from the date it is live. Attendance opens on the <em>Staff</em> tab.
+        </p>
+        <p>
+          <strong>Hybrid attendance</strong> -- <em>manual for now</em>: station staff key in the Hybrid drivers in <em>Attendance → Hybrid → Drivers</em> (name, driver ID, phone, vehicle, joined / end date), then each day in
+          <em> Today</em>: choose <em>Present</em>, <em>Absent</em> or <em>Leave</em> (times and a note are optional) and press Save; <em>Month sheet</em> shows the grid. You can key or change the last 35 days and each
+          entry shows who keyed it. The Schedule's Hybrid list comes from these drivers. When Hybrid drivers can sign in with their driver-app login, this changes.
+        </p>
+        <p>
+          <strong>PTWH half day</strong> -- on the Schedule a PTWH half day is <em>Half day AM</em>, <em>Half day Middle</em> or <em>Half day PM</em>; it starts when that shift starts at the station (the station's own hours).
+        </p>
+        <p>
           <strong>Staff attendance</strong> -- Station Heads and Fleet Assistants clock in and out in the <em>Staff</em> tab, signed in with their Ninja Van Google account (no separate login, no selfie).
           Open the dashboard on your phone, go to <em>Attendance → Staff → My clock</em> and press <em>Clock in</em> when you arrive and <em>Clock out</em> when you leave. You must be within
           <strong>100 m</strong> of your station (its latitude / longitude in Fleet Admin → Premises); your phone's location is checked at that moment. <em>Today</em> shows everyone in your scope with their scheduled shift,

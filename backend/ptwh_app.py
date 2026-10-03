@@ -37,6 +37,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 
 import attendance
+import attendance_launch
 import db
 import storage
 import work_schedule
@@ -155,6 +156,7 @@ _MSG = {
     "not_on": ("The PTWH app is not switched on yet", "Aplikasi PTWH belum diaktifkan"),
     "not_allowed": ("Not allowed", "Tidak dibenarkan"),
     "relogin": ("Please log in again", "Sila log masuk semula"),
+    "not_launched": ("Attendance isn't open at your station yet -- ask your station when it starts", "Kehadiran belum dibuka di stesen anda -- tanya stesen anda bila ia bermula"),
     "inactive": ("Your account is not active -- ask your station", "Akaun anda tidak aktif -- sila tanya stesen anda"),
     "bad_login": ("Wrong username or password", "Nama pengguna atau kata laluan salah"),
     "locked": ("Too many wrong tries. Try again in {mins} minute(s), or ask your station to reset your password.",
@@ -237,6 +239,8 @@ async def _session(authorization: str | None = Header(default=None), lang: str =
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (data["w"],))
     if w is None or not attendance.is_working(w, _now().date()):  # inactive, or their end date has passed
         raise _err(401, "inactive", lang)
+    if attendance_launch.station_state(w[4]) == "off":  # Launch Timeline: the station has no launch date yet (or it is more than a day away)
+        raise _err(403, "not_launched", lang)
     return w, cred
 
 
@@ -274,6 +278,8 @@ async def app_login(p: LoginIn, lang: str = Depends(_lang), _k: None = Depends(_
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (row[0],))
     if w is None or not attendance.is_working(w, _now().date()):
         raise _err(403, "inactive", lang)
+    if attendance_launch.station_state(w[4]) == "off":
+        raise _err(403, "not_launched", lang)
     await db.execute("UPDATE ptwh_credentials SET failed_attempts=0, locked_until=NULL, last_login_at=%s WHERE worker_id=%s", (_now(), row[0]))
     return {"token": _sign_token(row[0], row[4]), "name": w[1], "station": w[4], "needs_password_change": row[5] == "station"}
 

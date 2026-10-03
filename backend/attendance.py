@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
+import attendance_launch
 import db
 from auth import CurrentUser, effective_scope, get_current_user
 from stations import HUBS
@@ -88,13 +89,15 @@ def _visible_stations(user: CurrentUser) -> set[str]:
     """Station names this person may see; managers / admins / HQ staff see all of them."""
     st = effective_scope(user.scope_type)
     if st == "all":
-        return _station_names()
-    out = set()
-    for name, _full, zone, region in HUBS.values():
-        if (st == "station" and name in user.scope_values) or (st == "zone" and zone in user.scope_values) \
-                or (st == "region" and region in user.scope_values):
-            out.add(name)
-    return out
+        out = _station_names()
+    else:
+        out = set()
+        for name, _full, zone, region in HUBS.values():
+            if (st == "station" and name in user.scope_values) or (st == "zone" and zone in user.scope_values) \
+                    or (st == "region" and region in user.scope_values):
+                out.add(name)
+    # Launch Timeline: a station only sees Attendance from the day before its launch date (test run) -- no date, no Attendance. Superadmin / HOD / Managers see all.
+    return out if attendance_launch.sees_everything(user) else attendance_launch.visible_stations(out)
 
 
 def _can_edit(user: CurrentUser) -> bool:

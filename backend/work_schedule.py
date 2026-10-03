@@ -3,8 +3,7 @@
 One schedule screen covers the three groups:
   * PTWH   -- the station's active PTWH (the Attendance -> PTWH list);
   * Staff  -- the people posted at the station in the Staff & Org Chart (Station Head, Fleet Assistants);
-  * Hybrid -- drivers typed in by name as a STOPGAP: the Hybrid driver list will come from a Fleet Admin tab (like the Staff & Org Chart), not built yet; the roster
-    then reads from there instead of schedule_people.
+  * Hybrid -- the drivers keyed in by station staff in Attendance -> Hybrid -> Drivers (manual for now; later the driver-app sign-in / a Fleet Admin list replaces it).
 Who may EDIT: Station Heads, Region Heads, Managers / HOD and the Superadmin, for the stations in their scope. Everyone else with the station in their scope can read it.
 The PTWH app's "My schedule" shows a PTWH their next two weeks from here (ptwh_app.py).
 """
@@ -29,13 +28,16 @@ router = APIRouter()
 SHIFTS = {
     "AM": ("AM", ""),
     "MD": ("Middle", ""),
-    "HD": ("Half day", ""),
+    "HAM": ("Half day AM", ""),
+    "HMD": ("Half day Middle", ""),
+    "HPM": ("Half day PM", ""),
+    "HD": ("Half day", ""),  # the old single half day (no longer offered; kept so a leftover one still reads)
     "PM": ("PM", ""),
     "WK": ("Working", ""),
     "OFF": ("Off", ""),
     "AL": ("Leave", ""),
 }
-GROUP_SHIFTS = {"ptwh": ["AM", "MD", "PM", "HD", "OFF"], "staff": ["AM", "MD", "PM", "OFF", "AL"], "hybrid": ["WK", "OFF", "AL"]}
+GROUP_SHIFTS = {"ptwh": ["AM", "MD", "PM", "HAM", "HMD", "HPM", "OFF"], "staff": ["AM", "MD", "PM", "OFF", "AL"], "hybrid": ["WK", "OFF", "AL"]}
 EDIT_POSITIONS = ("station_head", "region_head", "hod", "manager", "admin")
 STAFF_POSITIONS = ("station_head", "fleet_assistant", "station")
 
@@ -50,7 +52,14 @@ async def station_times(station: str) -> dict[str, dict]:
     return {r[0]: {"start": r[1], "end": r[2]} for r in rows}
 
 
+HALF_BASE = {"HAM": "AM", "HMD": "MD", "HPM": "PM"}  # a PTWH half day starts when the shift it sits on starts
+
+
 def hours_text(times: dict[str, dict], code: str | None) -> str:
+    """The station's hours for a shift: '05:00-14:00'. A half day shows only where it STARTS ('from 05:00'), the start of its AM / Middle / PM shift."""
+    if code in HALF_BASE:
+        t = times.get(HALF_BASE[code])
+        return f"from {t['start']}" if t else ""
     t = times.get(code or "")
     return f"{t['start']}-{t['end']}" if t else ""
 
@@ -94,7 +103,7 @@ async def roster(station: str, group: str) -> list[tuple[str, str]]:
                 out.append((r[0].lower(), staff.plain_name(r[6]) or r[0]))
         return sorted(out, key=lambda x: x[1].lower())
     if group == "hybrid":
-        rows = await db.fetch_all("SELECT person_ref FROM schedule_people WHERE station = %s AND person_type = 'hybrid' ORDER BY person_ref", (station,))
+        rows = await db.fetch_all("SELECT name FROM hybrid_drivers WHERE station = %s AND active = 1 ORDER BY name", (station,))  # Attendance -> Hybrid -> Drivers
         return [(r[0], r[0]) for r in rows]
     raise HTTPException(status_code=422, detail="Group is ptwh, staff or hybrid")
 
@@ -229,31 +238,6 @@ async def copy_week(p: CopyIn, user: CurrentUser = Depends(get_current_user)):
                 )
                 copied += 1
     return {"ok": True, "copied": copied}
-
-
-class DriverIn(BaseModel):
-    station: str
-    name: str
-
-
-@router.post("/api/attendance/schedule/hybrid-driver")
-async def add_hybrid_driver(p: DriverIn, user: CurrentUser = Depends(get_current_user)):
-    _require_edit(user, p.station)
-    name = " ".join(p.name.split())[:100]
-    if len(name) < 2:
-        raise HTTPException(status_code=422, detail="Type the driver's name")
-    if await db.fetch_one("SELECT id FROM schedule_people WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (p.station, name)):
-        raise HTTPException(status_code=409, detail="That driver is already on this station's schedule")
-    await db.execute("INSERT INTO schedule_people (station, person_type, person_ref, added_by, added_at) VALUES (%s, 'hybrid', %s, %s, %s)", (p.station, name, user.email, _now()))
-    return {"ok": True}
-
-
-@router.delete("/api/attendance/schedule/hybrid-driver")
-async def remove_hybrid_driver(station: str, name: str, user: CurrentUser = Depends(get_current_user)):
-    _require_edit(user, station)
-    await db.execute("DELETE FROM schedule_people WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (station, name))
-    await db.execute("DELETE FROM schedule_entries WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (station, name))
-    return {"ok": True}
 
 
 async def ptwh_upcoming(worker_id: int, days: int = 14, station: str | None = None) -> list[dict]:

@@ -207,13 +207,14 @@ export default function App() {
   const canSeeFleetAdmin = ["admin", "manager", "hq_staff"].includes(me.role);
   const navTabs = [
     "dashboard",
-    ...(FEATURES.attendance ? ["attendance"] : []),
+    // Launch Timeline: a station without a launch date (or more than a day before it) has no Attendance. Until the first notification count arrives only Managers / Superadmin see it.
+    ...(FEATURES.attendance && (notifCounts ? notifCounts.attendance_visible !== false : me.role === "admin" || me.role === "manager") ? ["attendance"] : []),
     ...(canSeeManagementView ? ["management"] : []),
     ...(canSeeStaff ? ["staff"] : []),
     ...(canSeeFleetAdmin ? ["fleetadmin"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
     ...(me.role === "admin" || me.role === "manager" || me.role === "region" ? ["users"] : []), // the Users page (was a tab inside Settings)
-    ...(me.role === "admin" || me.role === "manager" ? ["settings"] : []), // SLA Targets + Recovery Settings
+    ...(me.role === "admin" || me.role === "manager" || me.role === "region" || me.position === "opex" || me.position === "recovery" ? ["settings"] : []), // targets, KPI settings, Recovery settings, Data Refresh -- which tabs inside depends on the role
     "help", // Feedback, Guide, What's new
     ...(me.role === "admin" ? ["admin"] : []),
   ];

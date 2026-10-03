@@ -19,6 +19,16 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-05",
+    title: "Attendance (Beta, staging only): Launch Timeline, Hybrid attendance keyed in by station staff, half day by shift",
+    feature: "attendance",
+    points: [
+      "Attendance now opens on the Staff tab. It goes live in batches: a Superadmin, HOD or Manager sets a launch date per region, zone or station in Settings -> Launch Timeline. A station with no date can't see Attendance; from the day before its date it can see it and test-run it.",
+      "Attendance -> Hybrid: station staff key in the Hybrid drivers' details (name, driver ID, phone, vehicle, joined / end date) and each day's attendance (Present / Absent / Leave, optional times) by hand for now. The Schedule's Hybrid list comes from these drivers.",
+      "A PTWH half day is now picked as Half day AM, Middle or PM, and starts when that shift starts at the station.",
+    ],
+  },
+  {
     date: "2026-10-04",
     title: "Schedule (Beta, staging only): Middle shift, and each station sets its own shift hours",
     feature: "attendance",

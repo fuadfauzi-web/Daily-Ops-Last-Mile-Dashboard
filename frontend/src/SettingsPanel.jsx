@@ -10,6 +10,7 @@ import RegionListPanel from "./RegionListPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
+import LaunchTimelinePanel from "./LaunchTimelinePanel";
 import { GROUPS, POSITIONS, canManagePosition, isHqTier } from "./lib/roles";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
@@ -122,9 +123,14 @@ const DIRECTION_LABELS = { "higher-is-worse": "Higher is worse", "lower-is-worse
 // colouring, editable in the app instead of hardcoded (see lib/thresholds.js
 // and backend V13__sla_thresholds.sql). One scope at a time -- Nationwide
 // default, or a region override -- edited as a local draft and saved explicitly.
-function SlaTargetsPanel({ regions }) {
+function SlaTargetsPanel({ regions, me }) {
   const [rows, setRows] = useState(null);
-  const [scope, setScope] = useState("nationwide");
+  // 2026-10-04: the HOD sets the nationwide numbers (and the per-driver-type ones), a Manager sets their own region's, the Superadmin sets any. The server checks it too.
+  const mayEdit = (sc) =>
+    me.role === "admin" ||
+    (me.position === "hod" && (sc === "nationwide" || DRIVER_POSITION_SCOPES.includes(sc))) ||
+    (me.role === "manager" && me.position !== "hod" && regions.some((r) => r.region === sc));
+  const [scope, setScope] = useState(me.position === "manager" && regions[0] ? regions[0].region : "nationwide");
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -223,7 +229,8 @@ function SlaTargetsPanel({ regions }) {
           <span className="text-xs text-slate-400">Applies at the next 15-minute refresh</span>
           <button
             onClick={save}
-            disabled={saving}
+            disabled={saving || !mayEdit(scope)}
+            title={mayEdit(scope) ? undefined : "You can't change this scope"}
             className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {saving ? "Saving…" : saved ? "Saved" : "Save targets"}
@@ -231,6 +238,11 @@ function SlaTargetsPanel({ regions }) {
         </div>
       </div>
 
+      {!mayEdit(scope) && (
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          You can look at this scope but not change it. The HOD sets the nationwide numbers, a Manager sets their own region, and the Superadmin sets any.
+        </p>
+      )}
       {scope !== "nationwide" && (
         <p className="text-xs text-slate-400">
           Rows here fall back to the Nationwide default until you change a value and save — that only overrides{" "}
@@ -262,11 +274,11 @@ function SlaTargetsPanel({ regions }) {
                       {c.label}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="checkbox" checked={!!d.scored} onChange={(e) => updateField(c.key, "scored", e.target.checked)} />
+                      <input type="checkbox" disabled={!mayEdit(scope)} checked={!!d.scored} onChange={(e) => updateField(c.key, "scored", e.target.checked)} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-2">
                       <select
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.direction}
                         onChange={(e) => updateField(c.key, "direction", e.target.value)}
@@ -281,7 +293,7 @@ function SlaTargetsPanel({ regions }) {
                     <td className="px-4 py-2 text-right">
                       <input
                         type="number"
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.warning_at}
                         onChange={(e) => updateField(c.key, "warning_at", e.target.value)}
@@ -290,7 +302,7 @@ function SlaTargetsPanel({ regions }) {
                     <td className="px-4 py-2 text-right">
                       <input
                         type="number"
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.critical_at}
                         onChange={(e) => updateField(c.key, "critical_at", e.target.value)}
@@ -298,7 +310,7 @@ function SlaTargetsPanel({ regions }) {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2">
                       <select
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.percent_of || ""}
                         onChange={(e) => updateField(c.key, "percent_of", e.target.value || null)}
@@ -335,10 +347,12 @@ function SlaTargetsPanel({ regions }) {
 // Recovery -> Missing Details' TN list (see backend V19__recovery_settings.sql
 // and aggregate.py's build_missing_details). A single nationwide row, no
 // per-region override -- much simpler than SlaTargetsPanel above.
-function RecoverySettingsPanel() {
+function RecoverySettingsPanel({ me }) {
+  const canEditCod = me.role === "admin"; // 2026-10-04: the COD value is the Superadmin's; the item keywords are the HOD's / Manager's / Recovery's
   const [settings, setSettings] = useState(null);
   const [threshold, setThreshold] = useState("");
-  const [keywordsText, setKeywordsText] = useState("");
+  const [keywords, setKeywords] = useState([]); // one item per keyword
+  const [newKeyword, setNewKeyword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
@@ -349,7 +363,7 @@ function RecoverySettingsPanel() {
       .then((s) => {
         setSettings(s);
         setThreshold(String(s.high_cod_value_threshold));
-        setKeywordsText(s.high_value_item_keywords.join(", "));
+        setKeywords(s.high_value_item_keywords);
       })
       .catch((e) => setError(e.message));
   };
@@ -359,10 +373,6 @@ function RecoverySettingsPanel() {
     setSaving(true);
     setError(null);
     try {
-      const keywords = keywordsText
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean);
       await api.recoverySettings.save({ high_cod_value_threshold: Number(threshold) || 0, high_value_item_keywords: keywords });
       setSaved(true);
       load();
@@ -386,11 +396,12 @@ function RecoverySettingsPanel() {
         <div>
           <div className="font-display text-sm font-semibold text-slate-700">High COD value threshold</div>
           <p className="mb-2 text-xs text-slate-400">
-            A missing tracking number is highlighted when its COD value is at or above this amount.
+            A missing tracking number is highlighted when its COD value is at or above this amount. {canEditCod ? "" : "Only the Superadmin can change it."}
           </p>
           <input
             type="number"
-            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
+            disabled={!canEditCod}
+            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm tabular-nums disabled:bg-slate-100 disabled:text-slate-500"
             value={threshold}
             onChange={(e) => {
               setThreshold(e.target.value);
@@ -401,18 +412,49 @@ function RecoverySettingsPanel() {
         <div>
           <div className="font-display text-sm font-semibold text-slate-700">High-value item keywords</div>
           <p className="mb-2 text-xs text-slate-400">
-            Comma-separated. A missing tracking number is also highlighted when its item description contains any of
-            these (case-insensitive) -- e.g. "smartphone, laptop, gold".
+            A missing tracking number is also highlighted when its item description contains any of these words (case-insensitive) -- e.g. smartphone, laptop,
+            gold. Add one at a time; remove one with its ×.
           </p>
-          <textarea
-            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-            rows={3}
-            value={keywordsText}
-            onChange={(e) => {
-              setKeywordsText(e.target.value);
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {keywords.length === 0 && <span className="text-xs text-slate-400">No keywords yet.</span>}
+            {keywords.map((k) => (
+              <span key={k} className="inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1 font-display text-xs font-semibold text-white">
+                {k}
+                <button
+                  type="button"
+                  aria-label={`Remove ${k}`}
+                  onClick={() => {
+                    setKeywords(keywords.filter((x) => x !== k));
+                    setSaved(false);
+                  }}
+                  className="text-white/70 hover:text-white"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const k = newKeyword.trim().toLowerCase();
+              if (!k || keywords.includes(k)) return;
+              setKeywords([...keywords, k]);
+              setNewKeyword("");
               setSaved(false);
             }}
-          />
+          >
+            <input
+              value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)}
+              placeholder="Add a keyword and press Enter"
+              className="min-h-[44px] w-72 rounded-lg border border-slate-300 px-3 text-sm"
+            />
+            <button type="submit" disabled={!newKeyword.trim()} className="min-h-[44px] rounded-lg border border-slate-300 px-4 font-display text-xs font-semibold text-ink-2 disabled:opacity-40">
+              Add
+            </button>
+          </form>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">
@@ -537,16 +579,20 @@ function DocumentsPanel() {
 //               itself is admin-only.
 const SETTINGS_TABS = [
   { key: "users", label: "Users", area: "users", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
-  { key: "sla", label: "SLA Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
+  // Settings (2026-10-04): Station Metric Targets (HOD nationwide, Manager their region, Superadmin any), KPI Targets (HOD / OPEX), KPI Settings (HOD / OPEX / Manager),
+  // Recovery Settings (COD value: Superadmin; item keywords: HOD / Manager / Recovery) and Data Refresh (look: HOD / Manager / OPEX / Region staff; press: Superadmin).
+  { key: "stationmetrics", label: "Station Metric Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "kpitargets", label: "KPI Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.position === "opex" },
+  { key: "kpisettings", label: "KPI Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.position === "opex" },
+  { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.position === "recovery" },
+  { key: "refresh", label: "Data Refresh", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" || me.position === "opex" },
+  { key: "launch", label: "Launch Timeline", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" }, // Superadmin / HOD / Manager: Attendance goes live by batch
   { key: "whatsnew", label: "What's new", area: "help", visible: () => true },
   { key: "guide", label: "Guide", area: "help", visible: () => true },
   { key: "faq", label: "Common Questions", area: "help", visible: () => true },
   { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
   { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "kpisettings", label: "KPI Settings", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "refresh", label: "Data Refresh", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
@@ -607,6 +653,10 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       loadRefreshStatus();
     }
   }, [isFullAdmin, canManageUsers]);
+  useEffect(() => {
+    if (adminTab === "refresh") loadRefreshStatus(); // Data Refresh is in Settings now, readable by more roles
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTab]);
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
@@ -768,9 +818,15 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {visibleSettingsTabs.length > 1 && <TabBar tabs={visibleSettingsTabs} activeKey={adminTab} onSelect={setAdminTab} />}
 
-      {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
+      {adminTab === "stationmetrics" && <SlaTargetsPanel regions={regions} me={me} />}
 
-      {adminTab === "recovery" && <RecoverySettingsPanel />}
+      {adminTab === "kpitargets" && <KpiTargetsPanel part="targets" />}
+
+      {adminTab === "kpisettings" && <KpiTargetsPanel part="scope" />}
+
+      {adminTab === "recovery" && <RecoverySettingsPanel me={me} />}
+
+      {adminTab === "launch" && <LaunchTimelinePanel />}
 
       {adminTab === "feedback" && <FeedbackPanel me={me} />}
 
@@ -787,9 +843,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "stationlist" && isFullAdmin && <RegionListPanel me={me} />}
 
-      {adminTab === "kpisettings" && isFullAdmin && <KpiTargetsPanel />}
-
-      {adminTab === "refresh" && isFullAdmin && (
+      {adminTab === "refresh" && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -806,13 +860,17 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 <div className="mt-1 text-sm text-slate-500">No refresh has run yet.</div>
               )}
             </div>
-            <button
-              onClick={doRefresh}
-              disabled={refreshing}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {refreshing ? "Refreshing…" : "Refresh now"}
-            </button>
+            {isFullAdmin ? (
+              <button
+                onClick={doRefresh}
+                disabled={refreshing}
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {refreshing ? "Refreshing…" : "Refresh now"}
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400">Only the Superadmin can refresh by hand</span>
+            )}
           </div>
           <p className="mt-2 text-xs text-slate-400">
             Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
@@ -832,7 +890,15 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 <tbody>
                   {refreshStatus.queries.map((q) => (
                     <tr key={q.query_id} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{q.query_id}</td>
+                      <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
+                        {q.url ? (
+                          <a href={q.url} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-brand" title="Open this query in Redash">
+                            {q.query_id} ↗
+                          </a>
+                        ) : (
+                          q.query_id
+                        )}
+                      </td>
                       <td className="px-3 py-1.5 text-slate-700">{q.label}</td>
                       <td className="px-3 py-1.5 text-slate-600">{formatTime(q.fetched_at)}</td>
                     </tr>

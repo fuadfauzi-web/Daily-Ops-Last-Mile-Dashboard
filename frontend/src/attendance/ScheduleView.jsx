@@ -7,8 +7,7 @@ import { btnCls, Field, inputCls, localDay } from "./ui";
 // Attendance -> Schedule (2026-10-03, staging): who works which shift on which day, per station and week, for PTWH, Staff and Hybrid drivers in one place.
 // Only Station Heads, Region Heads and Managers / HOD change it; everyone else with the station in their scope can read it. The PTWH app's "My schedule"
 // shows each PTWH their next two weeks from here.
-// Staff = the people posted at the station in the Staff & Org Chart. PTWH = the station's active (approved) PTWH. Hybrid = drivers typed in by name as a STOPGAP:
-// the Hybrid driver list will come from a Fleet Admin tab (like the Staff & Org Chart) that is not built yet; this then reads from there.
+// Staff = the people posted at the station in the Staff & Org Chart. PTWH = the station's active (approved) PTWH. Hybrid = the drivers keyed in by station staff in Attendance -> Hybrid -> Drivers (manual for now).
 
 const GROUPS = [
   { key: "ptwh", label: "PTWH" },
@@ -16,7 +15,7 @@ const GROUPS = [
   { key: "hybrid", label: "Hybrid" },
 ];
 const SHIFT_CLS = {
-  AM: "bg-indigo-50 text-indigo-800", MD: "bg-teal-50 text-teal-800", HD: "bg-sky-50 text-sky-800", PM: "bg-violet-50 text-violet-800",
+  AM: "bg-indigo-50 text-indigo-800", HAM: "bg-sky-50 text-sky-800", HMD: "bg-sky-50 text-sky-800", HPM: "bg-sky-50 text-sky-800", MD: "bg-teal-50 text-teal-800", HD: "bg-sky-50 text-sky-800", PM: "bg-violet-50 text-violet-800",
   WK: "bg-emerald-50 text-emerald-800", OFF: "bg-slate-100 text-slate-500", AL: "bg-amber-50 text-amber-800",
 };
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return localDay(d); };
@@ -70,7 +69,6 @@ export default function ScheduleView({ setError }) {
   const [week, setWeek] = useState(localDay());
   const [group, setGroup] = useState("ptwh");
   const [data, setData] = useState(null);
-  const [driver, setDriver] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -108,25 +106,6 @@ export default function ScheduleView({ setError }) {
       setBusy(false);
     }
   };
-  const addDriver = async () => {
-    try {
-      await api.scheduleAddDriver(data.station, driver);
-      setDriver("");
-      load();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-  const removeDriver = async (name) => {
-    if (!window.confirm(`Take ${name} off this station's Hybrid schedule? Their scheduled days are removed.`)) return;
-    try {
-      await api.scheduleRemoveDriver(data.station, name);
-      load();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
@@ -171,14 +150,13 @@ export default function ScheduleView({ setError }) {
             {people.length === 0 && (
               <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                 {group === "ptwh" ? "No active PTWH at this station yet -- add them in PTWH → Workers." : group === "staff" ? "Nobody is posted at this station in the Staff & Org Chart yet." : "No Hybrid drivers on this station's schedule yet. (Until the Fleet Admin team has a Hybrid driver list, drivers are typed in here.)"}
-                {group === "hybrid" && data.can_edit ? " Add a driver below." : ""}
+                {group === "hybrid" ? " Add them in Attendance → Hybrid → Drivers." : ""}
               </td></tr>
             )}
             {people.map((p) => (
               <tr key={p.ref} className="border-t border-slate-100">
                 <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-1.5 font-medium text-ink">
                   {p.name}
-                  {group === "hybrid" && data.can_edit && <button onClick={() => removeDriver(p.name)} className="ml-2 text-[11px] font-normal text-slate-400 underline">remove</button>}
                 </td>
                 {data.days.map((d) => {
                   const v = p.cells[d.date] || "";
@@ -201,16 +179,9 @@ export default function ScheduleView({ setError }) {
         </table>
       </div>
 
-      {group === "hybrid" && data.can_edit && (
-        <div className="flex flex-wrap items-end gap-2">
-          <Field label="Add a Hybrid driver by name (temporary -- the driver list will come from Fleet Admin)">
-            <input className={`${inputCls} w-72`} value={driver} onChange={(e) => setDriver(e.target.value)} onKeyDown={(e) => e.key === "Enter" && driver.trim() && addDriver()} />
-          </Field>
-          <button disabled={driver.trim().length < 2} onClick={addDriver} className={`${btnCls} bg-brand text-white disabled:opacity-50`}>Add driver</button>
-        </div>
-      )}
 
       <p className="text-xs text-slate-500">
+        {group === "hybrid" && " Hybrid drivers come from Attendance → Hybrid → Drivers (keyed in by station staff for now)."}
         {group === "ptwh" && " Each PTWH sees their own next two weeks in the PTWH app (My month → My schedule)."}
         {group === "staff" && " Staff come from the Staff & Org Chart (Station Head and Fleet Assistants posted at this station)."}
       </p>

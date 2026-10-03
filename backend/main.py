@@ -37,6 +37,8 @@ import management_view
 import attendance
 import attendance_corrections
 import staff_attendance
+import attendance_launch
+import hybrid_attendance
 import ptwh_app
 import work_schedule as schedule_mod
 import headcount
@@ -700,11 +702,23 @@ async def _hourly_refresh_loop() -> None:
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
 
 
+_launch_task: asyncio.Task | None = None
+
+
+async def _launch_refresh_loop() -> None:
+    """Every pod re-reads the Attendance launch dates often, so a date set on one pod reaches the others within seconds."""
+    while True:
+        await asyncio.sleep(attendance_launch.REFRESH_SECONDS)
+        await attendance_launch.refresh_rules()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _refresh_task, _warm_task
+    global _refresh_task, _warm_task, _launch_task
     await db.init_pool()
     if os.getenv("DATABASE_URL"):
+        await attendance_launch.refresh_rules()
+        _launch_task = asyncio.create_task(_launch_refresh_loop())
         _refresh_task = asyncio.create_task(_hourly_refresh_loop())
         _warm_task = asyncio.create_task(kpi_data.warm_compacts())  # the KPI pages' big uploads are ready before anyone asks
     yield
@@ -712,6 +726,8 @@ async def lifespan(app: FastAPI):
         _refresh_task.cancel()
     if _warm_task is not None:
         _warm_task.cancel()
+    if _launch_task is not None:
+        _launch_task.cancel()
     await db.close_pool()
 
 
@@ -724,6 +740,8 @@ async def _kpi_fresh() -> None:
 
 
 app.include_router(attendance_corrections.router)  # Attendance -> PTWH: controlled clock corrections + voids (attendance_corrections.py)
+app.include_router(attendance_launch.router)  # Settings -> Launch Timeline: Attendance goes live by batch (attendance_launch.py)
+app.include_router(hybrid_attendance.router)  # Attendance -> Hybrid: manual drivers + attendance (hybrid_attendance.py)
 app.include_router(staff_attendance.router)  # Attendance -> Staff: Station Heads / Fleet Assistants clock in by location (staff_attendance.py)
 app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
@@ -2487,9 +2505,16 @@ async def get_recovery_settings(user: CurrentUser = Depends(get_current_user)):
 
 @app.put("/api/recovery/settings", response_model=RecoverySettings)
 async def put_recovery_settings(payload: RecoverySettings, user: CurrentUser = Depends(get_current_user)):
-    _require_can_edit_thresholds(user)
+    # 2026-10-04: the COD value is the Superadmin's alone; the item keywords are for the HOD / Manager (the manager tier) and the Recovery role.
+    if not (user.role in ("admin", "manager") or user.position == "recovery"):
+        raise HTTPException(status_code=403, detail="Only the HOD, a Manager, Recovery or the Superadmin can change the Recovery settings")
     if payload.high_cod_value_threshold < 0:
         raise HTTPException(status_code=422, detail="high_cod_value_threshold must be >= 0")
+    if user.role != "admin":
+        current = await db.fetch_one("SELECT high_cod_value_threshold FROM recovery_settings WHERE id = 1")
+        current_value = current[0] if current else DEFAULT_HIGH_COD_VALUE_THRESHOLD
+        if float(payload.high_cod_value_threshold) != float(current_value):
+            raise HTTPException(status_code=403, detail="Only the Superadmin can change the COD value; the item keywords you can")
     keywords = [k.strip().lower() for k in payload.high_value_item_keywords if k.strip()]
     now = datetime.now(timezone.utc)
     await db.execute(
@@ -3350,6 +3375,7 @@ class Notifications(BaseModel):
     tasks_due_soon: int
     ptwh_approvals: int = 0  # new PTWH hires waiting for MY approval (Region Head: step 1, Manager / HOD: step 2) -- attendance.approvals_count
     ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
+    attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
 
 
@@ -3389,6 +3415,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "ptwh_review": await ptwh_app.review_count(user),
         "ptwh_approvals": await attendance.approvals_count(user),
         "ptwh_corrections": await attendance_corrections.pending_count(user),
+        "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
         **await tasklist_counts(user),
     }
 
@@ -3838,6 +3865,7 @@ class QueryFetchStatus(BaseModel):
     query_id: int
     label: str
     fetched_at: str | None
+    url: str | None = None  # the Redash page of the query -- only sent to the Superadmin
 
 
 class RefreshStatus(BaseModel):
@@ -3849,6 +3877,7 @@ class RefreshStatus(BaseModel):
     error_message: str | None
     triggered_by: str | None
     queries: list[QueryFetchStatus]
+    can_refresh: bool = False  # only the Superadmin may press Refresh now
 
 
 @app.post("/api/admin/refresh", response_model=RefreshStatus)
@@ -3864,12 +3893,24 @@ async def trigger_refresh(user: CurrentUser = Depends(get_current_user)):
 
 @app.get("/api/admin/refresh-status", response_model=RefreshStatus | None)
 async def refresh_status(user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
+    # Data Refresh moved to Settings (2026-10-04): the Superadmin, HOD / Manager, OPEX and Region staff can look; only the Superadmin can press Refresh now.
+    if not (user.role in ("admin", "manager", "region") or user.position == "opex"):
+        raise HTTPException(status_code=403, detail="Not available for your role")
     row = await db.fetch_one(
         """SELECT id, started_at, finished_at, status, stations_count, error_message, triggered_by
            FROM refresh_log ORDER BY id DESC LIMIT 1"""
     )
-    return _refresh_row_to_dict(row) if row else None
+    if not row:
+        return None
+    out = _refresh_row_to_dict(row)
+    out["can_refresh"] = user.role == "admin"
+    if user.role == "admin":
+        from redash_client import REDASH_BASE_URL
+
+        if REDASH_BASE_URL:
+            for q in out["queries"]:
+                q["url"] = f"{REDASH_BASE_URL}/queries/{q['query_id']}"
+    return out
 
 
 def _refresh_row_to_dict(row) -> dict:
@@ -3950,6 +3991,23 @@ def _require_can_edit_thresholds(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
 
 
+def _may_edit_threshold_scope(user: CurrentUser, scope: str) -> bool:
+    """Station Metric Targets (2026-10-04): the Superadmin sets everything; the HOD sets the nationwide numbers (and the per-driver-type ones, which are
+    nationwide too); a Manager sets the numbers of their own region(s) -- all regions if they have no posting -- but never nationwide."""
+    if user.role == "admin":
+        return True
+    if user.position == "hod":
+        return scope == "nationwide" or scope in _SLA_DRIVER_POSITION_SCOPES
+    if user.role == "manager":
+        if scope not in REGIONS:
+            return False
+        # "their region" is where the Manager is POSTED (Staff & Org Chart); with no posting, any region.
+        if user.home_scope_type == "region" and user.home_scope_values:
+            return scope in user.home_scope_values
+        return True
+    return False
+
+
 @app.put("/api/thresholds", response_model=OkResult)
 async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_current_user)):
     _require_can_edit_thresholds(user)
@@ -3970,6 +4028,11 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
             raise HTTPException(status_code=422, detail=f"direction must be one of {sorted(_SLA_DIRECTIONS)}")
         if row.percent_of is not None and row.percent_of not in _SLA_METRIC_KEYS:
             raise HTTPException(status_code=422, detail=f"Unknown percent_of metric_key: {row.percent_of}")
+        if not _may_edit_threshold_scope(user, row.scope):
+            raise HTTPException(
+                status_code=403,
+                detail=f"You can't change the '{row.scope}' targets. The HOD sets the nationwide numbers, a Manager sets their own region, the Superadmin sets any.",
+            )
         params.append((
             row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
             row.percent_of, user.email, now,

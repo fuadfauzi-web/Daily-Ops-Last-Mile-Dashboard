@@ -301,11 +301,21 @@ export const api = {
   ptwhFlag: (recordId, status, note) => request(`/api/attendance/ptwh/audit/${recordId}/flag`, { method: "POST", body: JSON.stringify({ status, note }) }),
   ptwhPhotoUrl: (recordId, which) => `/api/attendance/ptwh/photo/${recordId}/${which}`,
   schedule: (station, weekStart) => request(`/api/attendance/schedule?${new URLSearchParams({ ...(station ? { station } : {}), ...(weekStart ? { week_start: weekStart } : {}) })}`),
+  // Settings -> Launch Timeline: Attendance goes live by batch (region / zone / station dates).
+  launchList: () => request("/api/attendance/launch"),
+  launchSet: (payload) => request("/api/attendance/launch", { method: "PUT", body: JSON.stringify(payload) }),
+  launchMe: () => request("/api/attendance/launch/me"),
+  // Attendance -> Hybrid (manual for now).
+  hybridDrivers: () => request("/api/attendance/hybrid/drivers"),
+  hybridDriverAdd: (payload) => request("/api/attendance/hybrid/drivers", { method: "POST", body: JSON.stringify(payload) }),
+  hybridDriverEdit: (id, payload) => request(`/api/attendance/hybrid/drivers/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  hybridDay: (date) => request(`/api/attendance/hybrid/day?date=${encodeURIComponent(date)}`),
+  hybridMonth: (month) => request(`/api/attendance/hybrid/month?month=${encodeURIComponent(month)}`),
+  hybridSave: (payload) => request("/api/attendance/hybrid/record", { method: "PUT", body: JSON.stringify(payload) }),
+  hybridClear: (driverId, date) => request(`/api/attendance/hybrid/record?driver_id=${driverId}&work_date=${encodeURIComponent(date)}`, { method: "DELETE" }),
   scheduleShiftTime: (payload) => request("/api/attendance/schedule/shift-times", { method: "PUT", body: JSON.stringify(payload) }),
   scheduleCell: (payload) => request("/api/attendance/schedule/cell", { method: "PUT", body: JSON.stringify(payload) }),
   scheduleCopy: (payload) => request("/api/attendance/schedule/copy-week", { method: "POST", body: JSON.stringify(payload) }),
-  scheduleAddDriver: (station, name) => request("/api/attendance/schedule/hybrid-driver", { method: "POST", body: JSON.stringify({ station, name }) }),
-  scheduleRemoveDriver: (station, name) => request(`/api/attendance/schedule/hybrid-driver?${new URLSearchParams({ station, name })}`, { method: "DELETE" }),
   ptwhMonth: (month) => request(`/api/attendance/ptwh/month?month=${encodeURIComponent(month)}`),
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>

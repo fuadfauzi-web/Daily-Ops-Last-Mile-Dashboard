@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 import attendance
+import attendance_launch
 import db
 import staff
 from attendance import _hours, _iso, _now, _visible_stations, _zone_region
@@ -85,6 +86,10 @@ async def my_clock(user: CurrentUser = Depends(get_current_user)):
     stations = _home_stations(user)
     if not stations:
         return {**base, "reason": "You are not posted at a station yet. Ask the Fleet Admin team to set your station in Staff & Org Chart."}
+    if not attendance_launch.sees_everything(user):
+        stations = [s for s in stations if attendance_launch.station_state(s) != "off"]
+        if not stations:
+            return {**base, "reason": "Attendance isn't open at your station yet. It opens the day before your station's launch date."}
     now = _now()
     geos = {s: await _station_geo(s) for s in stations}
     rec = await _open_or_today(user.email.lower(), now.date(), now)
