@@ -65,9 +65,33 @@ function dayPay(rate, hours, rule) {
   return rate * (hours >= rule.half_day_hours ? 1 : rule.half_day_factor);
 }
 
-export default function PtwhAttendance({ me }) {
+// The PTWH app's address, for a station to copy / open and give to a PTWH who has lost it.
+function AppLink() {
+  const [url, setUrl] = useState(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { api.ptwhLogins().then((d) => setUrl(d.app_url)).catch(() => {}); }, []);
+  if (!url) return null;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard blocked: the address is on screen to select */ }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-slate-200">
+      <span className="font-semibold text-slate-700">PTWH app link</span>
+      <a href={url} target="_blank" rel="noreferrer" className="break-all text-sky-700 underline">{url}</a>
+      <button onClick={copy} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700">{copied ? "Copied ✓" : "Copy"}</button>
+      <span className="text-xs text-slate-500">Give this to a PTWH who has lost it -- they log in with the username you created for them.</span>
+    </div>
+  );
+}
+
+export default function PtwhAttendance({ me, requestView }) {
   const [view, setView] = useState("today");
   const [error, setError] = useState(null);
+  useEffect(() => { if (requestView?.view) setView(requestView.view); }, [requestView]);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -76,6 +100,7 @@ export default function PtwhAttendance({ me }) {
           Beta · station staff can clock PTWH in and out, and PTWH can clock themselves in the PTWH app (QR or location, plus a selfie -- see Audit).
         </p>
       </div>
+      <AppLink />
       {error && (
         <div className="flex items-start justify-between gap-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
           <span>{error}</span>
@@ -84,7 +109,7 @@ export default function PtwhAttendance({ me }) {
       )}
       {view === "today" && <TodayView setError={setError} />}
       {view === "month" && <MonthView setError={setError} />}
-      {view === "workers" && <WorkersView setError={setError} />}
+      {view === "workers" && <WorkersView setError={setError} me={me} />}
       {view === "audit" && <AuditView setError={setError} />}
       {view === "station" && <StationView setError={setError} />}
     </div>
@@ -196,7 +221,10 @@ function TodayView({ setError }) {
                     {rec?.clock_out ? hhmm(rec.clock_out) : open ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">Working</span> : "—"}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{rec?.hours != null ? rec.hours.toFixed(1) : "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{rec?.hours != null ? rm(dayPay(r.daily_rate, rec.hours, data.rule)) : "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {rec?.held ? <span title="A QR (emergency) clock, or one an auditor flagged, is not paid until it has been checked in Audit" className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">On hold</span>
+                      : rec?.hours != null ? rm(dayPay(r.daily_rate, rec.hours, data.rule)) : "—"}
+                  </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {data.can_edit && (
                       <>
@@ -217,7 +245,7 @@ function TodayView({ setError }) {
         </table>
       </div>
       <p className="text-xs text-slate-500">
-        A day with {data.rule.half_day_hours}+ hours is a full day at the worker's rate; shorter is a half day. Clocked in but not out yet pays nothing until it is closed.
+        A day with {data.rule.half_day_hours}+ hours is a full day at the worker's rate; shorter is a half day. Clocked in but not out yet pays nothing until it is closed. A clock by the emergency QR code, or one an auditor flagged, is <strong>on hold</strong> (no pay) until it has been checked in Audit.
       </p>
       {editing && <RecordModal {...editing} categories={data.categories} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} setError={setError} />}
       <CategoryLegend categories={data.categories} />
@@ -289,6 +317,7 @@ function MonthView({ setError }) {
 
   const days = Array.from({ length: data.days_in_month }, (_, i) => i + 1);
   const totalPay = workers.reduce((a, w) => a + w.payable, 0);
+  const totalHold = workers.reduce((a, w) => a + (w.on_hold || 0), 0);
   const totalDays = workers.reduce((a, w) => a + w.workdays, 0);
   const cats = data.categories;
   // Cost by category (what the HOD dashboard reads), and who is over a category's max days for the month.
@@ -325,6 +354,7 @@ function MonthView({ setError }) {
         <div className="ml-auto flex items-center gap-4 text-sm">
           <span className="text-slate-600">Workdays <b className="text-ink">{totalDays}</b></span>
           <span className="text-slate-600">Payable <b className="text-ink">{rm(totalPay)}</b></span>
+          {totalHold > 0 && <span className="text-amber-700" title="Days waiting for an auditor (QR / flagged clocks)">On hold <b>{rm(totalHold)}</b></span>}
           <button onClick={exportCsv} disabled={!workers.length} className={`${btnCls} border border-slate-300 text-slate-700 disabled:opacity-50`}>Export CSV</button>
         </div>
       </div>
@@ -353,16 +383,19 @@ function MonthView({ setError }) {
                 </td>
                 {days.map((d) => {
                   const c = w.days[d];
-                  const cls = !c ? "" : c.out == null ? "bg-amber-100 text-amber-800" : c.workday >= 1 ? "bg-emerald-50 text-emerald-800" : "bg-sky-50 text-sky-800";
+                  const cls = !c ? "" : c.held ? "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-400" : c.out == null ? "bg-amber-100 text-amber-800" : c.workday >= 1 ? "bg-emerald-50 text-emerald-800" : "bg-sky-50 text-sky-800";
                   return (
-                    <td key={d} className={`px-1.5 py-1.5 text-center tabular-nums ${cls} ${c ? "cursor-pointer" : ""}`} title={c ? `${c.in} – ${c.out || "still open"}${c.category ? ` · ${c.category}` : ""}` : undefined}
+                    <td key={d} className={`px-1.5 py-1.5 text-center tabular-nums ${cls} ${c ? "cursor-pointer" : ""}`} title={c ? `${c.in} – ${c.out || "still open"}${c.category ? ` · ${c.category}` : ""}${c.held ? " · pay on hold until checked in Audit" : ""}` : undefined}
                       onClick={c ? () => setEditing({ worker: { ...w, default_category: c.category || w.category }, date: `${data.month}-${String(d).padStart(2, "0")}`, record: null, load: true }) : undefined}>
                       {c ? (c.out == null ? "…" : c.hours.toFixed(1)) : ""}
                     </td>
                   );
                 })}
                 <td className="px-2 py-1.5 text-right tabular-nums">{w.workdays}{w.open_days > 0 && <span title="Days still open (no clock-out)" className="ml-1 text-amber-600">⚠</span>}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{rm(w.payable)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                  {rm(w.payable)}
+                  {w.on_hold > 0 && <div className="text-[10px] font-normal text-amber-700">+{rm(w.on_hold)} on hold</div>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -379,7 +412,7 @@ function MonthView({ setError }) {
         </div>
       )}
       <p className="text-xs text-slate-500">
-        Cells show hours worked (green = full day, blue = half day under {data.rule.half_day_hours}h, amber … = clocked in, no clock-out yet). Click a day to correct it.
+        Cells show hours worked (green = full day, blue = half day under {data.rule.half_day_hours}h, amber … = clocked in, no clock-out yet, amber outline = pay on hold until an auditor checks the QR / flagged clock). Click a day to correct it.
       </p>
       {editing && (
         <MonthRecordLoader {...editing} categories={cats} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} setError={setError} />
@@ -404,12 +437,13 @@ function MonthRecordLoader({ worker, date, categories, onClose, onSaved, setErro
 
 const EMPTY = { name: "", station: "", ic_no: "", phone: "", daily_rate: 50, joined_date: "", active: true, category: null };
 
-function WorkersView({ setError }) {
+function WorkersView({ setError, me }) {
   const [data, setData] = useState(null);
   const [station, setStation] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState(null); // {id?, ...fields}
   const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState(null);
   const [logins, setLogins] = useState({ logins: {}, app_url: null });
   const [loginFor, setLoginFor] = useState(null);
 
@@ -420,14 +454,29 @@ function WorkersView({ setError }) {
   useEffect(load, [load]);
 
   if (!data) return <Skeleton rows={6} />;
-  const workers = data.workers.filter((w) => (!station || w.station === station) && (showInactive || w.active));
+  const workers = data.workers.filter((w) => (!station || w.station === station) && (showInactive || w.active) && (w.approval === "approved" || showInactive));
+  const pending = data.workers.filter((w) => (!station || w.station === station) && (w.approval === "pending_rh" || w.approval === "pending_mgr"));
+  const decide = async (w, decision) => {
+    let note = null;
+    if (decision === "reject") {
+      note = window.prompt(`Why are you rejecting ${w.name}?`);
+      if (!note || note.trim().length < 3) return;
+    }
+    try {
+      await api.ptwhDecision(w.id, decision, note);
+      load();
+      window.dispatchEvent(new Event("ptwh-review-changed"));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
   const used = [...new Set(data.workers.map((w) => w.station))].sort();
 
   const save = async () => {
     const body = { name: form.name, station: form.station, ic_no: form.ic_no || null, phone: form.phone || null, daily_rate: Number(form.daily_rate), joined_date: form.joined_date || null, active: form.active, category: form.category || null };
     try {
       if (form.id) await api.ptwhWorkerSave(form.id, body);
-      else await api.ptwhWorkerAdd(body);
+      else setNotice((await api.ptwhWorkerAdd(body)).message);
       setForm(null);
       load();
     } catch (e) {
@@ -449,23 +498,48 @@ function WorkersView({ setError }) {
         <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show inactive
         </label>
-        {data.can_edit && (
-          <button onClick={() => setImporting(true)} className={`${btnCls} ml-auto border border-slate-300 text-slate-700`}>Import from sheet</button>
+        {["admin", "manager"].includes(me?.role) && (
+          <button onClick={() => setImporting(true)} title="Managers load the existing PTWH list from the sheet. New hires are added one by one and need approval." className={`${btnCls} ml-auto border border-slate-300 text-slate-700`}>Import existing PTWH</button>
         )}
         {data.can_edit && (
           <button onClick={() => setForm({ ...EMPTY, station: station || (data.stations.length === 1 ? data.stations[0] : ""), daily_rate: data.default_rate })} className={`${btnCls} bg-brand text-white`}>Add PTWH</button>
         )}
       </div>
+      {notice && (
+        <div className="flex items-start justify-between gap-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 ring-1 ring-emerald-200">
+          <span>{notice}</span><button onClick={() => setNotice(null)} className="text-xs underline">OK</button>
+        </div>
+      )}
+      {pending.length > 0 && (
+        <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+          <div className="mb-2 text-sm font-semibold text-amber-900">New PTWH hires waiting for approval <span className="font-normal text-amber-800">-- the Region Head approves first, then a Manager</span></div>
+          <div className="space-y-1.5">
+            {pending.map((w) => (
+              <div key={w.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2 text-sm">
+                <span className="font-medium text-ink">{w.name}</span>
+                <span className="text-slate-500">{w.station} · {rm(w.daily_rate)} a day</span>
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">{data.approval_labels[w.approval]}</span>
+                {w.can_decide ? (
+                  <span className="ml-auto flex gap-2">
+                    <button onClick={() => decide(w, "reject")} className="rounded-md border border-red-300 px-3 py-1 text-xs font-semibold text-red-700">Reject</button>
+                    <button onClick={() => decide(w, "approve")} className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-semibold text-white">Approve</button>
+                  </span>
+                ) : <span className="ml-auto text-xs text-slate-400">{w.approval === "pending_rh" ? "Needs the Region Head" : "Needs a Manager"}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Station</th><th className="px-3 py-2">IC</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Category</th><th className="px-3 py-2 text-right">Daily rate</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">App login</th><th className="px-3 py-2" /></tr>
           </thead>
           <tbody>
-            {workers.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">No PTWH yet.{data.can_edit ? " Use Import from sheet or Add PTWH." : ""}</td></tr>}
+            {workers.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">No PTWH yet.{data.can_edit ? " Add one with Add PTWH -- a new hire needs the Region Head's, then a Manager's approval." : ""}</td></tr>}
             {workers.map((w) => (
               <tr key={w.id} className={`border-t border-slate-100 ${w.active ? "" : "text-slate-400"}`}>
-                <td className="px-3 py-2 font-medium">{w.name}{!w.active && " (inactive)"}</td>
+                <td className="px-3 py-2 font-medium">{w.name}{w.approval === "rejected" ? " (hire rejected)" : !w.active && " (inactive)"}</td>
                 <td className="px-3 py-2">{w.station}</td>
                 <td className="px-3 py-2 tabular-nums">{w.ic_no || "—"}</td>
                 <td className="px-3 py-2">{w.phone || "—"}</td>

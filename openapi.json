@@ -72,6 +72,57 @@
         ]
       }
     },
+    "/api/attendance/ptwh/workers/{worker_id}/decision": {
+      "post": {
+        "summary": "Approve or reject a NEW PTWH hire: the Region Head decides first, then a Manager / HOD (the Superadmin may do either). The final approval makes the worker active; a rejection needs a note.",
+        "description": "The Region Head (step 1) or a Manager / HOD (step 2) approves or rejects a new PTWH hire. The final approval makes the worker active.",
+        "operationId": "decide_hire_api_attendance_ptwh_workers__worker_id__decision_post",
+        "parameters": [
+          {
+            "name": "worker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Worker Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/ptwh/workers/{worker_id}": {
       "patch": {
         "summary": "Edit a PTWH or deactivate them (active=false); their history is kept. A masked IC in the body means 'unchanged'.",
@@ -1158,6 +1209,86 @@
         ]
       }
     },
+    "/api/ptwh-app/schedule": {
+      "get": {
+        "summary": "PTWH app: my schedule -- the next 14 days from the station's schedule, with the shift (code, label, hours) or null when nothing is scheduled.",
+        "description": "My schedule: the next 14 days from the station's schedule (Attendance -> Schedule). Days with no shift are listed with shift = null.",
+        "operationId": "app_schedule_api_ptwh_app_schedule_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-lang",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lang"
+            }
+          },
+          {
+            "name": "x-ptwh-app-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ptwh-App-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "PTWH app"
+        ]
+      }
+    },
     "/api/ptwh-app/change-password": {
       "post": {
         "summary": "PTWH app: change your own password (needs the current one); other sessions end and a new token is returned.",
@@ -1318,6 +1449,235 @@
         },
         "tags": [
           "PTWH app"
+        ]
+      }
+    },
+    "/api/attendance/schedule": {
+      "get": {
+        "summary": "Attendance -> Schedule: one station's week -- every PTWH, Staff and Hybrid person with the shift on each of the 7 days, the shifts allowed per group and whether the caller may edit (Station / Region Heads and Managers only).",
+        "description": "One station's week: every person in the three groups with the shift on each of the 7 days.",
+        "operationId": "get_schedule_api_attendance_schedule_get",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Station"
+            }
+          },
+          {
+            "name": "week_start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week Start"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/schedule/cell": {
+      "put": {
+        "summary": "Set (or clear) one person's shift on one day for a station; Station Heads, Region Heads, Managers and the Superadmin only, within their scope.",
+        "operationId": "set_cell_api_attendance_schedule_cell_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CellIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/schedule/copy-week": {
+      "post": {
+        "summary": "Copy one week's shifts onto another for a group at a station (replaces the target week); editors only.",
+        "description": "Copy one week's shifts onto another for a group at the station (replaces what was in the target week) -- most weeks look like the last one.",
+        "operationId": "copy_week_api_attendance_schedule_copy_week_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/schedule/hybrid-driver": {
+      "post": {
+        "summary": "Add a Hybrid driver, by name, to a station's schedule (stopgap until the Fleet Admin Hybrid driver list exists).",
+        "operationId": "add_hybrid_driver_api_attendance_schedule_hybrid_driver_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      },
+      "delete": {
+        "summary": "Take a Hybrid driver off a station's schedule and remove their scheduled days.",
+        "operationId": "remove_hybrid_driver_api_attendance_schedule_hybrid_driver_delete",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
         ]
       }
     },
@@ -7221,6 +7581,45 @@
         ],
         "title": "CapacityRow"
       },
+      "CellIn": {
+        "properties": {
+          "station": {
+            "type": "string",
+            "title": "Station"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "shift": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station",
+          "group",
+          "ref",
+          "date"
+        ],
+        "title": "CellIn"
+      },
       "ChangePassword": {
         "properties": {
           "old_password": {
@@ -7365,6 +7764,34 @@
           "matched_tn_count"
         ],
         "title": "ColdChainResponse"
+      },
+      "CopyIn": {
+        "properties": {
+          "station": {
+            "type": "string",
+            "title": "Station"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "from_week": {
+            "type": "string",
+            "title": "From Week"
+          },
+          "to_week": {
+            "type": "string",
+            "title": "To Week"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station",
+          "group",
+          "from_week",
+          "to_week"
+        ],
+        "title": "CopyIn"
       },
       "DailyKpiGroupRow": {
         "properties": {
@@ -7663,6 +8090,30 @@
         ],
         "title": "DashboardResponse"
       },
+      "DecisionIn": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "DecisionIn"
+      },
       "DisableIn": {
         "properties": {
           "disabled": {
@@ -7869,6 +8320,24 @@
           "uploaded_at"
         ],
         "title": "DriverDetailsStatus"
+      },
+      "DriverIn": {
+        "properties": {
+          "station": {
+            "type": "string",
+            "title": "Station"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station",
+          "name"
+        ],
+        "title": "DriverIn"
       },
       "FeedbackRow": {
         "properties": {
@@ -9435,6 +9904,16 @@
           "tasks_due_soon": {
             "type": "integer",
             "title": "Tasks Due Soon"
+          },
+          "ptwh_approvals": {
+            "type": "integer",
+            "title": "Ptwh Approvals",
+            "default": 0
+          },
+          "ptwh_review": {
+            "type": "integer",
+            "title": "Ptwh Review",
+            "default": 0
           }
         },
         "type": "object",

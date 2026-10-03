@@ -39,6 +39,7 @@ from starlette.responses import Response
 import attendance
 import db
 import storage
+import work_schedule
 from attendance import _can_edit, _now, _require_editor, _visible_stations, _worker, day_pay
 from auth import CurrentUser, get_current_user
 
@@ -47,7 +48,10 @@ router = APIRouter()  # the PTWH app's calls (no SSO; key + token)
 admin_router = APIRouter()  # the dashboard's side (SSO)
 
 RADIUS_M = 100  # the same for every station and not editable by station users; a station's position is its latitude / longitude in Fleet Admin -> Premises
-SELFIE_RETENTION_DAYS = 14  # selfies are personal photos kept for audit only; a FLAGGED event keeps them until it is cleared or marked OK
+SELFIE_RETENTION_DAYS = 14  # selfies are personal photos kept for audit only; a flagged / still-unreviewed event keeps them until it is cleared or marked OK
+QR_RETENTION_DAYS = 35  # 5 weeks: the evidence behind a QR (emergency) clock is kept longer ...
+QR_PURGE_DAYS = range(8, 15)  # ... and only cleared in week 2 of the month (the 8th-14th), once a month
+REVIEW_ALERT_POSITIONS = ("station_head", "region_head", "hod", "manager", "admin")  # who is told a QR clock is waiting for review
 MAX_GPS_ACCURACY_M = 65  # a fix worse than this can't prove "within 100 m" -- the person is asked to scan the QR or go outside
 QR_GRACE_MIN = 5  # a QR from the previous hour still works for the first minutes of the new hour (someone walked in just before it changed)
 TOKEN_DAYS = 14
@@ -403,19 +407,31 @@ async def app_summary(month: str | None = None, s=Depends(_session), lang: str =
         raise _err(422, "bad_month", lang)
     nxt = date(y + (m == 12), 1 if m == 12 else m + 1, 1)
     rows = await db.fetch_all(
-        "SELECT work_date, clock_in, clock_out, category, in_method FROM ptwh_attendance WHERE worker_id=%s AND work_date >= %s AND work_date < %s ORDER BY work_date",
+        "SELECT work_date, clock_in, clock_out, category, in_method, flag_status FROM ptwh_attendance WHERE worker_id=%s AND work_date >= %s AND work_date < %s ORDER BY work_date",
         (w[0], first, nxt),
     )
-    days, workdays, payable = [], 0.0, 0.0
-    for wd_date, cin, cout, cat, method in rows:
+    days, workdays, payable, on_hold = [], 0.0, 0.0, 0.0
+    for wd_date, cin, cout, cat, method, flag in rows:
         wd, pay = day_pay(float(w[5]), cin, cout)
+        held = attendance.is_held(flag)  # a QR (emergency) clock, or one an auditor flagged, is paid once the station has checked it
         workdays += wd
-        payable += pay
+        if held:
+            on_hold += pay
+        else:
+            payable += pay
         h = attendance._hours(cin, cout)
         days.append({"date": str(wd_date), "in": cin.strftime("%H:%M"), "out": cout.strftime("%H:%M") if cout else None,
-                     "hours": round(h, 1) if h is not None else None, "workday": wd, "pay": pay, "category": cat, "method": method})
-    return {"month": first.strftime("%Y-%m"), "daily_rate": float(w[5]), "days": days, "workdays": workdays, "payable": round(payable, 2),
+                     "hours": round(h, 1) if h is not None else None, "workday": wd, "pay": 0.0 if held else pay, "held": held, "held_pay": pay if held else 0.0,
+                     "category": cat, "method": method})
+    return {"month": first.strftime("%Y-%m"), "daily_rate": float(w[5]), "days": days, "workdays": workdays, "payable": round(payable, 2), "on_hold": round(on_hold, 2),
             "rule": {"half_day_hours": attendance.HALF_DAY_HOURS, "half_day_factor": attendance.HALF_DAY_FACTOR}}
+
+
+@router.get("/api/ptwh-app/schedule")
+async def app_schedule(s=Depends(_session)):
+    """My schedule: the next 14 days from the station's schedule (Attendance -> Schedule). Days with no shift are listed with shift = null."""
+    w, _cred = s
+    return {"station": w[4], "days": await work_schedule.ptwh_upcoming(w[0], 14), "shifts": {c: {"label": v[0], "hours": v[1]} for c, v in work_schedule.SHIFTS.items()}}
 
 
 class ChangePassword(BaseModel):
@@ -479,6 +495,8 @@ async def app_recover(p: Recover, lang: str = Depends(_lang), _k: None = Depends
 async def _worker_for_editor(worker_id: int, user: CurrentUser):
     w = await _worker(worker_id)
     _require_editor(user, w[4])
+    if w[9] != "approved":
+        raise HTTPException(status_code=409, detail="This PTWH hasn't been approved yet -- the Region Head and then a Manager have to approve the hire first")
     return w
 
 
@@ -604,7 +622,7 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
             "flag": {"status": r[18], "note": r[19], "by": r[20], "at": attendance._iso(r[21])} if r[18] else None,
             "purged": bool(r[22]),
         })
-    return {"from": str(d_from), "to": str(d_to), "events": out[:1000], "stations": sorted(stations), "retention_days": SELFIE_RETENTION_DAYS}
+    return {"from": str(d_from), "to": str(d_to), "events": out[:1000], "stations": sorted(stations), "retention_days": SELFIE_RETENTION_DAYS, "qr_retention_days": QR_RETENTION_DAYS}
 
 
 @admin_router.get("/api/attendance/ptwh/photo/{record_id}/{which}")
@@ -657,28 +675,50 @@ async def flag_event(record_id: int, p: FlagIn, user: CurrentUser = Depends(get_
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- selfie retention
+# ---------------------------------------------------------------- selfie retention + the review alert
+
+async def _delete_selfies(rows) -> int:
+    """Delete the stored photos of these (id, in_selfie, out_selfie) rows and mark them purged. A photo that can't be deleted is left and tried again next time."""
+    done = 0
+    for rec_id, k_in, k_out in rows:
+        try:
+            for key in (k_in, k_out):
+                if key:
+                    await run_in_threadpool(storage.delete, key)
+        except Exception:  # noqa: BLE001
+            log.exception("selfie delete failed for record %s", rec_id)
+            continue
+        await db.execute("UPDATE ptwh_attendance SET in_selfie=NULL, out_selfie=NULL, selfie_purged=1 WHERE id=%s", (rec_id,))
+        done += 1
+    return done
+
 
 async def purge_old_selfies() -> None:
-    """Delete selfies older than SELFIE_RETENTION_DAYS from storage (the audit facts stay). Flagged events and QR clocks still waiting for review keep theirs. Called by the refresh loop; never raises.
-    A photo that can't be deleted is left alone and tried again next time."""
+    """Delete old selfies from storage (the audit facts -- time, method, distance, reason -- stay). Called by the refresh loop; never raises.
+      * a normal (location) clock: after SELFIE_RETENTION_DAYS (14 days), checked on every refresh;
+      * a QR (emergency) clock: after QR_RETENTION_DAYS (5 weeks), and only in week 2 of the month (the 8th-14th) -- the QR evidence is cleared once a month;
+      * never while the clock is flagged or still waiting for review: that evidence is kept until an auditor has dealt with it."""
     try:
-        cutoff = _now().date() - timedelta(days=SELFIE_RETENTION_DAYS)
-        rows = await db.fetch_all(
-            """SELECT id, in_selfie, out_selfie FROM ptwh_attendance
-               WHERE work_date < %s AND (in_selfie IS NOT NULL OR out_selfie IS NOT NULL) AND (flag_status IS NULL OR flag_status NOT IN ('flagged', 'review')) LIMIT 200""",
-            (cutoff,),
-        )
-        for rec_id, k_in, k_out in rows:
-            try:
-                for key in (k_in, k_out):
-                    if key:
-                        await run_in_threadpool(storage.delete, key)
-            except Exception:  # noqa: BLE001
-                log.exception("selfie delete failed for record %s", rec_id)
-                continue
-            await db.execute("UPDATE ptwh_attendance SET in_selfie=NULL, out_selfie=NULL, selfie_purged=1 WHERE id=%s", (rec_id,))
-        if rows:
-            log.info("PTWH selfies purged for %d records older than %s", len(rows), cutoff)
+        today = _now().date()
+        base = """SELECT id, in_selfie, out_selfie FROM ptwh_attendance
+                  WHERE work_date < %s AND (in_selfie IS NOT NULL OR out_selfie IS NOT NULL) AND (flag_status IS NULL OR flag_status NOT IN ('flagged', 'review'))"""
+        n = await _delete_selfies(await db.fetch_all(
+            base + " AND COALESCE(in_method, '') <> 'qr' AND COALESCE(out_method, '') <> 'qr' LIMIT 200", (today - timedelta(days=SELFIE_RETENTION_DAYS),)))
+        if today.day in QR_PURGE_DAYS:
+            n += await _delete_selfies(await db.fetch_all(base + " LIMIT 200", (today - timedelta(days=QR_RETENTION_DAYS),)))
+        if n:
+            log.info("PTWH selfies purged for %d records", n)
     except Exception:  # noqa: BLE001 -- housekeeping must never take the refresh loop down
         log.exception("PTWH selfie purge failed")
+
+
+async def review_count(user: CurrentUser) -> int:
+    """How many QR (emergency) clocks in the stations this person looks after are waiting for review -- the number in the app's alert. Only the people who
+    can act on it are told: Station Heads, Region Heads, Managers / HOD and the Superadmin."""
+    if user.position not in REVIEW_ALERT_POSITIONS:
+        return 0
+    stations = _visible_stations(user)
+    rows = await db.fetch_all(
+        "SELECT w.station FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.flag_status = 'review'"
+    )
+    return sum(1 for (st,) in rows if st in stations)

@@ -230,6 +230,7 @@ export const api = {
   ptwhWorkers: () => request("/api/attendance/ptwh/workers"),
   ptwhWorkerAdd: (payload) => request("/api/attendance/ptwh/workers", { method: "POST", body: JSON.stringify(payload) }),
   ptwhWorkerSave: (id, payload) => request(`/api/attendance/ptwh/workers/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  ptwhDecision: (id, decision, note) => request(`/api/attendance/ptwh/workers/${id}/decision`, { method: "POST", body: JSON.stringify({ decision, note }) }),
   ptwhDay: (date) => request(`/api/attendance/ptwh/day${date ? `?date_=${encodeURIComponent(date)}` : ""}`),
   ptwhClockIn: (workerId, category) => request("/api/attendance/ptwh/clock-in", { method: "POST", body: JSON.stringify({ worker_id: workerId, category }) }),
   // Roster import: the PTWH DETAILS tab downloaded as CSV. dryRun = just report what would be added.
@@ -263,6 +264,11 @@ export const api = {
   ptwhAudit: (from, to, station) => request(`/api/attendance/ptwh/audit?${new URLSearchParams({ ...(from ? { from_: from } : {}), ...(to ? { to } : {}), ...(station ? { station } : {}) })}`),
   ptwhFlag: (recordId, status, note) => request(`/api/attendance/ptwh/audit/${recordId}/flag`, { method: "POST", body: JSON.stringify({ status, note }) }),
   ptwhPhotoUrl: (recordId, which) => `/api/attendance/ptwh/photo/${recordId}/${which}`,
+  schedule: (station, weekStart) => request(`/api/attendance/schedule?${new URLSearchParams({ ...(station ? { station } : {}), ...(weekStart ? { week_start: weekStart } : {}) })}`),
+  scheduleCell: (payload) => request("/api/attendance/schedule/cell", { method: "PUT", body: JSON.stringify(payload) }),
+  scheduleCopy: (payload) => request("/api/attendance/schedule/copy-week", { method: "POST", body: JSON.stringify(payload) }),
+  scheduleAddDriver: (station, name) => request("/api/attendance/schedule/hybrid-driver", { method: "POST", body: JSON.stringify({ station, name }) }),
+  scheduleRemoveDriver: (station, name) => request(`/api/attendance/schedule/hybrid-driver?${new URLSearchParams({ station, name })}`, { method: "DELETE" }),
   ptwhMonth: (month) => request(`/api/attendance/ptwh/month?month=${encodeURIComponent(month)}`),
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>

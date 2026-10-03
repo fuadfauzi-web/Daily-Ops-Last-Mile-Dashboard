@@ -36,6 +36,7 @@ import kpi_targets
 import management_view
 import attendance
 import ptwh_app
+import work_schedule as schedule_mod
 import headcount
 import premises
 import staff
@@ -719,6 +720,7 @@ async def _kpi_fresh() -> None:
 app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
+app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
 app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence + tenancy dates, rent per station (premises.py)
@@ -3335,6 +3337,8 @@ class Notifications(BaseModel):
     followups_due_soon: int
     todos_due_soon: int
     tasks_due_soon: int
+    ptwh_approvals: int = 0  # new PTWH hires waiting for MY approval (Region Head: step 1, Manager / HOD: step 2) -- attendance.approvals_count
+    ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
 
 
 @app.get("/api/notifications", response_model=Notifications)
@@ -3370,6 +3374,8 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "urgent_owner_reminder": await _urgent_owner_reminder_count(user.email),
         "urgent_owner_updates": int(owner[0] or 0),
         "feedback_replies_unread": int(unread[0] or 0),
+        "ptwh_review": await ptwh_app.review_count(user),
+        "ptwh_approvals": await attendance.approvals_count(user),
         **await tasklist_counts(user),
     }
 

@@ -160,9 +160,10 @@ export default function AuditView({ setError }) {
         </div>
       )}
       <p className="text-xs text-slate-500">
-        Selfies are personal photos kept for audit only, and are deleted after {days} days -- a flagged clock-in, or a QR (emergency) one still waiting for review, keeps its photos until it is cleared or marked OK. Check the face is clear and the station is visible behind the person. Normal clocks are verified by location (how many metres from the station the phone was); a QR clock means the person said their location wasn't working, so every one needs a look.
+        Selfies are personal photos kept for audit only. A normal clock's selfie is deleted after {days} days; the evidence behind a QR (emergency) clock is kept for {data?.qr_retention_days || 35} days (5 weeks) and cleared once a month, in week 2 (the 8th-14th). A flagged clock-in, or a QR one still waiting for review, keeps its photos until it is cleared or marked OK.
+        <strong> Pay for a QR or flagged clock stays on hold until you mark it Checked OK.</strong> Check the face is clear and the station is visible behind the person. Normal clocks are verified by location (how many metres from the station the phone was); a QR clock means the person said their location wasn't working, so every one needs a look.
       </p>
-      {open && <PhotoModal {...open} onClose={() => setOpen(null)} onSaved={load} setError={setError} />}
+      {open && <PhotoModal {...open} onClose={() => setOpen(null)} onSaved={() => { load(); window.dispatchEvent(new Event("ptwh-review-changed")); }} setError={setError} />}
     </div>
   );
 }

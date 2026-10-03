@@ -18,6 +18,17 @@
 export const CHANGELOG = [
   {
     date: "2026-10-03",
+    title: "Attendance (Beta, staging only): Schedule, PTWH hiring approval, pay on hold for QR clocks, review alerts",
+    feature: "attendance",
+    points: [
+      "New Schedule tab: Station Heads, Region Heads and Managers key in who works which shift each week for PTWH, Staff and Hybrid drivers (Copy last week included). Everyone else reads it, and each PTWH sees their own next two weeks in the PTWH app.",
+      "A new PTWH hire now needs the Region Head's approval and then a Manager's before they can work, be scheduled or get an app login. Approvers get a banner and a count on the Attendance tab. A Manager loads the existing PTWH list once (Import existing PTWH).",
+      "The pay for a QR (emergency) clock, or one an auditor flagged, is on hold until an auditor marks it Checked OK. Station Heads, Region Heads and Managers see a banner and a count on the Attendance tab while any are waiting.",
+      "QR clock evidence is kept 5 weeks and cleared once a month, in week 2 (the 8th-14th). The PTWH app link now sits at the top of the PTWH tab with a Copy button.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Attendance (Beta, staging only): PTWH clock in by location only, QR is an emergency, stations use their Premises location",
     feature: "attendance",
     points: [
