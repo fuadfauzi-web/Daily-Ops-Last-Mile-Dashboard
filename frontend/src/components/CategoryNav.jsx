@@ -7,7 +7,20 @@ import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
 // `items` = [{ id, label, group, beta, active, badge, dot }], already limited to what this person may open.
 export default function CategoryNav({ items, onSelect }) {
   const [open, setOpen] = useState(null);
+  const [menuPos, setMenuPos] = useState(null); // { top, left | right } in viewport pixels -- the strip scrolls, so the dropdown can't live inside it
   const ref = useRef(null);
+  const stripRef = useRef(null);
+
+  const toggle = (name, e) => {
+    if (open === name) {
+      setOpen(null);
+      return;
+    }
+    const r = e.currentTarget.getBoundingClientRect();
+    const rightHalf = r.left > window.innerWidth / 2;
+    setMenuPos(rightHalf ? { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) } : { top: r.bottom + 4, left: Math.max(8, r.left) });
+    setOpen(name);
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -17,11 +30,17 @@ export default function CategoryNav({ items, onSelect }) {
     const onKey = (e) => {
       if (e.key === "Escape") setOpen(null);
     };
+    const close = () => setOpen(null);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    const strip = stripRef.current;
+    strip?.addEventListener("scroll", close);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      strip?.removeEventListener("scroll", close);
     };
   }, [open]);
 
@@ -30,18 +49,26 @@ export default function CategoryNav({ items, onSelect }) {
   const bellOf = (list) => list.reduce((n, i) => n + (i.badge || 0), 0);
 
   return (
-    <nav ref={ref} aria-label="Categories" className="flex shrink-0 items-center gap-0.5">
-      {groups.map((g, gi) => {
+    <div ref={ref} className="min-w-0 shrink">
+      {/* Too many categories for the header? The strip scrolls sideways (mouse wheel works too) instead of squeezing the logo. */}
+      <nav
+        ref={stripRef}
+        aria-label="Categories"
+        onWheel={(e) => {
+          if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && stripRef.current) stripRef.current.scrollLeft += e.deltaY;
+        }}
+        className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:thin]"
+      >
+      {groups.map((g) => {
         const isOpen = open === g.name;
         const bell = bellOf(g.items);
-        const alignRight = gi >= groups.length - 2; // keeps the last dropdowns inside the window
         return (
-          <div key={g.name} className="relative">
+          <div key={g.name} className="shrink-0">
             <button
               type="button"
               aria-haspopup="menu"
               aria-expanded={isOpen}
-              onClick={() => setOpen(isOpen ? null : g.name)}
+              onClick={(e) => toggle(g.name, e)}
               className={`flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 font-display text-[13px] ${
                 g.name === activeGroup ? "bg-brand-tint font-bold text-brand-dark" : isOpen ? "bg-canvas font-bold text-ink" : "font-semibold text-ink-2 hover:bg-canvas"
               }`}
@@ -53,10 +80,11 @@ export default function CategoryNav({ items, onSelect }) {
               )}
               <span className="text-[9px] text-subtle">{isOpen ? "▴" : "▾"}</span>
             </button>
-            {isOpen && (
+            {isOpen && menuPos && (
               <div
                 role="menu"
-                className={`absolute top-full z-50 mt-1 w-60 rounded-[10px] bg-white py-1.5 shadow-lg ring-1 ring-line ${alignRight ? "right-0" : "left-0"}`}
+                style={menuPos}
+                className="fixed z-50 w-60 rounded-[10px] bg-white py-1.5 shadow-lg ring-1 ring-line"
               >
                 {g.items.map((i) => (
                   <button
@@ -85,6 +113,7 @@ export default function CategoryNav({ items, onSelect }) {
           </div>
         );
       })}
-    </nav>
+      </nav>
+    </div>
   );
 }

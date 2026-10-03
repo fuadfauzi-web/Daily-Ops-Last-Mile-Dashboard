@@ -203,6 +203,7 @@ export default function App() {
     ...(canSeeFleetAdmin ? ["fleetadmin"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
     "settings",
+    "help",
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
@@ -226,7 +227,7 @@ export default function App() {
       ...i,
       label: i.id === "urgent" && FEATURES.taskList ? i.taskListLabel : i.label,
       active: i.dash ? tab === "dashboard" && dashTab === (i.dashKey || i.id) && (!i.recGroup || recGroup === i.recGroup) : tab === i.id,
-      badge: i.id === "settings" ? (notifCounts?.feedback_replies_unread || 0) + whatsNewUnread : i.id === "attendance" ? (notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) : bells.badge,
+      badge: i.id === "help" ? (notifCounts?.feedback_replies_unread || 0) + whatsNewUnread : i.id === "attendance" ? (notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) : bells.badge,
       dot: bells.dot,
     };
   });
@@ -292,28 +293,28 @@ export default function App() {
         )}
         <header className="border-b-[3px] border-brand bg-white">
         <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-4">
             <Logo />
-            <div className={`hidden h-6 w-px bg-slate-200 ${tidy ? "min-[1600px]:block" : "lg:block"}`} />
-            <h1 className={`hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight text-ink ${tidy ? "min-[1600px]:block" : "lg:block"}`}>Daily Ops Last Mile</h1>
+            <div className={`hidden h-6 w-px bg-slate-200 ${tidy ? "min-[1800px]:block" : "lg:block"}`} />
+            <h1 className={`hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight text-ink ${tidy ? "min-[1800px]:block" : "lg:block"}`}>Daily Ops Last Mile</h1>
           </div>
 
           {/* Desktop chrome: freshness, density toggle, nav, user block all inline.
               headerTidy (staging): the title only shows from 1440px, freshness from 1360px, density from 1200px (below those
               they live in the user menu), the station count only from 1536px, and the Role Tester moves into the user menu. */}
-          <div className="hidden items-center gap-3 lg:flex">
-            {tab === "dashboard" && freshness && (
-              <div className={`items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 ${tidy ? "hidden min-[1440px]:flex" : "flex"}`}>
+          <div className="hidden min-w-0 flex-1 items-center justify-end gap-3 lg:flex">
+            {(tidy || tab === "dashboard") && freshness && (
+              <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
                 {stationsInScope != null && (
-                  <span className={`text-[11px] text-slate-400 ${tidy ? "hidden 2xl:inline" : ""}`}>
+                  <span className="text-[11px] text-slate-400">
                     · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
                   </span>
                 )}
               </div>
             )}
-            <div className={`overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold ${tidy ? "hidden min-[1200px]:flex" : "flex"}`}>
+            <div className={`overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold ${tidy ? "hidden" : "flex"}`}>
               <button
                 onClick={() => setDensity("compact")}
                 className={`px-3 py-1 ${density === "compact" ? "bg-ink text-white" : "text-slate-500"}`}
@@ -337,7 +338,7 @@ export default function App() {
                   }`}
                 >
                   {navLabel(t)}
-                  {t === "settings" && (
+                  {t === "help" && (
                     <BellBadge
                       count={(notifCounts?.feedback_replies_unread || 0) + whatsNewUnread}
                       title="A reply to your feedback, or updates in What's new you haven't read"
@@ -459,7 +460,7 @@ export default function App() {
                   }`}
                 >
                   {navLabel(t)}
-                  {t === "settings" && (
+                  {t === "help" && (
                     <BellBadge
                       count={(notifCounts?.feedback_replies_unread || 0) + whatsNewUnread}
                       title="A reply to your feedback, or updates in What's new you haven't read"
@@ -529,6 +530,7 @@ export default function App() {
         {tab === "fleetadmin" && canSeeFleetAdmin && <FleetAdminTab key={`fleetadmin-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
+        {tab === "help" && <SettingsPanel key={`help-${viewKey}`} me={me} mode="help" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}
       </main>
       </div>

@@ -51,20 +51,10 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
             <div className="truncate text-xs uppercase tracking-wide text-slate-400">{roleLine}</div>
           </div>
 
-          {/* Freshness stops fitting in the header row below 1360px, density below 1200px. */}
+          {/* "Data as of" now always sits in the header; the density choice always lives here. */}
           <div>
-            {showFreshness && freshness && (
-              <div className="mb-3 min-[1440px]:hidden flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-                Data as of {formatTime(freshness)}
-                {stationsInScope != null && (
-                  <span className="text-[11px] text-slate-400">
-                    · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="mb-3 flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold min-[1200px]:hidden">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Row density</div>
+            <div className="mb-3 flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
               {["compact", "comfortable"].map((d) => (
                 <button
                   key={d}
