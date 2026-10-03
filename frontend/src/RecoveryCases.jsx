@@ -375,6 +375,9 @@ export default function RecoveryCases({ type, me, refreshTick, ...filters }) {
 
   return (
     <div className="space-y-3">
+      <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+        <strong>Beta</strong> -- this list is still being agreed with the Recovery team, so only the Superadmin, Manager / HOD and Recovery can see it for now. The rows in it are test data.
+      </div>
       <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
         {cfg.blurb} Pick from the lists or type; it saves as you go. You can fill the columns you are allowed to; the rest are greyed text.
       </div>

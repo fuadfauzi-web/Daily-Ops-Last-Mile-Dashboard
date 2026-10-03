@@ -233,7 +233,9 @@ export default function App() {
   // "Top tabs" (the default choice) is the same categories as the sidebar laid out along the top; "Classic" is the original tab strips.
   const catActive = !!FEATURES.sidebarNav && navMode === "tabs" && wide;
   const externalNav = sidebarActive || catActive;
-  const sideItems = SIDE_ITEMS.filter((i) => (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
+  // PDCNR / Damage / No Label from Hub are Beta (2026-10-04): only the Superadmin, Manager / HOD and Recovery see them.
+  const canSeeRecLists = me.role === "admin" || me.role === "manager" || me.position === "recovery";
+  const sideItems = SIDE_ITEMS.filter((i) => (!i.recLists || canSeeRecLists) && (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
     const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
     return {
       ...i,

@@ -7,6 +7,7 @@ import GroupTable from "./components/GroupTable";
 import DetailPanel from "./components/DetailPanel";
 import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
+import BetaTag from "./components/BetaTag";
 import RecoveryCases from "./RecoveryCases";
 import Skeleton from "./components/Skeleton";
 import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
@@ -36,6 +37,12 @@ const SUB_TABS = {
   ],
 };
 const CASE_GROUPS = ["pdcnr", "damage", "nolabel"];
+// Beta (2026-10-04): the three lists are not final with the Recovery team -- only the Superadmin, Manager / HOD and Recovery see them (the backend says no to anyone else).
+const canUseCaseLists = (me) => me?.role === "admin" || me?.role === "manager" || me?.position === "recovery";
+const groupOptions = (me) =>
+  GROUPS.filter((g) => !CASE_GROUPS.includes(g.key) || canUseCaseLists(me)).map((g) =>
+    CASE_GROUPS.includes(g.key) ? { ...g, label: <span className="inline-flex items-center gap-1.5">{g.label}<BetaTag /></span> } : g,
+  );
 
 const OVERVIEW_COLUMNS = [
   { key: "hub_count", label: "Hub", render: (r) => r.hub_count.toLocaleString() },
@@ -310,9 +317,9 @@ export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excl
 
   return (
     <div className="space-y-3">
-      {!externalGroup && <SegmentedControl options={GROUPS} value={group} onChange={setGroup} />}
+      {!externalGroup && <SegmentedControl options={groupOptions(me)} value={group} onChange={setGroup} />}
       {SUB_TABS[group] && <SegmentedControl options={SUB_TABS[group]} value={subTab} onChange={setSubTab} />}
-      {CASE_GROUPS.includes(group) && (
+      {CASE_GROUPS.includes(group) && canUseCaseLists(me) && (
         <RecoveryCases
           key={group} type={group} me={me}
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}

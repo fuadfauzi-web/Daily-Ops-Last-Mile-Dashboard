@@ -17,6 +17,7 @@ and delete. Everyone else follows the list's own rules: "station" fields are edi
 "recovery" fields are theirs alone. Fleet Admin, OPEX, Restock and any other HQ position only read (a Fleet Admin is NOT an admin here or anywhere else). Who may CREATE
 rows is per type (create_by): Recovery for PDCNR and Damage, the hub for No Label from Hub. A date / tracking number / station can be corrected by whoever may create the row.
 
+BETA (2026-10-04): only the Superadmin, Manager / HOD and Recovery can open these lists (can_use_lists); everyone else gets a 403.
 Photos are real uploads (object storage): kind "file" fields hold {key, name, type, size}; an older text link typed in the sheet is kept and shown as a link.
 """
 import csv
@@ -153,10 +154,18 @@ def _can_edit_field(user: CurrentUser, field: dict, code: str) -> bool:
 
 # ------------------------------------------------------------------------------------------------ helpers
 
-def _spec(case_type: str) -> dict:
+def can_use_lists(user: CurrentUser) -> bool:
+    """Beta (2026-10-04): the three lists are not final with the Recovery team yet, so only the Superadmin, the Manager / HOD tier and the
+    Recovery position see or use them -- everyone else (station, region, other HQ roles) gets a 403 and no menu entry."""
+    return user.role in ("admin", "manager") or user.position == "recovery"
+
+
+def _spec(case_type: str, user: CurrentUser) -> dict:
     spec = CASE_TYPES.get(case_type)
     if spec is None:
         raise HTTPException(status_code=404, detail="Unknown recovery list")
+    if not can_use_lists(user):
+        raise HTTPException(status_code=403, detail="These lists are in Beta -- only the Superadmin, Manager / HOD and Recovery can open them for now")
     return spec
 
 
@@ -252,7 +261,7 @@ def _public_config(spec: dict) -> dict:
 
 
 async def _load(case_type: str, user: CurrentUser) -> list[dict]:
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     rows = await db.fetch_all(
         "SELECT id, tracking_number, station_code, case_date, data, created_by, created_at, updated_by, updated_at, closed_at "
         "FROM recovery_cases WHERE case_type = %s ORDER BY case_date DESC, id DESC LIMIT %s", (case_type, ROWS_CAP),
@@ -267,7 +276,7 @@ async def _one(case_type: str, case_id: int, user: CurrentUser):
     )
     if row is None:
         raise HTTPException(status_code=404, detail="This row no longer exists")
-    shaped = _shape(row, _spec(case_type), user)
+    shaped = _shape(row, _spec(case_type, user), user)
     if shaped is None:
         raise HTTPException(status_code=403, detail="This row is outside your access")
     return row, shaped
@@ -297,7 +306,7 @@ class CasePatch(BaseModel):
 
 @router.get("/api/recovery-cases/{case_type}")
 async def list_cases(case_type: str, user: CurrentUser = Depends(get_current_user)):
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     rows = await _load(case_type, user)
     can_create = _can_create(user, spec)
     stations = []
@@ -314,7 +323,7 @@ async def list_cases(case_type: str, user: CurrentUser = Depends(get_current_use
 
 @router.post("/api/recovery-cases/{case_type}")
 async def create_cases(case_type: str, payload: NewCases, user: CurrentUser = Depends(get_current_user)):
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     if not _can_create(user, spec):
         raise HTTPException(status_code=403, detail="You cannot add rows here")
     if not payload.rows:
@@ -368,7 +377,7 @@ async def create_cases(case_type: str, payload: NewCases, user: CurrentUser = De
 
 @router.put("/api/recovery-cases/{case_type}/{case_id}")
 async def update_case(case_type: str, case_id: int, payload: CasePatch, user: CurrentUser = Depends(get_current_user)):
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     row, shaped = await _one(case_type, case_id, user)
     code = shaped["station_code"]
     data = dict(shaped["data"])
@@ -433,7 +442,7 @@ async def update_case(case_type: str, case_id: int, payload: CasePatch, user: Cu
 
 @router.delete("/api/recovery-cases/{case_type}/{case_id}")
 async def delete_case(case_type: str, case_id: int, user: CurrentUser = Depends(get_current_user)):
-    _spec(case_type)
+    _spec(case_type, user)
     if not is_recovery(user):
         raise HTTPException(status_code=403, detail="Only Recovery can delete a row")
     _row, shaped = await _one(case_type, case_id, user)
@@ -454,7 +463,7 @@ def _file_field(spec: dict, field: str) -> dict:
 
 @router.post("/api/recovery-cases/{case_type}/{case_id}/file/{field}")
 async def upload_case_file(case_type: str, case_id: int, field: str, file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)):
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     f = _file_field(spec, field)
     row, shaped = await _one(case_type, case_id, user)
     if not _can_edit_field(user, f, shaped["station_code"]):
@@ -487,7 +496,7 @@ async def upload_case_file(case_type: str, case_id: int, field: str, file: Uploa
 
 @router.get("/api/recovery-cases/{case_type}/{case_id}/file/{field}")
 async def get_case_file(case_type: str, case_id: int, field: str, download: bool = False, user: CurrentUser = Depends(get_current_user)):
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     _file_field(spec, field)
     _row, shaped = await _one(case_type, case_id, user)  # 404 / 403 by scope
     meta = shaped["data"].get(field)
@@ -604,7 +613,7 @@ class ImportIn(BaseModel):
 async def import_cases(case_type: str, payload: ImportIn, user: CurrentUser = Depends(get_current_user)):
     """Bring in rows from the old sheet: export the tab as CSV (File -> Download -> CSV) and send its text. Only Recovery / Superadmin.
     Re-importing is safe: a row with the same tracking number AND date already in the list is skipped."""
-    spec = _spec(case_type)
+    spec = _spec(case_type, user)
     if not is_recovery(user):
         raise HTTPException(status_code=403, detail="Only Recovery can import rows")
     if len(payload.csv) > 8_000_000:
