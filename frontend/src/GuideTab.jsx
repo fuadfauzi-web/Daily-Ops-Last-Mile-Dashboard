@@ -334,6 +334,13 @@ const SECTIONS = [
           ]}
         />
         <p>
+          <strong>Staff attendance</strong> -- Station Heads and Fleet Assistants clock in and out in the <em>Staff</em> tab, signed in with their Ninja Van Google account (no separate login, no selfie).
+          Open the dashboard on your phone, go to <em>Attendance → Staff → My clock</em> and press <em>Clock in</em> when you arrive and <em>Clock out</em> when you leave. You must be within
+          <strong>100 m</strong> of your station (its latitude / longitude in Fleet Admin → Premises); your phone's location is checked at that moment. <em>Today</em> shows everyone in your scope with their scheduled shift,
+          and <em>Month sheet</em> shows hours per day, days worked and days still open. Location not working? Tell your Region Head -- a <strong>Region Head, RFS, HOD or Manager</strong> can <em>Fix time</em>
+          (a reason is needed, a shift is 12 hours at most, the original times are kept, and nobody fixes their own). A QR code issued by the Region Head, and Hybrid drivers (who will use their driver app login), come later.
+        </p>
+        <p>
           <strong>Schedule</strong> -- the <em>Schedule</em> tab is where a station keys in who works which shift, week by week, for <strong>PTWH, Staff and Hybrid drivers</strong> in one place (pick the group above the grid; <em>Copy last week</em> saves retyping). Only <strong>Station Heads, Region Heads and Managers</strong> can change it; everyone else with the station in their scope can read it. PTWH come from the PTWH list, Staff from the Staff &amp; Org Chart; Hybrid drivers are typed in for now and will come from a Fleet Admin driver list once that tab is built. Each PTWH sees their own next two weeks in the PTWH app.
         </p>
         <p>

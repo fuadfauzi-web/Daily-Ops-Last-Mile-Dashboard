@@ -159,6 +159,212 @@
         ]
       }
     },
+    "/api/attendance/staff/me": {
+      "get": {
+        "summary": "Attendance -> Staff: the signed-in Station Head / Fleet Assistant's own clock -- whether they can clock, their station(s), today's record and scheduled shift.",
+        "description": "The signed-in person's own clock: whether they can clock here, their station, today's record and today's scheduled shift.",
+        "operationId": "my_clock_api_attendance_staff_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/clock": {
+      "post": {
+        "summary": "Clock the signed-in Station Head / Fleet Assistant in or out; needs the phone's location within 100 m of their station's Premises latitude / longitude; the server takes the time.",
+        "description": "Clock the signed-in person in or out. Needs the phone within 100 m of their station; the server takes the time.",
+        "operationId": "clock_api_attendance_staff_clock_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffClock"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/day": {
+      "get": {
+        "summary": "Every Station Head / Fleet Assistant in the caller's scope with that day's scheduled shift and clock in / out (today by default).",
+        "description": "Who in the caller's scope has clocked in on a day (today by default), with the scheduled shift.",
+        "operationId": "day_api_attendance_staff_day_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/month": {
+      "get": {
+        "summary": "The staff month grid: a row per Station Head / Fleet Assistant in scope with hours per day, days worked and days still open.",
+        "description": "The month grid: a row per Station Head / Fleet Assistant in scope with hours per day, days worked and days still open (no clock-out).",
+        "operationId": "month_view_api_attendance_staff_month_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/fix": {
+      "post": {
+        "summary": "Region Head / RFS / HOD / Manager sets a staff member's clock times for a day with a reason (max 12 h, originals kept, never your own).",
+        "description": "Set a Station Head's / Fleet Assistant's clock times for a day (forgotten clock-out, wrong time, a day they couldn't clock). Keeps the originals and who / why.",
+        "operationId": "fix_time_api_attendance_staff_fix_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FixIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/ptwh/workers": {
       "get": {
         "summary": "Attendance -> PTWH (staging): the PTWH roster for the stations in the caller's scope (IC masked except for managers / admins), the stations they may use, and whether they may edit.",
@@ -8934,6 +9140,45 @@
         "type": "object",
         "title": "FeedbackUpdate"
       },
+      "FixIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "work_date": {
+            "type": "string",
+            "title": "Work Date"
+          },
+          "clock_in": {
+            "type": "string",
+            "title": "Clock In"
+          },
+          "clock_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Out"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "work_date",
+          "clock_in",
+          "reason"
+        ],
+        "title": "FixIn"
+      },
       "FlagIn": {
         "properties": {
           "status": {
@@ -13781,6 +14026,40 @@
           "rows"
         ],
         "title": "StaffBulkIn"
+      },
+      "StaffClock": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "lat",
+          "lng"
+        ],
+        "title": "StaffClock"
       },
       "StaffIn": {
         "properties": {

@@ -36,6 +36,7 @@ import kpi_targets
 import management_view
 import attendance
 import attendance_corrections
+import staff_attendance
 import ptwh_app
 import work_schedule as schedule_mod
 import headcount
@@ -720,6 +721,7 @@ async def _kpi_fresh() -> None:
 
 
 app.include_router(attendance_corrections.router)  # Attendance -> PTWH: controlled clock corrections + voids (attendance_corrections.py)
+app.include_router(staff_attendance.router)  # Attendance -> Staff: Station Heads / Fleet Assistants clock in by location (staff_attendance.py)
 app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal

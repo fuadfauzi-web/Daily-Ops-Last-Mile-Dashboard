@@ -257,6 +257,12 @@ export const api = {
   ptwhCorrect: (payload) => request("/api/attendance/ptwh/corrections", { method: "POST", body: JSON.stringify(payload) }),
   ptwhCorrections: (status) => request(`/api/attendance/ptwh/corrections${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   ptwhCorrectionDecision: (id, decision, note) => request(`/api/attendance/ptwh/corrections/${id}/decision`, { method: "POST", body: JSON.stringify({ decision, note }) }),
+  // Attendance -> Staff: Station Heads / Fleet Assistants clock in by location (signed in with their Google account).
+  staffMe: () => request("/api/attendance/staff/me"),
+  staffClock: (payload) => request("/api/attendance/staff/clock", { method: "POST", body: JSON.stringify(payload) }),
+  staffDay: (date) => request(`/api/attendance/staff/day?date=${encodeURIComponent(date)}`),
+  staffMonth: (month) => request(`/api/attendance/staff/month?month=${encodeURIComponent(month)}`),
+  staffFix: (payload) => request("/api/attendance/staff/fix", { method: "POST", body: JSON.stringify(payload) }),
   ptwhRehire: (id, station) => request(`/api/attendance/ptwh/workers/${id}/rehire`, { method: "POST", body: JSON.stringify({ station }) }),
   ptwhQr: (station, workerId) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}/qr`, { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
   // The month in the HR sheet's layout (text, not JSON) -- csv to download, tsv to copy into the sheet.

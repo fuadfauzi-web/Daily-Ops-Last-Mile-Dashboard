@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-10-04",
+    title: "Attendance (Beta, staging only): Station Heads and Fleet Assistants clock in and out",
+    feature: "attendance",
+    points: [
+      "Attendance -> Staff: Station Heads and Fleet Assistants clock in and out with My clock, signed in with their Ninja Van Google account (no extra login or selfie). They must be within 100 m of their station (the Fleet Admin Premises location); use the dashboard on a phone.",
+      "Today shows everyone in your scope with their scheduled shift, clock in / out and how far from the station; Month sheet is a grid of hours per day, days worked and days still open. A Region Head, RFS or Manager can fix a forgotten or wrong time with a reason -- the original is kept.",
+    ],
+  },
+  {
+    date: "2026-10-04",
     title: "Attendance (Beta, staging only): QR on request, end dates, controlled corrections, HR export",
     feature: "attendance",
     points: [
