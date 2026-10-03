@@ -72,6 +72,21 @@ export function changelogArea(entry) {
   return "Monitor";
 }
 
+// What's new: is the entry something New, an Improvement or a Fix? An entry can say `type` ("new" | "improved" | "fixed"); otherwise it is read from the title.
+export const TYPE_LABEL = { new: "New", improved: "Improved", fixed: "Fixed" };
+export const TYPE_CLASS = {
+  new: "bg-[#DCFCE7] text-[#166534]",
+  improved: "bg-[#DBEAFE] text-[#1E40AF]",
+  fixed: "bg-[#FEF3C7] text-[#92400E]",
+};
+export function changelogType(entry) {
+  if (entry.type) return entry.type;
+  const t = entry.title;
+  if (/\b(fix|fixed|bug|always adds up|no longer|stuck|corrected|wrong)\b/i.test(t)) return "fixed";
+  if (/^New\b|\bnew tab\b|\bNew:|^A new\b|^Cold Chain$|^Shipper Radar$|^Action Board$|^Role Tester$|^Completion Summary$/i.test(t)) return "new";
+  return "improved";
+}
+
 // Dot colours per category (the menu's palette; "Getting started" is the dark Act colour).
 export const AREA_DOT = {
   "Getting started": "bg-[#231F20]",

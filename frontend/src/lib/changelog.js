@@ -10,6 +10,7 @@
 //    and above (a station user isn't told about admin-only tools).
 //  * `audience` (optional): a list of positions (e.g. ["hod", "manager"]) -- only those positions (and the Superadmin) see it; for things only some
 //    people of a tier can use. `area` (optional): which category card it sits in (Act / Monitor / Recovery / Dashboard / People / System); guessed from the title if left out.
+//  * `type` (optional): "new" | "improved" | "fixed" -- the tag on its What's new card; guessed from the title if left out (a title starting with "New" is New, one saying fix / no longer / always adds up is Fixed, the rest Improved).
 //  * `wide` (optional): only shown to someone whose scope covers more than one station (a
 //    station-scoped user is never told about region / zone level features they can't use).
 //  So "What's new" only ever lists what applies to the viewer's role AND scope.
@@ -32,6 +33,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-05",
     title: "Attendance (Beta, staging only): Launch Timeline, Hybrid attendance keyed in by station staff, half day by shift",
+    type: "new",
     feature: "attendance",
     points: [
       "Attendance now opens on the Staff tab. It goes live in batches: a Superadmin, HOD or Manager sets a launch date per region, zone or station in Settings -> Launch Timeline. A station with no date can't see Attendance; from the day before its date it can see it and test-run it.",
@@ -51,6 +53,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Recovery: PDCNR, Damage and No Label from Hub (Beta, staging only)",
+    type: "new",
     points: [
       "Three of the recovery team's Google Sheets are now lists in Recovery. Recovery adds the rows (paste many tracking numbers at once, optionally with the station); the station fills in the rest of its columns; the row closes when the last step is done. PDCNR: station / Region Head give the outcome, proof of delivery link, driver and action, then Recovery validates. Damage: Recovery gives an instruction, the station answers with the action it took. No Label from Hub: the hub adds the entry (what the Google Form did) and Recovery sets the outcome. Each list shows only your own stations, with Open / Closed / All and a CSV export. Beta: still being agreed with the Recovery team, so only the Superadmin, Manager / HOD and Recovery can see the three lists for now (the rest of the roles get them once the Recovery team signs off). Inside, only Recovery and the Superadmin have full access; managers fill the station columns only. Photos are real uploads that anyone with access can download (or paste a Google Drive link instead), and Recovery can bring in the old sheets with Import from old sheet.",
     ],
@@ -58,6 +61,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-04",
     title: "Attendance (Beta, staging only): Station Heads and Fleet Assistants clock in and out",
+    type: "new",
     feature: "attendance",
     points: [
       "Attendance -> Staff: Station Heads and Fleet Assistants clock in and out with My clock, signed in with their Ninja Van Google account (no extra login or selfie). They must be within 100 m of their station (the Fleet Admin Premises location); use the dashboard on a phone.",
@@ -79,6 +83,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Attendance (Beta, staging only): Schedule, PTWH hiring approval, pay on hold for QR clocks, review alerts",
+    type: "new",
     minRank: 1,
     feature: "attendance",
     points: [
@@ -111,6 +116,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Attendance (Beta, staging only): PTWH app logins, hourly station QR, 100 m location check and selfie audit",
+    type: "new",
     feature: "attendance",
     points: [
       "Workers -> Create login gives a PTWH a username and a temporary password (plus a recovery code) for the new PTWH app, where they clock themselves in and out. They can change their password themselves; forgot it -> recovery code, or Reset password here.",
@@ -168,6 +174,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Org chart as a picture; Staff list and org chart open to every role (staging only)",
+    type: "new",
     points: [
       "The Org chart is now a picture: HQ on top, the regions under it with their managers, click a region to open its zones (Region Head / RFS) and a zone to see its stations with their Station Head and Fleet Assistants. Vacant seats show as dashed boxes, a station with no Station Head in red. A Details list view is still there.",
       "Every role can read the Staff list and the org chart (who is posted where, a mobile number, vacant seats); employee ID and what each person can access stay with HQ roles, and only the Fleet Admin role edits. Staging test accounts no longer show in either.",
@@ -185,6 +192,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Fleet Admin: Vehicles and Assets (station inventory) tabs (staging only)",
+    type: "new",
     minRank: 2,
     points: [
       "Vehicles: the Master Vehicle Inventory in the app, one record per plate with its station, type, owner, driver, GDL and licence expiry (days left, with chips for expired / within 90 days) and the fuel and Touch 'n Go card numbers (last 4 digits shown until you tick Show card numbers). The Fleet Admin team adds, edits and removes vehicles or pastes rows from the sheet.",
@@ -203,6 +211,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Headcount for Region Heads, RFS and the Fleet Admin team (staging only)",
+    type: "new",
     minRank: 1,
     points: [
       "The Headcount view now has three tables: Stations (Station Head, Fleet Assistant), Zones (Region Head, Regional Fleet Supervisor) and HQ (Fleet Admin). Each shows the people posted there, the vacant seats and the headcount; the three RFS seats marked TBA in the sheet (South 1, South 2, Zone B) and the Fleet Admin team's intern seats are in as vacant seats.",
@@ -248,6 +257,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Roles now follow the job position (staging only)",
+    type: "new",
     minRank: 2,
     points: [
       "Settings -> Users now uses the real positions, in three groups: HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock), Region staff (Region Head, Regional Fleet Supervisor) and Station staff (Station Head, Fleet Assistant). Your position shows under your name in the header.",
@@ -257,6 +267,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Find the PIC for a station: type the station in any PIC box",
+    type: "new",
     points: [
       "Type a station's name (or its 3-letter code, e.g. LKN) in a PIC box and the people looking after it come up -- the station's own staff, then the Region Head and RFS of its zone, then the manager of its region -- with their role and zone beside the name.",
       "Region Heads, RFS and Managers now have dashboard access, and Region staff and Managers only see, add, edit or remove people inside their own zone / region (Settings -> Users). A person added without a name gets one built from their email, role and place.",
@@ -345,6 +356,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-26",
     title: "Terminal T7 by its N7 cut-off date",
+    type: "new",
     points: [
       "Terminal T7 now takes its day from the N7 cut-off date, so a T7 week is the week of the cut-off date and is final once it is over: the page opens on week 38 with week 39 building up, instead of running a week behind.",
     ],
@@ -490,6 +502,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-26",
     title: "Action Board: Shipper SLA",
+    type: "new",
     points: [
       "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels at the station or still on their way to it: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",
     ],
@@ -497,6 +510,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-26",
     title: "Station Health: rescue attendance",
+    type: "new",
     points: [
       "Attendance now shows how many of the drivers are rescue, like Route Monitoring -- for example \"12 (2 Rescue)\". Region and zone rows add their stations up, and Export CSV has a Rescue Attendance column.",
     ],
@@ -528,6 +542,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-25",
     title: "Task List: Email / Gchat, To Do List and Task Assigned",
+    type: "new",
     feature: "taskList",
     points: [
       "The Urgent TN tab is now the Task List, with four sub-tabs: Urgent TN, Email / Gchat, To Do List and Task Assigned. Each has its own bell.",
@@ -550,6 +565,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-25",
     title: "Urgent TN: assign a PIC",
+    type: "new",
     points: [
       "Start typing a teammate's name or email when you track a tracking number and pick them from the suggestions (they must already be a dashboard user), with an optional note.",
       "They see a red bell on the Urgent TN tab. They pick In progress (the bell goes quiet for an hour, then rings again if it isn't closed -- 8am to 8pm only) or Closed (the bell stays off and it stays on their list marked closed), and can type a reply that you see.",
@@ -696,6 +712,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-23",
     title: "Filters on every tracking-number table",
+    type: "new",
     points: [
       "Every tracking-number table has station and status multi-select filters. RPU can be filtered by several shippers, statuses and failure reasons.",
     ],
@@ -720,6 +737,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-20",
     title: "Redesigned dashboard",
+    type: "new",
     points: [
       "New Ninja Van look, the Action Board as the landing tab, sticky table headers, CSV export on every table and a slide-over with every column when you click a row.",
       "Warning / Critical targets (SLA Targets) now drive the colours on Station Health and the Action Board.",

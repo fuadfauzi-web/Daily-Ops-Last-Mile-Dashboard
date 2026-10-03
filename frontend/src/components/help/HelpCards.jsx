@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AREA_DOT, GUIDE_AREA, GUIDE_BLURB, HELP_AREAS, changelogArea } from "../../lib/guideMeta";
+import { AREA_DOT, GUIDE_AREA, GUIDE_BLURB, HELP_AREAS, TYPE_CLASS, TYPE_LABEL, changelogArea, changelogType } from "../../lib/guideMeta";
 import { entryId } from "../../lib/whatsNew";
 
 // Card layouts for the Help pages (Help -> Guide and Help -> What's new): a category row, then cards you open -- instead of one long list.
@@ -115,6 +115,7 @@ export function GuideCards({ sections, ctx }) {
 function UpdateCard({ entry, isNew }) {
   const [open, setOpen] = useState(false);
   const area = changelogArea(entry);
+  const type = changelogType(entry);
   const [first, ...rest] = entry.points;
   return (
     <div className="flex flex-col rounded-[10px] bg-white p-3.5 shadow-card">
@@ -122,7 +123,8 @@ function UpdateCard({ entry, isNew }) {
         <span className={`h-2 w-2 rounded-full ${AREA_DOT[area]}`} />
         {area}
         <span className="font-normal normal-case tracking-normal">· {entry.date.slice(8)}/{entry.date.slice(5, 7)}</span>
-        {isNew && <span className="ml-auto rounded bg-ink px-1.5 py-0.5 text-[9px] font-bold text-white">NEW</span>}
+        <span className={`ml-auto rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${TYPE_CLASS[type]}`}>{TYPE_LABEL[type]}</span>
+        {isNew && <span className="rounded bg-ink px-1.5 py-0.5 text-[9px] font-bold text-white" title="You haven't opened this one before">UNREAD</span>}
       </div>
       <div className="mt-1.5 font-display text-[14px] font-semibold leading-snug text-ink">{entry.title}</div>
       {first && <p className={`mt-1 text-xs leading-relaxed text-muted ${open ? "" : "line-clamp-3"}`}>{first}</p>}
@@ -144,6 +146,7 @@ function UpdateCard({ entry, isNew }) {
 
 export function WhatsNewCards({ weeks, newIds }) {
   const [area, setArea] = useState("All");
+  const [type, setType] = useState("all"); // all | new | improved | fixed
   const [showOlder, setShowOlder] = useState(false);
   const all = useMemo(() => weeks.flatMap((w) => w.items), [weeks]);
   const counts = useMemo(() => {
@@ -156,7 +159,7 @@ export function WhatsNewCards({ weeks, newIds }) {
   }, [all]);
   const areas = HELP_AREAS.filter((a) => counts[a]);
   const [latest, ...older] = weeks;
-  const pick = (items) => items.filter((e) => area === "All" || changelogArea(e) === area);
+  const pick = (items) => items.filter((e) => (area === "All" || changelogArea(e) === area) && (type === "all" || changelogType(e) === type));
 
   const Week = ({ w }) => {
     const items = pick(w.items);
@@ -190,6 +193,22 @@ export function WhatsNewCards({ weeks, newIds }) {
         </p>
       </div>
       <CategoryChips areas={areas} counts={counts} value={area} onChange={setArea} />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-display text-[10px] font-bold uppercase tracking-wider text-subtle">Show</span>
+        {["all", "new", "improved", "fixed"].map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setType(t)}
+            aria-pressed={type === t}
+            className={`min-h-[32px] rounded-full border px-3 font-display text-xs font-semibold ${
+              type === t ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-ink-2 hover:bg-canvas"
+            }`}
+          >
+            {t === "all" ? "Everything" : TYPE_LABEL[t]}
+          </button>
+        ))}
+      </div>
       <Week w={latest} />
       {older.length > 0 && (
         <>
