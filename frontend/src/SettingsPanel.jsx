@@ -539,9 +539,10 @@ const SETTINGS_TABS = [
   { key: "users", label: "Users", area: "users", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
   { key: "sla", label: "SLA Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "feedback", label: "Feedback", area: "help", visible: () => true },
-  { key: "guide", label: "Guide", area: "help", visible: () => true },
   { key: "whatsnew", label: "What's new", area: "help", visible: () => true },
+  { key: "guide", label: "Guide", area: "help", visible: () => true },
+  { key: "faq", label: "Common Questions", area: "help", visible: () => true },
+  { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
   { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
   { key: "kpisettings", label: "KPI Settings", area: "admin", visible: (me) => me.role === "admin" },
@@ -775,6 +776,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "guide" && <GuideTab me={me} only="guide" />}
       {adminTab === "whatsnew" && <GuideTab me={me} only="new" />}
+      {adminTab === "faq" && <GuideTab me={me} only="faq" />}
 
       {adminTab === "documents" && (
         <div className="space-y-3">

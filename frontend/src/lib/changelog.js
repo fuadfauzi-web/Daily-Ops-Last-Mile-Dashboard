@@ -8,6 +8,8 @@
 //    ships that feature, so production never advertises something it doesn't have yet.
 //  * `minRank` (optional): 0 station, 1 region, 2 manager, 3 admin -- only shown to that role
 //    and above (a station user isn't told about admin-only tools).
+//  * `audience` (optional): a list of positions (e.g. ["hod", "manager"]) -- only those positions (and the Superadmin) see it; for things only some
+//    people of a tier can use. `area` (optional): which category card it sits in (Act / Monitor / Recovery / Dashboard / People / System); guessed from the title if left out.
 //  * `wide` (optional): only shown to someone whose scope covers more than one station (a
 //    station-scoped user is never told about region / zone level features they can't use).
 //  So "What's new" only ever lists what applies to the viewer's role AND scope.
@@ -44,6 +46,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-04",
     title: "Attendance (Beta, staging only): QR on request, end dates, controlled corrections, HR export",
+    minRank: 1,
     feature: "attendance",
     points: [
       "The station QR is now made on request for ONE chosen PTWH: it lasts 10 minutes, works once (clocking out needs a new one), and asking for another replaces the last. No QR is shown until a station asks for it.",
@@ -55,6 +58,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Attendance (Beta, staging only): Schedule, PTWH hiring approval, pay on hold for QR clocks, review alerts",
+    minRank: 1,
     feature: "attendance",
     points: [
       "New Schedule tab: Station Heads, Region Heads and Managers key in who works which shift each week for PTWH, Staff and Hybrid drivers (Copy last week included). Everyone else reads it, and each PTWH sees their own next two weeks in the PTWH app.",
@@ -103,6 +107,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Attendance (Beta, staging only): import the PTWH list from the sheet, and PTWH categories C1-C4",
+    minRank: 1,
     feature: "attendance",
     points: [
       "Workers -> Import from sheet reads the PTWH DETAILS tab (downloaded as CSV): it shows what will be added first, only adds people who are not in the list yet, and never overwrites -- stations can edit anyone afterwards.",
@@ -129,6 +134,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Superadmin, Managers see everything, and the PIC list now follows the Staff & Org Chart (staging only)",
+    minRank: 2,
     points: [
       "The Admin role is now called Superadmin, so it is not mixed up with the Fleet Admin position. Nothing about what it can do changed.",
       "A Manager can have a dedicated region -- it places them in the org chart and the PIC list -- but, like HOD, a Manager sees every region's data and can manage everyone except the HOD and the Superadmin -- Region staff, Station staff and other HQ staff -- in every region (a manager often covers another manager's work). The HOD can manage everyone except the Superadmin.",
@@ -149,6 +155,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Headcount is only for the Manager, the HOD and the Fleet Admin role -- and follows scope (staging only)",
+    audience: ["hod", "manager", "fleet_admin"],
     points: [
       "Only the Manager, the HOD and the Fleet Admin role (and the Superadmin) see the Headcount tables. OPEX, Recovery, Restock and any other HQ role added later do not (the Staff list and org chart, with their vacant seats, stay open to every role). The Fleet Admin role views headcount only; the HOD and Manager add and remove seats.",
       "The HOD and the Fleet Admin role see every station, zone and the HQ table; a Manager posted to a region, zone or station sees only that part (tables, seats and totals) and can add or remove seats only there.",
@@ -157,6 +164,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Fleet Admin: Vehicles and Assets (station inventory) tabs (staging only)",
+    minRank: 2,
     points: [
       "Vehicles: the Master Vehicle Inventory in the app, one record per plate with its station, type, owner, driver, GDL and licence expiry (days left, with chips for expired / within 90 days) and the fuel and Touch 'n Go card numbers (last 4 digits shown until you tick Show card numbers). The Fleet Admin team adds, edits and removes vehicles or pastes rows from the sheet.",
       "Assets: one tab for all asset lists, by category. Station inventory is first: each station's items with good and damaged counts (41 stations loaded from the zone workbooks; the rest start from the standard list), by station or added up by item.",
@@ -165,6 +173,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Headcount seats can cover two zones, and one form for every role (staging only)",
+    audience: ["hod", "manager", "fleet_admin"],
     points: [
       "Add headcount now has one Role list (Station Head, Fleet Assistant, Region Head, RFS, Fleet Admin) and a Location picker: station(s), zone(s) or HQ. An RFS who looks after South 1 and South 2 is one seat that shows in both zone rows, while the cards count it once.",
       "Adding the person uses the seat up (one person for both zones uses the one seat); when they leave, one seat covering both zones comes back.",
@@ -173,6 +182,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-03",
     title: "Headcount for Region Heads, RFS and the Fleet Admin team (staging only)",
+    minRank: 1,
     points: [
       "The Headcount view now has three tables: Stations (Station Head, Fleet Assistant), Zones (Region Head, Regional Fleet Supervisor) and HQ (Fleet Admin). Each shows the people posted there, the vacant seats and the headcount; the three RFS seats marked TBA in the sheet (South 1, South 2, Zone B) and the Fleet Admin team's intern seats are in as vacant seats.",
       "The same rules as for stations: a Manager or the HOD adds or removes seats (a Manager's wait for the HOD), the Fleet Admin team fills a vacant seat by adding the person, and a leaver's seat stays as a vacant seat. The Org chart and the Staff list show the vacant zone and HQ seats too.",
@@ -181,6 +191,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "New: Fleet Admin tab with Premises (staging only) -- licence and tenancy dates per station, edited in the app",
+    minRank: 2,
     points: [
       "One record per station: address, size, launch date, business licence and tenancy dates (with the days left worked out), rent, deposit and links to the documents. Loaded from the Fleet Management sheet's Address tab; from now on the Fleet Admin team edits it here instead of the sheet.",
       "Chips for Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days and Dates missing, plus Region / Zone filters and search. HQ staff and above can read it; only the Fleet Admin role edits. You can also paste rows from the sheet.",
@@ -189,6 +200,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Staff & Org Chart: mobile, employee ID and paste-from-sheet (staging only)",
+    minRank: 2,
     points: [
       "Each person now has a mobile number and an employee ID in the staff list (filled in for the Station Heads and Fleet Assistants from the sheet). Only HQ staff, Managers and the Superadmin see them.",
       "Paste from sheet: copy rows from the Fleet Management sheet, check the preview (New / Update / Skipped with the reason) and import many people at once, including their mobile and employee ID.",
@@ -197,6 +209,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Staff & Org Chart: edit HQ staff too, and posting is now separate from access (staging only)",
+    minRank: 2,
     points: [
       "The Fleet Admin team can now add, move and remove HQ staff (HOD, Manager, OPEX, Recovery, Restock, other Fleet Admins) as well as Region and Station staff. Posting is where a person works; their access (what they can see) starts the same.",
       "Access is changed only in Settings -> Users, by a Manager / HOD, Region Head / RFS or the Superadmin -- for example to give someone sent to rescue another station or region that place's data. The staff list shows Custom for those people and keeps their access when the Fleet Admin team moves their posting. The org chart and PIC search follow the posting, so a person covering another station still shows at their own.",
@@ -214,6 +227,7 @@ export const CHANGELOG = [
   {
     date: "2026-10-02",
     title: "Roles now follow the job position (staging only)",
+    minRank: 2,
     points: [
       "Settings -> Users now uses the real positions, in three groups: HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock), Region staff (Region Head, Regional Fleet Supervisor) and Station staff (Station Head, Fleet Assistant). Your position shows under your name in the header.",
       "HQ staff have no region, zone or station of their own, so they get a new access level, HQ. They see every region for now; HOD and Manager can still manage Region and Station staff, while Fleet Admin, OPEX, Recovery and Restock will each get their own tabs for their own work.",
@@ -728,7 +742,7 @@ const fmt = (d) => d.toLocaleDateString("en-MY", { day: "numeric", month: "short
 
 // Weeks (Monday-Sunday), newest first, each with the entries this build ships and this role
 // may see. The current week is always first, even when nothing has changed in it yet.
-export function weeklyChanges({ features, rank, wide = true, now = new Date() }) {
+export function weeklyChanges({ features, rank, wide = true, position = "", now = new Date() }) {
   const byWeek = new Map();
   const thisMonday = mondayOf(now);
   byWeek.set(thisMonday.getTime(), []);
@@ -736,6 +750,7 @@ export function weeklyChanges({ features, rank, wide = true, now = new Date() })
     if (e.feature && !features[e.feature]) continue;
     if ((e.minRank || 0) > rank) continue;
     if (e.wide && !wide) continue;
+    if (e.audience && rank < 3 && !e.audience.includes(position)) continue;
     const [y, m, d] = e.date.split("-").map(Number);
     const key = mondayOf(new Date(y, m - 1, d)).getTime();
     if (!byWeek.has(key)) byWeek.set(key, []);

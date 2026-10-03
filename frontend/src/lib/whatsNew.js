@@ -28,7 +28,7 @@ function readSeen(me) {
 function recentEntries(me) {
   const rank = rankOf(me);
   const wide = me.scope_type === "all" || (me.scope_values || []).length > 1;
-  return weeklyChanges({ features: FEATURES, rank, wide })
+  return weeklyChanges({ features: FEATURES, rank, wide, position: me.position || "" })
     .slice(0, 2)
     .flatMap((w) => w.items);
 }
@@ -58,12 +58,13 @@ export function useWhatsNewUnread(me) {
   const role = me?.role;
   const scopeType = me?.scope_type;
   const scopeCount = (me?.scope_values || []).length;
+  const position = me?.position;
   const [count, setCount] = useState(() => unreadEntries(me).length);
   useEffect(() => {
     const update = () => setCount(unreadEntries(me).length);
     update();
     window.addEventListener(EVENT, update);
     return () => window.removeEventListener(EVENT, update);
-  }, [email, role, scopeType, scopeCount]);
+  }, [email, role, scopeType, scopeCount, position]);
   return count;
 }

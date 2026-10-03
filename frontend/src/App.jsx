@@ -36,8 +36,7 @@ export default function App() {
   // below that the existing top tabs / phone menu are used, since the sidebar has no phone layout yet.
   const [navMode, setNavModeState] = useState(() => {
     try {
-      const m = localStorage.getItem("nav-mode");
-      return m === "sidebar" || m === "classic" ? m : "tabs";
+      return localStorage.getItem("nav-mode") === "sidebar" ? "sidebar" : "tabs"; // the first paint; replaced by this person's own choice once we know who they are
     } catch {
       return "tabs";
     }
@@ -46,10 +45,21 @@ export default function App() {
     setNavModeState(m);
     try {
       localStorage.setItem("nav-mode", m);
+      if (me?.email) localStorage.setItem(`nav-mode:${me.email}`, m); // remembered per person, so two people on one browser each get their own
     } catch {
       /* storage blocked -- the choice just won't persist */
     }
   };
+  // Top bar or sidebar is a personal preference: reopen the way this person last chose.
+  useEffect(() => {
+    if (!me?.email) return;
+    try {
+      const saved = localStorage.getItem(`nav-mode:${me.email}`) || localStorage.getItem("nav-mode");
+      setNavModeState(saved === "sidebar" ? "sidebar" : "tabs");
+    } catch {
+      /* storage blocked -- keep the default */
+    }
+  }, [me?.email]);
   const [sideCollapsed, setSideCollapsed] = useState(() => {
     try {
       return localStorage.getItem("side-collapsed") === "1";

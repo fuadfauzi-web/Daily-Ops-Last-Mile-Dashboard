@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { GuideCards, WhatsNewCards } from "./components/help/HelpCards";
 import { api } from "./api";
 import { FEATURES as F } from "./lib/features";
 import { weeklyChanges } from "./lib/changelog";
@@ -743,7 +744,7 @@ const FAQS = [
   { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTester && F.roleTesterUser },
 ];
 
-// only: "guide" | "new" -- show just that half (Help -> Guide and Help -> What's new are separate tabs); leave it off for the old Guide / What's new switch.
+// only: "guide" | "new" | "faq" -- show just that page (Help -> Guide, What's new and Common questions are separate tabs); leave it off for the old Guide / What's new switch.
 export default function GuideTab({ me, only }) {
   const rank = rankOf(me);
   const wide = me?.scope_type === "all" || (me?.scope_values || []).length > 1;
@@ -751,7 +752,7 @@ export default function GuideTab({ me, only }) {
 
   const [openId, setOpenId] = useState(SECTIONS[0].id);
   const [view, setView] = useState(only || "guide"); // "guide" | "new"
-  const weeks = useMemo(() => weeklyChanges({ features: F, rank, wide }), [rank, wide]);
+  const weeks = useMemo(() => weeklyChanges({ features: F, rank, wide, position: me?.position || "" }), [rank, wide, me?.position]);
   const unread = useWhatsNewUnread(me);
   const [newIds, setNewIds] = useState(() => new Set()); // what was unread when What's new was opened
   // Opening What's new counts as reading it: remember which items were new (to tag them for
@@ -817,6 +818,61 @@ export default function GuideTab({ me, only }) {
       onChange={(k) => (k === "new" ? openNew() : setView(k))}
     />
   );
+
+  // Help -> What's new / Guide / Common questions are separate tabs now (only = "new" | "guide" | "faq"), laid out as category cards.
+  if (only === "new") return <WhatsNewCards weeks={weeks} newIds={newIds} />;
+  if (only === "guide") return <GuideCards sections={visibleSections} ctx={ctx} />;
+  if (only === "faq") {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-[10px] bg-white px-4 py-3 shadow-card">
+          <div className="font-display text-sm font-semibold text-ink">Common questions</div>
+          <p className="mt-1 text-sm text-muted">Quick answers, showing what applies to your role. Search, or open a question.</p>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the questions…"
+            className="mt-3 min-h-[44px] w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {faqs.length === 0 && <div className="rounded-[10px] bg-white p-5 text-sm text-slate-400 shadow-card">No common question matches "{query}".</div>}
+          {faqs.map((f) => (
+            <details key={f.q} className="group rounded-[10px] bg-white px-4 py-3 shadow-card">
+              <summary className="flex cursor-pointer list-none items-start gap-2 font-display text-[13px] font-semibold text-ink">
+                <span className="mt-0.5 text-slate-400 group-open:hidden">+</span>
+                <span className="mt-0.5 hidden text-slate-400 group-open:inline">−</span>
+                {f.q}
+              </summary>
+              <p className="mt-2 pl-4 text-sm leading-relaxed text-muted">{f.a}</p>
+            </details>
+          ))}
+        </div>
+        <div className="rounded-[10px] bg-white px-4 py-3 shadow-card">
+          <div className="text-sm font-medium text-ink">Didn't find your answer? Ask it.</div>
+          <p className="text-xs text-subtle">It goes to the admins as feedback marked [Question]; their reply appears in Help → Feedback and a bell badge shows on Help.</p>
+          <textarea
+            className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+            rows={2}
+            placeholder="Type your question…"
+            value={question}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              setSent(false);
+            }}
+          />
+          <div className="mt-1.5 flex items-center gap-3">
+            <button onClick={ask} disabled={sending || !question.trim()} className="min-h-[44px] rounded-lg bg-ink px-4 text-xs font-semibold text-white disabled:opacity-40">
+              {sending ? "Sending…" : "Ask the admins"}
+            </button>
+            {sent && <span className="text-xs text-status-good">Sent — watch Help → Feedback for the reply.</span>}
+            {error && <span className="text-xs text-status-critical">{error}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (view === "new") {
     const [latest, ...older] = weeks;
