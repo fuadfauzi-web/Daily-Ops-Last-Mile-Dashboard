@@ -11,14 +11,14 @@ const cellKey = (kpi, region) => `${kpi}|${region}`;
 const maxOf = (k) => (k.unit === "number" ? 100000 : 100);
 const HINT = { hybrid: "the Productivity on the Hybrid page -- drivers below it are the low performers" };
 
-export default function KpiTargetsPanel() {
+// part: "all" | "targets" | "scope" -- Settings shows the two as separate tabs (KPI Targets: HOD / OPEX edit; KPI Settings: HOD / OPEX / Manager edit).
+export default function KpiTargetsPanel({ part = "all" }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const [switching, setSwitching] = useState(false);
-  const [switchingSarawak, setSwitchingSarawak] = useState(false);
 
   const fill = (d) => {
     const next = {};
@@ -104,65 +104,47 @@ export default function KpiTargetsPanel() {
   };
 
   const eastMalaysia = !!data.settings?.include_east_malaysia;
-  const sarawak = !!data.settings?.include_sarawak;
-
-  const switchSarawak = async (on) => {
-    setSwitchingSarawak(true);
-    setError(null);
-    try {
-      const res = await api.kpiSettingsSave({ include_sarawak: on });
-      setKpiTargets(res);
-      setData((d) => ({ ...d, settings: res.settings }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSwitchingSarawak(false);
-    }
-  };
-
+  const canTargets = !!data.can_edit; // HOD / OPEX / Superadmin
+  const canScope = !!data.can_edit_scope; // HOD / OPEX / Manager / Superadmin
   return (
     <div className="space-y-3">
       {error && <div className="rounded-lg bg-status-critical/5 px-4 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">{error}</div>}
 
+      {part !== "targets" && (
       <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
         <div className="font-display text-sm font-semibold text-ink">Scope</div>
         <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-          <input type="checkbox" className="mt-1" checked={eastMalaysia} disabled={switching} onChange={(e) => switchEastMalaysia(e.target.checked)} />
+          <input type="checkbox" className="mt-1" checked={eastMalaysia} disabled={switching || !canScope} onChange={(e) => switchEastMalaysia(e.target.checked)} />
           <span>
-            <span className="font-medium">Include East Malaysia in the KPI pages</span>
+            <span className="font-medium">Include East Malaysia (and Sarawak: East Malaysia 3 and 4) in the KPI pages</span>
             <span className="block text-xs text-slate-500">
               Off by default: the KPI pages are for Last Mile stations and East Malaysia is Retail, so its stations and region are left out of the Dashboard, the RCA pages, the Weekly
               trend and the Hybrid page for everyone. Only stations on the station list are counted. {switching ? "Saving…" : data.settings_changed_by ? `Last changed by ${data.settings_changed_by}.` : ""}
             </span>
           </span>
         </label>
-        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-          <input type="checkbox" className="mt-1" checked={sarawak} disabled={switchingSarawak} onChange={(e) => switchSarawak(e.target.checked)} />
-          <span>
-            <span className="font-medium">Include Sarawak (East Malaysia 3 and 4) in the KPI pages</span>
-            <span className="block text-xs text-slate-500">
-              Off for now: Sarawak stays out of the KPI pages even when East Malaysia above is ticked. Kuching, Batu Kawa, Petra Jaya, Samarahan, Sibu, Saratok, Bintulu and Miri only count when
-              both are ticked.
-            </span>
-          </span>
-        </label>
+        {!canScope && <p className="mt-2 text-xs text-slate-400">You can see this setting; only the HOD, OPEX or a Manager can change it.</p>}
       </div>
+      )}
 
+      {part !== "scope" && (
+      <>
       <div className="flex flex-wrap items-center gap-3">
         <div className="text-sm text-slate-600">
           The target of each KPI by region. Every station, zone and region is judged against its own region's target. Percentages for the rates; Hybrid Productivity is a plain number.
         </div>
         <div className="ml-auto flex items-center gap-3">
           {data.last_changed_by && <span className="text-xs text-slate-400">Last change: {data.last_changed_at?.slice(0, 16).replace("T", " ")} · {data.last_changed_by}</span>}
-          <button
+          {canTargets && <button
             onClick={save}
             disabled={saving || !changes.length || invalid.length > 0 || blank}
             className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {saving ? "Saving…" : saved && !changes.length ? "Saved" : changes.length ? `Save ${changes.length} change${changes.length === 1 ? "" : "s"}` : "Save targets"}
-          </button>
+          </button>}
         </div>
       </div>
+      {!canTargets && <div className="text-xs text-slate-400">You can see the targets; only the HOD or OPEX can change them.</div>}
       {(invalid.length > 0 || blank) && <div className="text-xs text-status-critical">Every target needs a number (a percentage between 0 and 100 for the rates); only Hybrid Productivity may stay empty.</div>}
 
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
@@ -208,6 +190,7 @@ export default function KpiTargetsPanel() {
                               max={maxOf(k)}
                               value={text}
                               placeholder={def == null ? "not set" : undefined}
+                              disabled={!canTargets}
                               onChange={(e) => edit(k.key, r, e.target.value)}
                               aria-label={`${k.label} target, ${r}`}
                               className={`w-20 rounded border px-2 py-1 text-right text-xs tabular-nums ${bad ? "border-status-critical bg-status-critical/5" : differs ? "border-amber-400 bg-amber-50" : "border-slate-300"}`}
@@ -219,7 +202,7 @@ export default function KpiTargetsPanel() {
                       );
                     })}
                     <td className="whitespace-nowrap px-4 py-2 text-right">
-                      {anyDifferent && (
+                      {anyDifferent && canTargets && (
                         <button onClick={() => resetRow(k)} className="text-xs font-medium text-slate-500 underline hover:text-brand">
                           Back to default
                         </button>
@@ -236,6 +219,8 @@ export default function KpiTargetsPanel() {
           means 0.005%. Hybrid Productivity has no built-in target yet -- until a region has one the Hybrid page keeps its fixed line (productivity 80). The OPEX result always shows OPEX's own targets.
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
