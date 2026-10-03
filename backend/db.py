@@ -48,6 +48,13 @@ async def execute(sql: str, params: tuple = ()) -> int:
         return cur.lastrowid
 
 
+async def execute_rowcount(sql: str, params: tuple = ()) -> int:
+    """Like execute(), but returns how many rows the statement changed -- for 'claim this row if it is still free' updates (execute() returns the last insert id)."""
+    async with _pool.acquire() as conn, conn.cursor() as cur:
+        await cur.execute(sql, params)
+        return cur.rowcount
+
+
 async def execute_many(sql: str, param_list: list[tuple]) -> None:
     if not param_list:
         return

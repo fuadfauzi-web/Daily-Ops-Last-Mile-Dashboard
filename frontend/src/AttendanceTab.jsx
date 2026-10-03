@@ -24,10 +24,11 @@ export default function AttendanceTab({ me }) {
   const [sub, setSub] = useState("ptwh");
   const [review, setReview] = useState(0);
   const [approvals, setApprovals] = useState(0);
+  const [corrections, setCorrections] = useState(0);
   const [goView, setGoView] = useState(null); // {view, n} -- asks the PTWH tab to show its Audit / Workers view
 
   const loadReview = useCallback(() => {
-    api.notifications().then((n) => { setReview(n.ptwh_review || 0); setApprovals(n.ptwh_approvals || 0); }).catch(() => {});
+    api.notifications().then((n) => { setReview(n.ptwh_review || 0); setApprovals(n.ptwh_approvals || 0); setCorrections(n.ptwh_corrections || 0); }).catch(() => {});
   }, []);
   useEffect(() => {
     loadReview();
@@ -43,10 +44,16 @@ export default function AttendanceTab({ me }) {
           <button onClick={() => { setSub("ptwh"); setGoView({ view: "workers", n: Date.now() }); }} className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-semibold text-white">Open Workers</button>
         </div>
       )}
+      {corrections > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-violet-50 p-3 text-sm text-violet-900 ring-1 ring-violet-200">
+          <span><strong>{corrections} PTWH clock correction{corrections === 1 ? "" : "s"} waiting for your approval.</strong> The pay for {corrections === 1 ? "that day is" : "those days is"} on hold until you approve or reject {corrections === 1 ? "it" : "them"}.</span>
+          <button onClick={() => { setSub("ptwh"); setGoView({ view: "corrections", n: Date.now() }); }} className="rounded-md bg-violet-700 px-3 py-1.5 text-sm font-semibold text-white">Open Corrections</button>
+        </div>
+      )}
       {review > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
           <span>
-            <strong>{review} PTWH clock{review === 1 ? "" : "s"} by QR code {review === 1 ? "needs" : "need"} review.</strong> QR is for emergencies only -- check the selfie and the reason;
+            <strong>{review} PTWH clock{review === 1 ? "" : "s"} by QR code {review === 1 ? "is" : "are"} ready for review.</strong> QR is for emergencies only -- check the selfie and the reason;
             the pay for {review === 1 ? "that day is" : "those days is"} on hold until you mark {review === 1 ? "it" : "them"} Checked OK.
           </span>
           <button onClick={() => { setSub("ptwh"); setGoView({ view: "audit", n: Date.now() }); }} className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white">Open Audit</button>

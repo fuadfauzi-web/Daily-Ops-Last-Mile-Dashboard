@@ -23,7 +23,7 @@ import logging
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
 import db
@@ -37,16 +37,16 @@ _MYT = timezone(timedelta(hours=8))
 HALF_DAY_HOURS = 6.0
 HALF_DAY_FACTOR = 0.5
 DEFAULT_RATE = 50.0
-# The 4 standard categories (PTWH Monitoring template: PTWH Build section B, Setup tab). max_days = the template's "Max days/month" control
+# The 4 standard categories (PTWH Monitoring template: PTWH Build section B, Setup tab; no shift times -- the schedule is made by the Region / Station Heads). max_days = the template's "Max days/month" control
 # (0 = as approved, no fixed cap); a worker over it in a month is flagged on the Month sheet, not blocked.
 CATEGORIES = [
-    {"code": "C1", "name": "Core Shift - Inbound & Push-off", "shift": "AM 05:00-14:00 (half day 06:00-10:00)", "max_days": 26,
+    {"code": "C1", "name": "Core Shift - Inbound & Push-off", "max_days": 26,
      "covers": "Daily AM shift that opens the station with linehaul: unload, inbound, route sort, push-off, ATS, 2nd trip. Includes half-day push-off support."},
-    {"code": "C2", "name": "Vacancy Cover - Short of Staff", "shift": "AM 05:00-14:00", "max_days": 26,
+    {"code": "C2", "name": "Vacancy Cover - Short of Staff", "max_days": 26,
      "covers": "Fills an unfilled FA position (resignation / not yet hired), including FA / SH training cover. Time-bound: stop once the FA joins."},
-    {"code": "C3", "name": "Leave & Rotation Cover", "shift": "AM 05:00-14:00", "max_days": 20,
+    {"code": "C3", "name": "Leave & Rotation Cover", "max_days": 20,
      "covers": "Covers FA / SH off-days, annual leave, MC, long MC and staff sent for rescue -- only on the dates staff are away."},
-    {"code": "C4", "name": "Volume Surge / PM Support", "shift": "PM 13:00-21:00 or ad-hoc", "max_days": 0,
+    {"code": "C4", "name": "Volume Surge / PM Support", "max_days": 0,
      "covers": "Extra hands on high-volume days, backlog, late linehaul, and PM shift for high longtail / RSVN pickup -- backed by OPEX data, approved monthly / weekly."},
 ]
 CATEGORY_CODES = {c["code"] for c in CATEGORIES}
@@ -151,11 +151,36 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat(timespec="minutes") if dt else None
 
 
+def _zone_region(station: str) -> tuple[str, str]:
+    for name, _full, zone, region in HUBS.values():
+        if name == station:
+            return zone, region
+    return "", ""
+
+
+# id, name, ic, phone, station, rate, joined, active, category, approval_status, end_date, inactive_since, inactive_reason, cleaned_at
+_WORKER_COLS = "id, full_name, ic_no, phone, station, daily_rate, joined_date, active, category, approval_status, end_date, inactive_since, inactive_reason, cleaned_at"
+
+
 def _worker_json(r, full_ic: bool) -> dict:
+    zone, region = _zone_region(r[4])
     return {
-        "id": r[0], "name": r[1], "ic_no": _mask_ic(r[2], full_ic), "phone": r[3], "station": r[4],
+        "id": r[0], "name": r[1], "ic_no": _mask_ic(r[2], full_ic), "phone": r[3], "station": r[4], "zone": zone, "region": region,
         "daily_rate": float(r[5]), "joined_date": str(r[6]) if r[6] else None, "active": bool(r[7]), "category": r[8], "approval": r[9],
+        "end_date": str(r[10]) if r[10] else None, "inactive_since": str(r[11]) if r[11] else None, "inactive_reason": r[12], "cleaned": r[13] is not None,
     }
+
+
+def is_working(w, today: date) -> bool:
+    """Can this PTWH work today? Approved, switched on, and the end date (their last day) not passed. Checked live so nobody waits for the nightly job."""
+    return bool(w[7]) and w[9] == "approved" and (w[10] is None or w[10] >= today)
+
+
+# Inactive PTWH: after the END DATE, or after AUTO_INACTIVE_DAYS with no clock in / out, a PTWH goes inactive (no clocking, no app login, off the schedule).
+# CLEANUP_DAYS later their personal data (IC, phone, selfies, app login) is cleared; name, station and pay history stay for the records. Coming back is a
+# RE-HIRE: the same Region Head + Manager approval as a new hire, at whichever station they return to (ptwh_app.housekeeping_workers does the switching off / clearing).
+AUTO_INACTIVE_DAYS = 30
+CLEANUP_DAYS = 60
 
 
 # ---- hiring approval: a NEW PTWH needs the Region Head, then a Manager / HOD (the Superadmin may do either step). People loaded from the PTWH DETAILS
@@ -182,14 +207,17 @@ async def approvals_count(user: CurrentUser) -> int:
     return sum(1 for st, status in rows if can_decide(user, status, st))
 
 
-_WORKER_COLS = "id, full_name, ic_no, phone, station, daily_rate, joined_date, active, category, approval_status"
-
-
 async def _worker(worker_id: int):
     row = await db.fetch_one(f"SELECT {_WORKER_COLS} FROM ptwh_workers WHERE id = %s", (worker_id,))
     if row is None:
         raise HTTPException(status_code=404, detail="Worker not found")
     return row
+
+
+async def _pending_days(first: date, last: date) -> set[tuple[int, date]]:
+    """(worker_id, day) pairs with a clock correction waiting for approval -- those days are on hold."""
+    rows = await db.fetch_all("SELECT worker_id, work_date FROM ptwh_corrections WHERE status = 'pending' AND work_date >= %s AND work_date <= %s", (first, last))
+    return {(r[0], r[1]) for r in rows}
 
 
 class WorkerIn(BaseModel):
@@ -199,7 +227,7 @@ class WorkerIn(BaseModel):
     phone: str | None = None
     daily_rate: float = DEFAULT_RATE
     joined_date: str | None = None
-    active: bool = True
+    end_date: str | None = None  # their last working day; after it they are inactive (no clocking, no app login)
     category: str | None = None
 
 
@@ -213,18 +241,25 @@ def _validate_worker(p: WorkerIn) -> None:
     _check_category(p.category)
 
 
+def _ic_digits(ic: str | None) -> str:
+    return re.sub(r"\D", "", ic or "")
+
+
 @router.get("/api/attendance/ptwh/workers")
 async def list_workers(user: CurrentUser = Depends(get_current_user)):
     stations = _visible_stations(user)
     rows = await db.fetch_all(f"SELECT {_WORKER_COLS} FROM ptwh_workers ORDER BY station, full_name")
     full_ic = user.role in ("admin", "manager")
+    today = _now().date()
     return {
-        "workers": [{**_worker_json(r, full_ic), "can_decide": can_decide(user, r[9], r[4])} for r in rows if r[4] in stations],
+        "workers": [{**_worker_json(r, full_ic), "can_decide": can_decide(user, r[9], r[4]), "working": is_working(r, today)} for r in rows if r[4] in stations],
         "stations": sorted(stations),
         "can_edit": _can_edit(user),
         "default_rate": DEFAULT_RATE,
         "categories": CATEGORIES,
         "approval_labels": APPROVAL_LABEL,
+        "auto_inactive_days": AUTO_INACTIVE_DAYS,
+        "cleanup_days": CLEANUP_DAYS,
     }
 
 
@@ -233,12 +268,18 @@ async def add_worker(payload: WorkerIn, user: CurrentUser = Depends(get_current_
     _validate_worker(payload)
     _require_editor(user, payload.station)
     joined = _parse_date(payload.joined_date, _now().date()) if payload.joined_date else None
+    ic = (payload.ic_no or "").strip()
+    # The same person can't be added again at another station (or after leaving): they come back through Re-hire, with the same approvals.
+    if len(_ic_digits(ic)) >= 6:
+        for wid, name, other_ic, st, active in await db.fetch_all("SELECT id, full_name, ic_no, station, active FROM ptwh_workers WHERE ic_no IS NOT NULL"):
+            if _ic_digits(other_ic) == _ic_digits(ic):
+                raise HTTPException(status_code=409, detail=f"{name} is already in the list at {st} ({'active' if active else 'inactive'}). If they are coming back, use Re-hire on that person -- it needs the Region Head's and then a Manager's approval.")
     # A new hire waits for the Region Head, then a Manager. A Region Head adding someone is their own first approval.
     status, now = ("pending_mgr", _now()) if user.position == "region_head" else ("pending_rh", None)
     await db.execute(
         """INSERT INTO ptwh_workers (full_name, ic_no, phone, station, daily_rate, joined_date, active, category, approval_status, rh_by, rh_at, created_by, created_at)
            VALUES (%s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)""",
-        (payload.name.strip().upper(), (payload.ic_no or "").strip() or None, (payload.phone or "").strip() or None,
+        (payload.name.strip().upper(), ic or None, (payload.phone or "").strip() or None,
          payload.station, payload.daily_rate, joined, payload.category or None, status, user.email if now else None, now, user.email, _now()),
     )
     return {"ok": True, "approval": status, "message": APPROVAL_LABEL[status] + " -- they can start once the Region Head and then a Manager have approved"}
@@ -251,7 +292,7 @@ class DecisionIn(BaseModel):
 
 @router.post("/api/attendance/ptwh/workers/{worker_id}/decision")
 async def decide_hire(worker_id: int, p: DecisionIn, user: CurrentUser = Depends(get_current_user)):
-    """The Region Head (step 1) or a Manager / HOD (step 2) approves or rejects a new PTWH hire. The final approval makes the worker active."""
+    """The Region Head (step 1) or a Manager / HOD (step 2) approves or rejects a new PTWH hire (or a re-hire). The final approval makes the worker active."""
     if p.decision not in ("approve", "reject"):
         raise HTTPException(status_code=422, detail="Decision is approve or reject")
     w = await _worker(worker_id)
@@ -261,17 +302,45 @@ async def decide_hire(worker_id: int, p: DecisionIn, user: CurrentUser = Depends
     if not can_decide(user, status, w[4]):
         raise HTTPException(status_code=403, detail="Waiting for the Region Head" if status == "pending_rh" else "Waiting for a Manager / HOD")
     note = (p.note or "").strip()[:300]
+    now = _now()
     if p.decision == "reject":
         if len(note) < 3:
             raise HTTPException(status_code=422, detail="Say why you are rejecting")
-        await db.execute("UPDATE ptwh_workers SET approval_status='rejected', active=0, decision_note=%s, updated_at=%s WHERE id=%s", (note, _now(), worker_id))
+        await db.execute("UPDATE ptwh_workers SET approval_status='rejected', active=0, inactive_since=%s, inactive_reason='Hire rejected', decision_note=%s, updated_at=%s WHERE id=%s",
+                         (now.date(), note, now, worker_id))
     elif status == "pending_rh":
         await db.execute("UPDATE ptwh_workers SET approval_status='pending_mgr', rh_by=%s, rh_at=%s, decision_note=%s, updated_at=%s WHERE id=%s",
-                         (user.email, _now(), note or None, _now(), worker_id))
+                         (user.email, now, note or None, now, worker_id))
     else:
-        await db.execute("UPDATE ptwh_workers SET approval_status='approved', active=1, mgr_by=%s, mgr_at=%s, decision_note=%s, updated_at=%s WHERE id=%s",
-                         (user.email, _now(), note or None, _now(), worker_id))
+        await db.execute("UPDATE ptwh_workers SET approval_status='approved', active=1, inactive_since=NULL, inactive_reason=NULL, mgr_by=%s, mgr_at=%s, decision_note=%s, updated_at=%s WHERE id=%s",
+                         (user.email, now, note or None, now, worker_id))
     return {"ok": True}
+
+
+class RehireIn(BaseModel):
+    station: str  # where they are coming back to -- may be a different station
+
+
+@router.post("/api/attendance/ptwh/workers/{worker_id}/rehire")
+async def rehire(worker_id: int, p: RehireIn, user: CurrentUser = Depends(get_current_user)):
+    """Bring an inactive PTWH back. Same as a new hire: the Region Head, then a Manager, must approve before they can clock in again."""
+    w = await _worker(worker_id)
+    if p.station not in _station_names():
+        raise HTTPException(status_code=422, detail="Pick a station from the list")
+    _require_editor(user, w[4])
+    _require_editor(user, p.station)
+    today = _now().date()
+    if w[9] in ("pending_rh", "pending_mgr"):
+        raise HTTPException(status_code=409, detail="A hire for this person is already waiting for approval")
+    if is_working(w, today):
+        raise HTTPException(status_code=409, detail="This PTWH is still working -- there is nothing to re-hire")
+    status, now = ("pending_mgr", _now()) if user.position == "region_head" else ("pending_rh", None)
+    await db.execute(
+        """UPDATE ptwh_workers SET station=%s, approval_status=%s, rh_by=%s, rh_at=%s, mgr_by=NULL, mgr_at=NULL, decision_note=NULL, active=0, end_date=NULL,
+                  inactive_since=NULL, inactive_reason=NULL, cleaned_at=NULL, joined_date=%s, updated_at=%s WHERE id=%s""",
+        (p.station, status, user.email if now else None, now, today, _now(), worker_id),
+    )
+    return {"ok": True, "approval": status, "message": APPROVAL_LABEL[status] + " -- they can work again once the Region Head and then a Manager have approved"}
 
 
 @router.patch("/api/attendance/ptwh/workers/{worker_id}")
@@ -282,13 +351,23 @@ async def update_worker(worker_id: int, payload: WorkerIn, user: CurrentUser = D
     _require_editor(user, payload.station)  # ... and move them only to a station they also cover
     ic = (payload.ic_no or "").strip()
     new_ic = row[2] if (not ic or "*" in ic) else ic  # the masked value the list showed means "unchanged"
-    joined = _parse_date(payload.joined_date, _now().date()) if payload.joined_date else None
+    today = _now().date()
+    joined = _parse_date(payload.joined_date, today) if payload.joined_date else None
+    end = _parse_date(payload.end_date, today) if payload.end_date else None
+    if end and joined and end < joined:
+        raise HTTPException(status_code=422, detail="The end date can't be before the joined date")
+    # An end date in the past switches them off now (after it they can't clock in or log in). Editing never switches anyone ON: a PTWH who is inactive comes back
+    # by Re-hire, which needs approval -- so an end date can't be cleared to sneak someone back.
+    active = bool(row[7]) and row[9] == "approved" and not (end is not None and end < today)
+    just_ended = bool(row[7]) and not active
     await db.execute(
-        """UPDATE ptwh_workers SET full_name=%s, ic_no=%s, phone=%s, station=%s, daily_rate=%s, joined_date=%s, active=%s, category=%s, updated_at=%s
-           WHERE id=%s""",
-        (payload.name.strip().upper(), new_ic, (payload.phone or "").strip() or None, payload.station, payload.daily_rate,
-         joined, 1 if (payload.active and row[9] == "approved") else 0, payload.category or None, _now(), worker_id),  # only an approved hire can be active
+        """UPDATE ptwh_workers SET full_name=%s, ic_no=%s, phone=%s, station=%s, daily_rate=%s, joined_date=%s, end_date=%s, active=%s, category=%s,
+                  inactive_since=%s, inactive_reason=%s, updated_at=%s WHERE id=%s""",
+        (payload.name.strip().upper(), new_ic, (payload.phone or "").strip() or None, payload.station, payload.daily_rate, joined, end, 1 if active else 0,
+         payload.category or None, today if just_ended else row[11], "End date passed" if just_ended else row[12], _now(), worker_id),
     )
+    if just_ended:
+        await db.execute("DELETE FROM schedule_entries WHERE person_type = 'ptwh' AND person_ref = %s AND work_date > %s", (str(worker_id), today))
     return {"ok": True}
 
 
@@ -439,25 +518,31 @@ def _record_json(r) -> dict:
 
 @router.get("/api/attendance/ptwh/day")
 async def day_view(date_: str | None = None, user: CurrentUser = Depends(get_current_user)):
-    """Every active PTWH in scope with that day's clock times (today by default)."""
+    """Every PTWH in scope who can work today (or who has a record that day) with that day's clock times (today by default)."""
     day = _parse_date(date_, _now().date())
+    today = _now().date()
     stations = _visible_stations(user)
-    workers = [r for r in await db.fetch_all(f"SELECT {_WORKER_COLS} FROM ptwh_workers WHERE active = 1 ORDER BY station, full_name") if r[4] in stations]
     recs = {
         r[0]: r[1:]
         for r in await db.fetch_all(
-            "SELECT worker_id, id, clock_in, clock_out, category, source, note, flag_status FROM ptwh_attendance WHERE work_date = %s", (day,)
+            "SELECT worker_id, id, clock_in, clock_out, category, source, note, flag_status FROM ptwh_attendance WHERE work_date = %s AND voided = 0", (day,)
         )
     }
+    pending = await _pending_days(day, day)
+    workers = [r for r in await db.fetch_all(f"SELECT {_WORKER_COLS} FROM ptwh_workers ORDER BY station, full_name")
+               if r[4] in stations and (r[0] in recs or is_working(r, today))]
     # The category each person used last, so the clock-in box is pre-filled the way the sheet's justification column carried over.
     last = {r[0]: r[1] for r in await db.fetch_all(
         "SELECT worker_id, category FROM ptwh_attendance WHERE category IS NOT NULL AND work_date < %s ORDER BY work_date", (day,))}
     rows = []
     for w in workers:
         rec = recs.get(w[0])
-        rows.append({**_worker_json(w, False), "record": _record_json(rec) if rec else None, "default_category": last.get(w[0]) or w[8]})
+        rj = _record_json(rec) if rec else None
+        if rj and (w[0], day) in pending:
+            rj["held"], rj["correction_pending"] = True, True
+        rows.append({**_worker_json(w, False), "record": rj, "default_category": last.get(w[0]) or w[8], "working": is_working(w, today)})
     return {
-        "date": str(day), "today": str(_now().date()), "rows": rows, "categories": CATEGORIES, "can_edit": _can_edit(user),
+        "date": str(day), "today": str(today), "rows": rows, "categories": CATEGORIES, "can_edit": _can_edit(user),
         "rule": {"half_day_hours": HALF_DAY_HOURS, "half_day_factor": HALF_DAY_FACTOR},
     }
 
@@ -476,9 +561,9 @@ async def clock_in(payload: ClockIn, user: CurrentUser = Depends(get_current_use
     w = await _worker(payload.worker_id)
     _require_editor(user, w[4])
     category = _check_category(payload.category) or w[8]
-    if not w[7]:
-        raise HTTPException(status_code=409, detail="This worker is inactive")
     now = _now()
+    if not is_working(w, now.date()):
+        raise HTTPException(status_code=409, detail="This worker is inactive")
     if await db.fetch_one("SELECT id FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], now.date())):
         raise HTTPException(status_code=409, detail="Already clocked in today")
     await db.execute(
@@ -494,7 +579,7 @@ async def clock_out(payload: ClockOut, user: CurrentUser = Depends(get_current_u
     w = await _worker(payload.worker_id)
     _require_editor(user, w[4])
     now = _now()
-    row = await db.fetch_one("SELECT id, clock_out FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], now.date()))
+    row = await db.fetch_one("SELECT id, clock_out FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s AND voided = 0", (w[0], now.date()))
     if row is None:
         raise HTTPException(status_code=409, detail="Not clocked in today")
     if row[1] is not None:
@@ -503,65 +588,11 @@ async def clock_out(payload: ClockOut, user: CurrentUser = Depends(get_current_u
     return {"ok": True}
 
 
-class RecordIn(BaseModel):
-    worker_id: int
-    work_date: str
-    clock_in: str  # HH:MM
-    clock_out: str | None = None  # HH:MM, blank = still open
-    category: str | None = None
-    note: str | None = None
+# Changing a clock record by hand (a forgotten clock-in, a missed clock-out) is NOT done here any more -- see attendance_corrections.py: every change is a request with a
+# reason, small ones are logged, bigger ones wait for approval, and nothing is ever deleted (a record can only be voided, with approval).
 
 
-def _at(day: date, hhmm: str) -> datetime:
-    try:
-        h, m = hhmm.split(":")[:2]
-        return datetime(day.year, day.month, day.day, int(h), int(m))
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=422, detail="Times look like 08:30")
-
-
-@router.put("/api/attendance/ptwh/record")
-async def save_record(payload: RecordIn, user: CurrentUser = Depends(get_current_user)):
-    """Add or correct one day (a forgotten clock-in, a missed clock-out). Corrections are stamped with who made them."""
-    w = await _worker(payload.worker_id)
-    _require_editor(user, w[4])
-    day = _parse_date(payload.work_date, _now().date())
-    if day > _now().date():
-        raise HTTPException(status_code=422, detail="That day hasn't happened yet")
-    category = _check_category(payload.category) or w[8]
-    cin = _at(day, payload.clock_in)
-    cout = _at(day, payload.clock_out) if payload.clock_out else None
-    if cout is not None and cout <= cin:
-        raise HTTPException(status_code=422, detail="Clock out has to be after clock in")
-    now = _now()
-    existing = await db.fetch_one("SELECT id FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], day))
-    if existing:
-        await db.execute(
-            "UPDATE ptwh_attendance SET clock_in=%s, clock_out=%s, category=%s, note=%s, edited_by=%s, edited_at=%s WHERE id=%s",
-            (cin, cout, category, (payload.note or "")[:200] or None, user.email, now, existing[0]),
-        )
-    else:
-        await db.execute(
-            """INSERT INTO ptwh_attendance (worker_id, work_date, clock_in, clock_out, category, source, note, recorded_by, created_at)
-               VALUES (%s, %s, %s, %s, %s, 'station', %s, %s, %s)""",
-            (w[0], day, cin, cout, category, (payload.note or "")[:200] or None, user.email, now),
-        )
-    return {"ok": True}
-
-
-@router.delete("/api/attendance/ptwh/record/{record_id}")
-async def delete_record(record_id: int, user: CurrentUser = Depends(get_current_user)):
-    row = await db.fetch_one("SELECT worker_id FROM ptwh_attendance WHERE id=%s", (record_id,))
-    if row is None:
-        raise HTTPException(status_code=404, detail="Record not found")
-    _require_editor(user, (await _worker(row[0]))[4])
-    await db.execute("DELETE FROM ptwh_attendance WHERE id=%s", (record_id,))
-    return {"ok": True}
-
-
-@router.get("/api/attendance/ptwh/month")
-async def month_view(month: str | None = None, user: CurrentUser = Depends(get_current_user)):
-    """The old sheet's grid: a row per PTWH, a column per day (hours worked), workdays and payable for the month, and the same split by category."""
+async def _month(user: CurrentUser, month: str | None, region: str | None = None, zone: str | None = None, station: str | None = None, full_ic: bool = False) -> dict:
     today = _now().date()
     try:
         y, m = (int(x) for x in (month or today.strftime("%Y-%m")).split("-"))
@@ -571,17 +602,20 @@ async def month_view(month: str | None = None, user: CurrentUser = Depends(get_c
     nxt = date(y + (m == 12), 1 if m == 12 else m + 1, 1)
     stations = _visible_stations(user)
     workers = [r for r in await db.fetch_all(f"SELECT {_WORKER_COLS} FROM ptwh_workers ORDER BY station, full_name") if r[4] in stations]
+    if region or zone or station:
+        workers = [r for r in workers if (not station or r[4] == station) and (not zone or _zone_region(r[4])[0] == zone) and (not region or _zone_region(r[4])[1] == region)]
+    pending = await _pending_days(first, nxt - timedelta(days=1))
     recs: dict[int, dict[int, tuple]] = {}
     for r in await db.fetch_all(
-        "SELECT worker_id, work_date, clock_in, clock_out, category, flag_status FROM ptwh_attendance WHERE work_date >= %s AND work_date < %s", (first, nxt)
+        "SELECT worker_id, work_date, clock_in, clock_out, category, flag_status FROM ptwh_attendance WHERE work_date >= %s AND work_date < %s AND voided = 0", (first, nxt)
     ):
-        recs.setdefault(r[0], {})[r[1].day] = r[2:]
+        recs.setdefault(r[0], {})[r[1].day] = (*r[2:], (r[0], r[1]) in pending)
     out = []
     for w in workers:
         days, workdays, payable, open_days, by_cat, on_hold = {}, 0.0, 0.0, 0, {}, 0.0
-        for d, (cin, cout, cat, flag) in recs.get(w[0], {}).items():
+        for d, (cin, cout, cat, flag, corr) in recs.get(w[0], {}).items():
             wd, pay = day_pay(float(w[5]), cin, cout)
-            held = is_held(flag)
+            held = is_held(flag) or corr  # a QR / flagged clock, or a clock whose correction is waiting for approval
             workdays += wd
             if held:
                 on_hold += pay
@@ -595,11 +629,63 @@ async def month_view(month: str | None = None, user: CurrentUser = Depends(get_c
             c["payable"] = round(c["payable"] + (0 if held else pay), 2)
             days[d] = {"in": cin.strftime("%H:%M"), "out": cout.strftime("%H:%M") if cout else None,
                        "hours": round(_hours(cin, cout), 1) if cout else None, "workday": wd, "pay": 0.0 if held else pay, "held": held, "held_pay": pay if held else 0.0,
-                       "category": cat if cat != "NA" else None}
+                       "correction_pending": corr, "category": cat if cat != "NA" else None}
         if not days and not w[7]:
             continue  # an inactive worker with nothing this month is just clutter
-        out.append({**_worker_json(w, False), "days": days, "workdays": workdays, "payable": round(payable, 2), "on_hold": round(on_hold, 2), "open_days": open_days, "by_category": by_cat})
+        first_cat = next((days[d]["category"] for d in sorted(days) if days[d]["category"]), None) or w[8]
+        out.append({**_worker_json(w, full_ic), "days": days, "workdays": workdays, "payable": round(payable, 2), "on_hold": round(on_hold, 2), "open_days": open_days,
+                    "by_category": by_cat, "first_category": first_cat})
     return {
         "month": first.strftime("%Y-%m"), "days_in_month": (nxt - first).days, "workers": out, "categories": CATEGORIES,
         "rule": {"half_day_hours": HALF_DAY_HOURS, "half_day_factor": HALF_DAY_FACTOR},
     }
+
+
+@router.get("/api/attendance/ptwh/month")
+async def month_view(month: str | None = None, region: str | None = None, zone: str | None = None, station: str | None = None,
+                     user: CurrentUser = Depends(get_current_user)):
+    """The old sheet's grid: a row per PTWH, a column per day (hours worked), workdays and payable for the month, and the same split by category.
+    Optional Region / Zone / Station filters (the export uses the same ones)."""
+    return await _month(user, month, region, zone, station)
+
+
+# ---- export in the HR sheet's format (PTWH ATTENDANCE 2026 -> the regional tab): the TYPED columns A..AJ -- MONTH ID, STATION, NAME, I/C NUMBER, JUSTIFICATION, then day 1..31
+# holding the RM AMOUNT for that day. HR's own formulas work out TOTAL WORKDAYS (a count of day cells), BACK PAY / DEDUCTION and the totals, and fill the bank columns, so
+# only A..AJ are exported. A day on hold (QR / flagged clock, or a correction waiting) or still open is left BLANK so it cannot be paid by accident. One row per person for the
+# month; the justification is the person's FIRST category of the month, mapped to the exact words of the HR sheet's dropdown.
+HR_JUSTIFICATION = {
+    "C1": "Insufficient Manpower (Short Staff)",
+    "C2": "Insufficient Manpower (Short Staff)",
+    "C3": "Cover Staff AL/OFF",
+    "C4": "High Volume Received (more than capacity)",
+}
+HR_HEADERS = ["MONTH ID", "STATION", "NAME", "I/C NUMBER", "JUSTIFICATION (CHOOSE 1 ONLY)"] + [str(d) for d in range(1, 32)]
+
+
+def _money(v: float) -> str:
+    return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+
+
+@router.get("/api/attendance/ptwh/export")
+async def export_month(month: str | None = None, region: str | None = None, zone: str | None = None, station: str | None = None,
+                       fmt: str = "csv", header: bool = True, user: CurrentUser = Depends(get_current_user)):
+    """The month in the HR sheet's layout, for what the caller can see (and the Region / Zone / Station chosen). fmt=csv downloads a file; fmt=tsv is for copying
+    straight into the sheet. Full IC numbers are included, so Region Heads / RFS, Managers and the Superadmin only."""
+    if user.role not in ("admin", "manager", "region"):
+        raise HTTPException(status_code=403, detail="Only Region staff and Managers can export for HR")
+    data = await _month(user, month, region, zone, station, full_ic=True)
+    rows = []
+    for w in sorted(data["workers"], key=lambda x: (x["station"], x["name"])):
+        pays = {d: v["pay"] for d, v in w["days"].items() if v["pay"] > 0}
+        if not pays:
+            continue  # nothing to pay yet (all on hold / open) -- nothing for HR
+        rows.append([data["month"], w["station"].upper(), w["name"], w["ic_no"] or "", HR_JUSTIFICATION.get(w["first_category"] or "", "")]
+                    + [_money(pays[d]) if d in pays else "" for d in range(1, 32)])
+    buf = io.StringIO()
+    out = csv.writer(buf, delimiter="\t" if fmt == "tsv" else ",", lineterminator="\n")
+    if header:
+        out.writerow(HR_HEADERS)
+    out.writerows(rows)
+    name = f"ptwh-hr-{data['month']}" + (f"-{station}" if station else f"-{zone}" if zone else f"-{region}" if region else "")
+    return Response(content=buf.getvalue(), media_type="text/tab-separated-values" if fmt == "tsv" else "text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{re.sub(r"[^A-Za-z0-9_.-]+", "_", name)}.{"tsv" if fmt == "tsv" else "csv"}"', "X-Rows": str(len(rows))})

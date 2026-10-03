@@ -6,6 +6,159 @@
     "description": "Live nationwide operations dashboard for Ninja Van Malaysia's last-mile fleet team (143 stations across Southern, Northern, Klang Valley, East Coast and East Malaysia -- East Malaysia is Retail, not Last Mile, so it can be toggled out of every view). Pulls parcel- and route-level data from Redash every 15 minutes and shows it per region, zone, station and driver: Action Board (SLA heatmap), Shipment Details (fresh unscan, latlong, scan-in duration buckets and an hourly timing chart), Station Health (in-hub, 0-attempt, on-hold, aging, missing, pending ATS, COD%), Route Monitoring (routed, attendance, OVFD, success and completion rates by driver type, old routes, pending-in-yesterday-route, completion summary), Aging Details, RPU, Recovery (missing parcels), Shipper Radar (Zalora, Amway, Watson, Orca, Sodaxpress SLAs; Restock NXD bundles, on-hold / incomplete MPS bundles; B2B RDO document compliance), Cold Chain and Urgent TN (track tracking numbers and assign them to a PIC with in-progress / closed status and notifications), DoD (Station Health day by day), a Task List (follow-ups, to-dos, assigned tasks) and a KPI page (Beta) with the weekly results, the OPEX result and RCA / analysis for Hybrid Productivity, Invalid POD, COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI targets per region that an admin sets. Every count opens its tracking numbers, with CSV export. Access is role-based (admin, manager, region, station) with multi-value region/zone/station scopes enforced in the backend; an admin can preview any role or user with the Role Tester. Users can send feedback (with an attachment) that admins reply to and close. For Fleet Managers and their regional and station teams. Every /api route answers for the signed-in user (Google SSO: the platform adds X-Forwarded-Email) and is limited to that user's role and region / zone / station scope."
   },
   "paths": {
+    "/api/attendance/ptwh/corrections": {
+      "post": {
+        "summary": "Ask to correct a PTWH's clock record (edit the times, fill a missing day, or void it) with a reason; max 12 h per shift; a change within 30 minutes of the original applies at once and is logged, anything else waits for approval and holds that day's pay.",
+        "description": "Ask to change (or void) one day's clock record. Small changes to a station-keyed record are applied at once and logged; the rest wait for approval.",
+        "operationId": "request_correction_api_attendance_ptwh_corrections_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      },
+      "get": {
+        "summary": "Corrections for the caller's stations (this month and last), filtered by status, with whether the caller may decide each one.",
+        "description": "Correction requests and their history for the stations in the caller's scope (this month and last by default).",
+        "operationId": "list_corrections_api_attendance_ptwh_corrections_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/ptwh/corrections/{correction_id}/decision": {
+      "post": {
+        "summary": "Approve or reject a waiting correction (Region Head, RFS, HOD or Manager; never the person who asked, except the Superadmin); an approval applies the change, a rejection needs a note.",
+        "description": "A Region Head / RFS / Manager / HOD (or the Superadmin -- never the person who asked) approves or rejects a correction. Approving applies it.",
+        "operationId": "decide_correction_api_attendance_ptwh_corrections__correction_id__decision_post",
+        "parameters": [
+          {
+            "name": "correction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Correction Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/ptwh/workers": {
       "get": {
         "summary": "Attendance -> PTWH (staging): the PTWH roster for the stations in the caller's scope (IC masked except for managers / admins), the stations they may use, and whether they may edit.",
@@ -75,7 +228,7 @@
     "/api/attendance/ptwh/workers/{worker_id}/decision": {
       "post": {
         "summary": "Approve or reject a NEW PTWH hire: the Region Head decides first, then a Manager / HOD (the Superadmin may do either). The final approval makes the worker active; a rejection needs a note.",
-        "description": "The Region Head (step 1) or a Manager / HOD (step 2) approves or rejects a new PTWH hire. The final approval makes the worker active.",
+        "description": "The Region Head (step 1) or a Manager / HOD (step 2) approves or rejects a new PTWH hire (or a re-hire). The final approval makes the worker active.",
         "operationId": "decide_hire_api_attendance_ptwh_workers__worker_id__decision_post",
         "parameters": [
           {
@@ -94,6 +247,57 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DecisionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/ptwh/workers/{worker_id}/rehire": {
+      "post": {
+        "summary": "Bring back an ended or inactive PTWH (at the same or another station): needs the same Region Head then Manager approval as a new hire; clears the end date.",
+        "description": "Bring an inactive PTWH back. Same as a new hire: the Region Head, then a Manager, must approve before they can clock in again.",
+        "operationId": "rehire_api_attendance_ptwh_workers__worker_id__rehire_post",
+        "parameters": [
+          {
+            "name": "worker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Worker Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RehireIn"
               }
             }
           }
@@ -228,7 +432,7 @@
     "/api/attendance/ptwh/day": {
       "get": {
         "summary": "Every active PTWH in scope with that day's clock in / out, hours, category and source (today by default), plus the 4 categories and the half-day pay rule.",
-        "description": "Every active PTWH in scope with that day's clock times (today by default).",
+        "description": "Every PTWH in scope who can work today (or who has a record that day) with that day's clock times (today by default).",
         "operationId": "day_view_api_attendance_ptwh_day_get",
         "parameters": [
           {
@@ -351,58 +555,74 @@
         ]
       }
     },
-    "/api/attendance/ptwh/record": {
-      "put": {
-        "summary": "Add or correct one day's clock in / out (HH:MM) for a PTWH -- a forgotten clock-in or missed clock-out. Stamped with who edited it; not for future days.",
-        "description": "Add or correct one day (a forgotten clock-in, a missed clock-out). Corrections are stamped with who made them.",
-        "operationId": "save_record_api_attendance_ptwh_record_put",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RecordIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Attendance"
-        ]
-      }
-    },
-    "/api/attendance/ptwh/record/{record_id}": {
-      "delete": {
-        "summary": "Delete one day's attendance record for a PTWH in the caller's scope.",
-        "operationId": "delete_record_api_attendance_ptwh_record__record_id__delete",
+    "/api/attendance/ptwh/month": {
+      "get": {
+        "summary": "The month sheet: a row per PTWH with hours per day, workdays (1 / 0.5), open days (no clock-out), payable and pay on hold, with region / zone / station filters; voided records are left out.",
+        "description": "The old sheet's grid: a row per PTWH, a column per day (hours worked), workdays and payable for the month, and the same split by category.\nOptional Region / Zone / Station filters (the export uses the same ones).",
+        "operationId": "month_view_api_attendance_ptwh_month_get",
         "parameters": [
           {
-            "name": "record_id",
-            "in": "path",
-            "required": true,
+            "name": "month",
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": "integer",
-              "title": "Record Id"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Region"
+            }
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Zone"
+            }
+          },
+          {
+            "name": "station",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Station"
             }
           }
         ],
@@ -431,11 +651,11 @@
         ]
       }
     },
-    "/api/attendance/ptwh/month": {
+    "/api/attendance/ptwh/export": {
       "get": {
-        "summary": "The month sheet: a row per PTWH with hours per day, workdays (1 / 0.5), open days (no clock-out) and payable, for the stations in scope.",
-        "description": "The old sheet's grid: a row per PTWH, a column per day (hours worked), workdays and payable for the month, and the same split by category.",
-        "operationId": "month_view_api_attendance_ptwh_month_get",
+        "summary": "Month sheet in the HR sheet's layout (month id, station, name, IC, justification, RM per day 1..31) as CSV or tab-separated text, filtered by region / zone / station; Region staff and Managers only; held or open days left blank.",
+        "description": "The month in the HR sheet's layout, for what the caller can see (and the Region / Zone / Station chosen). fmt=csv downloads a file; fmt=tsv is for copying\nstraight into the sheet. Full IC numbers are included, so Region Heads / RFS, Managers and the Superadmin only.",
+        "operationId": "export_month_api_attendance_ptwh_export_get",
         "parameters": [
           {
             "name": "month",
@@ -451,6 +671,74 @@
                 }
               ],
               "title": "Month"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Region"
+            }
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Zone"
+            }
+          },
+          {
+            "name": "station",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Station"
+            }
+          },
+          {
+            "name": "fmt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "csv",
+              "title": "Fmt"
+            }
+          },
+          {
+            "name": "header",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Header"
             }
           }
         ],
@@ -653,8 +941,8 @@
     },
     "/api/attendance/ptwh/station/{station}": {
       "get": {
-        "summary": "The station screen: this hour's emergency-only QR code (changes on the hour, with the link into the PTWH app) and the station's read-only location from Fleet Admin Premises (radius fixed at 100 m).",
-        "description": "The station screen: the QR code for this hour (it changes on the hour) and where the station is.",
+        "summary": "The station screen: the station's read-only location from Fleet Admin Premises (radius fixed at 100 m), the PTWH who can work there, the QR life in minutes and the PTWH app link. No QR is shown until one is requested.",
+        "description": "The station screen: where the station is (read-only, from Premises) and the PTWH a QR code can be made for. No QR is shown until one is asked for.",
         "operationId": "station_info_api_attendance_ptwh_station__station__get",
         "parameters": [
           {
@@ -667,6 +955,57 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/ptwh/station/{station}/qr": {
+      "post": {
+        "summary": "Make an emergency QR code for ONE chosen PTWH at the station: valid 10 minutes, works once, and replaces any code made before for that station. Returns the code, link and expiry.",
+        "description": "Make an emergency QR code for ONE PTWH at this station. It lasts QR_TTL_MIN minutes, works once, and replaces whatever QR the station asked for before.\nStation staff only ask for it when that PTWH's phone location isn't working; the clock it is used for goes to Audit as 'needs review' and its pay is held.",
+        "operationId": "request_qr_api_attendance_ptwh_station__station__qr_post",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QrRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1026,7 +1365,7 @@
     },
     "/api/ptwh-app/clock": {
       "post": {
-        "summary": "PTWH app: clock in or out. Needs a phone location within 100 m of the station's Premises latitude / longitude (or, as an emergency fallback, the station's hourly QR code PLUS a reason, which puts the clock in the audit queue as needs-review) AND a base64 JPEG selfie; the server takes the time.",
+        "summary": "PTWH app: clock in or out. Needs a phone location within 100 m of the station's Premises latitude / longitude (or, as an emergency fallback, a station QR code made for THIS PTWH within the last 10 minutes and not used yet, PLUS a reason, which puts the clock in the audit queue as needs-review) AND a base64 JPEG selfie; the server takes the time.",
         "operationId": "app_clock_api_ptwh_app_clock_post",
         "parameters": [
           {
@@ -7793,6 +8132,80 @@
         ],
         "title": "CopyIn"
       },
+      "CorrectionDecision": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "CorrectionDecision"
+      },
+      "CorrectionIn": {
+        "properties": {
+          "worker_id": {
+            "type": "integer",
+            "title": "Worker Id"
+          },
+          "work_date": {
+            "type": "string",
+            "title": "Work Date"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "edit"
+          },
+          "clock_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock In"
+          },
+          "clock_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Out"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "worker_id",
+          "work_date",
+          "reason"
+        ],
+        "title": "CorrectionIn"
+      },
       "DailyKpiGroupRow": {
         "properties": {
           "key": {
@@ -9910,6 +10323,11 @@
             "title": "Ptwh Approvals",
             "default": 0
           },
+          "ptwh_corrections": {
+            "type": "integer",
+            "title": "Ptwh Corrections",
+            "default": 0
+          },
           "ptwh_review": {
             "type": "integer",
             "title": "Ptwh Review",
@@ -10940,6 +11358,19 @@
         ],
         "title": "ProcessingTimeRow"
       },
+      "QrRequest": {
+        "properties": {
+          "worker_id": {
+            "type": "integer",
+            "title": "Worker Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "worker_id"
+        ],
+        "title": "QrRequest"
+      },
       "QueryFetchStatus": {
         "properties": {
           "query_id": {
@@ -11415,62 +11846,6 @@
         ],
         "title": "RdoTnRow"
       },
-      "RecordIn": {
-        "properties": {
-          "worker_id": {
-            "type": "integer",
-            "title": "Worker Id"
-          },
-          "work_date": {
-            "type": "string",
-            "title": "Work Date"
-          },
-          "clock_in": {
-            "type": "string",
-            "title": "Clock In"
-          },
-          "clock_out": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Clock Out"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "worker_id",
-          "work_date",
-          "clock_in"
-        ],
-        "title": "RecordIn"
-      },
       "Recover": {
         "properties": {
           "username": {
@@ -11636,6 +12011,19 @@
           "zones"
         ],
         "title": "RegionMeta"
+      },
+      "RehireIn": {
+        "properties": {
+          "station": {
+            "type": "string",
+            "title": "Station"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station"
+        ],
+        "title": "RehireIn"
       },
       "ReminderAck": {
         "properties": {
@@ -15329,10 +15717,16 @@
             ],
             "title": "Joined Date"
           },
-          "active": {
-            "type": "boolean",
-            "title": "Active",
-            "default": true
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
           },
           "category": {
             "anyOf": [

@@ -35,6 +35,7 @@ import kpi_data
 import kpi_targets
 import management_view
 import attendance
+import attendance_corrections
 import ptwh_app
 import work_schedule as schedule_mod
 import headcount
@@ -691,6 +692,7 @@ async def _hourly_refresh_loop() -> None:
             log.exception("Scheduled refresh crashed")
         await recovery_lost.tick()  # Monday 22:00: Lost Declared This Week -> Summary (never raises)
         await ptwh_app.purge_old_selfies()  # PTWH selfies are kept 14 days (never raises)
+        await ptwh_app.housekeeping_workers()  # PTWH end dates, 30-day inactivity, 60-day clean-up (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
 
 
@@ -717,6 +719,7 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(attendance_corrections.router)  # Attendance -> PTWH: controlled clock corrections + voids (attendance_corrections.py)
 app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
@@ -3338,6 +3341,7 @@ class Notifications(BaseModel):
     todos_due_soon: int
     tasks_due_soon: int
     ptwh_approvals: int = 0  # new PTWH hires waiting for MY approval (Region Head: step 1, Manager / HOD: step 2) -- attendance.approvals_count
+    ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
 
 
@@ -3376,6 +3380,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "feedback_replies_unread": int(unread[0] or 0),
         "ptwh_review": await ptwh_app.review_count(user),
         "ptwh_approvals": await attendance.approvals_count(user),
+        "ptwh_corrections": await attendance_corrections.pending_count(user),
         **await tasklist_counts(user),
     }
 

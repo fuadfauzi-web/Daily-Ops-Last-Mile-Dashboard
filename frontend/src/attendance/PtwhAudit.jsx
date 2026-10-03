@@ -41,6 +41,7 @@ function FlagChip({ flag }) {
 
 // Flag / mark OK / clear, with a note. Used from the photo viewer and from the row.
 function ReviewBox({ ev, onSaved, setError }) {
+  const done = !!ev.clock_out; // only a finished day (clock-in AND clock-out) can be reviewed
   const [note, setNote] = useState(ev.flag?.note || "");
   const [busy, setBusy] = useState(false);
   const run = async (status) => {
@@ -56,13 +57,14 @@ function ReviewBox({ ev, onSaved, setError }) {
   return (
     <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
       <div className="flex items-center justify-between text-xs"><span className="font-semibold text-slate-700">Review</span><FlagChip flag={ev.flag} /></div>
+      {!done && <p className="text-xs text-slate-500">This day can be reviewed once the PTWH has clocked out -- there is only a clock-in so far.</p>}
       {ev.flag?.status === "review" && <p className="text-xs text-amber-800">A QR clock is only for emergencies and must be checked: mark it Checked OK or flag it.</p>}
       {ev.flag?.note && <p className="text-xs text-slate-600">“{ev.flag.note}” -- {ev.flag.by}</p>}
       <input className={`${inputCls} w-full`} value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="Why? (needed to flag), e.g. station not visible behind the person" />
       <div className="flex flex-wrap justify-end gap-2">
-        {ev.flag && ev.flag.status !== "review" && <button disabled={busy} onClick={() => run(null)} className={`${btnCls} text-slate-500`}>Clear</button>}
-        <button disabled={busy} onClick={() => run("ok")} className={`${btnCls} border border-emerald-300 text-emerald-700`}>Checked OK</button>
-        <button disabled={busy || note.trim().length < 3} onClick={() => run("flagged")} className={`${btnCls} bg-red-600 text-white disabled:opacity-50`}>Flag as suspicious</button>
+        {ev.flag && ev.flag.status !== "review" && <button disabled={busy || !done} onClick={() => run(null)} className={`${btnCls} text-slate-500`}>Clear</button>}
+        <button disabled={busy || !done} onClick={() => run("ok")} className={`${btnCls} border border-emerald-300 text-emerald-700 disabled:opacity-40`}>Checked OK</button>
+        <button disabled={busy || !done || note.trim().length < 3} onClick={() => run("flagged")} className={`${btnCls} bg-red-600 text-white disabled:opacity-50`}>Flag as suspicious</button>
       </div>
     </div>
   );
@@ -150,7 +152,14 @@ export default function AuditView({ setError }) {
                   <td className="px-3 py-2">
                     <div className="space-y-1">
                       <FlagChip flag={ev.flag} />
-                      <div><button onClick={() => setOpen({ ev, which: ev.in.photo || !ev.out.photo ? "in" : "out" })} className="text-xs text-slate-500 underline">Review</button></div>
+                      {ev.voided && <div className="text-[11px] font-semibold text-red-600">Voided</div>}
+                      <div>
+                        {ev.clock_out ? (
+                          <button onClick={() => setOpen({ ev, which: ev.in.photo || !ev.out.photo ? "in" : "out" })} className="text-xs text-slate-500 underline">Review</button>
+                        ) : (
+                          <span title="A day can be reviewed once the PTWH has clocked in and clocked out" className="text-[11px] text-slate-400">Waiting for clock-out</span>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>

@@ -17,6 +17,17 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-04",
+    title: "Attendance (Beta, staging only): QR on request, end dates, controlled corrections, HR export",
+    feature: "attendance",
+    points: [
+      "The station QR is now made on request for ONE chosen PTWH: it lasts 10 minutes, works once (clocking out needs a new one), and asking for another replaces the last. No QR is shown until a station asks for it.",
+      "PTWH have an End date instead of the Active tick. An ended PTWH can't log in; a PTWH with no clock in or out for 1 month goes inactive, and an inactive PTWH is cleaned up after 2 months (IC, phone, selfies and login removed; name and pay history kept). Bringing someone back (even at another station) needs the Region Head then Manager approval again, and the same IC can't be added twice.",
+      "Clock records can no longer be edited or deleted directly. Use Correct on a day: a change within 30 minutes applies at once and is logged; anything bigger, a missing day or a void waits in the new Corrections view for a Region Head, RFS or Manager (never the person who asked), and that day's pay is on hold until then. A shift can be 12 hours at most.",
+      "Month sheet: Region / Zone / Station filters, and Export CSV (or Copy) in the HR sheet's layout for what is filtered. Category: the shift suggestions are gone. Audit: a day can be reviewed only after the PTWH has clocked in and out.",
+    ],
+  },
+  {
     date: "2026-10-03",
     title: "Attendance (Beta, staging only): Schedule, PTWH hiring approval, pay on hold for QR clocks, review alerts",
     feature: "attendance",

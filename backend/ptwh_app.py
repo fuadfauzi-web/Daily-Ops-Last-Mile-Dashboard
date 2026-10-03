@@ -53,7 +53,7 @@ QR_RETENTION_DAYS = 35  # 5 weeks: the evidence behind a QR (emergency) clock is
 QR_PURGE_DAYS = range(8, 15)  # ... and only cleared in week 2 of the month (the 8th-14th), once a month
 REVIEW_ALERT_POSITIONS = ("station_head", "region_head", "hod", "manager", "admin")  # who is told a QR clock is waiting for review
 MAX_GPS_ACCURACY_M = 65  # a fix worse than this can't prove "within 100 m" -- the person is asked to scan the QR or go outside
-QR_GRACE_MIN = 5  # a QR from the previous hour still works for the first minutes of the new hour (someone walked in just before it changed)
+QR_TTL_MIN = 10  # a QR code is made on request for ONE named PTWH, works once, and stops working after this long (or when the station asks for a newer one)
 TOKEN_DAYS = 14
 MAX_FAILS = 5
 LOCK_MIN = 10
@@ -119,21 +119,25 @@ def _norm_recovery(code: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (code or "").upper())
 
 
-# ---------------------------------------------------------------- the station QR and the location check
+# ---------------------------------------------------------------- the emergency QR code (on request, one PTWH, one use) and the location check
 
-def qr_code(station: str, bucket: int) -> str:
-    return hmac.new(_secret(), f"ptwh-qr|{station}|{bucket}".encode(), hashlib.sha256).hexdigest()[:10]
+async def _check_qr(station: str, worker_id: int, code: str, lang: str):
+    """Find the QR code and make sure it is good for THIS PTWH right now -- it must have been made for them, be unused, not replaced and not expired. Returns its row
+    (id, worker_id, status, expires_at, issued_by); nothing is consumed yet (see _consume_qr)."""
+    row = await db.fetch_one("SELECT id, worker_id, status, expires_at, issued_by FROM ptwh_qr_codes WHERE station = %s AND code = %s", (station, code.strip().lower()))
+    if row is None or row[2] == "superseded" or row[3] < _now():
+        raise _err(422, "qr_expired", lang)
+    if row[2] == "used":
+        raise _err(422, "qr_used", lang)
+    if row[1] != worker_id:
+        raise _err(422, "qr_other", lang)
+    return row
 
 
-def qr_valid(station: str, code: str | None, now_ts: float | None = None) -> bool:
-    """The code for the current hour, or -- for the first QR_GRACE_MIN minutes of a new hour -- the previous one. (Epoch hours are MYT hours: UTC+8 is whole hours.)"""
-    if not code:
-        return False
-    now_ts = now_ts or time.time()
-    bucket = int(now_ts // 3600)
-    if hmac.compare_digest(code, qr_code(station, bucket)):
-        return True
-    return now_ts - bucket * 3600 < QR_GRACE_MIN * 60 and hmac.compare_digest(code, qr_code(station, bucket - 1))
+async def _consume_qr(qr_id: int, lang: str) -> None:
+    """Use the code up. Atomic: of two phones sending the same code, only one gets rowcount 1."""
+    if await db.execute_rowcount("UPDATE ptwh_qr_codes SET status = 'used', used_at = %s WHERE id = %s AND status = 'active'", (_now(), qr_id)) != 1:
+        raise _err(422, "qr_used", lang)
 
 
 def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -164,9 +168,13 @@ _MSG = {
                 "Anda kira-kira {dist} m dari {station}. Anda mesti berada dalam lingkungan {radius} m dari stesen. Jika lokasi anda tidak berfungsi dan ia kecemasan, guna kod QR stesen"),
     "qr_reason": ("Tell us why you need the QR code -- it is for emergencies only and your station will check it",
                   "Beritahu kami mengapa anda perlukan kod QR -- ia hanya untuk kecemasan dan stesen anda akan menyemaknya"),
-    "qr_expired": ("That QR code has expired -- scan the one on the station screen now",
-                   "Kod QR itu telah tamat tempoh -- imbas kod yang ada pada skrin stesen sekarang"),
-    "no_proof": ("Allow your location so we can see you are at the station. The QR code is for emergencies only",
+    "qr_expired": ("That QR code has expired or been replaced -- ask your station for a new one",
+                   "Kod QR itu telah tamat tempoh atau diganti -- minta kod baharu daripada stesen anda"),
+    "qr_used": ("That QR code has already been used -- ask your station for a new one",
+                "Kod QR itu sudah digunakan -- minta kod baharu daripada stesen anda"),
+    "qr_other": ("That QR code was made for someone else -- ask your station for one made for you",
+                 "Kod QR itu dibuat untuk orang lain -- minta kod yang dibuat untuk anda daripada stesen anda"),
+    "no_proof": ("Allow your location so we can see you are at the station. A QR code is for emergencies only",
                  "Benarkan lokasi anda supaya kami dapat lihat anda berada di stesen. Kod QR hanya untuk kecemasan"),
     "already_in": ("You already clocked in today", "Anda sudah daftar masuk hari ini"),
     "not_in": ("You haven't clocked in today", "Anda belum daftar masuk hari ini"),
@@ -227,7 +235,7 @@ async def _session(authorization: str | None = Header(default=None), lang: str =
     if cred is None or cred[9] or cred[4] != data["v"]:
         raise _err(401, "relogin", lang)
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (data["w"],))
-    if w is None or not w[7]:
+    if w is None or not attendance.is_working(w, _now().date()):  # inactive, or their end date has passed
         raise _err(401, "inactive", lang)
     return w, cred
 
@@ -264,7 +272,7 @@ async def app_login(p: LoginIn, lang: str = Depends(_lang), _k: None = Depends(_
         raise _err(401, "bad_login", lang)
     log.warning("PTWH login ok: worker %s", row[0])
     w = await db.fetch_one(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE id = %s", (row[0],))
-    if w is None or not w[7]:
+    if w is None or not attendance.is_working(w, _now().date()):
         raise _err(403, "inactive", lang)
     await db.execute("UPDATE ptwh_credentials SET failed_attempts=0, locked_until=NULL, last_login_at=%s WHERE worker_id=%s", (_now(), row[0]))
     return {"token": _sign_token(row[0], row[4]), "name": w[1], "station": w[4], "needs_password_change": row[5] == "station"}
@@ -319,8 +327,9 @@ async def app_clock(p: AppClock, s=Depends(_session), lang: str = Depends(_lang)
     if p.action not in ("in", "out"):
         raise _err(422, "bad_action", lang)
     station = w[4]
-    # --- proof of being at the station: the phone's location within RADIUS_M of the station (its Premises latitude / longitude). The hourly QR code is only an
-    # EMERGENCY fallback -- it needs a reason and the clock goes to the audit queue as "needs review". If the location is good the QR is ignored.
+    # --- proof of being at the station: the phone's location within RADIUS_M of the station (its Premises latitude / longitude). A QR code -- made on request for THIS
+    # PTWH, good for QR_TTL_MIN minutes and for one use -- is only an EMERGENCY fallback: it needs a reason and the clock goes to the audit queue as "needs review".
+    # If the location is good the QR is ignored (and not used up).
     geo = await _station_geo(station)
     dist, geo_ok, geo_err = None, False, None
     if p.lat is not None and p.lng is not None:
@@ -335,14 +344,14 @@ async def app_clock(p: AppClock, s=Depends(_session), lang: str = Depends(_lang)
             else:
                 geo_err = _err(422, "too_far", lang, dist=round(dist), station=station, radius=RADIUS_M)
     reason = (p.reason or "").strip()[:200]
+    qr_row = None
     if geo_ok:
         method = "geo"
-    elif qr_valid(station, (p.qr or "").strip()):
+    elif (p.qr or "").strip():
+        qr_row = await _check_qr(station, w[0], p.qr, lang)
         method = "qr"
         if len(reason) < 3:
             raise _err(422, "qr_reason", lang)
-    elif p.qr:
-        raise _err(422, "qr_expired", lang)
     elif geo_err is not None:
         raise geo_err
     else:
@@ -359,16 +368,20 @@ async def app_clock(p: AppClock, s=Depends(_session), lang: str = Depends(_lang)
             raise _err(409, "not_in", lang)
         if rec[2] is not None:
             raise _err(409, "already_out", lang)
+    if qr_row is not None:
+        await _consume_qr(qr_row[0], lang)  # the code is used up the moment the clock is accepted
     key = storage.safe_key("ptwh", str(today), f"{w[0]}-{p.action}-{uuid.uuid4().hex[:12]}.jpg")
     try:
         await run_in_threadpool(storage.put_bytes, key, selfie, content_type="image/jpeg")
     except Exception:  # noqa: BLE001 -- storage is a network call; nothing is recorded if the photo isn't saved
         log.exception("selfie upload failed")
+        if qr_row is not None:  # not their fault: give the code back
+            await db.execute("UPDATE ptwh_qr_codes SET status = 'active', used_at = NULL WHERE id = %s AND status = 'used'", (qr_row[0],))
         raise _err(503, "photo_save", lang)
     acc = round(p.accuracy) if p.accuracy is not None else None
     d = round(dist) if dist is not None else None
     why = reason if method == "qr" else None
-    qr_note = f"QR clock-{p.action} (emergency): {reason}"
+    qr_note = f"QR clock-{p.action} (emergency): {reason}" + (f" -- code issued by {qr_row[4]}" if qr_row is not None else "")
     if p.action == "in":
         await db.execute(
             """INSERT INTO ptwh_attendance (worker_id, work_date, clock_in, category, source, recorded_by, created_at,
@@ -407,13 +420,14 @@ async def app_summary(month: str | None = None, s=Depends(_session), lang: str =
         raise _err(422, "bad_month", lang)
     nxt = date(y + (m == 12), 1 if m == 12 else m + 1, 1)
     rows = await db.fetch_all(
-        "SELECT work_date, clock_in, clock_out, category, in_method, flag_status FROM ptwh_attendance WHERE worker_id=%s AND work_date >= %s AND work_date < %s ORDER BY work_date",
+        "SELECT work_date, clock_in, clock_out, category, in_method, flag_status FROM ptwh_attendance WHERE worker_id=%s AND work_date >= %s AND work_date < %s AND voided = 0 ORDER BY work_date",
         (w[0], first, nxt),
     )
+    pending = await attendance._pending_days(first, nxt - timedelta(days=1))
     days, workdays, payable, on_hold = [], 0.0, 0.0, 0.0
     for wd_date, cin, cout, cat, method, flag in rows:
         wd, pay = day_pay(float(w[5]), cin, cout)
-        held = attendance.is_held(flag)  # a QR (emergency) clock, or one an auditor flagged, is paid once the station has checked it
+        held = attendance.is_held(flag) or (w[0], wd_date) in pending  # a QR clock, a flagged one, or one whose correction is waiting: paid once it has been checked
         workdays += wd
         if held:
             on_hold += pay
@@ -578,18 +592,40 @@ def _require_station_editor(user: CurrentUser, station: str) -> None:
 
 @admin_router.get("/api/attendance/ptwh/station/{station}")
 async def station_info(station: str, user: CurrentUser = Depends(get_current_user)):
-    """The station screen: the QR code for this hour (it changes on the hour) and where the station is."""
+    """The station screen: where the station is (read-only, from Premises) and the PTWH a QR code can be made for. No QR is shown until one is asked for."""
     _require_station_editor(user, station)
-    now_ts = time.time()
-    bucket = int(now_ts // 3600)
-    code = qr_code(station, bucket)
-    base = (os.environ.get("PTWH_APP_URL") or "").rstrip("/")
     geo = await _station_geo(station)
+    today = _now().date()
+    people = [{"id": r[0], "name": r[1]} for r in await db.fetch_all(f"SELECT {attendance._WORKER_COLS} FROM ptwh_workers WHERE station = %s ORDER BY full_name", (station,)) if attendance.is_working(r, today)]
     return {
-        "station": station, "code": code, "url": f"{base}/?s={quote(station)}&c={code}" if base else None,
-        "seconds_left": int((bucket + 1) * 3600 - now_ts), "valid_until": attendance._iso(_now().replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)),
-        "geo": {"lat": geo[0], "lng": geo[1], "radius_m": RADIUS_M} if geo else None,  # read-only: set by Fleet Admin in Premises
+        "station": station, "geo": {"lat": geo[0], "lng": geo[1], "radius_m": RADIUS_M} if geo else None,  # read-only: set by Fleet Admin in Premises
+        "workers": people, "qr_ttl_min": QR_TTL_MIN, "app_url": (os.environ.get("PTWH_APP_URL") or "").rstrip("/") or None,
     }
+
+
+class QrRequest(BaseModel):
+    worker_id: int
+
+
+@admin_router.post("/api/attendance/ptwh/station/{station}/qr")
+async def request_qr(station: str, p: QrRequest, user: CurrentUser = Depends(get_current_user)):
+    """Make an emergency QR code for ONE PTWH at this station. It lasts QR_TTL_MIN minutes, works once, and replaces whatever QR the station asked for before.
+    Station staff only ask for it when that PTWH's phone location isn't working; the clock it is used for goes to Audit as 'needs review' and its pay is held."""
+    _require_station_editor(user, station)
+    w = await attendance._worker(p.worker_id)
+    if w[4] != station or not attendance.is_working(w, _now().date()):
+        raise HTTPException(status_code=409, detail="That PTWH isn't working at this station")
+    now = _now()
+    await db.execute("UPDATE ptwh_qr_codes SET status = 'superseded' WHERE station = %s AND status = 'active'", (station,))
+    code = secrets.token_hex(5)
+    expires = now + timedelta(minutes=QR_TTL_MIN)
+    await db.execute(
+        "INSERT INTO ptwh_qr_codes (station, worker_id, code, status, issued_by, issued_at, expires_at) VALUES (%s, %s, %s, 'active', %s, %s, %s)",
+        (station, w[0], code, user.email, now, expires),
+    )
+    base = (os.environ.get("PTWH_APP_URL") or "").rstrip("/")
+    return {"code": code, "url": f"{base}/?s={quote(station)}&c={code}" if base else None, "expires_at": attendance._iso(expires),
+            "expires_in": QR_TTL_MIN * 60, "worker": {"id": w[0], "name": w[1]}}
 
 
 # ---------------------------------------------------------------- dashboard side: audit
@@ -606,7 +642,7 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
     rows = await db.fetch_all(
         """SELECT a.id, a.work_date, w.full_name, w.station, a.clock_in, a.clock_out, a.in_method, a.in_dist, a.in_acc, a.in_selfie,
                   a.out_method, a.out_dist, a.out_acc, a.out_selfie, a.in_lat, a.in_lng, a.out_lat, a.out_lng,
-                  a.flag_status, a.flag_note, a.flagged_by, a.flagged_at, a.selfie_purged, a.in_reason, a.out_reason
+                  a.flag_status, a.flag_note, a.flagged_by, a.flagged_at, a.selfie_purged, a.in_reason, a.out_reason, a.voided
            FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id
            WHERE a.source = 'app' AND a.work_date >= %s AND a.work_date <= %s ORDER BY a.work_date DESC, w.station, w.full_name""",
         (d_from, d_to),
@@ -620,7 +656,7 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
             "in": {"method": r[6], "reason": r[23], "dist": r[7], "acc": r[8], "photo": bool(r[9]), "lat": float(r[14]) if r[14] is not None else None, "lng": float(r[15]) if r[15] is not None else None},
             "out": {"method": r[10], "reason": r[24], "dist": r[11], "acc": r[12], "photo": bool(r[13]), "lat": float(r[16]) if r[16] is not None else None, "lng": float(r[17]) if r[17] is not None else None},
             "flag": {"status": r[18], "note": r[19], "by": r[20], "at": attendance._iso(r[21])} if r[18] else None,
-            "purged": bool(r[22]),
+            "purged": bool(r[22]), "voided": bool(r[25]),
         })
     return {"from": str(d_from), "to": str(d_to), "events": out[:1000], "stations": sorted(stations), "retention_days": SELFIE_RETENTION_DAYS, "qr_retention_days": QR_RETENTION_DAYS}
 
@@ -655,9 +691,11 @@ class FlagIn(BaseModel):
 async def flag_event(record_id: int, p: FlagIn, user: CurrentUser = Depends(get_current_user)):
     """An auditor (anyone whose scope covers the station) flags a clock event as suspicious, marks it checked OK, or clears the mark. Who and when are kept.
     A flagged event -- and any QR (emergency) clock waiting for review -- keeps its selfies past the retention period until it is cleared or marked OK."""
-    row = await db.fetch_one("SELECT w.station, a.flag_status FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.id = %s", (record_id,))
+    row = await db.fetch_one("SELECT w.station, a.flag_status, a.clock_out FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.id = %s", (record_id,))
     if row is None:
         raise HTTPException(status_code=404, detail="Record not found")
+    if row[2] is None:
+        raise HTTPException(status_code=409, detail="This day can be reviewed once the PTWH has clocked out -- there is only a clock-in so far")
     if row[0] not in _visible_stations(user):
         raise HTTPException(status_code=403, detail="That station is outside your scope")
     if p.status not in (None, "flagged", "ok"):
@@ -713,12 +751,52 @@ async def purge_old_selfies() -> None:
 
 
 async def review_count(user: CurrentUser) -> int:
-    """How many QR (emergency) clocks in the stations this person looks after are waiting for review -- the number in the app's alert. Only the people who
+    """How many QR (emergency) clocks -- clocked in AND out -- in the stations this person looks after are waiting for review -- the number in the app's alert. Only the people who
     can act on it are told: Station Heads, Region Heads, Managers / HOD and the Superadmin."""
     if user.position not in REVIEW_ALERT_POSITIONS:
         return 0
     stations = _visible_stations(user)
     rows = await db.fetch_all(
-        "SELECT w.station FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.flag_status = 'review'"
+        "SELECT w.station FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.flag_status = 'review' AND a.clock_out IS NOT NULL"
     )
     return sum(1 for (st,) in rows if st in stations)
+
+
+async def housekeeping_workers() -> None:
+    """Daily housekeeping on the PTWH list (called by the refresh loop, never raises):
+      1. a PTWH whose END DATE has passed goes inactive;
+      2. an approved PTWH with no clock in / out for AUTO_INACTIVE_DAYS (30) goes inactive -- counted from their last clock, or from their approval if they never clocked;
+      3. CLEANUP_DAYS (60) after going inactive, their personal data is cleared: IC, phone, selfies, app login and schedule go; name, station, rate and pay history stay.
+    Inactive means: no clocking, no app login, off the schedule. Coming back is a Re-hire (approval again)."""
+    try:
+        today = _now().date()
+
+        async def make_inactive(ids, reason):
+            for (wid,) in ids:
+                await db.execute("UPDATE ptwh_workers SET active = 0, inactive_since = %s, inactive_reason = %s, updated_at = %s WHERE id = %s", (today, reason, _now(), wid))
+                await db.execute("DELETE FROM schedule_entries WHERE person_type = 'ptwh' AND person_ref = %s AND work_date >= %s", (str(wid), today))
+
+        ended = await db.fetch_all("SELECT id FROM ptwh_workers WHERE active = 1 AND end_date IS NOT NULL AND end_date < %s", (today,))
+        await make_inactive(ended, "End date passed")
+        idle = await db.fetch_all(
+            """SELECT w.id FROM ptwh_workers w WHERE w.active = 1 AND w.approval_status = 'approved'
+               AND COALESCE((SELECT MAX(a.work_date) FROM ptwh_attendance a WHERE a.worker_id = w.id AND a.voided = 0), DATE(w.mgr_at), DATE(w.created_at)) < %s""",
+            (today - timedelta(days=attendance.AUTO_INACTIVE_DAYS),),
+        )
+        await make_inactive(idle, f"No clock in or out for {attendance.AUTO_INACTIVE_DAYS} days")
+        due = await db.fetch_all(
+            """SELECT id FROM ptwh_workers WHERE cleaned_at IS NULL AND active = 0 AND inactive_since IS NOT NULL AND inactive_since < %s
+               AND approval_status IN ('approved', 'rejected')""",
+            (today - timedelta(days=attendance.CLEANUP_DAYS),),
+        )
+        for (wid,) in due:
+            rows = await db.fetch_all("SELECT id, in_selfie, out_selfie FROM ptwh_attendance WHERE worker_id = %s AND (in_selfie IS NOT NULL OR out_selfie IS NOT NULL)", (wid,))
+            if await _delete_selfies(rows) < len(rows):
+                continue  # a photo couldn't be deleted: try this person again next time
+            await db.execute("DELETE FROM ptwh_credentials WHERE worker_id = %s", (wid,))
+            await db.execute("DELETE FROM schedule_entries WHERE person_type = 'ptwh' AND person_ref = %s", (str(wid),))
+            await db.execute("UPDATE ptwh_workers SET ic_no = NULL, phone = NULL, cleaned_at = %s, updated_at = %s WHERE id = %s", (_now(), _now(), wid))
+        if ended or idle or due:
+            log.info("PTWH housekeeping: %d ended, %d idle, %d cleaned up", len(ended), len(idle), len(due))
+    except Exception:  # noqa: BLE001 -- housekeeping must never take the refresh loop down
+        log.exception("PTWH housekeeping failed")

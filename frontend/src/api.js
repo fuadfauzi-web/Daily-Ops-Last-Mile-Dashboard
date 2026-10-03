@@ -253,8 +253,25 @@ export const api = {
     return res.json();
   },
   ptwhClockOut: (workerId) => request("/api/attendance/ptwh/clock-out", { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
-  ptwhRecordSave: (payload) => request("/api/attendance/ptwh/record", { method: "PUT", body: JSON.stringify(payload) }),
-  ptwhRecordDelete: (id) => request(`/api/attendance/ptwh/record/${id}`, { method: "DELETE" }),
+  // Controlled changes to clock records: a request with a reason (nothing is edited or deleted directly), approved by a Region Head / RFS / Manager when it is big.
+  ptwhCorrect: (payload) => request("/api/attendance/ptwh/corrections", { method: "POST", body: JSON.stringify(payload) }),
+  ptwhCorrections: (status) => request(`/api/attendance/ptwh/corrections${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  ptwhCorrectionDecision: (id, decision, note) => request(`/api/attendance/ptwh/corrections/${id}/decision`, { method: "POST", body: JSON.stringify({ decision, note }) }),
+  ptwhRehire: (id, station) => request(`/api/attendance/ptwh/workers/${id}/rehire`, { method: "POST", body: JSON.stringify({ station }) }),
+  ptwhQr: (station, workerId) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}/qr`, { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
+  // The month in the HR sheet's layout (text, not JSON) -- csv to download, tsv to copy into the sheet.
+  ptwhExport: async ({ month, region, zone, station, fmt, header }) => {
+    const qsx = new URLSearchParams({ ...(month ? { month } : {}), ...(region ? { region } : {}), ...(zone ? { zone } : {}), ...(station ? { station } : {}), fmt, header: header ? "true" : "false" });
+    const res = await fetch(`/api/attendance/ptwh/export?${qsx}`, { headers: viewAsHeaders() });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { detail = (await res.json()).detail || detail; } catch { /* not JSON */ }
+      const err = new Error(detail);
+      err.status = res.status;
+      throw err;
+    }
+    return { text: await res.text(), rows: Number(res.headers.get("X-Rows") || 0) };
+  },
   // Attendance -> PTWH -> the PTWH app: logins, the station's hourly QR + location, selfie audit.
   ptwhLogins: () => request("/api/attendance/ptwh/logins"),
   ptwhLoginCreate: (workerId, username) => request(`/api/attendance/ptwh/workers/${workerId}/login`, { method: "POST", body: JSON.stringify({ username }) }),
