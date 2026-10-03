@@ -260,7 +260,6 @@ export const api = {
   ptwhLoginReset: (workerId) => request(`/api/attendance/ptwh/workers/${workerId}/login/reset`, { method: "POST" }),
   ptwhLoginDisable: (workerId, disabled) => request(`/api/attendance/ptwh/workers/${workerId}/login/disable`, { method: "POST", body: JSON.stringify({ disabled }) }),
   ptwhStation: (station) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}`),
-  ptwhStationGeo: (station, payload) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}/geo`, { method: "PUT", body: JSON.stringify(payload) }),
   ptwhAudit: (from, to, station) => request(`/api/attendance/ptwh/audit?${new URLSearchParams({ ...(from ? { from_: from } : {}), ...(to ? { to } : {}), ...(station ? { station } : {}) })}`),
   ptwhFlag: (recordId, status, note) => request(`/api/attendance/ptwh/audit/${recordId}/flag`, { method: "POST", body: JSON.stringify({ status, note }) }),
   ptwhPhotoUrl: (recordId, which) => `/api/attendance/ptwh/photo/${recordId}/${which}`,

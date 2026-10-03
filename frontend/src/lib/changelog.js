@@ -18,6 +18,15 @@
 export const CHANGELOG = [
   {
     date: "2026-10-03",
+    title: "Attendance (Beta, staging only): PTWH clock in by location only, QR is an emergency, stations use their Premises location",
+    feature: "attendance",
+    points: [
+      "PTWH clock in and out by location: within 100 m of the station's latitude / longitude from Fleet Admin -> Premises. The 100 m is the same for every station and station users can't change it; the Station QR page now just shows the location (read-only).",
+      "The hourly station QR is an emergency fallback only: in the PTWH app a PTWH can scan it in the app (or type the code) when their phone location doesn't work, but must give a reason, and every QR clock goes to Audit as \"Needs review\" with that reason until someone marks it Checked OK or flags it.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Data upload: fewer files, fewer clicks",
     feature: "kpiDashboard",
     minRank: 3,

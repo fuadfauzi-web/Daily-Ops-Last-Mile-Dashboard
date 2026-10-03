@@ -7,8 +7,9 @@ Two halves in one module:
      * every call must carry the shared PTWH_APP_KEY (env secret, the same value in both apps) -- no key set = the whole thing is switched off;
      * everything but login / recover also needs the PTWH's own session token (HMAC-signed with JWT_SECRET, 14 days, dies when the password changes);
      * passwords and recovery codes are stored hashed (scrypt); 5 wrong tries lock a login for 10 minutes.
-   Clocking in / out needs PROOF the person is at the station -- either the station's QR code (it changes every hour) or the phone's location within
-   the station's radius (default 100 m) -- AND a selfie with the station behind them. The server takes the time itself; the phone's clock is never trusted.
+   Clocking in / out needs PROOF the person is at the station -- the phone's location within RADIUS_M (100 m) of the station's Premises latitude / longitude --
+   AND a selfie with the station behind them. The station's hourly QR code is only an EMERGENCY fallback (location not working): it needs a reason and the
+   clock goes to the audit queue as "needs review" until an auditor marks it OK or flags it. The server takes the time itself; the phone's clock is never trusted.
 
 2. admin_router -- /api/attendance/ptwh/* behind the normal SSO: station staff create / reset a PTWH's login, show the hourly QR, set where the station is,
    and anyone with the station in their scope (station, RH, RFS, manager, HOD, Fleet Admin ...) audits the clock events and their selfies.
@@ -45,7 +46,7 @@ log = logging.getLogger("ptwh_app")
 router = APIRouter()  # the PTWH app's calls (no SSO; key + token)
 admin_router = APIRouter()  # the dashboard's side (SSO)
 
-DEFAULT_RADIUS_M = 100
+RADIUS_M = 100  # the same for every station and not editable by station users; a station's position is its latitude / longitude in Fleet Admin -> Premises
 SELFIE_RETENTION_DAYS = 14  # selfies are personal photos kept for audit only; a FLAGGED event keeps them until it is cleared or marked OK
 MAX_GPS_ACCURACY_M = 65  # a fix worse than this can't prove "within 100 m" -- the person is asked to scan the QR or go outside
 QR_GRACE_MIN = 5  # a QR from the previous hour still works for the first minutes of the new hour (someone walked in just before it changed)
@@ -151,16 +152,18 @@ _MSG = {
     "locked": ("Too many wrong tries. Try again in {mins} minute(s), or ask your station to reset your password.",
                "Terlalu banyak cubaan yang salah. Cuba lagi dalam {mins} minit, atau minta stesen anda set semula kata laluan."),
     "bad_action": ("action must be in or out", "Tindakan mesti masuk atau keluar"),
-    "geo_not_set": ("Your station's location isn't set yet -- scan the station QR code instead, or ask your station",
-                    "Lokasi stesen anda belum ditetapkan -- imbas kod QR stesen, atau tanya stesen anda"),
-    "gps_poor": ("Your phone's location isn't accurate enough ({acc} m). Go outside, or scan the station QR code",
-                 "Lokasi telefon anda kurang tepat ({acc} m). Keluar ke kawasan terbuka, atau imbas kod QR stesen"),
-    "too_far": ("You are about {dist} m from {station}. You need to be within {radius} m, or scan the station QR code",
-                "Anda kira-kira {dist} m dari {station}. Anda mesti berada dalam lingkungan {radius} m, atau imbas kod QR stesen"),
+    "geo_not_set": ("Your station's location isn't set up yet -- tell your station. In an emergency you can use the station QR code",
+                    "Lokasi stesen anda belum disediakan -- beritahu stesen anda. Dalam kecemasan anda boleh guna kod QR stesen"),
+    "gps_poor": ("Your phone's location isn't accurate enough ({acc} m). Go outside and try again. In an emergency you can use the station QR code",
+                 "Lokasi telefon anda kurang tepat ({acc} m). Keluar ke kawasan terbuka dan cuba lagi. Dalam kecemasan anda boleh guna kod QR stesen"),
+    "too_far": ("You are about {dist} m from {station}. You need to be within {radius} m of the station. If your location isn't working and it is an emergency, use the station QR code",
+                "Anda kira-kira {dist} m dari {station}. Anda mesti berada dalam lingkungan {radius} m dari stesen. Jika lokasi anda tidak berfungsi dan ia kecemasan, guna kod QR stesen"),
+    "qr_reason": ("Tell us why you need the QR code -- it is for emergencies only and your station will check it",
+                  "Beritahu kami mengapa anda perlukan kod QR -- ia hanya untuk kecemasan dan stesen anda akan menyemaknya"),
     "qr_expired": ("That QR code has expired -- scan the one on the station screen now",
                    "Kod QR itu telah tamat tempoh -- imbas kod yang ada pada skrin stesen sekarang"),
-    "no_proof": ("Scan the station QR code, or allow your location so we can see you are at the station",
-                 "Imbas kod QR stesen, atau benarkan lokasi anda supaya kami dapat lihat anda berada di stesen"),
+    "no_proof": ("Allow your location so we can see you are at the station. The QR code is for emergencies only",
+                 "Benarkan lokasi anda supaya kami dapat lihat anda berada di stesen. Kod QR hanya untuk kecemasan"),
     "already_in": ("You already clocked in today", "Anda sudah daftar masuk hari ini"),
     "not_in": ("You haven't clocked in today", "Anda belum daftar masuk hari ini"),
     "already_out": ("You already clocked out today", "Anda sudah daftar keluar hari ini"),
@@ -188,6 +191,12 @@ def _text(key: str, lang: str, **kw) -> str:
 
 def _err(status: int, key: str, lang: str, **kw) -> HTTPException:
     return HTTPException(status_code=status, detail=_text(key, lang, **kw))
+
+
+async def _station_geo(station: str) -> tuple[float, float] | None:
+    """(latitude, longitude) of a station from the Fleet Admin team's Premises, or None while it hasn't been filled in."""
+    r = await db.fetch_one("SELECT latitude, longitude FROM premises WHERE station=%s AND latitude IS NOT NULL AND longitude IS NOT NULL", (station,))
+    return (float(r[0]), float(r[1])) if r else None
 
 
 # ---------------------------------------------------------------- PTWH app: auth plumbing
@@ -269,11 +278,11 @@ async def app_me(s=Depends(_session)):
     w, cred = s
     today = _now().date()
     rec = await db.fetch_one("SELECT id, clock_in, clock_out, in_method, out_method FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], today))
-    geo = await db.fetch_one("SELECT radius_m FROM ptwh_station_geo WHERE station=%s", (w[4],))
+    geo = await _station_geo(w[4])
     return {
         "name": w[1], "station": w[4], "username": cred[1], "needs_password_change": cred[5] == "station",
         "today": str(today), "now": attendance._iso(_now()), "record": _record_row(rec),
-        "geo_ready": geo is not None, "radius_m": geo[0] if geo else DEFAULT_RADIUS_M, "max_accuracy_m": MAX_GPS_ACCURACY_M,
+        "geo_ready": geo is not None, "radius_m": RADIUS_M, "max_accuracy_m": MAX_GPS_ACCURACY_M,
     }
 
 
@@ -284,6 +293,7 @@ class AppClock(BaseModel):
     lng: float | None = None
     accuracy: float | None = None
     selfie: str  # base64 JPEG (a data: URL is fine)
+    reason: str | None = None  # why the QR code is used (emergency) -- required when the clock is verified by QR
 
 
 def _decode_selfie(raw: str, lang: str) -> bytes:
@@ -305,30 +315,39 @@ async def app_clock(p: AppClock, s=Depends(_session), lang: str = Depends(_lang)
     if p.action not in ("in", "out"):
         raise _err(422, "bad_action", lang)
     station = w[4]
-    # --- proof of being at the station: the hourly QR, or the phone's location within the radius
-    geo = await db.fetch_one("SELECT lat, lng, radius_m FROM ptwh_station_geo WHERE station=%s", (station,))
-    dist = None
-    if p.lat is not None and p.lng is not None and geo is not None:
-        dist = distance_m(p.lat, p.lng, float(geo[0]), float(geo[1]))
-    method = None
-    if qr_valid(station, (p.qr or "").strip()):
-        method = "qr"
-    elif p.lat is not None and p.lng is not None:
+    # --- proof of being at the station: the phone's location within RADIUS_M of the station (its Premises latitude / longitude). The hourly QR code is only an
+    # EMERGENCY fallback -- it needs a reason and the clock goes to the audit queue as "needs review". If the location is good the QR is ignored.
+    geo = await _station_geo(station)
+    dist, geo_ok, geo_err = None, False, None
+    if p.lat is not None and p.lng is not None:
         if geo is None:
-            raise _err(422, "geo_not_set", lang)
-        if p.accuracy is not None and p.accuracy > MAX_GPS_ACCURACY_M:
-            raise _err(422, "gps_poor", lang, acc=round(p.accuracy))
-        if dist <= geo[2]:
-            method = "geo"
+            geo_err = _err(422, "geo_not_set", lang)
         else:
-            raise _err(422, "too_far", lang, dist=round(dist), station=station, radius=geo[2])
-    if method is None:
-        raise _err(422, "qr_expired" if p.qr else "no_proof", lang)
+            dist = distance_m(p.lat, p.lng, geo[0], geo[1])
+            if p.accuracy is not None and p.accuracy > MAX_GPS_ACCURACY_M:
+                geo_err = _err(422, "gps_poor", lang, acc=round(p.accuracy))
+            elif dist <= RADIUS_M:
+                geo_ok = True
+            else:
+                geo_err = _err(422, "too_far", lang, dist=round(dist), station=station, radius=RADIUS_M)
+    reason = (p.reason or "").strip()[:200]
+    if geo_ok:
+        method = "geo"
+    elif qr_valid(station, (p.qr or "").strip()):
+        method = "qr"
+        if len(reason) < 3:
+            raise _err(422, "qr_reason", lang)
+    elif p.qr:
+        raise _err(422, "qr_expired", lang)
+    elif geo_err is not None:
+        raise geo_err
+    else:
+        raise _err(422, "no_proof", lang)
     selfie = _decode_selfie(p.selfie, lang)
 
     now = _now()
     today = now.date()
-    rec = await db.fetch_one("SELECT id, clock_in, clock_out FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], today))
+    rec = await db.fetch_one("SELECT id, clock_in, clock_out, flag_status, flag_note FROM ptwh_attendance WHERE worker_id=%s AND work_date=%s", (w[0], today))
     if p.action == "in" and rec is not None:
         raise _err(409, "already_in", lang)
     if p.action == "out":
@@ -344,19 +363,31 @@ async def app_clock(p: AppClock, s=Depends(_session), lang: str = Depends(_lang)
         raise _err(503, "photo_save", lang)
     acc = round(p.accuracy) if p.accuracy is not None else None
     d = round(dist) if dist is not None else None
+    why = reason if method == "qr" else None
+    qr_note = f"QR clock-{p.action} (emergency): {reason}"
     if p.action == "in":
         await db.execute(
             """INSERT INTO ptwh_attendance (worker_id, work_date, clock_in, category, source, recorded_by, created_at,
-                                            in_method, in_lat, in_lng, in_acc, in_dist, in_selfie)
-               VALUES (%s, %s, %s, %s, 'app', %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (w[0], today, now, w[8], f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key),
+                                            in_method, in_lat, in_lng, in_acc, in_dist, in_selfie, in_reason, flag_status, flag_note, flagged_by, flagged_at)
+               VALUES (%s, %s, %s, %s, 'app', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (w[0], today, now, w[8], f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key, why,
+             "review" if why else None, qr_note[:300] if why else None, "system:qr" if why else None, now if why else None),
         )
     else:
-        await db.execute(
-            """UPDATE ptwh_attendance SET clock_out=%s, edited_by=%s, edited_at=%s, out_method=%s, out_lat=%s, out_lng=%s, out_acc=%s, out_dist=%s, out_selfie=%s
-               WHERE id=%s""",
-            (now, f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key, rec[0]),
-        )
+        if why:  # a QR clock-out always needs review too (an auditor's flag stays a flag)
+            status = "flagged" if rec[3] == "flagged" else "review"
+            note = (f"{rec[4]} | {qr_note}" if rec[4] else qr_note)[:300]
+            await db.execute(
+                """UPDATE ptwh_attendance SET clock_out=%s, edited_by=%s, edited_at=%s, out_method=%s, out_lat=%s, out_lng=%s, out_acc=%s, out_dist=%s, out_selfie=%s,
+                          out_reason=%s, flag_status=%s, flag_note=%s, flagged_by=%s, flagged_at=%s WHERE id=%s""",
+                (now, f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key, why, status, note, "system:qr", now, rec[0]),
+            )
+        else:
+            await db.execute(
+                """UPDATE ptwh_attendance SET clock_out=%s, edited_by=%s, edited_at=%s, out_method=%s, out_lat=%s, out_lng=%s, out_acc=%s, out_dist=%s, out_selfie=%s
+                   WHERE id=%s""",
+                (now, f"ptwh:{w[0]}", now, method, p.lat, p.lng, acc, d, key, rec[0]),
+            )
     return {"ok": True, "action": p.action, "time": attendance._iso(now), "method": method}
 
 
@@ -521,7 +552,7 @@ async def disable_login(worker_id: int, p: DisableIn, user: CurrentUser = Depend
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- dashboard side: station QR + location
+# ---------------------------------------------------------------- dashboard side: station QR (emergency) + where the station is (read-only)
 
 def _require_station_editor(user: CurrentUser, station: str) -> None:
     _require_editor(user, station)
@@ -535,35 +566,12 @@ async def station_info(station: str, user: CurrentUser = Depends(get_current_use
     bucket = int(now_ts // 3600)
     code = qr_code(station, bucket)
     base = (os.environ.get("PTWH_APP_URL") or "").rstrip("/")
-    geo = await db.fetch_one("SELECT lat, lng, radius_m FROM ptwh_station_geo WHERE station=%s", (station,))
+    geo = await _station_geo(station)
     return {
         "station": station, "code": code, "url": f"{base}/?s={quote(station)}&c={code}" if base else None,
         "seconds_left": int((bucket + 1) * 3600 - now_ts), "valid_until": attendance._iso(_now().replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)),
-        "geo": {"lat": float(geo[0]), "lng": float(geo[1]), "radius_m": geo[2]} if geo else None, "default_radius_m": DEFAULT_RADIUS_M,
+        "geo": {"lat": geo[0], "lng": geo[1], "radius_m": RADIUS_M} if geo else None,  # read-only: set by Fleet Admin in Premises
     }
-
-
-class GeoIn(BaseModel):
-    lat: float
-    lng: float
-    radius_m: int = DEFAULT_RADIUS_M
-
-
-@admin_router.put("/api/attendance/ptwh/station/{station}/geo")
-async def set_station_geo(station: str, p: GeoIn, user: CurrentUser = Depends(get_current_user)):
-    _require_station_editor(user, station)
-    if not (0.5 <= p.lat <= 8 and 99 <= p.lng <= 120):  # Malaysia; catches a swapped lat / lng or a missing minus sign
-        raise HTTPException(status_code=422, detail="That doesn't look like a location in Malaysia -- check latitude and longitude")
-    if not (20 <= p.radius_m <= 200):
-        raise HTTPException(status_code=422, detail="Radius should be 20 to 200 metres")
-    now = _now()
-    if await db.fetch_one("SELECT station FROM ptwh_station_geo WHERE station=%s", (station,)):
-        await db.execute("UPDATE ptwh_station_geo SET lat=%s, lng=%s, radius_m=%s, updated_by=%s, updated_at=%s WHERE station=%s",
-                         (round(p.lat, 6), round(p.lng, 6), p.radius_m, user.email, now, station))
-    else:
-        await db.execute("INSERT INTO ptwh_station_geo (station, lat, lng, radius_m, updated_by, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
-                         (station, round(p.lat, 6), round(p.lng, 6), p.radius_m, user.email, now))
-    return {"ok": True}
 
 
 # ---------------------------------------------------------------- dashboard side: audit
@@ -580,7 +588,7 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
     rows = await db.fetch_all(
         """SELECT a.id, a.work_date, w.full_name, w.station, a.clock_in, a.clock_out, a.in_method, a.in_dist, a.in_acc, a.in_selfie,
                   a.out_method, a.out_dist, a.out_acc, a.out_selfie, a.in_lat, a.in_lng, a.out_lat, a.out_lng,
-                  a.flag_status, a.flag_note, a.flagged_by, a.flagged_at, a.selfie_purged
+                  a.flag_status, a.flag_note, a.flagged_by, a.flagged_at, a.selfie_purged, a.in_reason, a.out_reason
            FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id
            WHERE a.source = 'app' AND a.work_date >= %s AND a.work_date <= %s ORDER BY a.work_date DESC, w.station, w.full_name""",
         (d_from, d_to),
@@ -591,8 +599,8 @@ async def audit(from_: str | None = None, to: str | None = None, station: str | 
             continue
         out.append({
             "id": r[0], "date": str(r[1]), "name": r[2], "station": r[3], "clock_in": attendance._iso(r[4]), "clock_out": attendance._iso(r[5]),
-            "in": {"method": r[6], "dist": r[7], "acc": r[8], "photo": bool(r[9]), "lat": float(r[14]) if r[14] is not None else None, "lng": float(r[15]) if r[15] is not None else None},
-            "out": {"method": r[10], "dist": r[11], "acc": r[12], "photo": bool(r[13]), "lat": float(r[16]) if r[16] is not None else None, "lng": float(r[17]) if r[17] is not None else None},
+            "in": {"method": r[6], "reason": r[23], "dist": r[7], "acc": r[8], "photo": bool(r[9]), "lat": float(r[14]) if r[14] is not None else None, "lng": float(r[15]) if r[15] is not None else None},
+            "out": {"method": r[10], "reason": r[24], "dist": r[11], "acc": r[12], "photo": bool(r[13]), "lat": float(r[16]) if r[16] is not None else None, "lng": float(r[17]) if r[17] is not None else None},
             "flag": {"status": r[18], "note": r[19], "by": r[20], "at": attendance._iso(r[21])} if r[18] else None,
             "purged": bool(r[22]),
         })
@@ -628,14 +636,16 @@ class FlagIn(BaseModel):
 @admin_router.post("/api/attendance/ptwh/audit/{record_id}/flag")
 async def flag_event(record_id: int, p: FlagIn, user: CurrentUser = Depends(get_current_user)):
     """An auditor (anyone whose scope covers the station) flags a clock event as suspicious, marks it checked OK, or clears the mark. Who and when are kept.
-    A flagged event keeps its selfies past the retention period until someone clears it or marks it OK."""
-    row = await db.fetch_one("SELECT w.station FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.id = %s", (record_id,))
+    A flagged event -- and any QR (emergency) clock waiting for review -- keeps its selfies past the retention period until it is cleared or marked OK."""
+    row = await db.fetch_one("SELECT w.station, a.flag_status FROM ptwh_attendance a JOIN ptwh_workers w ON w.id = a.worker_id WHERE a.id = %s", (record_id,))
     if row is None:
         raise HTTPException(status_code=404, detail="Record not found")
     if row[0] not in _visible_stations(user):
         raise HTTPException(status_code=403, detail="That station is outside your scope")
     if p.status not in (None, "flagged", "ok"):
         raise HTTPException(status_code=422, detail="Status is flagged, ok or empty")
+    if p.status is None and row[1] == "review":
+        raise HTTPException(status_code=422, detail="A QR clock-in has to be marked Checked OK or flagged -- it can't be left unreviewed")
     note = (p.note or "").strip()[:300]
     if p.status == "flagged" and len(note) < 3:
         raise HTTPException(status_code=422, detail="Say why you are flagging it")
@@ -650,13 +660,13 @@ async def flag_event(record_id: int, p: FlagIn, user: CurrentUser = Depends(get_
 # ---------------------------------------------------------------- selfie retention
 
 async def purge_old_selfies() -> None:
-    """Delete selfies older than SELFIE_RETENTION_DAYS from storage (the audit facts stay). Flagged events keep theirs. Called by the refresh loop; never raises.
+    """Delete selfies older than SELFIE_RETENTION_DAYS from storage (the audit facts stay). Flagged events and QR clocks still waiting for review keep theirs. Called by the refresh loop; never raises.
     A photo that can't be deleted is left alone and tried again next time."""
     try:
         cutoff = _now().date() - timedelta(days=SELFIE_RETENTION_DAYS)
         rows = await db.fetch_all(
             """SELECT id, in_selfie, out_selfie FROM ptwh_attendance
-               WHERE work_date < %s AND (in_selfie IS NOT NULL OR out_selfie IS NOT NULL) AND (flag_status IS NULL OR flag_status <> 'flagged') LIMIT 200""",
+               WHERE work_date < %s AND (in_selfie IS NOT NULL OR out_selfie IS NOT NULL) AND (flag_status IS NULL OR flag_status NOT IN ('flagged', 'review')) LIMIT 200""",
             (cutoff,),
         )
         for rec_id, k_in, k_out in rows:

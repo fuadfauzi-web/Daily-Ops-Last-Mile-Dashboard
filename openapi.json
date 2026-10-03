@@ -602,7 +602,7 @@
     },
     "/api/attendance/ptwh/station/{station}": {
       "get": {
-        "summary": "The station screen: this hour's QR code (changes on the hour, with the link into the PTWH app) and the station's saved location.",
+        "summary": "The station screen: this hour's emergency-only QR code (changes on the hour, with the link into the PTWH app) and the station's read-only location from Fleet Admin Premises (radius fixed at 100 m).",
         "description": "The station screen: the QR code for this hour (it changes on the hour) and where the station is.",
         "operationId": "station_info_api_attendance_ptwh_station__station__get",
         "parameters": [
@@ -616,56 +616,6 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Attendance"
-        ]
-      }
-    },
-    "/api/attendance/ptwh/station/{station}/geo": {
-      "put": {
-        "summary": "Set where a station is (latitude / longitude) and the radius within which a PTWH may clock in by location (20-200 m, default 100).",
-        "operationId": "set_station_geo_api_attendance_ptwh_station__station__geo_put",
-        "parameters": [
-          {
-            "name": "station",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Station"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GeoIn"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -823,7 +773,7 @@
     "/api/attendance/ptwh/audit/{record_id}/flag": {
       "post": {
         "summary": "Auditor action on a PTWH app clock event: flag it as suspicious (note required), mark it checked OK, or clear the mark. A flagged event keeps its selfies past the 14-day retention.",
-        "description": "An auditor (anyone whose scope covers the station) flags a clock event as suspicious, marks it checked OK, or clears the mark. Who and when are kept.\nA flagged event keeps its selfies past the retention period until someone clears it or marks it OK.",
+        "description": "An auditor (anyone whose scope covers the station) flags a clock event as suspicious, marks it checked OK, or clears the mark. Who and when are kept.\nA flagged event -- and any QR (emergency) clock waiting for review -- keeps its selfies past the retention period until it is cleared or marked OK.",
         "operationId": "flag_event_api_attendance_ptwh_audit__record_id__flag_post",
         "parameters": [
           {
@@ -1025,7 +975,7 @@
     },
     "/api/ptwh-app/clock": {
       "post": {
-        "summary": "PTWH app: clock in or out. Needs proof of being at the station (the station's hourly QR code, or a phone location within the station radius, 100 m by default) AND a base64 JPEG selfie; the server takes the time.",
+        "summary": "PTWH app: clock in or out. Needs a phone location within 100 m of the station's Premises latitude / longitude (or, as an emergency fallback, the station's hourly QR code PLUS a reason, which puts the clock in the audit queue as needs-review) AND a base64 JPEG selfie; the server takes the time.",
         "operationId": "app_clock_api_ptwh_app_clock_post",
         "parameters": [
           {
@@ -6931,6 +6881,17 @@
           "selfie": {
             "type": "string",
             "title": "Selfie"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "type": "object",
@@ -8526,29 +8487,6 @@
         },
         "type": "object",
         "title": "FollowUpUpdate"
-      },
-      "GeoIn": {
-        "properties": {
-          "lat": {
-            "type": "number",
-            "title": "Lat"
-          },
-          "lng": {
-            "type": "number",
-            "title": "Lng"
-          },
-          "radius_m": {
-            "type": "integer",
-            "title": "Radius M",
-            "default": 100
-          }
-        },
-        "type": "object",
-        "required": [
-          "lat",
-          "lng"
-        ],
-        "title": "GeoIn"
       },
       "GroupRow": {
         "properties": {
