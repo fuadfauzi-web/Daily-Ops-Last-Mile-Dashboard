@@ -7,6 +7,7 @@ import GroupTable from "./components/GroupTable";
 import DetailPanel from "./components/DetailPanel";
 import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
+import RecoveryCases from "./RecoveryCases";
 import Skeleton from "./components/Skeleton";
 import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 
@@ -14,11 +15,14 @@ import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 const TN_TYPES = ["Hub", "Driver/Rider", "Ship In", "Ship Out", "Other"];
 const DEFAULT_TN_TYPES = TN_TYPES.filter((t) => t !== "Other");
 
-// Two groups (2026-10-03 feedback): Active Missing (Missing Details, Active Missing, B2B Document Active Missing)
-// and Lost Declared (This Week, Summary).
+// Groups (2026-10-03 feedback): Active Missing (Missing Details, Active Missing, B2B Document Active Missing), Lost Declared (This Week, Summary),
+// and three lists the recovery team keeps -- PDCNR, Damage, No Label from Hub (RecoveryCases.jsx, no sub-tabs).
 const GROUPS = [
   { key: "activemissing", label: "Active Missing" },
   { key: "lostdeclared", label: "Lost Declared" },
+  { key: "pdcnr", label: "PDCNR" },
+  { key: "damage", label: "Damage" },
+  { key: "nolabel", label: "No Label from Hub" },
 ];
 const SUB_TABS = {
   activemissing: [
@@ -31,6 +35,7 @@ const SUB_TABS = {
     { key: "lostsummary", label: "Lost Declared Summary" },
   ],
 };
+const CASE_GROUPS = ["pdcnr", "damage", "nolabel"];
 
 const OVERVIEW_COLUMNS = [
   { key: "hub_count", label: "Hub", render: (r) => r.hub_count.toLocaleString() },
@@ -303,7 +308,13 @@ export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excl
   return (
     <div className="space-y-3">
       <SegmentedControl options={GROUPS} value={group} onChange={setGroup} />
-      <SegmentedControl options={SUB_TABS[group]} value={subTab} onChange={setSubTab} />
+      {SUB_TABS[group] && <SegmentedControl options={SUB_TABS[group]} value={subTab} onChange={setSubTab} />}
+      {CASE_GROUPS.includes(group) && (
+        <RecoveryCases
+          key={group} type={group} me={me}
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      )}
       {subTab === "missing" && (
         <MissingDetailsView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}

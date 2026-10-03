@@ -18,7 +18,7 @@ import { selectClass } from "./kpi/fmt";
 const dash = <span className="text-slate-300">—</span>;
 const inputBase = "rounded border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-700 focus:border-brand focus:outline-none disabled:border-transparent disabled:bg-transparent disabled:text-slate-700";
 
-function SelectCell({ value, options, onSave, disabled }) {
+export function SelectCell({ value, options, onSave, disabled }) {
   if (disabled) return value ? <span className="whitespace-nowrap text-xs text-slate-700">{value}</span> : dash;
   return (
     <select value={value || ""} onChange={(e) => onSave(e.target.value)} className={`${inputBase} min-w-[6.5rem]`}>
@@ -32,7 +32,7 @@ function SelectCell({ value, options, onSave, disabled }) {
   );
 }
 
-function TextCell({ value, onSave, disabled, rows = 1, width = "w-40" }) {
+export function TextCell({ value, onSave, disabled, rows = 1, width = "w-40" }) {
   const [v, setV] = useState(value || "");
   useEffect(() => setV(value || ""), [value]);
   if (disabled) return value ? <span className={`block max-w-[16rem] whitespace-pre-wrap text-left text-xs text-slate-700`}>{value}</span> : dash;

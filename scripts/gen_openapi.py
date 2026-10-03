@@ -30,6 +30,10 @@ TAGS = [  # first matching prefix wins
 ]
 
 SUMMARIES = {
+    ("get", "/api/recovery-cases/{case_type}"): "Recovery -> PDCNR / Damage / No Label from Hub (case_type pdcnr | damage | nolabel): the rows in the caller's access, the list's field layout, and whether the caller may add rows.",
+    ("post", "/api/recovery-cases/{case_type}"): "Add rows to a Recovery list (Recovery staff for PDCNR / Damage, the hub for No Label from Hub): a batch of tracking numbers with a station each; ones already open are skipped.",
+    ("put", "/api/recovery-cases/{case_type}/{case_id}"): "Fill or correct a Recovery list row: the fields the caller is allowed to edit (station fields for station / region staff in scope, everything for Recovery).",
+    ("delete", "/api/recovery-cases/{case_type}/{case_id}"): "Recovery / manager / admin only: delete a Recovery list row.",
     ("post", "/api/ptwh-app/login"): "PTWH app (no SSO; needs the shared X-PTWH-App-Key): log in with the username and password the station set. 5 wrong tries lock the login for 10 minutes.",
     ("get", "/api/ptwh-app/me"): "PTWH app: who is logged in, today's clock record, and whether the station's location is set (needs the PTWH's bearer token).",
     ("post", "/api/ptwh-app/clock"): "PTWH app: clock in or out. Needs a phone location within 100 m of the station's Premises latitude / longitude (or, as an emergency fallback, a station QR code made for THIS PTWH within the last 10 minutes and not used yet, PLUS a reason, which puts the clock in the audit queue as needs-review) AND a base64 JPEG selfie; the server takes the time.",

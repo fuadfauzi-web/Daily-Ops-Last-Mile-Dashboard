@@ -323,6 +323,11 @@ export const api = {
   lostDeclared: (view, week) => request(`/api/recovery/lost-declared?view=${view}${week ? `&week=${encodeURIComponent(week)}` : ""}`),
   lostDeclaredSave: (tn, body) => request(`/api/recovery/lost-declared/${encodeURIComponent(tn)}`, { method: "PUT", body: JSON.stringify(body) }),
   lostDeclaredMove: () => request("/api/recovery/lost-declared/move", { method: "POST" }),
+  // Recovery -> PDCNR / Damage / No Label from Hub (backend/recovery_cases.py): type = pdcnr | damage | nolabel
+  recoveryCases: (type) => request(`/api/recovery-cases/${type}`),
+  recoveryCasesAdd: (type, body) => request(`/api/recovery-cases/${type}`, { method: "POST", body: JSON.stringify(body) }),
+  recoveryCaseSave: (type, id, body) => request(`/api/recovery-cases/${type}/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  recoveryCaseDelete: (type, id) => request(`/api/recovery-cases/${type}/${id}`, { method: "DELETE" }),
   kpiCodRtsView: (q) => request(`/api/kpi/cod-rts/view?${qs(q)}`),
   kpiCodRtsTns: (q) => request(`/api/kpi/cod-rts/tns?${qs(q)}`),
   kpiTable: (name) => request(`/api/kpi/table/${name}`),

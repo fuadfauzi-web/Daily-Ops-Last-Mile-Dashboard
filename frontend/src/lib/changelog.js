@@ -17,6 +17,13 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-03",
+    title: "Recovery: PDCNR, Damage and No Label from Hub (staging only)",
+    points: [
+      "Three of the recovery team's Google Sheets are now lists in Recovery. Recovery adds the rows (paste many tracking numbers at once, optionally with the station); the station fills in the rest of its columns; the row closes when the last step is done. PDCNR: station / Region Head give the outcome, proof of delivery link, driver and action, then Recovery validates. Damage: Recovery gives an instruction, the station answers with the action it took. No Label from Hub: the hub adds the entry (what the Google Form did) and Recovery sets the outcome. Each list shows only your own stations, with Open / Closed / All and a CSV export.",
+    ],
+  },
+  {
     date: "2026-10-04",
     title: "Attendance (Beta, staging only): Station Heads and Fleet Assistants clock in and out",
     feature: "attendance",
