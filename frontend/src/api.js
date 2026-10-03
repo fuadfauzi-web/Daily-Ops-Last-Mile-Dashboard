@@ -334,6 +334,24 @@ export const api = {
   recoveryCasesAdd: (type, body) => request(`/api/recovery-cases/${type}`, { method: "POST", body: JSON.stringify(body) }),
   recoveryCaseSave: (type, id, body) => request(`/api/recovery-cases/${type}/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   recoveryCaseDelete: (type, id) => request(`/api/recovery-cases/${type}/${id}`, { method: "DELETE" }),
+  recoveryCasesImport: (type, csv) => request(`/api/recovery-cases/${type}/import`, { method: "POST", body: JSON.stringify({ csv }) }),
+  // A photo for one column of one row; recoveryCaseFileUrl is what <img src> / a download link points at (same origin, so the sign-in comes along).
+  recoveryCaseUpload: async (type, id, field, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`/api/recovery-cases/${type}/${id}/file/${field}`, { method: "POST", body: formData, headers: viewAsHeaders() });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return res.json();
+  },
+  recoveryCaseFileUrl: (type, id, field, download = false) => `/api/recovery-cases/${type}/${id}/file/${field}${download ? "?download=true" : ""}`,
   kpiCodRtsView: (q) => request(`/api/kpi/cod-rts/view?${qs(q)}`),
   kpiCodRtsTns: (q) => request(`/api/kpi/cod-rts/tns?${qs(q)}`),
   kpiTable: (name) => request(`/api/kpi/table/${name}`),

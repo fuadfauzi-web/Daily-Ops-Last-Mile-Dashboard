@@ -20,7 +20,7 @@ export const CHANGELOG = [
     date: "2026-10-03",
     title: "Recovery: PDCNR, Damage and No Label from Hub (staging only)",
     points: [
-      "Three of the recovery team's Google Sheets are now lists in Recovery. Recovery adds the rows (paste many tracking numbers at once, optionally with the station); the station fills in the rest of its columns; the row closes when the last step is done. PDCNR: station / Region Head give the outcome, proof of delivery link, driver and action, then Recovery validates. Damage: Recovery gives an instruction, the station answers with the action it took. No Label from Hub: the hub adds the entry (what the Google Form did) and Recovery sets the outcome. Each list shows only your own stations, with Open / Closed / All and a CSV export.",
+      "Three of the recovery team's Google Sheets are now lists in Recovery. Recovery adds the rows (paste many tracking numbers at once, optionally with the station); the station fills in the rest of its columns; the row closes when the last step is done. PDCNR: station / Region Head give the outcome, proof of delivery link, driver and action, then Recovery validates. Damage: Recovery gives an instruction, the station answers with the action it took. No Label from Hub: the hub adds the entry (what the Google Form did) and Recovery sets the outcome. Each list shows only your own stations, with Open / Closed / All and a CSV export. Only Recovery and the Superadmin have full access; everyone else (managers too) fills their station columns only, and Fleet Admin can only look. Photos are real uploads that anyone with access can download, and Recovery can bring in the old sheets with Import from old sheet.",
     ],
   },
   {

@@ -19,9 +19,74 @@ function DateCell({ value, onSave, disabled }) {
   return <input type="date" value={value || ""} onChange={(e) => e.target.value !== (value || "") && onSave(e.target.value)} className={inputBase} />;
 }
 
-function FieldCell({ field, row, save }) {
+const isImage = (type) => (type || "").startsWith("image/");
+
+// A photo column: an uploaded file (viewable, downloadable, replaceable) or an older text link typed in the sheet.
+function FileCell({ type, field, row, disabled, onRow, onError }) {
+  const value = row.data[field.key];
+  const [busy, setBusy] = useState(false);
+  const url = (download) => api.recoveryCaseFileUrl(type, row.id, field.key, download);
+  const pick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      onRow((await api.recoveryCaseUpload(type, row.id, field.key, file)).row);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    try {
+      onRow((await api.recoveryCaseSave(type, row.id, { fields: { [field.key]: "" } })).row);
+    } catch (err) {
+      onError(err.message);
+    }
+  };
+  const uploadBtn = !disabled && (
+    <label className="cursor-pointer text-[11px] font-medium text-brand underline">
+      {busy ? "Uploading…" : value ? "Replace" : "Upload photo"}
+      <input type="file" accept="image/*,.pdf" className="hidden" onChange={pick} disabled={busy} />
+    </label>
+  );
+  if (value && typeof value === "object") {
+    return (
+      <div className="flex items-center gap-2">
+        <a href={url(false)} target="_blank" rel="noreferrer" title={value.name}>
+          {isImage(value.type) ? (
+            <img src={url(false)} alt={value.name} loading="lazy" className="h-10 w-10 rounded border border-slate-200 object-cover" />
+          ) : (
+            <span className="rounded border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-600">PDF</span>
+          )}
+        </a>
+        <div className="flex flex-col items-start gap-0.5">
+          <a href={url(true)} download={value.name} className="text-[11px] font-medium text-slate-700 underline">Download</a>
+          {uploadBtn}
+          {!disabled && <button onClick={remove} className="text-[11px] text-slate-400 hover:text-status-critical">Remove</button>}
+        </div>
+      </div>
+    );
+  }
+  if (value) {
+    const isUrl = /^https?:\/\//i.test(value);
+    return (
+      <div className="flex flex-col items-start gap-0.5">
+        {isUrl ? <a href={value} target="_blank" rel="noreferrer" className="max-w-[10rem] truncate text-[11px] font-medium text-slate-700 underline">Old link</a> : <span className="max-w-[10rem] truncate text-[11px] text-slate-600" title={value}>{value}</span>}
+        {uploadBtn}
+        {!disabled && <button onClick={remove} className="text-[11px] text-slate-400 hover:text-status-critical">Remove</button>}
+      </div>
+    );
+  }
+  return uploadBtn || dash;
+}
+
+function FieldCell({ field, row, save, type, onRow, onError }) {
   const value = row.data[field.key];
   const disabled = !row.can_edit[field.key];
+  if (field.kind === "file") return <FileCell type={type} field={field} row={row} disabled={disabled} onRow={onRow} onError={onError} />;
   const onSave = (v) => save(row, { fields: { [field.key]: v } });
   if (field.kind === "select") return <SelectCell value={value} options={field.options} disabled={disabled} onSave={onSave} />;
   if (field.kind === "date") return <DateCell value={value} disabled={disabled} onSave={onSave} />;
@@ -149,6 +214,57 @@ function AddRows({ type, data, onDone }) {
   );
 }
 
+// Bring rows in from the old Google Sheet: File -> Download -> CSV on its tab, then pick that file here. Safe to repeat (same TN + date is skipped).
+function ImportRows({ type, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const pick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await api.recoveryCasesImport(type, await file.text());
+      const skipped = res.skipped_total ? ` Skipped ${res.skipped_total}: ${res.skipped.slice(0, 6).map((s) => `${s.row} (${s.reason})`).join("; ")}${res.skipped_total > 6 ? "…" : ""}.` : "";
+      const dropped = res.values_dropped ? ` ${res.values_dropped} value(s) were not in the list of choices and were left blank.` : "";
+      setMsg({ ok: res.imported > 0, text: `Imported ${res.imported} row${res.imported === 1 ? "" : "s"}.${skipped}${dropped}` });
+      if (res.imported > 0) onDone();
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
+        Import from old sheet
+      </button>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+      <div className="flex items-center justify-between gap-6">
+        <div className="font-display text-sm font-semibold text-ink">Import from the old sheet</div>
+        <button onClick={() => setOpen(false)} className="text-xs font-medium text-slate-500 underline hover:text-brand">
+          Close
+        </button>
+      </div>
+      <p className="max-w-xl text-xs text-slate-600">
+        In the sheet, open the tab, then File → Download → Comma Separated Values (.csv), and pick that file. The column titles are matched by name, dates are read as the sheet writes them, and a row with the same
+        tracking number and date that is already here is skipped, so importing the same file twice is safe. Photos stay as the old links.
+      </p>
+      <label className="inline-block cursor-pointer rounded-lg bg-brand px-3 py-2 font-display text-xs font-semibold uppercase text-white">
+        {busy ? "Importing…" : "Choose CSV file"}
+        <input type="file" accept=".csv,text/csv" className="hidden" onChange={pick} disabled={busy} />
+      </label>
+      {msg && <div className={`text-sm ${msg.ok ? "text-status-good" : "text-status-critical"}`}>{msg.text}</div>}
+    </div>
+  );
+}
+
 export default function RecoveryCases({ type, me, refreshTick, ...filters }) {
   const [data, setData] = useState(null);
   const [rows, setRows] = useState([]);
@@ -197,6 +313,7 @@ export default function RecoveryCases({ type, me, refreshTick, ...filters }) {
       setMsg(e.message);
     }
   };
+  const applyRow = (row) => setRows((rs) => rs.map((r) => (r.id === row.id ? row : r)));
   const remove = async (row) => {
     if (!window.confirm(`Delete ${row.tracking_number}? This cannot be undone.`)) return;
     setMsg(null);
@@ -220,10 +337,10 @@ export default function RecoveryCases({ type, me, refreshTick, ...filters }) {
       key: `f_${f.key}`,
       label: f.label,
       sortable: f.kind !== "text" || !f.wide,
-      sortValue: (r) => r.data[f.key] || "",
+      sortValue: (r) => { const v = r.data[f.key]; return v && typeof v === "object" ? v.name || "file" : v || ""; },
       render: (r) => (
         <div>
-          <FieldCell field={f} row={r} save={save} />
+          <FieldCell field={f} row={r} save={save} type={type} onRow={applyRow} onError={setMsg} />
           {f.key === "proof_of_delivery" && r.proof_missing && <div className="text-[10px] font-semibold text-status-critical">Proof missing</div>}
         </div>
       ),
@@ -247,7 +364,10 @@ export default function RecoveryCases({ type, me, refreshTick, ...filters }) {
         ]}
       />
       {msg && <div className="rounded-lg bg-status-critical/5 px-3 py-2 text-sm text-status-critical ring-1 ring-status-critical/20">{msg}</div>}
-      {data.can_create && <AddRows type={type} data={data} onDone={() => setReload((n) => n + 1)} />}
+      <div className="flex flex-wrap items-start gap-3">
+        {data.can_create && <AddRows type={type} data={data} onDone={() => setReload((n) => n + 1)} />}
+        {data.is_recovery && <ImportRows type={type} onDone={() => setReload((n) => n + 1)} />}
+      </div>
       <SortTable
         title={cfg.label}
         titleExtra={
