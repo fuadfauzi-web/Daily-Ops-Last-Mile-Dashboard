@@ -33,5 +33,6 @@ export const FEATURES = {
   phoneTnSheet: true, // staging-only trial (2026-10-02 design review D10): on a phone (<768px) the tracking-number lists open as a full-screen sheet with a sticky top bar, 56px rows and a Copy list / CSV bottom bar. NOT approved for production yet.
   chartStyle: true, // staging-only trial (2026-10-02 design review D13): charts use ink for the main series and grey for comparison (brand red stays chrome-only), paler gridlines, and a dashed target line where a chart is given one. NOT approved for production yet.
   copyImage: true, // staging-only trial (2026-10-02 design review D12): a "Copy as image" button in the header copies the current page (with its title, filters and "Data as of") as a PNG for Gchat. NOT approved for production yet.
+  headlineCards: true, // staging-only trial (2026-10-03 design review D7): Station Health opens with a strip of headline cards (Fresh, Routed, 0 Attempt, In Hub, Age >3) with the change since yesterday. NOT approved for production yet.
   stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };

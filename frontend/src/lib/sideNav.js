@@ -1,7 +1,8 @@
 // Grouped sidebar navigation (staging trial, FEATURES.sidebarNav -- design review D3). The sidebar is only another way to reach the pages that already
 // exist: `dash: true` items are the Dashboard's own sub-tabs (same keys as Dashboard.jsx's TABS), the others are App.jsx's level-1 pages. Nothing here
 // decides who may see what -- App passes in only the pages this person's role can open.
-export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Analyse", "System"];
+// People = the workforce pages (Attendance now; Overtime for hybrid and staff is planned after it; Staff & Org Chart lives here too).
+export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Analyse", "People", "System"];
 
 // One colour per group, so the collapsed sidebar (two-letter codes) can still be read by colour. chip = the code badge, dot = the group label's marker.
 // Deliberately not brand red / status red-amber-green -- those mean "chrome" and "data" elsewhere.
@@ -10,6 +11,7 @@ export const SIDE_GROUP_COLORS = {
   Monitor: { chip: "bg-[#DBEAFE] text-[#1E40AF]", dot: "bg-[#2563EB]" },
   Recovery: { chip: "bg-[#CCFBF1] text-[#115E59]", dot: "bg-[#0D9488]" },
   Analyse: { chip: "bg-[#EDE9FE] text-[#5B21B6]", dot: "bg-[#7C3AED]" },
+  People: { chip: "bg-[#FAE8FF] text-[#86198F]", dot: "bg-[#C026D3]" },
   System: { chip: "bg-[#F3F4F6] text-[#4B5563]", dot: "bg-[#9CA3AF]" },
 };
 
@@ -28,8 +30,8 @@ export const SIDE_ITEMS = [
   { id: "dod", dash: true, group: "Analyse", label: "DoD", beta: true, code: "DD" },
   { id: "kpi", group: "Analyse", label: "KPI", beta: true, code: "KP" },
   { id: "management", group: "Analyse", label: "Management View", beta: true, code: "MV" },
-  { id: "attendance", group: "Act", label: "Attendance", beta: true, code: "AT" },
-  { id: "staff", group: "System", label: "Staff & Org Chart", code: "SO" },
+  { id: "attendance", group: "People", label: "Attendance", beta: true, code: "AT" },
+  { id: "staff", group: "People", label: "Staff & Org Chart", code: "SO" },
   { id: "fleetadmin", group: "System", label: "Fleet Admin", code: "FA" },
   { id: "settings", group: "System", label: "Settings", code: "ST" },
   { id: "admin", group: "System", label: "Superadmin", code: "SA" },

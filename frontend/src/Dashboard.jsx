@@ -7,6 +7,7 @@ import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import { FEATURES } from "./lib/features";
 import { taskListBadges } from "./lib/sideNav";
+import HeadlineStrip from "./components/HeadlineStrip";
 import BetaTag from "./components/BetaTag";
 import DataTable from "./components/DataTable";
 import FilterBar from "./components/FilterBar";
@@ -1056,6 +1057,29 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {tab === "health" && (
         <>
+          {FEATURES.headlineCards && (() => {
+            const now = sumMetrics(filteredStations);
+            const prev = filteredYesterdayStations.length ? sumMetrics(filteredYesterdayStations) : null;
+            const delta = (k) => (prev ? now[k] - prev[k] : null);
+            return (
+              <HeadlineStrip
+                cards={[
+                  { key: "total_fresh", label: "Total Fresh", value: now.total_fresh, delta: delta("total_fresh"), goodWhen: "neutral" },
+                  { key: "total_routed", label: "Total Routed", value: now.total_routed, delta: delta("total_routed"), goodWhen: "neutral" },
+                  { key: "zero_attempt_total", label: "Total 0 Attempt", value: now.zero_attempt_total, delta: delta("zero_attempt_total"), goodWhen: "down" },
+                  { key: "total_in_hub", label: "In Hub", value: now.total_in_hub, delta: delta("total_in_hub"), goodWhen: "neutral" },
+                  {
+                    key: "age_gt3",
+                    label: "Age >3",
+                    value: now.age_gt3,
+                    sub: now.total_in_hub ? `${((now.age_gt3 / now.total_in_hub) * 100).toFixed(1)}% of in hub` : null,
+                    delta: delta("age_gt3"),
+                    goodWhen: "down",
+                  },
+                ]}
+              />
+            );
+          })()}
           {FEATURES.healthTable && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-display text-[11px] font-semibold uppercase tracking-wider text-slate-500">Column groups</span>
