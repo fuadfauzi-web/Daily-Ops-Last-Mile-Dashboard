@@ -37,8 +37,9 @@ export const SIDE_ITEMS = [
   { id: "fleetadmin", group: "People", label: "Fleet Admin", code: "FA" },
   { id: "staff", group: "People", label: "Staff & Org Chart", code: "SO" },
   { id: "attendance", group: "People", label: "Attendance", beta: true, code: "AT" },
-  { id: "help", group: "System", label: "Help", code: "HP" }, // Feedback, Guide (with What's new)
+  { id: "users", group: "System", label: "Users", code: "US" },
   { id: "settings", group: "System", label: "Settings", code: "ST" },
+  { id: "help", group: "System", label: "Help", code: "HP" }, // Feedback, Guide, What's new (three tabs)
   { id: "admin", group: "System", label: "Superadmin", code: "SA" },
 ];
 

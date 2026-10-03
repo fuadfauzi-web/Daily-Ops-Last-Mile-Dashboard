@@ -536,11 +536,12 @@ function DocumentsPanel() {
 //   Admin    -- only what solely an admin can change (Documents, Station List, KPI Settings, Data Refresh); the Admin page
 //               itself is admin-only.
 const SETTINGS_TABS = [
-  { key: "users", label: "Users", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
+  { key: "users", label: "Users", area: "users", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
   { key: "sla", label: "SLA Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
   { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "guide", label: "Guide", area: "help", visible: () => true },
+  { key: "whatsnew", label: "What's new", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
   { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
   { key: "kpisettings", label: "KPI Settings", area: "admin", visible: (me) => me.role === "admin" },
@@ -561,7 +562,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       SETTINGS_TABS.filter((t) => t.area === mode && t.visible(me)).map((t) =>
         t.key === "feedback"
           ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 }
-          : t.key === "guide"
+          : t.key === "whatsnew"
             ? { ...t, badge: whatsNewUnread }
             : t
       ),
@@ -600,7 +601,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   useEffect(() => {
     api.stations().then(setStations).catch(() => {});
     api.regions().then(setRegions).catch(() => {});
-    if (canManageUsers && mode === "settings") loadUsers();
+    if (canManageUsers && mode === "users") loadUsers();
     if (isFullAdmin) {
       loadRefreshStatus();
     }
@@ -691,7 +692,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
         await api.users.add(payload);
       }
       setForm(emptyForm);
-      if (canManageUsers && mode === "settings") loadUsers();
+      if (canManageUsers && mode === "users") loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -709,7 +710,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       setBulkResult(result);
       setBulkText("");
       setBulkFileName(null);
-      if (canManageUsers && mode === "settings") loadUsers();
+      if (canManageUsers && mode === "users") loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -772,7 +773,8 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "feedback" && <FeedbackPanel me={me} />}
 
-      {adminTab === "guide" && <GuideTab me={me} />}
+      {adminTab === "guide" && <GuideTab me={me} only="guide" />}
+      {adminTab === "whatsnew" && <GuideTab me={me} only="new" />}
 
       {adminTab === "documents" && (
         <div className="space-y-3">

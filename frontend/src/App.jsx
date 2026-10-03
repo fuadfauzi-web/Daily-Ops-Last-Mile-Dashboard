@@ -202,8 +202,9 @@ export default function App() {
     ...(canSeeStaff ? ["staff"] : []),
     ...(canSeeFleetAdmin ? ["fleetadmin"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
-    "settings",
-    "help",
+    ...(me.role === "admin" || me.role === "manager" || me.role === "region" ? ["users"] : []), // the Users page (was a tab inside Settings)
+    ...(me.role === "admin" || me.role === "manager" ? ["settings"] : []), // SLA Targets + Recovery Settings
+    "help", // Feedback, Guide, What's new
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
@@ -529,6 +530,7 @@ export default function App() {
         {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
         {tab === "fleetadmin" && canSeeFleetAdmin && <FleetAdminTab key={`fleetadmin-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
+        {tab === "users" && <SettingsPanel key={`users-${viewKey}`} me={me} mode="users" notifCounts={notifCounts} />}
         {tab === "settings" && <SettingsPanel key={`settings-${viewKey}`} me={me} mode="settings" notifCounts={notifCounts} />}
         {tab === "help" && <SettingsPanel key={`help-${viewKey}`} me={me} mode="help" notifCounts={notifCounts} />}
         {tab === "admin" && me.role === "admin" && <SettingsPanel key={`admin-${viewKey}`} me={me} mode="admin" />}

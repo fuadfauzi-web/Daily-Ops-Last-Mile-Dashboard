@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { FEATURES as F } from "./lib/features";
 import { weeklyChanges } from "./lib/changelog";
@@ -7,7 +7,7 @@ import BellBadge from "./components/BellBadge";
 import { entryId, markWhatsNewRead, unreadEntries, useWhatsNewUnread } from "./lib/whatsNew";
 import { rankOf } from "./lib/roles";
 
-// In-app onboarding reference (Settings -> Guide, open to everyone).
+// In-app onboarding reference (Help -> Guide, open to everyone; Help -> What's new is the same component with only="new").
 //
 // RULES FOR MAINTAINERS (2026-09-25 feedback):
 //  * Keep this up to date whenever a build changes something a user can see -- new tab,
@@ -34,7 +34,7 @@ const SECTIONS = [
     title: "Roles & what you see",
     body: ({ rank }) => {
       const rows = [
-        { role: "Station staff: Station Head (SH), Fleet Assistant (FA)", rank: 0, text: "View the dashboard for their own scope only, plus Settings → Feedback and Guide." },
+        { role: "Station staff: Station Head (SH), Fleet Assistant (FA)", rank: 0, text: "View the dashboard for their own scope only, plus Help (Feedback, Guide and What's new)." },
         { role: "Region staff: Region Head (RH), Regional Fleet Supervisor (RFS)", rank: 1, text: "View the dashboard for their zone(s) or region(s), plus add, edit and remove Station-staff teammates (SH / FA, with more than one station if needed) in Settings → Users." },
         { role: "HQ staff: HOD, Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings. A Manager can have a dedicated region (it places them in the org chart and the PIC list) and HOD has none, but both see every region's data and can manage Region staff, Station staff and other HQ staff in every region (not the HOD, which only the HOD and the Superadmin can)." },
         { role: "HQ staff: Fleet Admin, OPEX, Recovery, Restock", rank: 2, text: "See every region and station like a manager does, but are not managers: no user management and no SLA / Recovery settings. Each will get its own tabs for its own work." },
@@ -44,7 +44,7 @@ const SECTIONS = [
         <div className="space-y-2 text-sm text-slate-700">
           <p>
             Two independent things control what you can do and see: your <strong>role</strong> (what actions you're
-            allowed) and your <strong>scope</strong> (which stations' data you see). {rank >= 1 ? "An admin or manager sets both when adding someone in Settings → Users." : "Your admin sets both."}
+            allowed) and your <strong>scope</strong> (which stations' data you see). {rank >= 1 ? "An admin or manager sets both when adding someone on the Users page (System)." : "Your admin sets both."}
           </p>
           <table className="w-full text-left text-xs">
             <thead className="text-slate-400">
@@ -107,8 +107,8 @@ const SECTIONS = [
           </>,
           <>
             The <strong>{F.taskList ? "Task List" : "Urgent TN"}</strong> tab shows a red bell with a number when something needs your attention, and{" "}
-            <strong>Settings</strong> shows a red bell for a reply to your feedback or an update you haven't read in{" "}
-            <strong>Guide → What's new</strong>; it clears once you've read it.
+            <strong>Help</strong> shows a bell badge for a reply to your feedback or an update you haven't read in{" "}
+            <strong>Help → What's new</strong>; it clears once you've read it.
           </>,
           rank >= 3 && F.roleTester && (
             <>
@@ -415,7 +415,7 @@ const SECTIONS = [
         <p>
           The <strong>Fleet Admin</strong> tab (staging only for now) holds the lists the Fleet Admin team used to keep in Google Sheets. <strong>Premises</strong> is
           first: one record per station with its address, size, launch date, business licence and tenancy dates, rent, deposit and document links. HQ staff and
-          above can read it; only the Fleet Admin team and the Superadmin can edit.
+          above can read it; only the Fleet Admin role can edit (for now, not even the Superadmin).
         </p>
         <Bullets
           items={[
@@ -666,15 +666,18 @@ const SECTIONS = [
   },
   {
     id: "settings",
-    title: "Settings",
+    title: "Users, Settings and Help",
     body: ({ rank }) => (
       <div className="space-y-2 text-sm text-slate-700">
-        <p>Configuration and help, reachable by every role -- which tabs you see inside depends on your role.</p>
+        <p>
+          Three pages under <strong>System</strong>: <strong>Users</strong> (managers and region staff), <strong>Settings</strong> (managers and admins) and{" "}
+          <strong>Help</strong> (every role).
+        </p>
         <Bullets
           items={[
             rank >= 1 && (
               <>
-                <strong>Users</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
+                <strong>Users page</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
                 more than one station. Find people with the search box, filter by role, scope type, a searchable scope or "Never opened", and click a column header
                 (e.g. Last opened) to sort.
               </>
@@ -687,15 +690,15 @@ const SECTIONS = [
             ),
             rank >= 2 && <><strong>Recovery Settings</strong>: the COD-value threshold and item keywords behind Recovery's highlighting.</>,
             <>
-              <strong>Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
+              <strong>Help → Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
               (up to 20 MB). Only you{rank >= 3 ? " (and every other admin)" : " and the admins"} can see it.{" "}
-              {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here, and a red bell appears on Settings. "}
+              {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here, and a bell badge appears on Help. "}
               You can delete your own feedback at any time (it disappears for the admins too), and closed feedback is deleted automatically a
               week after it's closed.
             </>,
             <>
-              <strong>Guide</strong>: this page -- search it, ask the admins a question if it isn't answered, and see what's changed in the last
-              week under <strong>What's new</strong>.
+              <strong>Help → Guide</strong>: this page -- search it and ask the admins a question if it isn't answered.{" "}
+              <strong>Help → What's new</strong> is its own tab: what's changed in the last week, newest first.
             </>,
           ]}
         />
@@ -715,7 +718,7 @@ const SECTIONS = [
             <><strong>Station List</strong>: where the app gets its stations (hub code, station, zone, region) -- the team's Region List sheet, so a station opening or closing needs no code change. Best: publish the sheet's Region tab to the web as CSV (File → Share → Publish to web) and paste the link -- the app re-reads it every hour (Sync now reads it at once). Or download the sheet and upload it. Only Active / Virtual rows in Klang Valley, Northern, Southern, East Coast and East Malaysia count (Closed, SAMEDAY and NO HUB are left out). Until you do either, the app uses the list built into it.</>,
             <><strong>KPI Settings</strong>: <em>Scope</em> -- a tick for including East Malaysia in the KPI pages (off by default: the KPI pages are for Last Mile stations, and East Malaysia is Retail) and a second tick for Sarawak (East Malaysia 3 and 4), which stays off for now even when East Malaysia is on. <em>Targets</em> -- the target of every KPI (Hybrid Productivity, Prior, FIFO D0, D0, D3, D7, Lost, Complaint, Invalid POD, COD RTS) for each region. Change a number and press Save -- the KPI pages, Trend, Invalid POD, COD RTS and Hybrid use it straight away. A changed box turns amber and shows the built-in default under it; <em>Back to default</em> puts the default back. Lost and Complaint are percentages too (0.005 means 0.005%). Hybrid Productivity is a plain number (its Productivity column) and starts empty.</>,
             <><strong>Data Refresh</strong>: trigger an immediate refresh and see when each Redash query was last pulled.</>,
-            <>Feedback and the Guide are not here -- they're under Settings{F.roleTester ? ", and the Role Tester is in the header" : ""}.</>,
+            <>Feedback, the Guide and What's new are not here -- they're under Help{F.roleTester ? ", and the Role Tester is in the user menu" : ""}.</>,
           ]}
         />
       </div>
@@ -741,13 +744,14 @@ const FAQS = [
   { q: "How do I test a feature as another person?", a: "Use the Role Tester in the header: pick a role and scope, or \"As a specific user\" to act as one account (their Urgent TN list, bell and feedback included). Exit puts you back as yourself.", show: ({ rank }) => rank >= 3 && F.roleTester && F.roleTesterUser },
 ];
 
-export default function GuideTab({ me }) {
+// only: "guide" | "new" -- show just that half (Help -> Guide and Help -> What's new are separate tabs); leave it off for the old Guide / What's new switch.
+export default function GuideTab({ me, only }) {
   const rank = rankOf(me);
   const wide = me?.scope_type === "all" || (me?.scope_values || []).length > 1;
   const ctx = useMemo(() => ({ rank, wide, me }), [rank, wide, me]);
 
   const [openId, setOpenId] = useState(SECTIONS[0].id);
-  const [view, setView] = useState("guide"); // "guide" | "new"
+  const [view, setView] = useState(only || "guide"); // "guide" | "new"
   const weeks = useMemo(() => weeklyChanges({ features: F, rank, wide }), [rank, wide]);
   const unread = useWhatsNewUnread(me);
   const [newIds, setNewIds] = useState(() => new Set()); // what was unread when What's new was opened
@@ -758,6 +762,14 @@ export default function GuideTab({ me }) {
     markWhatsNewRead(me);
     setView("new");
   };
+  // As its own tab, opening What's new counts as reading it straight away.
+  useEffect(() => {
+    if (only === "new") {
+      setNewIds(new Set(unreadEntries(me).map(entryId)));
+      markWhatsNewRead(me);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showOlder, setShowOlder] = useState(false); // earlier weeks stay hidden until asked for
   const [openWeek, setOpenWeek] = useState(null);
   const [query, setQuery] = useState("");
@@ -788,7 +800,7 @@ export default function GuideTab({ me }) {
     }
   };
 
-  const switcher = (
+  const switcher = only ? null : (
     <SegmentedControl
       options={[
         { key: "guide", label: "Guide" },
@@ -931,7 +943,7 @@ export default function GuideTab({ me }) {
         <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
           <div className="text-sm font-medium text-slate-700">Didn't find your answer? Ask it.</div>
           <p className="text-xs text-slate-400">
-            It goes to the admins as feedback marked [Question]; their reply appears in Settings → Feedback and a red bell shows on Settings.
+            It goes to the admins as feedback marked [Question]; their reply appears in Help → Feedback and a bell badge shows on Help.
           </p>
           <textarea
             className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
@@ -951,7 +963,7 @@ export default function GuideTab({ me }) {
             >
               {sending ? "Sending…" : "Ask the admins"}
             </button>
-            {sent && <span className="text-xs text-status-good">Sent — watch Settings → Feedback for the reply.</span>}
+            {sent && <span className="text-xs text-status-good">Sent — watch Help → Feedback for the reply.</span>}
             {error && <span className="text-xs text-status-critical">{error}</span>}
           </div>
         </div>
