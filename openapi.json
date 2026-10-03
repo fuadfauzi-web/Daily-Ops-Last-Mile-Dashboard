@@ -2562,7 +2562,7 @@
         ]
       },
       "delete": {
-        "summary": "Recovery / manager / admin only: delete a Recovery list row.",
+        "summary": "Recovery / Superadmin only: delete a Recovery list row (and its uploaded photos).",
         "operationId": "delete_case_api_recovery_cases__case_type___case_id__delete",
         "parameters": [
           {
@@ -2584,6 +2584,191 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
+    "/api/recovery-cases/{case_type}/{case_id}/file/{field}": {
+      "post": {
+        "summary": "Upload a photo or PDF (up to 10 MB) into a photo column of a Recovery list row, for a caller allowed to edit that column.",
+        "operationId": "upload_case_file_api_recovery_cases__case_type___case_id__file__field__post",
+        "parameters": [
+          {
+            "name": "case_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Type"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "field",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Field"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_case_file_api_recovery_cases__case_type___case_id__file__field__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      },
+      "get": {
+        "summary": "Open or download (?download=1) the photo stored in a Recovery list row, for a caller who can see that row.",
+        "operationId": "get_case_file_api_recovery_cases__case_type___case_id__file__field__get",
+        "parameters": [
+          {
+            "name": "case_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Type"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "field",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Field"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Recovery"
+        ]
+      }
+    },
+    "/api/recovery-cases/{case_type}/import": {
+      "post": {
+        "summary": "Recovery / Superadmin: bring a pasted or uploaded CSV of the old Google Sheet into a Recovery list; rows already there (same tracking number and date) are skipped.",
+        "description": "Bring in rows from the old sheet: export the tab as CSV (File -> Download -> CSV) and send its text. Only Recovery / Superadmin.\nRe-importing is safe: a row with the same tracking number AND date already in the list is skipped.",
+        "operationId": "import_cases_api_recovery_cases__case_type__import_post",
+        "parameters": [
+          {
+            "name": "case_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Type"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportIn"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8356,6 +8541,20 @@
         ],
         "title": "Body_submit_feedback_api_feedback_post"
       },
+      "Body_upload_case_file_api_recovery_cases__case_type___case_id__file__field__post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_case_file_api_recovery_cases__case_type___case_id__file__field__post"
+      },
       "Body_upload_driver_details_api_admin_driver_details_upload_post": {
         "properties": {
           "file": {
@@ -10303,6 +10502,19 @@
           "status"
         ],
         "title": "Health"
+      },
+      "ImportIn": {
+        "properties": {
+          "csv": {
+            "type": "string",
+            "title": "Csv"
+          }
+        },
+        "type": "object",
+        "required": [
+          "csv"
+        ],
+        "title": "ImportIn"
       },
       "InventoryIn": {
         "properties": {
