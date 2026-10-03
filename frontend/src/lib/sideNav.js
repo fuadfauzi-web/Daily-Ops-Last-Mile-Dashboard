@@ -34,7 +34,7 @@ export const SIDE_ITEMS = [
   { id: "dod", dash: true, group: "Dashboard", label: "DoD", beta: true, code: "DD" },
   { id: "kpi", group: "Dashboard", label: "KPI", beta: true, code: "KP" },
   { id: "processingTime", dash: true, group: "Dashboard", label: "Processing Time", beta: true, code: "PT" },
-  { id: "fleetadmin", group: "People", label: "Fleet Admin", code: "FA" },
+  { id: "fleetadmin", group: "People", label: "Fleet Admin", beta: true, code: "FA" },
   { id: "staff", group: "People", label: "Staff & Org Chart", code: "SO" },
   { id: "attendance", group: "People", label: "Attendance", beta: true, code: "AT" },
   { id: "users", group: "System", label: "Users", code: "US" },

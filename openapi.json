@@ -4230,6 +4230,251 @@
         ]
       }
     },
+    "/api/assets/{kind}": {
+      "get": {
+        "summary": "Fleet Admin -> Assets -> Fire extinguisher / Weighing scale register (kind = fire-extinguisher | weighing-scale): every record with the days left to its expiry, the station list and whether the caller can edit. HQ staff and above.",
+        "operationId": "list_register_api_assets__kind__get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "post": {
+        "summary": "Add a fire extinguisher / weighing scale record (station by name or 3-letter code). Fleet Admin role only.",
+        "operationId": "create_record_api_assets__kind__post",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/assets/{kind}/{record_id}": {
+      "put": {
+        "summary": "Change a fire extinguisher / weighing scale record; only the fields sent change and an empty value clears a field. Fleet Admin role only.",
+        "operationId": "update_record_api_assets__kind___record_id__put",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Record Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "delete": {
+        "summary": "Remove a fire extinguisher / weighing scale record. Fleet Admin role only.",
+        "operationId": "delete_record_api_assets__kind___record_id__delete",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Record Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/assets/{kind}/bulk": {
+      "post": {
+        "summary": "Paste-in of many fire extinguisher / weighing scale records: a row whose station and serial number exist is updated, any other is added; one bad row never stops the others. Fleet Admin role only.",
+        "description": "Paste-in of many records (the tab parses the pasted sheet rows). A row whose station + key (serial number) already exists is updated, anything else is\nadded; one bad row never stops the others.",
+        "operationId": "bulk_records_api_assets__kind__bulk_post",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/admin/region-list": {
       "get": {
         "summary": "Admin only: where the station list comes from (published sheet link, uploaded file or the built-in snapshot), how many stations, and what differs from the built-in list.",
@@ -9049,6 +9294,23 @@
           "file"
         ],
         "title": "Body_upload_driver_details_api_admin_driver_details_upload_post"
+      },
+      "BulkIn": {
+        "properties": {
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "BulkIn"
       },
       "BulkUserIn": {
         "properties": {
@@ -13998,6 +14260,24 @@
           "zones"
         ],
         "title": "RegionMeta"
+      },
+      "RegisterIn": {
+        "properties": {
+          "station": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "RegisterIn"
       },
       "RehireIn": {
         "properties": {

@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { parseInventoryPaste } from "./lib/assetsImport";
+import AssetRegister from "./AssetRegister";
 
 // Fleet Admin -> Assets (2026-10-03, staging): all the Fleet Admin team's asset lists in one tab, by category. The first category is STATION INVENTORY: for every
 // station, each item it should have, how many are good and how many damaged. Fire extinguisher renewals, weighing scales and the rest follow as more categories.
-const CATEGORIES = [{ key: "inventory", label: "Station inventory", Component: StationInventory }];
+const CATEGORIES = [
+  { key: "inventory", label: "Station inventory", Component: StationInventory },
+  { key: "fire-extinguisher", label: "Fire extinguisher", Component: () => <AssetRegister kind="fire-extinguisher" /> },
+  { key: "weighing-scale", label: "Weighing scale", Component: () => <AssetRegister kind="weighing-scale" /> },
+];
 
 export default function AssetsTab() {
   const [category, setCategory] = useState(CATEGORIES[0].key);
@@ -18,7 +23,7 @@ export default function AssetsTab() {
             {c.label}
           </button>
         ))}
-        <span className="text-xs text-slate-400">More categories (fire extinguishers, weighing scales ...) will be added here.</span>
+        <span className="text-xs text-slate-400">More categories will be added here.</span>
       </div>
       {Active && <Active />}
     </div>

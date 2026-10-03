@@ -115,6 +115,14 @@ export const api = {
     reject: (id) => request(`/api/headcount/seats/${id}/reject`, { method: "POST" }),
   },
   // Staff & Org Chart (staff.py): the Fleet Admin team's list of who is posted where -- separate from access (users above).
+  // Fleet Admin -> Assets -> fire extinguisher / weighing scale registers (asset_lists.py)
+  assetLists: {
+    list: (kind, opts) => request(`/api/assets/${kind}`, opts),
+    create: (kind, payload) => request(`/api/assets/${kind}`, { method: "POST", body: JSON.stringify(payload) }),
+    update: (kind, id, payload) => request(`/api/assets/${kind}/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+    remove: (kind, id) => request(`/api/assets/${kind}/${id}`, { method: "DELETE" }),
+    bulk: (kind, payload) => request(`/api/assets/${kind}/bulk`, { method: "POST", body: JSON.stringify(payload) }),
+  },
   // Fleet Admin -> Assets (assets.py)
   assets: {
     inventory: (opts) => request("/api/assets/inventory", opts),

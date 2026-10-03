@@ -219,7 +219,7 @@ export default function App() {
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
-    t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? "Fleet Admin" : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
+    t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : t === "attendance" ? "Attendance" : "Management View"}
         <BetaTag />

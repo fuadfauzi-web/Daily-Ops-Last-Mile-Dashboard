@@ -190,6 +190,14 @@ export const CHANGELOG = [
     ],
   },
   {
+    date: "2026-10-04",
+    title: "Fleet Admin: Fire extinguisher and Weighing scale categories in Assets, and the tab is marked Beta (staging only)",
+    points: [
+      "Assets has two more categories next to Station inventory. Fire extinguisher: each station's extinguishers with quantity, serial numbers, vendor, PIC and the expiry date. Weighing scale: manufacturer, last calibrated and expiry date, reference and serial numbers, calibrated by, certificate. Chips for Expired / Due within 90 days / No date; the Fleet Admin team adds, edits, removes or pastes rows from the sheets.",
+      "The Fleet Admin tab now carries a Beta tag (and a note that it is not live yet), so station and region staff know it is still being set up.",
+    ],
+  },
+  {
     date: "2026-10-03",
     title: "Fleet Admin: Vehicles and Assets (station inventory) tabs (staging only)",
     type: "new",
