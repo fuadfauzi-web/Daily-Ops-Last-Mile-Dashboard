@@ -131,6 +131,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-03",
+    title: "Fleet Admin: Vehicles and Assets (station inventory) tabs (staging only)",
+    points: [
+      "Vehicles: the Master Vehicle Inventory in the app, one record per plate with its station, type, owner, driver, GDL and licence expiry (days left, with chips for expired / within 90 days) and the fuel and Touch 'n Go card numbers (last 4 digits shown until you tick Show card numbers). The Fleet Admin team adds, edits and removes vehicles or pastes rows from the sheet.",
+      "Assets: one tab for all asset lists, by category. Station inventory is first: each station's items with good and damaged counts (41 stations loaded from the zone workbooks; the rest start from the standard list), by station or added up by item.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Headcount seats can cover two zones, and one form for every role (staging only)",
     points: [
       "Add headcount now has one Role list (Station Head, Fleet Assistant, Region Head, RFS, Fleet Admin) and a Location picker: station(s), zone(s) or HQ. An RFS who looks after South 1 and South 2 is one seat that shows in both zone rows, while the cards count it once.",

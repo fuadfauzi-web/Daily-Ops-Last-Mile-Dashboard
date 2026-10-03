@@ -408,7 +408,7 @@ const SECTIONS = [
   },
   {
     id: "fleetadmin",
-    title: "Fleet Admin: Premises",
+    title: "Fleet Admin: Premises, Vehicles, Assets",
     show: ({ rank }) => rank >= 2,
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
@@ -422,7 +422,8 @@ const SECTIONS = [
             <><strong>Chips on top</strong> -- Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days, Dates missing. Click one to see just those stations. The days left are worked out from the dates, so there is no "Expires In" column to keep right.</>,
             <><strong>Edit</strong> a station to change any field (leave a field empty to clear it). Document links must start with http:// or https://; put one tenancy document link per line.</>,
             <><strong>Paste from sheet</strong> -- copy rows of the Fleet Management sheet's Address tab with the heading row and paste them in. A preview shows what will be saved and why a row is skipped (station not recognised, a date that can't be read). Only cells with something in them are saved: a blank, TBA or N/A never wipes what is already in the app.</>,
-            <>Vehicles and Assets will follow in this tab.</>,
+            <><strong>Vehicles</strong> -- every van and truck from the Master Vehicle Inventory: plate, station, type, owner, driver, the driver's GDL and licence expiry (with the days left), and the fuel and Touch 'n Go cards. Card numbers show only their last 4 digits until you tick <em>Show card numbers</em>. Chips for Licence / GDL expired or within 90 days and No driver; filter by region, state, status, function or owner. The Fleet Admin team adds, edits and removes vehicles, or pastes rows from the sheet's Master tab.</>,
+            <><strong>Assets</strong> -- all asset lists in one tab, by category. <em>Station inventory</em> is first: for each station, every item it should have (laptops, scanners, cages, baskets, fans, fire extinguishers ...) with how many are good and how many damaged, grouped (IT &amp; devices, Handling, Furniture &amp; fittings, Cooling &amp; water, Safety &amp; health, Cash &amp; weighing). Open a station to change its counts, add an item, remove one, or paste its tab from the sheet; a station with no inventory yet starts from the standard list. <em>By item</em> adds each item up across the region / zone you pick. Fire extinguisher and weighing scale lists will come as more categories.</>,
           ]}
         />
       </div>

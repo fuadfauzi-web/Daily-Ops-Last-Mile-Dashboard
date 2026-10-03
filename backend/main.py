@@ -42,6 +42,7 @@ import work_schedule as schedule_mod
 import headcount
 import premises
 import vehicles
+import assets
 import staff
 import recovery_cases
 import recovery_lost
@@ -735,6 +736,7 @@ app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
 app.include_router(vehicles.router)  # Fleet Admin -> Vehicles: the Master Vehicle Inventory per plate (vehicles.py)
+app.include_router(assets.router)  # Fleet Admin -> Assets: station inventory by category (assets.py)
 app.include_router(region_list.router)  # Admin: the station list from the Region List sheet (region_list.py)
 app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)
 app.include_router(kpi_cisp_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
