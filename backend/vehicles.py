@@ -1,7 +1,7 @@
 """Vehicles (2026-10-03, staging): the Master Vehicle Inventory -- one record per plate with its station, type, owner, driver, licence dates and the fuel / toll card
 numbers -- kept by the Fleet Admin team in the app (Fleet Admin -> Vehicles) instead of the Google Sheet (V69 loaded it).
 
-HQ staff and above can read it; only the Fleet Admin team and the Superadmin edit. The tab hides card numbers until someone asks to see them.
+HQ staff and above can read it; only the Fleet Admin role edits. The tab hides card numbers until someone asks to see them.
 """
 import re
 from datetime import date, datetime, timezone
@@ -38,7 +38,7 @@ def _can_view(user: CurrentUser) -> bool:
 
 
 def _can_edit(user: CurrentUser) -> bool:
-    return user.role == "admin" or user.position == "fleet_admin"
+    return user.position == "fleet_admin"  # only the Fleet Admin role edits this module for now (not even the Superadmin; Role Tester -> Fleet Admin to try it)
 
 
 def _require_editor(user: CurrentUser) -> None:

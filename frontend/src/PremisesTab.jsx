@@ -191,9 +191,9 @@ export default function PremisesTab() {
         <span className="text-xs text-slate-400">{rows.length} of {all.length} stations</span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs text-slate-500">
+          <thead className="text-xs text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_0_#e2e8f0]">
             <tr>
               <th className="px-3 py-2 font-medium">Station</th>
               <th className="px-3 py-2 font-medium">Address</th>

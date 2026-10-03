@@ -2,7 +2,7 @@
 for every station, each item it should have -- laptops, scanners, cages, baskets, fans, fire extinguishers ... -- with how many are good and how many damaged,
 and a remark (V70 loaded it from the zone workbooks in the Fleet Inventory Drive folder). More categories (fire extinguisher renewals, weighing scales ...) follow.
 
-HQ staff and above can read; only the Fleet Admin team and the Superadmin edit. A station that has no inventory yet starts from the standard item list.
+HQ staff and above can read; only the Fleet Admin role edits. A station that has no inventory yet starts from the standard item list.
 """
 import re
 from datetime import datetime, timezone
@@ -41,7 +41,7 @@ def _can_view(user: CurrentUser) -> bool:
 
 
 def _can_edit(user: CurrentUser) -> bool:
-    return user.role == "admin" or user.position == "fleet_admin"
+    return user.position == "fleet_admin"  # only the Fleet Admin role edits this module for now (not even the Superadmin; Role Tester -> Fleet Admin to try it)
 
 
 def _require_editor(user: CurrentUser) -> None:

@@ -3089,7 +3089,7 @@
     },
     "/api/premises/{station}": {
       "put": {
-        "summary": "Create or change one station's premises record; only the fields sent are changed and an empty value clears a field. Fleet Admin team and Superadmin only.",
+        "summary": "Create or change one station's premises record; only the fields sent are changed and an empty value clears a field. Fleet Admin role only.",
         "operationId": "save_premises_api_premises__station__put",
         "parameters": [
           {
@@ -3139,7 +3139,7 @@
     },
     "/api/premises/bulk": {
       "post": {
-        "summary": "Paste-in of many stations at once for Fleet Admin -> Premises: each row is saved (only the fields it has), one bad row never stops the others; returns added / updated / error per row. Fleet Admin team and Superadmin only.",
+        "summary": "Paste-in of many stations at once for Fleet Admin -> Premises: each row is saved (only the fields it has), one bad row never stops the others; returns added / updated / error per row. Fleet Admin role only.",
         "description": "Paste-in of many stations at once (the tab parses the pasted sheet rows). A bad row never stops the others; fields a row leaves out\nare left as they are.",
         "operationId": "bulk_premises_api_premises_bulk_post",
         "requestBody": {
@@ -3534,7 +3534,7 @@
     },
     "/api/vehicles/{plate}": {
       "put": {
-        "summary": "Create or change one vehicle; only the fields sent are changed and an empty value clears a field. Fleet Admin team and Superadmin only.",
+        "summary": "Create or change one vehicle; only the fields sent are changed and an empty value clears a field. Fleet Admin role only.",
         "description": "Change one vehicle, or add it when the plate is new.",
         "operationId": "save_vehicle_api_vehicles__plate__put",
         "parameters": [
@@ -3583,7 +3583,7 @@
         ]
       },
       "delete": {
-        "summary": "Remove a vehicle from the list (it has left the fleet). Fleet Admin team and Superadmin only.",
+        "summary": "Remove a vehicle from the list (it has left the fleet). Fleet Admin role only.",
         "operationId": "delete_vehicle_api_vehicles__plate__delete",
         "parameters": [
           {
@@ -3623,7 +3623,7 @@
     },
     "/api/vehicles/bulk": {
       "post": {
-        "summary": "Paste-in of many vehicles at once for Fleet Admin -> Vehicles: each row is saved (only the fields it has), one bad row never stops the others. Fleet Admin team and Superadmin only.",
+        "summary": "Paste-in of many vehicles at once for Fleet Admin -> Vehicles: each row is saved (only the fields it has), one bad row never stops the others. Fleet Admin role only.",
         "description": "Paste-in of many vehicles at once (the tab parses the pasted sheet rows). A bad row never stops the others; a field a row leaves out is left as it is.",
         "operationId": "bulk_vehicles_api_vehicles_bulk_post",
         "requestBody": {
@@ -3692,7 +3692,7 @@
     },
     "/api/assets/inventory/{station}": {
       "put": {
-        "summary": "Add or change items of one station's inventory, or replace its whole list (replace=true). Fleet Admin team and Superadmin only.",
+        "summary": "Add or change items of one station's inventory, or replace its whole list (replace=true). Fleet Admin role only.",
         "description": "Add / change items of one station (or replace its whole list). An item that exists is updated with what is sent; a new one is added.",
         "operationId": "save_inventory_api_assets_inventory__station__put",
         "parameters": [
@@ -3741,7 +3741,7 @@
         ]
       },
       "delete": {
-        "summary": "Remove one item (query parameter item) from a station's inventory. Fleet Admin team and Superadmin only.",
+        "summary": "Remove one item (query parameter item) from a station's inventory. Fleet Admin role only.",
         "description": "Remove one item from a station's list (the item name is a query parameter: some contain a slash).",
         "operationId": "delete_item_api_assets_inventory__station__delete",
         "parameters": [

@@ -167,7 +167,7 @@ export const CHANGELOG = [
     title: "New: Fleet Admin tab with Premises (staging only) -- licence and tenancy dates per station, edited in the app",
     points: [
       "One record per station: address, size, launch date, business licence and tenancy dates (with the days left worked out), rent, deposit and links to the documents. Loaded from the Fleet Management sheet's Address tab; from now on the Fleet Admin team edits it here instead of the sheet.",
-      "Chips for Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days and Dates missing, plus Region / Zone filters and search. HQ staff and above can read it; only the Fleet Admin team and the Superadmin edit. You can also paste rows from the sheet.",
+      "Chips for Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days and Dates missing, plus Region / Zone filters and search. HQ staff and above can read it; only the Fleet Admin role edits. You can also paste rows from the sheet.",
     ],
   },
   {

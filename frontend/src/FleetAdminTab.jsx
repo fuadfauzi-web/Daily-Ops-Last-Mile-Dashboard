@@ -4,7 +4,7 @@ import VehiclesTab from "./VehiclesTab";
 import AssetsTab from "./AssetsTab";
 
 // "Fleet Admin" (2026-10-02, staging): the Fleet Admin team's own working area -- the lists they used to keep in Google Sheets, now kept here. Premises first;
-// Vehicles and Assets follow. HQ staff and above can read it; the Fleet Admin team and the Superadmin edit. (Staff & Org Chart has its own tab.)
+// Vehicles and Assets follow. HQ staff and above can read it; only the Fleet Admin role edits. (Staff & Org Chart has its own tab.)
 const SECTIONS = [
   { key: "premises", label: "Premises", Component: PremisesTab },
   { key: "vehicles", label: "Vehicles", Component: VehiclesTab },

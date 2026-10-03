@@ -1,7 +1,7 @@
 """Premises (2026-10-02, staging): one record per station -- address, size, launch date, business licence and tenancy dates, rent, deposit and
 the document links -- kept by the Fleet Admin team in the app instead of the 'Address' tab of the MY - Fleet Management sheet (V57 loaded it).
 
-HQ staff and above can read it (rent and deposit are commercial figures); only the Fleet Admin team and the Superadmin edit. The days left on the
+HQ staff and above can read it (rent and deposit are commercial figures); only the Fleet Admin role edits. The days left on the
 licence and tenancy are worked out here from the dates, so nobody has to keep an "Expires In" column right.
 """
 import re
@@ -32,7 +32,7 @@ def _can_view(user: CurrentUser) -> bool:
 
 
 def _can_edit(user: CurrentUser) -> bool:
-    return user.role == "admin" or user.position == "fleet_admin"
+    return user.position == "fleet_admin"  # only the Fleet Admin role edits this module for now (not even the Superadmin; Role Tester -> Fleet Admin to try it)
 
 
 def _require_editor(user: CurrentUser) -> None:
