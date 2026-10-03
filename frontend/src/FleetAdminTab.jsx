@@ -1,9 +1,13 @@
 import { useState } from "react";
 import PremisesTab from "./PremisesTab";
+import VehiclesTab from "./VehiclesTab";
 
 // "Fleet Admin" (2026-10-02, staging): the Fleet Admin team's own working area -- the lists they used to keep in Google Sheets, now kept here. Premises first;
 // Vehicles and Assets follow. HQ staff and above can read it; the Fleet Admin team and the Superadmin edit. (Staff & Org Chart has its own tab.)
-const SECTIONS = [{ key: "premises", label: "Premises", Component: PremisesTab }];
+const SECTIONS = [
+  { key: "premises", label: "Premises", Component: PremisesTab },
+  { key: "vehicles", label: "Vehicles", Component: VehiclesTab },
+];
 
 export default function FleetAdminTab({ me }) {
   const [section, setSection] = useState(SECTIONS[0].key);

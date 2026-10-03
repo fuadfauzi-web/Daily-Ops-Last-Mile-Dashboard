@@ -115,6 +115,13 @@ export const api = {
     reject: (id) => request(`/api/headcount/seats/${id}/reject`, { method: "POST" }),
   },
   // Staff & Org Chart (staff.py): the Fleet Admin team's list of who is posted where -- separate from access (users above).
+  // Fleet Admin -> Vehicles (vehicles.py)
+  vehicles: {
+    list: (opts) => request("/api/vehicles", opts),
+    save: (plate, payload) => request(`/api/vehicles/${encodeURIComponent(plate)}`, { method: "PUT", body: JSON.stringify(payload) }),
+    remove: (plate) => request(`/api/vehicles/${encodeURIComponent(plate)}`, { method: "DELETE" }),
+    bulk: (payload) => request("/api/vehicles/bulk", { method: "POST", body: JSON.stringify(payload) }),
+  },
   // Fleet Admin -> Premises (premises.py)
   premises: {
     list: (opts) => request("/api/premises", opts),

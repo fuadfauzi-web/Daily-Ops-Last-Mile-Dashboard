@@ -31,7 +31,7 @@ const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8,
 
 // 31/01/2027, 2027-01-31, 31-Jan-2027 -> 2027-01-31 (null when it is not a real date)
 export function parseDate(text) {
-  const s = clean(text);
+  const s = clean(text).replace(/\s*-\s*/g, "-"); // "21- Sep-2026" as typed in the sheet
   let y, m, d;
   let hit = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
   if (hit) {
