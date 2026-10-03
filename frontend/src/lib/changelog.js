@@ -140,6 +140,14 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-03",
+    title: "Headcount is only for the Manager, the HOD and the Fleet Admin role -- and follows scope (staging only)",
+    points: [
+      "Only the Manager, the HOD and the Fleet Admin role (and the Superadmin) see Headcount, and the vacant seats in the Staff list and org chart. OPEX, Recovery, Restock and any other HQ role added later do not.",
+      "The HOD and the Fleet Admin role see every station, zone and the HQ table; a Manager posted to a region, zone or station sees only that part (tables, seats and totals) and can add or remove seats only there.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Fleet Admin: Vehicles and Assets (station inventory) tabs (staging only)",
     points: [
       "Vehicles: the Master Vehicle Inventory in the app, one record per plate with its station, type, owner, driver, GDL and licence expiry (days left, with chips for expired / within 90 days) and the fuel and Touch 'n Go card numbers (last 4 digits shown until you tick Show card numbers). The Fleet Admin team adds, edits and removes vehicles or pastes rows from the sheet.",

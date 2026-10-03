@@ -116,7 +116,11 @@ function OrgChart({ chart, onEdit }) {
   );
 }
 
+// Headcount is for the Manager, the HOD and the Fleet Admin role (and the Superadmin); other HQ roles -- OPEX, Recovery, Restock ... -- do not see it.
+const HEADCOUNT_POSITIONS = ["hod", "manager", "fleet_admin"];
+
 export default function StaffDirectoryTab({ me }) {
+  const canSeeHeadcount = me?.role === "admin" || HEADCOUNT_POSITIONS.includes(me?.position);
   const [view, setView] = useState("list");
   const [chart, setChart] = useState(null);
   const [people, setPeople] = useState(null);
@@ -241,7 +245,7 @@ export default function StaffDirectoryTab({ me }) {
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-          {[["list", "Staff list"], ["chart", "Org chart"], ["headcount", "Headcount"]].map(([k, label]) => (
+          {[["list", "Staff list"], ["chart", "Org chart"], ...(canSeeHeadcount ? [["headcount", "Headcount"]] : [])].map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "text-slate-500"}`}>
               {label}
             </button>
@@ -252,7 +256,7 @@ export default function StaffDirectoryTab({ me }) {
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-status-critical">{error}</div>}
       {!chart && !error && <div className="text-sm text-slate-400">Loading…</div>}
 
-      {view === "headcount" && <HeadcountView />}
+      {view === "headcount" && canSeeHeadcount && <HeadcountView />}
 
       {chart && view === "chart" && <OrgChart chart={chart} onEdit={canEdit ? startEdit : null} />}
 

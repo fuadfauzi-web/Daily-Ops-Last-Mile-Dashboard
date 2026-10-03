@@ -155,7 +155,7 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
             "last_seen_at": str(r[7]) if r[7] else None,
             "phone": r[8] or "", "employee_id": r[9] or "",
         })
-    return {"people": out, "vacant": await headcount.vacant_seats(), "can_edit": _can_edit(user)}
+    return {"people": out, "vacant": await headcount.vacant_seats(user), "can_edit": _can_edit(user)}
 
 
 async def _insert(payload: StaffIn, email: str, actor: CurrentUser) -> None:
@@ -314,7 +314,10 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
         "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name FROM users ORDER BY display_name, email"
     )
     tba: dict[tuple[str, str], int] = {}  # approved TBA seats by (station, designation) -- see headcount.py
-    for seat in await headcount._seats("WHERE status = 'approved'"):
+    allowed = headcount.allowed_places(user)
+    for seat in (await headcount._seats("WHERE status = 'approved'")) if headcount.can_see(user) else []:
+        if not headcount._in_scope(seat["places"], allowed):
+            continue
         for place in seat["places"]:  # a seat that covers two zones shows in both
             tba[(place, seat["designation"])] = tba.get((place, seat["designation"]), 0) + 1
     hq, by_region, by_zone, by_station = [], {}, {}, {}

@@ -15,7 +15,7 @@ const DESIGNATIONS = [
   ["fleet_admin", "Fleet Admin", "hq"],
 ];
 const KIND_OF = Object.fromEntries(DESIGNATIONS.map(([k, , kind]) => [k, kind]));
-const SECTIONS = [["stations", "Stations", "Station Head · Fleet Assistant"], ["zones", "Zones", "Region Head · RFS"], ["hq", "HQ", "Fleet Admin"]];
+const ALL_SECTIONS = [["stations", "Stations", "Station Head · Fleet Assistant"], ["zones", "Zones", "Region Head · RFS"], ["hq", "HQ", "Fleet Admin"]];
 const KIND_FOR_SECTION = { stations: "station", zones: "zone", hq: "hq" };
 
 const vacantText = (c) => (c.tba + c.pending > 0 ? c.tba + (c.pending ? ` (+${c.pending} pending)` : "") : 0);
@@ -144,7 +144,7 @@ export default function HeadcountView() {
   return (
     <div className="space-y-4">
       <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold sm:w-fit">
-        {SECTIONS.map(([key, label, sub]) => (
+        {ALL_SECTIONS.filter(([key]) => key !== "hq" || data.hq).map(([key, label, sub]) => (
           <button key={key} onClick={() => switchSection(key)} className={`px-4 py-1.5 text-left ${section === key ? "bg-ink text-white" : "text-slate-500"}`}>
             {label} <span className={`ml-1 font-normal ${section === key ? "text-slate-300" : "text-slate-400"}`}>{sub}</span>
           </button>
@@ -170,7 +170,7 @@ export default function HeadcountView() {
       {data.can_change && (
         <form onSubmit={submit} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-5">
           <select value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value, places: KIND_OF[e.target.value] === KIND_OF[form.designation] ? form.places : [] })} className={input} aria-label="Role">
-            {DESIGNATIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {DESIGNATIONS.filter(([v]) => v !== "fleet_admin" || data.hq).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           {formKind === "hq" ? (
             <div className={`${input} bg-slate-50 text-slate-500`}>HQ (the Fleet Admin team)</div>
