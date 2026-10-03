@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
 
 // Grouped left sidebar (staging trial, FEATURES.sidebarNav). `items` is already filtered to what this person may open:
@@ -6,6 +6,11 @@ import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
 export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef(null);
+  // Categories fold like the top tabs do: one open at a time, click an open one to close it, and the one holding the current page opens by itself
+  // whenever the page changes. Searching shows every match regardless, and the narrow (collapsed) sidebar keeps every page code visible.
+  const activeGroup = items.find((i) => i.active)?.group ?? null;
+  const [open, setOpen] = useState(activeGroup);
+  useEffect(() => setOpen(activeGroup), [activeGroup]);
   const q = query.trim().toLowerCase();
   const shown = q ? items.filter((i) => `${i.label} ${i.group}`.toLowerCase().includes(q)) : items;
   const searchIcon = (
@@ -71,14 +76,32 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
           if (!inGroup.length) return null;
           return (
             <div key={g}>
-              {!collapsed && (
-                <div className="flex items-center gap-1.5 px-2.5 pb-1 font-display text-[10px] font-bold uppercase tracking-wider text-subtle">
-                  <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
-                  {g}
-                </div>
-              )}
+              {!collapsed &&
+                (q ? (
+                  <div className="flex items-center gap-1.5 px-2.5 pb-1 font-display text-[10px] font-bold uppercase tracking-wider text-subtle">
+                    <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
+                    {g}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setOpen(open === g ? null : g)}
+                    aria-expanded={open === g}
+                    className="flex min-h-[36px] w-full items-center gap-1.5 rounded-lg px-2.5 font-display text-[11px] font-bold uppercase tracking-wider text-subtle hover:bg-canvas"
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
+                    <span className="flex-1 text-left">{g}</span>
+                    {open !== g && g === activeGroup && <span className="h-1.5 w-1.5 rounded-full bg-brand" title="Current page is in here" />}
+                    {open !== g && inGroup.reduce((n, i) => n + (i.badge || 0), 0) > 0 && (
+                      <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-bold leading-none text-white">
+                        {inGroup.reduce((n, i) => n + (i.badge || 0), 0)}
+                      </span>
+                    )}
+                    <span className="text-[10px]">{open === g ? "▾" : "▸"}</span>
+                  </button>
+                ))}
               {collapsed && <div className="mx-2 mb-1 border-t border-line first:hidden" />}
-              {inGroup.map((i) => (
+              {(collapsed || q || open === g) && inGroup.map((i) => (
                 <button
                   key={i.id}
                   type="button"

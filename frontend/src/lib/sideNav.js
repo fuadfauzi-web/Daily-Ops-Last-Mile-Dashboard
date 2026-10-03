@@ -32,7 +32,7 @@ export const SIDE_ITEMS = [
   { id: "management", group: "Analyse", label: "Management View", beta: true, code: "MV" },
   { id: "attendance", group: "People", label: "Attendance", beta: true, code: "AT" },
   { id: "staff", group: "People", label: "Staff & Org Chart", code: "SO" },
-  { id: "fleetadmin", group: "System", label: "Fleet Admin", code: "FA" },
+  { id: "fleetadmin", group: "People", label: "Fleet Admin", code: "FA" },
   { id: "settings", group: "System", label: "Settings", code: "ST" },
   { id: "admin", group: "System", label: "Superadmin", code: "SA" },
 ];
