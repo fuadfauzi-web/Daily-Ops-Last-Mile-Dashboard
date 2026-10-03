@@ -140,9 +140,17 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-03",
+    title: "Org chart as a picture; Staff list and org chart open to every role (staging only)",
+    points: [
+      "The Org chart is now a picture: HQ on top, the regions under it with their managers, click a region to open its zones (Region Head / RFS) and a zone to see its stations with their Station Head and Fleet Assistants. Vacant seats show as dashed boxes, a station with no Station Head in red. A Details list view is still there.",
+      "Every role can read the Staff list and the org chart (who is posted where, a mobile number, vacant seats); employee ID and what each person can access stay with HQ roles, and only the Fleet Admin role edits. Staging test accounts no longer show in either.",
+    ],
+  },
+  {
+    date: "2026-10-03",
     title: "Headcount is only for the Manager, the HOD and the Fleet Admin role -- and follows scope (staging only)",
     points: [
-      "Only the Manager, the HOD and the Fleet Admin role (and the Superadmin) see Headcount, and the vacant seats in the Staff list and org chart. OPEX, Recovery, Restock and any other HQ role added later do not.",
+      "Only the Manager, the HOD and the Fleet Admin role (and the Superadmin) see the Headcount tables. OPEX, Recovery, Restock and any other HQ role added later do not (the Staff list and org chart, with their vacant seats, stay open to every role). The Fleet Admin role views headcount only; the HOD and Manager add and remove seats.",
       "The HOD and the Fleet Admin role see every station, zone and the HQ table; a Manager posted to a region, zone or station sees only that part (tables, seats and totals) and can add or remove seats only there.",
     ],
   },

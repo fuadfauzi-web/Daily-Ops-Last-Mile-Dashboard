@@ -192,7 +192,7 @@ export default function App() {
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
   const canSeeManagementView = FEATURES.managementView && (me.role === "manager" || me.role === "admin");
   // The Fleet Admin team's own tab (2026-10-02, staging): keeps the staff list and org chart. Admin and managers can open it too.
-  const canSeeStaff = me.position === "fleet_admin" || me.role === "admin" || me.role === "manager";
+  const canSeeStaff = true; // the Staff list and org chart are for everyone signed in (2026-10-03); only the Fleet Admin role edits
   // Fleet Admin (2026-10-02, staging): the lists the Fleet Admin team keeps (premises first). HQ staff and above can read; only the Fleet Admin team edits.
   const canSeeFleetAdmin = ["admin", "manager", "hq_staff"].includes(me.role);
   const navTabs = [

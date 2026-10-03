@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import HeadcountView from "./HeadcountView";
+import OrgChartVisual from "./OrgChartVisual";
 import StaffImport from "./StaffImport";
 import MultiSelect from "./components/MultiSelect";
 import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
@@ -122,9 +123,11 @@ const HEADCOUNT_POSITIONS = ["hod", "manager", "fleet_admin"];
 export default function StaffDirectoryTab({ me }) {
   const canSeeHeadcount = me?.role === "admin" || HEADCOUNT_POSITIONS.includes(me?.position);
   const [view, setView] = useState("list");
+  const [chartMode, setChartMode] = useState("visual"); // the org chart as a picture (default) or the details list
   const [chart, setChart] = useState(null);
   const [people, setPeople] = useState(null);
   const [vacant, setVacant] = useState([]);
+  const [hqView, setHqView] = useState(false); // HQ tiers also see employee ID and access; everyone else sees who is posted where + a phone number
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -138,7 +141,7 @@ export default function StaffDirectoryTab({ me }) {
 
   const load = () => {
     api.orgChart().then(setChart).catch((e) => setError(e.message));
-    api.staff.list().then((r) => { setPeople(r.people); setVacant(r.vacant || []); }).catch(() => setPeople([]));
+    api.staff.list().then((r) => { setPeople(r.people); setVacant(r.vacant || []); setHqView(!!r.hq_view); }).catch(() => setPeople([]));
   };
   useEffect(() => {
     load();
@@ -258,7 +261,16 @@ export default function StaffDirectoryTab({ me }) {
 
       {view === "headcount" && canSeeHeadcount && <HeadcountView />}
 
-      {chart && view === "chart" && <OrgChart chart={chart} onEdit={canEdit ? startEdit : null} />}
+      {chart && view === "chart" && (
+        <div className="space-y-3">
+          <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold sm:w-fit">
+            {[["visual", "Chart"], ["list", "Details list"]].map(([k, label]) => (
+              <button key={k} onClick={() => setChartMode(k)} className={`px-3 py-1 ${chartMode === k ? "bg-ink text-white" : "text-slate-500"}`}>{label}</button>
+            ))}
+          </div>
+          {chartMode === "visual" ? <OrgChartVisual chart={chart} onEdit={canEdit ? startEdit : null} /> : <OrgChart chart={chart} onEdit={canEdit ? startEdit : null} />}
+        </div>
+      )}
 
       {chart && view === "list" && (
         <>
@@ -342,8 +354,8 @@ export default function StaffDirectoryTab({ me }) {
                   <th className="px-3 py-2 font-medium">Position</th>
                   <th className="px-3 py-2 font-medium">Posted at</th>
                   <th className="px-3 py-2 font-medium">Mobile</th>
-                  <th className="px-3 py-2 font-medium">Employee ID</th>
-                  <th className="px-3 py-2 font-medium">Access</th>
+                  {hqView && <th className="px-3 py-2 font-medium">Employee ID</th>}
+                  {hqView && <th className="px-3 py-2 font-medium">Access</th>}
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
@@ -355,8 +367,8 @@ export default function StaffDirectoryTab({ me }) {
                     <td className="px-3 py-1.5">{v.label}</td>
                     <td className="px-3 py-1.5 text-slate-500">{v.station}</td>
                     <td className="px-3 py-1.5 text-slate-300">-</td>
-                    <td className="px-3 py-1.5 text-slate-300">-</td>
-                    <td className="px-3 py-1.5 text-xs text-slate-400">Counts in headcount</td>
+                    {hqView && <td className="px-3 py-1.5 text-slate-300">-</td>}
+                    {hqView && <td className="px-3 py-1.5 text-xs text-slate-400">Counts in headcount</td>}
                     <td className="whitespace-nowrap px-3 py-1.5 text-right">
                       {canEdit && <button onClick={() => startFill(v)} className="text-xs text-brand hover:underline">Add person</button>}
                     </td>
@@ -369,16 +381,18 @@ export default function StaffDirectoryTab({ me }) {
                     <td className="px-3 py-1.5">{positionLabel(u.position)}</td>
                     <td className="px-3 py-1.5 text-slate-500">{whereText(u.home)}</td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{u.phone}</td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{u.employee_id}</td>
-                    <td className="px-3 py-1.5 text-xs">
-                      {u.custom_access ? (
-                        <span title="Set by hand in Settings -> Users, e.g. covering another station or region" className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
-                          Custom: {whereText(u.access)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">Same as posting</span>
-                      )}
-                    </td>
+                    {hqView && <td className="whitespace-nowrap px-3 py-1.5 text-slate-500">{u.employee_id}</td>}
+                    {hqView && (
+                      <td className="px-3 py-1.5 text-xs">
+                        {u.custom_access ? (
+                          <span title="Set by hand in Settings -> Users, e.g. covering another station or region" className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
+                            Custom: {whereText(u.access)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Same as posting</span>
+                        )}
+                      </td>
+                    )}
                     <td className="whitespace-nowrap px-3 py-1.5 text-right">
                       {canEdit && (
                         <>
