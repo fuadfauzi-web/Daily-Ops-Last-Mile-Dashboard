@@ -228,7 +228,7 @@ export default function FollowUpTab({ me, refreshTick }) {
           </label>
           <label className="block text-xs text-slate-500">
             Assign a PIC (optional) — they help reply or remind you
-            <PicInput className="mt-1" placeholder="Start typing a name or email…" value={form.helper} onChange={set("helper")} />
+            <PicInput className="mt-1" placeholder="Type a name, email or station…" value={form.helper} onChange={set("helper")} />
           </label>
         </div>
         <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Note (optional)" value={form.note} onChange={(e) => set("note")(e.target.value)} maxLength={1000} />

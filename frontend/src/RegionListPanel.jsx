@@ -3,7 +3,7 @@ import { api } from "./api";
 import { formatTime } from "./lib/format";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 
-// Admin -> Documents -> Station list: where the app gets its station list (hub code, station, zone, region). It follows the Fleet Manager's Region List sheet, so a
+// Superadmin -> Documents -> Station list: where the app gets its station list (hub code, station, zone, region). It follows the Fleet Manager's Region List sheet, so a
 // station opening or closing needs no code change. Three sources, in this order: the sheet's published CSV link (read every hour), the file uploaded here, and the
 // snapshot built into the app (backend/stations.py) -- see backend/region_list.py.
 const SOURCE_TEXT = {

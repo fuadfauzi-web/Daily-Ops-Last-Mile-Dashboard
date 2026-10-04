@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-// KPI targets per region (Admin -> KPI Settings sets them; backend/kpi_targets.py holds the defaults). Loaded once and shared, so a page
+// KPI targets per region (Superadmin -> KPI Settings sets them; backend/kpi_targets.py holds the defaults). Loaded once and shared, so a page
 // that judges a number against its target reads it here instead of hard-coding it. setKpiTargets() refreshes every page that uses it.
 let current = null; // the last /api/kpi/targets response
 let inflight = null;

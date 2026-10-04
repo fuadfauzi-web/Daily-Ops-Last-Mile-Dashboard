@@ -10,7 +10,7 @@ export const ROUTED_NOTES = {
   current_success: "Parcels successfully delivered on this route so far today.",
   cod_pct: "% of this route's parcels that are COD.",
   success_rate: "Current Success ÷ Total Routed.",
-  productivity_pct: "Same number as Success Rate, shown as a plain figure instead of a %. Scored per driver position (Hybrid/Independent) in Admin -> SLA Targets, not per region.",
+  productivity_pct: "Same number as Success Rate, shown as a plain figure instead of a %. Scored per driver position (Hybrid/Independent) in Superadmin -> SLA Targets, not per region.",
   completion_rate: "(Total Routed − Current OVFD) ÷ Total Routed -- 100% means nothing is left on the vehicle. Action: chase whichever driver/rider is below 100%.",
   hybrid_total: "Hybrid Driver/Rider attendance headcount (HD/HR).",
   independent_total: "Independent Driver/Rider attendance headcount (ID/IR).",

@@ -6,6 +6,7 @@ import { formatTime } from "../lib/format";
 import KpiUploadPanel from "./KpiUploadPanel";
 import { int, selectClass } from "./fmt";
 import { Cards, DailyGrid, Panel, PeriodControls, SortTable, TabsBar, TrendPanel, useApi } from "./rcaUi";
+import { rankOf } from "../lib/roles";
 
 // CISP KPIs -- Prior, Completion D0 / D3, Terminal T7, FIFO D0 (staging + production, Beta).
 // The OPEX dashboard's result is the OFFICIAL number: this page shows it (from the uploaded OPEX file) next to the analysis, which is built from small
@@ -147,7 +148,7 @@ function DayByDay({ data, kpi, label, periodLabel, hub, setHub, onlyMissed, setO
 
 export default function CispKpi({ me, kpi }) {
   const canUpload = me.role === "admin";
-  const rank = { station: 0, region: 1, manager: 2, admin: 3 }[me.role] ?? 0;
+  const rank = rankOf(me);
   const [tab, setTab] = useState("overview");
   const [view, setView] = useState("weekly");
   const [period, setPeriod] = useState(null); // null = the view's default (the newest complete week / month, the current month for Daily)

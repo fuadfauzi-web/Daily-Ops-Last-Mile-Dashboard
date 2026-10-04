@@ -10,6 +10,8 @@ import RegionListPanel from "./RegionListPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
+import LaunchTimelinePanel from "./LaunchTimelinePanel";
+import { GROUPS, POSITIONS, canManagePosition, isHqTier } from "./lib/roles";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
@@ -21,13 +23,14 @@ const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Prod
 // just with a driver position label as the scope string instead of a region name.
 const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
-const emptyForm = { email: "", role: "station", scope_type: "station", scope_values: [] };
-const ROLE_LABELS = { station: "Station staff", region: "Region staff", manager: "Manager", admin: "Admin" };
-const ROLE_OPTION_ORDER = ["station", "region", "manager", "admin"];
+const emptyForm = { email: "", role: "fleet_assistant", scope_type: "station", scope_values: [] };
+// Roles are job positions (lib/roles.js): HQ staff, Region staff, Station staff. The old 'region' / 'station' titles are still
+// shown for people who have none yet, but no longer offered.
+const ROLE_LABELS = Object.fromEntries(Object.entries(POSITIONS).map(([k, v]) => [k, v.label]));
 // "Sees: a station/zone/region" -- can be granted more than one, see the
-// multi-select in the add/edit form below.
-const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything" };
-const SCOPE_OPTION_ORDER = ["station", "zone", "region", "all"];
+// multi-select in the add/edit form below. "HQ" is for HQ staff, who have no dedicated region / zone / station.
+const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything", hq: "HQ (no region / zone / station)" };
+const SCOPE_OPTION_ORDER = ["station", "zone", "region", "hq", "all"];
 
 // Only the app owner can grant the Admin role -- mirrors backend/main.py's
 // _OWNER_EMAIL/_require_can_grant_role exactly. An admin who isn't the owner
@@ -38,40 +41,37 @@ const OWNER_EMAIL = "fuad.mawardi@ninjavan.co";
 // _validate_grant_limits exactly, so the dropdowns/template never offer
 // something the server would reject.
 function allowedRoles(me) {
-  if (me.role === "manager") return ["station", "region"];
-  if (me.role === "region") return ["station"];
-  // admin
-  return me.email === OWNER_EMAIL ? ROLE_OPTION_ORDER : ROLE_OPTION_ORDER.filter((r) => r !== "admin");
+  const all = GROUPS.flatMap((g) => g.positions);
+  // The Superadmin role itself is only ever granted by the owner.
+  return all.filter((p) => canManagePosition(me, p) && (p !== "admin" || me.email === OWNER_EMAIL));
 }
 function allowedScopeTypes(actingRole) {
-  if (actingRole === "manager") return ["station", "zone", "region"];
+  if (actingRole === "manager") return ["station", "zone", "region", "hq"];
   if (actingRole === "region") return ["station"];
   return SCOPE_OPTION_ORDER; // admin
 }
 
 // Edit/delete permission on an existing user -- mirrors backend/main.py's
-// _require_can_manage_target exactly (keyed off the TARGET's current role).
-function canManageTarget(actingRole, targetRole) {
-  if (actingRole === "admin") return true;
-  if (actingRole === "manager") return targetRole === "station" || targetRole === "region";
-  if (actingRole === "region") return targetRole === "station";
-  return false;
+// _require_can_manage_target exactly (keyed off the TARGET's current position's tier).
+function canManageTarget(me, targetRole) {
+  return canManagePosition(me, targetRole);
 }
 
 // scope_values within one CSV cell is semicolon-separated, e.g. "Southern;Northern".
 function bulkTemplateFor(me) {
   const lines = ["email,role,scope_type,scope_values"];
   if (me.role === "region") {
-    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,station,station,Segambut;Larkin");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,station_head,station,Segambut;Larkin");
   } else if (me.role === "manager") {
-    lines.push("name1@ninjavan.co,station,station,Larkin", "name2@ninjavan.co,region,region,Southern;Northern");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,rfs,zone,South 1", "name3@ninjavan.co,region_head,region,Southern;Northern", "name4@ninjavan.co,opex,hq,");
   } else {
     lines.push(
-      "name1@ninjavan.co,station,station,Larkin",
-      "name2@ninjavan.co,region,region,Southern;Northern",
-      "name3@ninjavan.co,manager,zone,South 1"
+      "name1@ninjavan.co,fleet_assistant,station,Larkin",
+      "name2@ninjavan.co,rfs,zone,South 1",
+      "name3@ninjavan.co,region_head,region,Southern;Northern",
+      "name4@ninjavan.co,opex,hq,"
     );
-    if (me.email === OWNER_EMAIL) lines.push("name4@ninjavan.co,admin,all,");
+    if (me.email === OWNER_EMAIL) lines.push("name5@ninjavan.co,admin,all,");
   }
   return lines.join("\n");
 }
@@ -105,12 +105,12 @@ function parseBulkRows(text) {
   return lines.map((line) => {
     const [email, role, scope_type, scopeValuesCell] = line.split(",").map((p) => (p ?? "").trim());
     const scope_values =
-      !scope_type || scope_type === "all"
+      !scope_type || scope_type === "all" || scope_type === "hq"
         ? []
         : (scopeValuesCell || "").split(";").map((v) => v.trim()).filter(Boolean);
     return {
       email,
-      role: role || "station",
+      role: role || "fleet_assistant",
       scope_type: scope_type || "station",
       scope_values,
     };
@@ -123,9 +123,14 @@ const DIRECTION_LABELS = { "higher-is-worse": "Higher is worse", "lower-is-worse
 // colouring, editable in the app instead of hardcoded (see lib/thresholds.js
 // and backend V13__sla_thresholds.sql). One scope at a time -- Nationwide
 // default, or a region override -- edited as a local draft and saved explicitly.
-function SlaTargetsPanel({ regions }) {
+function SlaTargetsPanel({ regions, me }) {
   const [rows, setRows] = useState(null);
-  const [scope, setScope] = useState("nationwide");
+  // 2026-10-04: the HOD sets the nationwide numbers (and the per-driver-type ones), a Manager sets their own region's, the Superadmin sets any. The server checks it too.
+  const mayEdit = (sc) =>
+    me.role === "admin" ||
+    (me.position === "hod" && (sc === "nationwide" || DRIVER_POSITION_SCOPES.includes(sc))) ||
+    (me.role === "manager" && me.position !== "hod" && regions.some((r) => r.region === sc));
+  const [scope, setScope] = useState(me.position === "manager" && regions[0] ? regions[0].region : "nationwide");
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -224,7 +229,8 @@ function SlaTargetsPanel({ regions }) {
           <span className="text-xs text-slate-400">Applies at the next 15-minute refresh</span>
           <button
             onClick={save}
-            disabled={saving}
+            disabled={saving || !mayEdit(scope)}
+            title={mayEdit(scope) ? undefined : "You can't change this scope"}
             className="rounded-lg bg-brand px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {saving ? "Saving…" : saved ? "Saved" : "Save targets"}
@@ -232,6 +238,11 @@ function SlaTargetsPanel({ regions }) {
         </div>
       </div>
 
+      {!mayEdit(scope) && (
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          You can look at this scope but not change it. The HOD sets the nationwide numbers, a Manager sets their own region, and the Superadmin sets any.
+        </p>
+      )}
       {scope !== "nationwide" && (
         <p className="text-xs text-slate-400">
           Rows here fall back to the Nationwide default until you change a value and save — that only overrides{" "}
@@ -263,11 +274,11 @@ function SlaTargetsPanel({ regions }) {
                       {c.label}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input type="checkbox" checked={!!d.scored} onChange={(e) => updateField(c.key, "scored", e.target.checked)} />
+                      <input type="checkbox" disabled={!mayEdit(scope)} checked={!!d.scored} onChange={(e) => updateField(c.key, "scored", e.target.checked)} />
                     </td>
                     <td className="whitespace-nowrap px-4 py-2">
                       <select
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.direction}
                         onChange={(e) => updateField(c.key, "direction", e.target.value)}
@@ -282,7 +293,7 @@ function SlaTargetsPanel({ regions }) {
                     <td className="px-4 py-2 text-right">
                       <input
                         type="number"
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.warning_at}
                         onChange={(e) => updateField(c.key, "warning_at", e.target.value)}
@@ -291,7 +302,7 @@ function SlaTargetsPanel({ regions }) {
                     <td className="px-4 py-2 text-right">
                       <input
                         type="number"
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.critical_at}
                         onChange={(e) => updateField(c.key, "critical_at", e.target.value)}
@@ -299,7 +310,7 @@ function SlaTargetsPanel({ regions }) {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2">
                       <select
-                        disabled={!d.scored}
+                        disabled={!d.scored || !mayEdit(scope)}
                         className="rounded border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-100 disabled:text-slate-400"
                         value={d.percent_of || ""}
                         onChange={(e) => updateField(c.key, "percent_of", e.target.value || null)}
@@ -336,10 +347,12 @@ function SlaTargetsPanel({ regions }) {
 // Recovery -> Missing Details' TN list (see backend V19__recovery_settings.sql
 // and aggregate.py's build_missing_details). A single nationwide row, no
 // per-region override -- much simpler than SlaTargetsPanel above.
-function RecoverySettingsPanel() {
+function RecoverySettingsPanel({ me }) {
+  const canEditCod = me.role === "admin"; // 2026-10-04: the COD value is the Superadmin's; the item keywords are the HOD's / Manager's / Recovery's
   const [settings, setSettings] = useState(null);
   const [threshold, setThreshold] = useState("");
-  const [keywordsText, setKeywordsText] = useState("");
+  const [keywords, setKeywords] = useState([]); // one item per keyword
+  const [newKeyword, setNewKeyword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
@@ -350,7 +363,7 @@ function RecoverySettingsPanel() {
       .then((s) => {
         setSettings(s);
         setThreshold(String(s.high_cod_value_threshold));
-        setKeywordsText(s.high_value_item_keywords.join(", "));
+        setKeywords(s.high_value_item_keywords);
       })
       .catch((e) => setError(e.message));
   };
@@ -360,10 +373,6 @@ function RecoverySettingsPanel() {
     setSaving(true);
     setError(null);
     try {
-      const keywords = keywordsText
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean);
       await api.recoverySettings.save({ high_cod_value_threshold: Number(threshold) || 0, high_value_item_keywords: keywords });
       setSaved(true);
       load();
@@ -387,11 +396,12 @@ function RecoverySettingsPanel() {
         <div>
           <div className="font-display text-sm font-semibold text-slate-700">High COD value threshold</div>
           <p className="mb-2 text-xs text-slate-400">
-            A missing tracking number is highlighted when its COD value is at or above this amount.
+            A missing tracking number is highlighted when its COD value is at or above this amount. {canEditCod ? "" : "Only the Superadmin can change it."}
           </p>
           <input
             type="number"
-            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
+            disabled={!canEditCod}
+            className="w-32 rounded border border-slate-300 px-2 py-1.5 text-sm tabular-nums disabled:bg-slate-100 disabled:text-slate-500"
             value={threshold}
             onChange={(e) => {
               setThreshold(e.target.value);
@@ -402,18 +412,49 @@ function RecoverySettingsPanel() {
         <div>
           <div className="font-display text-sm font-semibold text-slate-700">High-value item keywords</div>
           <p className="mb-2 text-xs text-slate-400">
-            Comma-separated. A missing tracking number is also highlighted when its item description contains any of
-            these (case-insensitive) -- e.g. "smartphone, laptop, gold".
+            A missing tracking number is also highlighted when its item description contains any of these words (case-insensitive) -- e.g. smartphone, laptop,
+            gold. Add one at a time; remove one with its ×.
           </p>
-          <textarea
-            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-            rows={3}
-            value={keywordsText}
-            onChange={(e) => {
-              setKeywordsText(e.target.value);
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {keywords.length === 0 && <span className="text-xs text-slate-400">No keywords yet.</span>}
+            {keywords.map((k) => (
+              <span key={k} className="inline-flex items-center gap-1.5 rounded-full bg-ink px-3 py-1 font-display text-xs font-semibold text-white">
+                {k}
+                <button
+                  type="button"
+                  aria-label={`Remove ${k}`}
+                  onClick={() => {
+                    setKeywords(keywords.filter((x) => x !== k));
+                    setSaved(false);
+                  }}
+                  className="text-white/70 hover:text-white"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const k = newKeyword.trim().toLowerCase();
+              if (!k || keywords.includes(k)) return;
+              setKeywords([...keywords, k]);
+              setNewKeyword("");
               setSaved(false);
             }}
-          />
+          >
+            <input
+              value={newKeyword}
+              onChange={(e) => setNewKeyword(e.target.value)}
+              placeholder="Add a keyword and press Enter"
+              className="min-h-[44px] w-72 rounded-lg border border-slate-300 px-3 text-sm"
+            />
+            <button type="submit" disabled={!newKeyword.trim()} className="min-h-[44px] rounded-lg border border-slate-300 px-4 font-display text-xs font-semibold text-ink-2 disabled:opacity-40">
+              Add
+            </button>
+          </form>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">
@@ -537,15 +578,21 @@ function DocumentsPanel() {
 //   Admin    -- only what solely an admin can change (Documents, Station List, KPI Settings, Data Refresh); the Admin page
 //               itself is admin-only.
 const SETTINGS_TABS = [
-  { key: "users", label: "Users", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
-  { key: "sla", label: "SLA Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
-  { key: "feedback", label: "Feedback", area: "settings", visible: () => true },
-  { key: "guide", label: "Guide", area: "settings", visible: () => true },
+  { key: "users", label: "Users", area: "users", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" },
+  // Settings (2026-10-04): Station Metric Targets (HOD nationwide, Manager their region, Superadmin any), KPI Targets (HOD / OPEX), KPI Settings (HOD / OPEX / Manager),
+  // Recovery Settings (COD value: Superadmin; item keywords: HOD / Manager / Recovery) and Data Refresh (look: HOD / Manager / OPEX / Region staff; press: Superadmin).
+  { key: "stationmetrics", label: "Station Metric Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" },
+  { key: "kpitargets", label: "KPI Targets", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.position === "opex" },
+  { key: "kpisettings", label: "KPI Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.position === "opex" },
+  { key: "recovery", label: "Recovery Settings", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.position === "recovery" },
+  { key: "refresh", label: "Data Refresh", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" || me.role === "region" || me.position === "opex" },
+  { key: "launch", label: "Launch Timeline", area: "settings", visible: (me) => me.role === "admin" || me.role === "manager" }, // Superadmin / HOD / Manager: Attendance goes live by batch
+  { key: "whatsnew", label: "What's new", area: "help", visible: () => true },
+  { key: "guide", label: "Guide", area: "help", visible: () => true },
+  { key: "faq", label: "Common Questions", area: "help", visible: () => true },
+  { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
   { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "kpisettings", label: "KPI Settings", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "refresh", label: "Data Refresh", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
@@ -562,7 +609,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       SETTINGS_TABS.filter((t) => t.area === mode && t.visible(me)).map((t) =>
         t.key === "feedback"
           ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 }
-          : t.key === "guide"
+          : t.key === "whatsnew"
             ? { ...t, badge: whatsNewUnread }
             : t
       ),
@@ -573,7 +620,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
-  const [form, setForm] = useState({ ...emptyForm, role: myAllowedRoles[0], scope_type: myAllowedScopeTypes[0] });
+  const [form, setForm] = useState({ ...emptyForm, role: myAllowedRoles.includes("fleet_assistant") ? "fleet_assistant" : myAllowedRoles[0], scope_type: myAllowedScopeTypes[0] });
   const [editingEmail, setEditingEmail] = useState(null);
   // 2026-09-25 feedback: Edit jumps up to the form (it sits above a long list), and
   // the list has a find box.
@@ -601,11 +648,15 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   useEffect(() => {
     api.stations().then(setStations).catch(() => {});
     api.regions().then(setRegions).catch(() => {});
-    if (canManageUsers && mode === "settings") loadUsers();
+    if (canManageUsers && mode === "users") loadUsers();
     if (isFullAdmin) {
       loadRefreshStatus();
     }
   }, [isFullAdmin, canManageUsers]);
+  useEffect(() => {
+    if (adminTab === "refresh") loadRefreshStatus(); // Data Refresh is in Settings now, readable by more roles
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminTab]);
 
   const allZones = useMemo(() => regions.flatMap((r) => r.zones).sort(), [regions]);
 
@@ -625,7 +676,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     [users, scopeTypeFilter]
   );
 
-  const scopeText = (u) => (u.scope_type === "all" ? "Everything" : (u.scope_values || []).join(", "));
+  const scopeText = (u) => (u.scope_type === "all" ? "Everything" : u.scope_type === "hq" ? "HQ" : (u.scope_values || []).join(", "));
 
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
@@ -638,7 +689,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       );
     }
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter);
-    if (scopeTypeFilter === "everything") list = list.filter((u) => u.scope_type === "all");
+    if (scopeTypeFilter === "everything") list = list.filter((u) => u.scope_type === "all" || u.scope_type === "hq");
     else if (scopeTypeFilter !== "all") list = list.filter((u) => u.scope_type === scopeTypeFilter);
     if (scopeValuesFilter.length) list = list.filter((u) => (u.scope_values || []).some((v) => scopeValuesFilter.includes(v)));
     if (neverOpenedOnly) list = list.filter((u) => !u.last_seen_at);
@@ -684,7 +735,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     e.preventDefault();
     setError(null);
     try {
-      const payload = { ...form, scope_values: form.scope_type === "all" ? [] : form.scope_values };
+      const payload = { ...form, scope_values: form.scope_type === "all" || form.scope_type === "hq" ? [] : form.scope_values };
       if (editingEmail) {
         await api.users.update(editingEmail, payload);
         setEditingEmail(null);
@@ -692,7 +743,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
         await api.users.add(payload);
       }
       setForm(emptyForm);
-      if (canManageUsers && mode === "settings") loadUsers();
+      if (canManageUsers && mode === "users") loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -710,7 +761,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       setBulkResult(result);
       setBulkText("");
       setBulkFileName(null);
-      if (canManageUsers && mode === "settings") loadUsers();
+      if (canManageUsers && mode === "users") loadUsers();
     } catch (e) {
       setError(e.message);
     }
@@ -767,13 +818,21 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {visibleSettingsTabs.length > 1 && <TabBar tabs={visibleSettingsTabs} activeKey={adminTab} onSelect={setAdminTab} />}
 
-      {adminTab === "sla" && <SlaTargetsPanel regions={regions} />}
+      {adminTab === "stationmetrics" && <SlaTargetsPanel regions={regions} me={me} />}
 
-      {adminTab === "recovery" && <RecoverySettingsPanel />}
+      {adminTab === "kpitargets" && <KpiTargetsPanel part="targets" />}
+
+      {adminTab === "kpisettings" && <KpiTargetsPanel part="scope" />}
+
+      {adminTab === "recovery" && <RecoverySettingsPanel me={me} />}
+
+      {adminTab === "launch" && <LaunchTimelinePanel />}
 
       {adminTab === "feedback" && <FeedbackPanel me={me} />}
 
-      {adminTab === "guide" && <GuideTab me={me} />}
+      {adminTab === "guide" && <GuideTab me={me} only="guide" />}
+      {adminTab === "whatsnew" && <GuideTab me={me} only="new" />}
+      {adminTab === "faq" && <GuideTab me={me} only="faq" />}
 
       {adminTab === "documents" && (
         <div className="space-y-3">
@@ -784,9 +843,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "stationlist" && isFullAdmin && <RegionListPanel me={me} />}
 
-      {adminTab === "kpisettings" && isFullAdmin && <KpiTargetsPanel />}
-
-      {adminTab === "refresh" && isFullAdmin && (
+      {adminTab === "refresh" && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -803,13 +860,17 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 <div className="mt-1 text-sm text-slate-500">No refresh has run yet.</div>
               )}
             </div>
-            <button
-              onClick={doRefresh}
-              disabled={refreshing}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {refreshing ? "Refreshing…" : "Refresh now"}
-            </button>
+            {isFullAdmin ? (
+              <button
+                onClick={doRefresh}
+                disabled={refreshing}
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {refreshing ? "Refreshing…" : "Refresh now"}
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400">Only the Superadmin can refresh by hand</span>
+            )}
           </div>
           <p className="mt-2 text-xs text-slate-400">
             Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
@@ -829,7 +890,15 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 <tbody>
                   {refreshStatus.queries.map((q) => (
                     <tr key={q.query_id} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{q.query_id}</td>
+                      <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
+                        {q.url ? (
+                          <a href={q.url} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-brand" title="Open this query in Redash">
+                            {q.query_id} ↗
+                          </a>
+                        ) : (
+                          q.query_id
+                        )}
+                      </td>
                       <td className="px-3 py-1.5 text-slate-700">{q.label}</td>
                       <td className="px-3 py-1.5 text-slate-600">{formatTime(q.fetched_at)}</td>
                     </tr>
@@ -893,15 +962,36 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
             <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500"
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              onChange={(e) => {
+                // HQ staff have no dedicated place (scope HQ); everyone else needs a station / zone / region.
+                const hq = isHqTier(e.target.value);
+                const placeless = ["all", "hq"].includes(form.scope_type);
+                setForm({
+                  ...form,
+                  role: e.target.value,
+                  ...(hq && !placeless
+                    ? { scope_type: "hq", scope_values: [] }
+                    : !hq && placeless && myAllowedScopeTypes.includes("station")
+                      ? { scope_type: "station", scope_values: [] }
+                      : {}),
+                });
+              }}
               disabled={editingEmail === OWNER_EMAIL}
               title={editingEmail === OWNER_EMAIL ? "The app owner's role can't be changed" : undefined}
             >
-              {myAllowedRoles.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
+              {GROUPS.map((g) => {
+                const opts = g.positions.filter((p) => myAllowedRoles.includes(p) || p === form.role);
+                return opts.length === 0 ? null : (
+                  <optgroup key={g.key} label={g.label}>
+                    {opts.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+              {!GROUPS.some((g) => g.positions.includes(form.role)) && <option value={form.role}>{ROLE_LABELS[form.role] || form.role}</option>}
             </select>
             <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
@@ -989,12 +1079,12 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
             <p className="text-xs text-slate-400">
               {me.role === "region"
-                ? "You can only grant the Station staff role with station-level access."
+                ? "You can grant Station Head (SH) or Fleet Assistant (FA), with station-level access."
                 : me.role === "manager"
-                  ? "You can grant Station staff or Region staff roles, with any access level except \"sees everything\"."
-                  : me.email === OWNER_EMAIL
-                    ? "role: station, region, manager, or admin. scope_type: station, zone, region, or all (leave scope_values blank for \"all\")."
-                    : "role: station, region, or manager (only the app owner can grant admin). scope_type: station, zone, region, or all (leave scope_values blank for \"all\")."}
+                  ? `You can grant any position except the Superadmin${me.position === "hod" ? "" : " and the HOD"}: HQ staff (scope hq), Region Head / RFS, Station Head / Fleet Assistant.`
+                  : "role: hod, manager, fleet_admin, opex, recovery, restock (HQ staff), region_head, rfs (region staff), station_head, fleet_assistant (station staff)" +
+                    (me.email === OWNER_EMAIL ? ", or admin (Superadmin)" : " (only the app owner can grant admin)") +
+                    ". scope_type: station, zone, region, hq (HQ staff) or all (leave scope_values blank for hq / all)."}
             </p>
 
             {bulkResult && (
@@ -1031,11 +1121,19 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
               >
                 <option value="all">All roles</option>
-                {Object.entries(ROLE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
+                {GROUPS.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.positions.map((value) => (
+                      <option key={value} value={value}>
+                        {ROLE_LABELS[value]}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
+                <optgroup label="Position not set yet">
+                  <option value="region">Region staff</option>
+                  <option value="station">Station staff</option>
+                </optgroup>
               </select>
               <select
                 value={scopeTypeFilter}
@@ -1047,7 +1145,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
               >
                 <option value="all">All scope types</option>
-                <option value="everything">Everything (nationwide)</option>
+                <option value="everything">Everything / HQ (nationwide)</option>
                 <option value="region">Region</option>
                 <option value="zone">Zone</option>
                 <option value="station">Station</option>
@@ -1102,11 +1200,11 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                   <td className="px-4 py-2">{u.email}</td>
                   <td className="px-4 py-2">{ROLE_LABELS[u.role] || u.role}</td>
                   <td className="px-4 py-2 text-slate-500">
-                    {u.scope_type === "all" ? "Everything" : `${(u.scope_values || []).join(", ")} (${u.scope_type})`}
+                    {u.scope_type === "all" ? "Everything" : u.scope_type === "hq" ? "HQ" : `${(u.scope_values || []).join(", ")} (${u.scope_type})`}
                   </td>
                   <td className="px-4 py-2 text-slate-500">{formatTime(u.last_seen_at)}</td>
                   <td className="px-4 py-2 text-right">
-                    {canManageTarget(me.role, u.role) && (
+                    {canManageTarget(me, u.role) && (
                       <>
                         <button onClick={() => startEdit(u)} className="mr-3 text-xs text-brand hover:underline">
                           Edit

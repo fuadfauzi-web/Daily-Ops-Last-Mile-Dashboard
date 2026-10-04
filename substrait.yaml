@@ -17,7 +17,8 @@ description: >
   COD RTS, Prior, Completion D0 / D3, Terminal T7 and FIFO D0, judged against KPI
   targets per region that an admin sets. Every count opens its
   tracking numbers, with CSV export. Access is role-based (admin, manager, region,
-  station) with multi-value region/zone/station scopes enforced in the backend. Users can send feedback
+  station) with multi-value region/zone/station scopes enforced in the backend; an
+  admin can preview any role or user with the Role Tester. Users can send feedback
   (with an attachment) that admins reply to and close. For Fleet Managers and their
   regional and station teams.
 

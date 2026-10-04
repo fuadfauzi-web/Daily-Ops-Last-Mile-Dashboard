@@ -8,6 +8,9 @@
 //    ships that feature, so production never advertises something it doesn't have yet.
 //  * `minRank` (optional): 0 station, 1 region, 2 manager, 3 admin -- only shown to that role
 //    and above (a station user isn't told about admin-only tools).
+//  * `audience` (optional): a list of positions (e.g. ["hod", "manager"]) -- only those positions (and the Superadmin) see it; for things only some
+//    people of a tier can use. `area` (optional): which category card it sits in (Act / Monitor / Recovery / Dashboard / People / System); guessed from the title if left out.
+//  * `type` (optional): "new" | "improved" | "fixed" -- the tag on its What's new card; guessed from the title if left out (a title starting with "New" is New, one saying fix / no longer / always adds up is Fixed, the rest Improved).
 //  * `wide` (optional): only shown to someone whose scope covers more than one station (a
 //    station-scoped user is never told about region / zone level features they can't use).
 //  So "What's new" only ever lists what applies to the viewer's role AND scope.
@@ -17,6 +20,89 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-04",
+    title: "Staff & Org Chart: the org chart now looks like the org picture, with details on click (staging only)",
+    points: [
+      "Org chart is now drawn like the Fleet Management org pictures: HQ on top (HOO, HOD, Fleet Strategist, Last Mile Operation with the four Fleet Managers, LM Administrator & Support), then one block per region with its Fleet Manager, and each zone's Region Head, Region Supervisor and stations (3-letter code boxes, down to station level). Vacant seats show as *Vacant.",
+      "Click any person (or a station box) to see their details -- position, where they are posted and based, email, mobile and employee ID. Everyone can click; nobody edits from the chart any more.",
+      "View settings: Everything, Region only or Station only (your own region / station comes first and is remembered), and a search for a station, zone, region or person.",
+      "Details list is now a table like the sheet: Station ID, Zone, Station, Designation, Name, Email, Mobile, Employee ID, plus the station a Region Head / Supervisor is based at. Search and filter by region or vacant seats.",
+      "The Manager position is now called Fleet Manager. The Fleet Admin team can also keep a title shown on the chart and a based station per person, and add people who are on the chart but have no dashboard access (HOO, HOD, Fleet Strategist, interns) under the chart.",
+    ],
+  },
+  {
+    date: "2026-10-05",
+    title: "Attendance (Beta, staging only): Launch Timeline, Hybrid attendance keyed in by station staff, half day by shift",
+    type: "new",
+    feature: "attendance",
+    points: [
+      "Attendance now opens on the Staff tab. It goes live in batches: a Superadmin, HOD or Manager sets a launch date per region, zone or station in Settings -> Launch Timeline. A station with no date can't see Attendance; from the day before its date it can see it and test-run it.",
+      "Attendance -> Hybrid: station staff key in the Hybrid drivers' details (name, driver ID, phone, vehicle, joined / end date) and each day's attendance (Present / Absent / Leave, optional times) by hand for now. The Schedule's Hybrid list comes from these drivers.",
+      "A PTWH half day is now picked as Half day AM, Middle or PM, and starts when that shift starts at the station.",
+    ],
+  },
+  {
+    date: "2026-10-04",
+    title: "Schedule (Beta, staging only): Middle shift, and each station sets its own shift hours",
+    feature: "attendance",
+    points: [
+      "The Schedule now has a Middle shift next to AM and PM (PTWH and Staff).",
+      "Each station writes down its own AM / Middle / PM hours in the new Shift times box above the grid (Station Heads, Region Heads and Managers can set them). Those hours show next to the shift in the PTWH app's My schedule and on the Staff clock.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Recovery: PDCNR, Damage and No Label from Hub (Beta, staging only)",
+    type: "new",
+    points: [
+      "Three of the recovery team's Google Sheets are now lists in Recovery. Recovery adds the rows (paste many tracking numbers at once, optionally with the station); the station fills in the rest of its columns; the row closes when the last step is done. PDCNR: station / Region Head give the outcome, proof of delivery link, driver and action, then Recovery validates. Damage: Recovery gives an instruction, the station answers with the action it took. No Label from Hub: the hub adds the entry (what the Google Form did) and Recovery sets the outcome. Each list shows only your own stations, with Open / Closed / All and a CSV export. Beta: still being agreed with the Recovery team, so only the Superadmin, Manager / HOD and Recovery can see the three lists for now (the rest of the roles get them once the Recovery team signs off). Inside, only Recovery and the Superadmin have full access; managers fill the station columns only. Photos are real uploads that anyone with access can download (or paste a Google Drive link instead), and Recovery can bring in the old sheets with Import from old sheet.",
+    ],
+  },
+  {
+    date: "2026-10-04",
+    title: "Attendance (Beta, staging only): Station Heads and Fleet Assistants clock in and out",
+    type: "new",
+    feature: "attendance",
+    points: [
+      "Attendance -> Staff: Station Heads and Fleet Assistants clock in and out with My clock, signed in with their Ninja Van Google account (no extra login or selfie). They must be within 100 m of their station (the Fleet Admin Premises location); use the dashboard on a phone.",
+      "Today shows everyone in your scope with their scheduled shift, clock in / out and how far from the station; Month sheet is a grid of hours per day, days worked and days still open. A Region Head, RFS or Manager can fix a forgotten or wrong time with a reason -- the original is kept.",
+    ],
+  },
+  {
+    date: "2026-10-04",
+    title: "Attendance (Beta, staging only): QR on request, end dates, controlled corrections, HR export",
+    minRank: 1,
+    feature: "attendance",
+    points: [
+      "The station QR is now made on request for ONE chosen PTWH: it lasts 10 minutes, works once (clocking out needs a new one), and asking for another replaces the last. No QR is shown until a station asks for it.",
+      "PTWH have an End date instead of the Active tick. An ended PTWH can't log in; a PTWH with no clock in or out for 1 month goes inactive, and an inactive PTWH is cleaned up after 2 months (IC, phone, selfies and login removed; name and pay history kept). Bringing someone back (even at another station) needs the Region Head then Manager approval again, and the same IC can't be added twice.",
+      "Clock records can no longer be edited or deleted directly. Use Correct on a day: a change within 30 minutes applies at once and is logged; anything bigger, a missing day or a void waits in the new Corrections view for a Region Head, RFS or Manager (never the person who asked), and that day's pay is on hold until then. A shift can be 12 hours at most.",
+      "Month sheet: Region / Zone / Station filters, and Export CSV (or Copy) in the HR sheet's layout for what is filtered. Category: the shift suggestions are gone. Audit: a day can be reviewed only after the PTWH has clocked in and out.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Attendance (Beta, staging only): Schedule, PTWH hiring approval, pay on hold for QR clocks, review alerts",
+    type: "new",
+    minRank: 1,
+    feature: "attendance",
+    points: [
+      "New Schedule tab: Station Heads, Region Heads and Managers key in who works which shift each week for PTWH, Staff and Hybrid drivers (Copy last week included). Everyone else reads it, and each PTWH sees their own next two weeks in the PTWH app.",
+      "A new PTWH hire now needs the Region Head's approval and then a Manager's before they can work, be scheduled or get an app login. Approvers get a banner and a count on the Attendance tab. A Manager loads the existing PTWH list once (Import existing PTWH).",
+      "The pay for a QR (emergency) clock, or one an auditor flagged, is on hold until an auditor marks it Checked OK. Station Heads, Region Heads and Managers see a banner and a count on the Attendance tab while any are waiting.",
+      "QR clock evidence is kept 5 weeks and cleared once a month, in week 2 (the 8th-14th). The PTWH app link now sits at the top of the PTWH tab with a Copy button.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Attendance (Beta, staging only): PTWH clock in by location only, QR is an emergency, stations use their Premises location",
+    feature: "attendance",
+    points: [
+      "PTWH clock in and out by location: within 100 m of the station's latitude / longitude from Fleet Admin -> Premises. The 100 m is the same for every station and station users can't change it; the Station QR page now just shows the location (read-only).",
+      "The hourly station QR is an emergency fallback only: in the PTWH app a PTWH can scan it in the app (or type the code) when their phone location doesn't work, but must give a reason, and every QR clock goes to Audit as \"Needs review\" with that reason until someone marks it Checked OK or flags it.",
+    ],
+  },
+  {
     date: "2026-10-03",
     title: "Data upload: fewer files, fewer clicks",
     feature: "kpiDashboard",
@@ -25,6 +111,174 @@ export const CHANGELOG = [
       "Hybrid Productivity now needs 3 files instead of 7: the weekly, monthly and daily Metabase questions each carry everything (volume, sizing, the fixed Attendance and each driver's start date), so the separate driver-list and sizing files are gone.",
       "Every Data upload box has a drop zone: select or drag all your downloaded CSVs at once and each is matched to its KPI file by its columns (Prior and FIFO D0 by the file name). A file it can't place is listed with the reason and the rest still load.",
       "One Metabase page now holds every feeder question -- the Data upload box links to it, so you open one link instead of one per file.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Attendance (Beta, staging only): PTWH app logins, hourly station QR, 100 m location check and selfie audit",
+    type: "new",
+    feature: "attendance",
+    points: [
+      "Workers -> Create login gives a PTWH a username and a temporary password (plus a recovery code) for the new PTWH app, where they clock themselves in and out. They can change their password themselves; forgot it -> recovery code, or Reset password here.",
+      "Station QR: a code that changes every hour for the station screen, and the station's location -- a PTWH within 100 m can clock in or out by location instead. Either way they take a selfie with the station behind them.",
+      "Audit: every clock made in the PTWH app with how it was verified (QR / location and metres from the station) and the selfie, for station, RH, RFS, managers, HOD and Fleet Admin within their scope. An auditor can flag a clock-in as suspicious (with a note) or mark it checked OK. Selfies are deleted after 14 days, flagged ones are kept until cleared.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Recovery is now two groups: Active Missing and Lost Declared",
+    points: [
+      "Recovery has two buttons at the top. Active Missing holds Missing Details, Active Missing and B2B Document Active Missing; Lost Declared holds Lost Declared This Week and Lost Declared Summary. Nothing inside the pages changed -- they are just grouped.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "Attendance (Beta, staging only): import the PTWH list from the sheet, and PTWH categories C1-C4",
+    minRank: 1,
+    feature: "attendance",
+    points: [
+      "Workers -> Import from sheet reads the PTWH DETAILS tab (downloaded as CSV): it shows what will be added first, only adds people who are not in the list yet, and never overwrites -- stations can edit anyone afterwards.",
+      "Every PTWH day now has a category instead of a free-text reason: C1 Core Shift, C2 Vacancy Cover, C3 Leave & Rotation Cover, C4 Volume Surge / PM Support. Each worker has a default that pre-fills it; the Month sheet shows cost by category and flags anyone over a category's max days.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "New: Attendance tab (Beta, staging only) -- PTWH clock in / clock out, month sheet and payable",
+    feature: "attendance",
+    points: [
+      "PTWH attendance moves from the Google Sheet into the dashboard: clock a PTWH in when they arrive and out when they leave, and the day's pay is worked out from the hours (6h or more = full day, less = half day).",
+      "Today, Month sheet (the old grid, with workdays, payable and CSV export) and Workers (the PTWH roster and daily rate). You only see and record for the stations in your scope. Staff and Hybrid attendance will join the same tab later.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "New: Processing Time tab (Beta, staging only) -- when work lands at the station, hour by hour, for the past 7 days",
+    feature: "processingTime",
+    points: [
+      "A new tab next to Shipment Details showing the hour-of-day pattern of shipment arrival, scan-in, 1st attempt, success and line-haul arrival, per station, for the past 7 days (pick a day or add all 7 up), with the same Region / Zone / Station filters and Count / % share switch as the Shipment Details chart. History starts building from the first refresh after it went live. Driver Inbound and the Hybrid / Independent driver split are not in it yet.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "Superadmin, Managers see everything, and the PIC list now follows the Staff & Org Chart (staging only)",
+    minRank: 2,
+    points: [
+      "The Admin role is now called Superadmin, so it is not mixed up with the Fleet Admin position. Nothing about what it can do changed.",
+      "A Manager can have a dedicated region -- it places them in the org chart and the PIC list -- but, like HOD, a Manager sees every region's data and can manage everyone except the HOD and the Superadmin -- Region staff, Station staff and other HQ staff -- in every region (a manager often covers another manager's work). The HOD can manage everyone except the Superadmin.",
+      "The Admin page tab is now called Superadmin as well.",
+      "Management View -> Capacity staff headcount now comes from the Staff & Org Chart (people posted at the station + vacant seats; a vacant seat counts as headcount) instead of an uploaded sheet.",
+      "New Headcount view in Staff & Org Chart: only a Manager, the HOD or the Superadmin adds or removes headcount: the HOD adds a vacant seat directly, a Manager's request waits for the HOD's approval, and a seat is removed with no approval. The Fleet Admin team fills a vacant seat with a person's details and edits current staff, but cannot add or remove headcount. Tables keep their header in view, and the headcount table sorts by clicking a header.",
+      "The PIC search reads the Staff & Org Chart that the Fleet Admin team keeps, not the Fleet Management sheet: when someone joins, moves or leaves there, the PIC box follows straight away.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Org chart as a picture; Staff list and org chart open to every role (staging only)",
+    type: "new",
+    points: [
+      "The Org chart is now a picture: HQ on top, the regions under it with their managers, click a region to open its zones (Region Head / RFS) and a zone to see its stations with their Station Head and Fleet Assistants. Vacant seats show as dashed boxes, a station with no Station Head in red. A Details list view is still there.",
+      "Every role can read the Staff list and the org chart (who is posted where, a mobile number, vacant seats); employee ID and what each person can access stay with HQ roles, and only the Fleet Admin role edits. Staging test accounts no longer show in either.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Headcount is only for the Manager, the HOD and the Fleet Admin role -- and follows scope (staging only)",
+    audience: ["hod", "manager", "fleet_admin"],
+    points: [
+      "Only the Manager, the HOD and the Fleet Admin role (and the Superadmin) see the Headcount tables. OPEX, Recovery, Restock and any other HQ role added later do not (the Staff list and org chart, with their vacant seats, stay open to every role). The Fleet Admin role views headcount only; the HOD and Manager add and remove seats.",
+      "The HOD and the Fleet Admin role see every station, zone and the HQ table; a Manager posted to a region, zone or station sees only that part (tables, seats and totals) and can add or remove seats only there.",
+    ],
+  },
+  {
+    date: "2026-10-04",
+    title: "Fleet Admin: Fire extinguisher and Weighing scale categories in Assets, and the tab is marked Beta (staging only)",
+    points: [
+      "Assets has two more categories next to Station inventory. Fire extinguisher: each station's extinguishers with quantity, serial numbers, vendor, PIC and the expiry date. Weighing scale: manufacturer, last calibrated and expiry date, reference and serial numbers, calibrated by, certificate. Chips for Expired / Due within 90 days / No date; the Fleet Admin team adds, edits, removes or pastes rows from the sheets.",
+      "The Fleet Admin tab now carries a Beta tag (and a note that it is not live yet), so station and region staff know it is still being set up.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Fleet Admin: Vehicles and Assets (station inventory) tabs (staging only)",
+    type: "new",
+    minRank: 2,
+    points: [
+      "Vehicles: the Master Vehicle Inventory in the app, one record per plate with its station, type, owner, driver, GDL and licence expiry (days left, with chips for expired / within 90 days) and the fuel and Touch 'n Go card numbers (last 4 digits shown until you tick Show card numbers). The Fleet Admin team adds, edits and removes vehicles or pastes rows from the sheet.",
+      "Assets: one tab for all asset lists, by category. Station inventory is first: each station's items with good and damaged counts (41 stations loaded from the zone workbooks; the rest start from the standard list), by station or added up by item.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Headcount seats can cover two zones, and one form for every role (staging only)",
+    audience: ["hod", "manager", "fleet_admin"],
+    points: [
+      "Add headcount now has one Role list (Station Head, Fleet Assistant, Region Head, RFS, Fleet Admin) and a Location picker: station(s), zone(s) or HQ. An RFS who looks after South 1 and South 2 is one seat that shows in both zone rows, while the cards count it once.",
+      "Adding the person uses the seat up (one person for both zones uses the one seat); when they leave, one seat covering both zones comes back.",
+    ],
+  },
+  {
+    date: "2026-10-03",
+    title: "Headcount for Region Heads, RFS and the Fleet Admin team (staging only)",
+    type: "new",
+    minRank: 1,
+    points: [
+      "The Headcount view now has three tables: Stations (Station Head, Fleet Assistant), Zones (Region Head, Regional Fleet Supervisor) and HQ (Fleet Admin). Each shows the people posted there, the vacant seats and the headcount; the three RFS seats marked TBA in the sheet (South 1, South 2, Zone B) and the Fleet Admin team's intern seats are in as vacant seats.",
+      "The same rules as for stations: a Manager or the HOD adds or removes seats (a Manager's wait for the HOD), the Fleet Admin team fills a vacant seat by adding the person, and a leaver's seat stays as a vacant seat. The Org chart and the Staff list show the vacant zone and HQ seats too.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "New: Fleet Admin tab with Premises (staging only) -- licence and tenancy dates per station, edited in the app",
+    minRank: 2,
+    points: [
+      "One record per station: address, size, launch date, business licence and tenancy dates (with the days left worked out), rent, deposit and links to the documents. Loaded from the Fleet Management sheet's Address tab; from now on the Fleet Admin team edits it here instead of the sheet.",
+      "Chips for Licence expired, Licence within 90 days, Tenancy ended, Tenancy within 90 days and Dates missing, plus Region / Zone filters and search. HQ staff and above can read it; only the Fleet Admin role edits. You can also paste rows from the sheet.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "Staff & Org Chart: mobile, employee ID and paste-from-sheet (staging only)",
+    minRank: 2,
+    points: [
+      "Each person now has a mobile number and an employee ID in the staff list (filled in for the Station Heads and Fleet Assistants from the sheet). Only HQ staff, Managers and the Superadmin see them.",
+      "Paste from sheet: copy rows from the Fleet Management sheet, check the preview (New / Update / Skipped with the reason) and import many people at once, including their mobile and employee ID.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "Staff & Org Chart: edit HQ staff too, and posting is now separate from access (staging only)",
+    minRank: 2,
+    points: [
+      "The Fleet Admin team can now add, move and remove HQ staff (HOD, Manager, OPEX, Recovery, Restock, other Fleet Admins) as well as Region and Station staff. Posting is where a person works; their access (what they can see) starts the same.",
+      "Access is changed only in Settings -> Users, by a Manager / HOD, Region Head / RFS or the Superadmin -- for example to give someone sent to rescue another station or region that place's data. The staff list shows Custom for those people and keeps their access when the Fleet Admin team moves their posting. The org chart and PIC search follow the posting, so a person covering another station still shows at their own.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "New: Staff & Org Chart tab for the Fleet Admin team (staging only), and every Station Head / Fleet Assistant now has access",
+    points: [
+      "The Fleet Admin team keeps the staff list in one place: add a joiner, move someone to another station, change a position, remove a leaver. The same list gives people dashboard access and feeds the PIC box, so the PIC search stays right when staff change.",
+      "An Org chart view shows HQ, each region's manager, each zone's Region Head / RFS and each station's Station Head and Fleet Assistants, with vacant Station Head seats flagged. Managers and admins can open it too.",
+      "All Station Heads and Fleet Assistants from the Fleet Management sheet (about 400 people, every station) were added with access to their own station, so you can try the PIC search by typing any station name.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "Roles now follow the job position (staging only)",
+    type: "new",
+    minRank: 2,
+    points: [
+      "Settings -> Users now uses the real positions, in three groups: HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock), Region staff (Region Head, Regional Fleet Supervisor) and Station staff (Station Head, Fleet Assistant). Your position shows under your name in the header.",
+      "HQ staff have no region, zone or station of their own, so they get a new access level, HQ. They see every region for now; HOD and Manager can still manage Region and Station staff, while Fleet Admin, OPEX, Recovery and Restock will each get their own tabs for their own work.",
+    ],
+  },
+  {
+    date: "2026-10-02",
+    title: "Find the PIC for a station: type the station in any PIC box",
+    type: "new",
+    points: [
+      "Type a station's name (or its 3-letter code, e.g. LKN) in a PIC box and the people looking after it come up -- the station's own staff, then the Region Head and RFS of its zone, then the manager of its region -- with their role and zone beside the name.",
+      "Region Heads, RFS and Managers now have dashboard access, and Region staff and Managers only see, add, edit or remove people inside their own zone / region (Settings -> Users). A person added without a name gets one built from their email, role and place.",
     ],
   },
   {
@@ -47,6 +301,18 @@ export const CHANGELOG = [
     title: "Shipment Details: Total Fresh now always adds up",
     points: [
       "Total Fresh is now Fresh Unscan + the four Within 1h/1-2h/2-3h/3h+ buckets, added together -- they used to come from a separate query that could disagree with the breakdown. A parcel with a missing or inconsistent processing timestamp now falls into 3h+ instead of being silently left out of both.",
+    ],
+  },
+  {
+    date: "2026-10-01",
+    title: "New: Management View (Beta, staging only) -- operation health, capacity and backlog for managers and admins",
+    feature: "managementView",
+    minRank: 2,
+    points: [
+      "Operation Health: pick a date (default yesterday, last two weeks) and Daily / Weekly. Routed, Delivered, Success rate, Routed % and attendance (Total / Hybrid / Independent / Rescue), Routed % buckets vs 0 Attempt, attendance vs volume at a parcels-per-driver target, rescue routes.",
+      "Aging health (Delivery >3 days, ATS >1 day, 0 Attempt, Hypercare shippers) with top stations, and Shipment compliance: LH timing buckets with the top 10 line-haul drivers (from an uploaded Metabase file) and the top 10 Latlong hubs.",
+      "Capacity: Staff and Hub Size from an uploaded workbook, manager-keyed PTWH, parcel capacity and how full each hub is, and weekday vs weekend driver attendance by region / zone / station.",
+      "Backlog Radar: top hubs by 0 Attempt or Age >3 (number or %), with a mitigation plan (status, owner, date) and rescue plan with deployment cost.",
     ],
   },
   {
@@ -98,6 +364,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-26",
     title: "Terminal T7 by its N7 cut-off date",
+    type: "new",
     points: [
       "Terminal T7 now takes its day from the N7 cut-off date, so a T7 week is the week of the cut-off date and is final once it is over: the page opens on week 38 with week 39 building up, instead of running a week behind.",
     ],
@@ -243,6 +510,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-26",
     title: "Action Board: Shipper SLA",
+    type: "new",
     points: [
       "Two new Action Board metrics, Shipper SLA Warning and Shipper SLA Breach, for Amway, Watson, Orca and Cold Chain parcels at the station or still on their way to it: older than 0 days is a warning, older than 1 day is a breach. Copy TNs works on them like the other metrics, and the targets can be changed in SLA Targets.",
     ],
@@ -250,6 +518,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-26",
     title: "Station Health: rescue attendance",
+    type: "new",
     points: [
       "Attendance now shows how many of the drivers are rescue, like Route Monitoring -- for example \"12 (2 Rescue)\". Region and zone rows add their stations up, and Export CSV has a Rescue Attendance column.",
     ],
@@ -281,6 +550,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-25",
     title: "Task List: Email / Gchat, To Do List and Task Assigned",
+    type: "new",
     feature: "taskList",
     points: [
       "The Urgent TN tab is now the Task List, with four sub-tabs: Urgent TN, Email / Gchat, To Do List and Task Assigned. Each has its own bell.",
@@ -303,6 +573,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-25",
     title: "Urgent TN: assign a PIC",
+    type: "new",
     points: [
       "Start typing a teammate's name or email when you track a tracking number and pick them from the suggestions (they must already be a dashboard user), with an optional note.",
       "They see a red bell on the Urgent TN tab. They pick In progress (the bell goes quiet for an hour, then rings again if it isn't closed -- 8am to 8pm only) or Closed (the bell stays off and it stays on their list marked closed), and can type a reply that you see.",
@@ -449,6 +720,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-23",
     title: "Filters on every tracking-number table",
+    type: "new",
     points: [
       "Every tracking-number table has station and status multi-select filters. RPU can be filtered by several shippers, statuses and failure reasons.",
     ],
@@ -473,6 +745,7 @@ export const CHANGELOG = [
   {
     date: "2026-09-20",
     title: "Redesigned dashboard",
+    type: "new",
     points: [
       "New Ninja Van look, the Action Board as the landing tab, sticky table headers, CSV export on every table and a slide-over with every column when you click a row.",
       "Warning / Critical targets (SLA Targets) now drive the colours on Station Health and the Action Board.",
@@ -516,7 +789,7 @@ const fmt = (d) => d.toLocaleDateString("en-MY", { day: "numeric", month: "short
 
 // Weeks (Monday-Sunday), newest first, each with the entries this build ships and this role
 // may see. The current week is always first, even when nothing has changed in it yet.
-export function weeklyChanges({ features, rank, wide = true, now = new Date() }) {
+export function weeklyChanges({ features, rank, wide = true, position = "", now = new Date() }) {
   const byWeek = new Map();
   const thisMonday = mondayOf(now);
   byWeek.set(thisMonday.getTime(), []);
@@ -524,6 +797,7 @@ export function weeklyChanges({ features, rank, wide = true, now = new Date() })
     if (e.feature && !features[e.feature]) continue;
     if ((e.minRank || 0) > rank) continue;
     if (e.wide && !wide) continue;
+    if (e.audience && rank < 3 && !e.audience.includes(position)) continue;
     const [y, m, d] = e.date.split("-").map(Number);
     const key = mondayOf(new Date(y, m - 1, d)).getTime();
     if (!byWeek.has(key)) byWeek.set(key, []);

@@ -567,7 +567,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="block text-xs text-slate-500">
             PIC (optional) — pick a dashboard user, or type their email (only for tracking numbers that have a status)
-            <PicInput className="mt-1" placeholder="Start typing a name or email…" value={assignee} onChange={setAssignee} />
+            <PicInput className="mt-1" placeholder="Type a name, email or station…" value={assignee} onChange={setAssignee} />
           </label>
           <label className="block text-xs text-slate-500">
             Note for the PIC (optional)
@@ -671,7 +671,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
                 : "You keep this tracking number on your list; this also gives it to someone else, who reports back to you (a new row, so they close it with you)."}
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <PicInput placeholder="PIC name or email" value={delegateAssignee} onChange={setDelegateAssignee} />
+            <PicInput placeholder="PIC name, email or station" value={delegateAssignee} onChange={setDelegateAssignee} />
             <input
               type="text"
               maxLength={500}

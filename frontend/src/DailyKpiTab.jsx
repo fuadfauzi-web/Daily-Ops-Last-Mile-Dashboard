@@ -9,7 +9,7 @@ import Skeleton from "./components/Skeleton";
 // Daily KPI (2026-10-02 feedback): today's FIFO D0 / Completion D0 / Prior, how many
 // parcels a station still needs to attempt or deliver to hit its target. Built from
 // backend/aggregate.py's build_daily_kpi() -- raw counts only; "Current %" / target /
-// "Left to go" are all computed here so an admin's edited target (Admin -> KPI Targets)
+// "Left to go" are all computed here so an admin's edited target (Superadmin -> KPI Targets)
 // takes effect immediately, same pattern as KpiDashboard's Hybrid page.
 // FIFO D0: met once the parcel got ANY delivery attempt (success or fail) the same day.
 // Completion D0: met only on a SUCCESSFUL delivery the same day, out of all fresh parcels.
@@ -222,7 +222,7 @@ export default function DailyKpiTab({ regionFilter, zoneFilter, search, me, excl
         title={
           <>
             Daily KPI{" "}
-            <span className="font-normal text-slate-400">— today only, click a column header to sort. "Left to go" uses each region's own target (Admin → KPI Targets).</span>
+            <span className="font-normal text-slate-400">— today only, click a column header to sort. "Left to go" uses each region's own target (Superadmin → KPI Targets).</span>
           </>
         }
         maxHeight="75vh"

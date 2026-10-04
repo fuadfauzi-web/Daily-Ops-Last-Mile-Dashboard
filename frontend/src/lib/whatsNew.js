@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { weeklyChanges } from "./changelog";
 import { FEATURES } from "./features";
+import { rankOf } from "./roles";
 
 // "Unread" tracking for What's new (2026-09-25 feedback): a bell shows while there are updates
 // the signed-in user hasn't opened What's new to read, and clears once they do. Kept in this
@@ -9,7 +10,6 @@ import { FEATURES } from "./features";
 //
 // What counts: entries from this week and last week that THIS build ships and this user's role
 // and scope can see (exactly what the What's new page lists) and whose id isn't in the seen list.
-const RANK = { station: 0, region: 1, manager: 2, admin: 3 };
 const EVENT = "whatsnew-changed";
 const MAX_SEEN = 300;
 
@@ -26,9 +26,9 @@ function readSeen(me) {
 }
 
 function recentEntries(me) {
-  const rank = RANK[me.role] ?? 0;
+  const rank = rankOf(me);
   const wide = me.scope_type === "all" || (me.scope_values || []).length > 1;
-  return weeklyChanges({ features: FEATURES, rank, wide })
+  return weeklyChanges({ features: FEATURES, rank, wide, position: me.position || "" })
     .slice(0, 2)
     .flatMap((w) => w.items);
 }
@@ -58,12 +58,13 @@ export function useWhatsNewUnread(me) {
   const role = me?.role;
   const scopeType = me?.scope_type;
   const scopeCount = (me?.scope_values || []).length;
+  const position = me?.position;
   const [count, setCount] = useState(() => unreadEntries(me).length);
   useEffect(() => {
     const update = () => setCount(unreadEntries(me).length);
     update();
     window.addEventListener(EVENT, update);
     return () => window.removeEventListener(EVENT, update);
-  }, [email, role, scopeType, scopeCount]);
+  }, [email, role, scopeType, scopeCount, position]);
   return count;
 }

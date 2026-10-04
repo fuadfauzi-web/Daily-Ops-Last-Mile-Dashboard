@@ -16,6 +16,7 @@ import CodRtsRca from "./kpi/CodRtsRca";
 import CispKpi from "./kpi/CispKpi";
 import { TabsBar } from "./kpi/rcaUi";
 import { kpiTarget, kpiTargetText, useKpiTargets } from "./lib/kpiTargets";
+import { rankOf } from "./lib/roles";
 
 // KPI page (Beta). The OPEX team's dashboard shows the RESULT (a %); this page adds the Dashboard and shows WHY -- with the numbers and the tracking
 // numbers behind them. Two groups (menu names from the Fleet Manager, 2026-09-26):
@@ -34,9 +35,9 @@ const MODULES = [
   { key: "compD3", label: "Completion D3", group: "RCA analysis", live: true },
   { key: "terminalT7", label: "Terminal T7", group: "RCA analysis", live: true },
   { key: "codRts", label: "COD RTS", group: "RCA analysis", live: true },
-  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "lost", label: "Lost", group: "RCA analysis", live: false, note: "Lost and Complaint will share the same logic; it is not built yet. Their targets are already set in Superadmin → KPI Settings." },
   { key: "invalidPod", label: "Invalid POD", group: "RCA analysis", live: true },
-  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Admin → KPI Settings." },
+  { key: "complaint", label: "Complaint", group: "RCA analysis", live: false, note: "Complaint and Lost will share the same logic; it is not built yet. Their targets are already set in Superadmin → KPI Settings." },
 ];
 
 const int = (v) => Math.round(v).toLocaleString();
@@ -150,7 +151,7 @@ function TrendPage({ me }) {
 
 // ------------------------------------------------------------------------------------------------ Hybrid Productivity
 function HybridProductivity({ me }) {
-  useKpiTargets(); // the low-performer line follows the admin's per-region Hybrid target (Admin -> KPI Settings) once it is known
+  useKpiTargets(); // the low-performer line follows the admin's per-region Hybrid target (Superadmin -> KPI Settings) once it is known
   const [view, setView] = useState("weekly");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -169,7 +170,7 @@ function HybridProductivity({ me }) {
   const [trendFilter, setTrendFilter] = useState("all"); // "all" | "up" | "down": only rows whose productivity rose / dropped against the last week / month
   const [monthlyData, setMonthlyData] = useState(null); // the monthly rows, for "vs last month" on Daily Data when View is Weekly
   const [showUpload, setShowUpload] = useState(false);
-  const rank = { station: 0, region: 1, manager: 2, admin: 3 }[me.role] ?? 0; // station staff see up to stations, region staff up to zones, managers / admins up to regions
+  const rank = rankOf(me); // station staff see up to stations, region staff up to zones, managers / Fleet Admin / admins up to regions
 
   const canRefresh = me.role === "admin" || me.role === "manager";
   const canUpload = me.role === "admin";

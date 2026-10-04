@@ -8,7 +8,7 @@
 //
 // This file is the SEED AND FALLBACK ONLY -- the real, editable values live in the
 // `sla_thresholds` database table (see backend/resources/db/migration/V13__sla_thresholds.sql),
-// set through Admin -> SLA Targets. The frontend fetches those over `/api/thresholds`
+// set through Superadmin -> SLA Targets. The frontend fetches those over `/api/thresholds`
 // and only falls back to this file's values if that request fails. Add a metric here
 // the same day you add its column; an unlisted metric renders as reference.
 

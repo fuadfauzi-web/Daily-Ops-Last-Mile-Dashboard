@@ -1,0 +1,119 @@
+import { useEffect, useRef, useState } from "react";
+import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
+
+// Categorised top navigation (staging trial, FEATURES.sidebarNav -- the "Top tabs" choice): the same groups as the sidebar (Act / Monitor / Recovery /
+// Dashboard / People / System) as buttons that sit in the header beside the user menu. Each opens a vertical dropdown of its pages; only one is open at a
+// time (opening another closes the first), and it closes on choosing a page, clicking elsewhere or Esc. The category holding the current page is tinted.
+// `items` = [{ id, label, group, beta, active, badge, dot }], already limited to what this person may open.
+export default function CategoryNav({ items, onSelect }) {
+  const [open, setOpen] = useState(null);
+  const [menuPos, setMenuPos] = useState(null); // { top, left | right } in viewport pixels -- the strip scrolls, so the dropdown can't live inside it
+  const ref = useRef(null);
+  const stripRef = useRef(null);
+
+  const toggle = (name, e) => {
+    if (open === name) {
+      setOpen(null);
+      return;
+    }
+    const r = e.currentTarget.getBoundingClientRect();
+    const rightHalf = r.left > window.innerWidth / 2;
+    setMenuPos(rightHalf ? { top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) } : { top: r.bottom + 4, left: Math.max(8, r.left) });
+    setOpen(name);
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(null);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(null);
+    };
+    const close = () => setOpen(null);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    const strip = stripRef.current;
+    strip?.addEventListener("scroll", close);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      strip?.removeEventListener("scroll", close);
+    };
+  }, [open]);
+
+  const activeGroup = items.find((i) => i.active)?.group ?? null;
+  const groups = SIDE_GROUPS.map((g) => ({ name: g, items: items.filter((i) => i.group === g) })).filter((g) => g.items.length);
+  const bellOf = (list) => list.reduce((n, i) => n + (i.badge || 0), 0);
+
+  return (
+    <div ref={ref} className="min-w-0 shrink">
+      {/* Too many categories for the header? The strip scrolls sideways (mouse wheel works too) instead of squeezing the logo. */}
+      <nav
+        ref={stripRef}
+        aria-label="Categories"
+        onWheel={(e) => {
+          if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && stripRef.current) stripRef.current.scrollLeft += e.deltaY;
+        }}
+        className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:thin]"
+      >
+      {groups.map((g) => {
+        const isOpen = open === g.name;
+        const bell = bellOf(g.items);
+        return (
+          <div key={g.name} className="shrink-0">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              onClick={(e) => toggle(g.name, e)}
+              className={`flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 font-display text-[13px] ${
+                g.name === activeGroup ? "bg-brand-tint font-bold text-brand-dark" : isOpen ? "bg-canvas font-bold text-ink" : "font-semibold text-ink-2 hover:bg-canvas"
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${SIDE_GROUP_COLORS[g.name].dot}`} />
+              {g.name}
+              {!isOpen && bell > 0 && (
+                <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-bold leading-none text-white">{bell}</span>
+              )}
+              <span className="text-[9px] text-subtle">{isOpen ? "▴" : "▾"}</span>
+            </button>
+            {isOpen && menuPos && (
+              <div
+                role="menu"
+                style={menuPos}
+                className="fixed z-50 w-60 rounded-[10px] bg-white py-1.5 shadow-lg ring-1 ring-line"
+              >
+                {g.items.map((i) => (
+                  <button
+                    key={i.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(null);
+                      onSelect(i.id);
+                    }}
+                    aria-current={i.active ? "page" : undefined}
+                    className={`flex min-h-[44px] w-full items-center gap-2 px-3.5 text-left font-display text-[13px] ${
+                      i.active ? "bg-brand-tint font-bold text-brand-dark" : "font-semibold text-ink-2 hover:bg-canvas"
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{i.label}</span>
+                    {i.beta && <span className="text-[9px] font-bold uppercase tracking-wide text-[#92400E]">Beta</span>}
+                    {i.badge > 0 && (
+                      <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-bold leading-none text-white">{i.badge}</span>
+                    )}
+                    {!i.badge && i.dot > 0 && <span className="h-2 w-2 rounded-full bg-ink" aria-label="Due soon" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      </nav>
+    </div>
+  );
+}

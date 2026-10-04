@@ -33,6 +33,21 @@ from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
+import management_view
+import attendance
+import attendance_corrections
+import staff_attendance
+import attendance_launch
+import hybrid_attendance
+import ptwh_app
+import work_schedule as schedule_mod
+import headcount
+import premises
+import vehicles
+import assets
+import asset_lists
+import staff
+import recovery_cases
 import recovery_lost
 import region_list
 from kpi_targets import router as kpi_targets_router
@@ -41,7 +56,6 @@ from kpi_rca import router as kpi_rca_router
 from tasklist import (
     next_owner_slot_label as tasklist_next_owner_slot,
     notification_counts as tasklist_counts,
-    on_user_deleted as tasklist_user_deleted,
     router as tasklist_router,
     urgent_owner_ack as tasklist_urgent_owner_ack,
     urgent_owner_slot as tasklist_urgent_owner_slot,
@@ -61,13 +75,13 @@ from aggregate import (
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
-from auth import CurrentUser, get_current_user, parse_scope_values
+from auth import POSITIONS, CurrentUser, data_scope, get_current_user, parse_scope_values, tier_of
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
     QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
     QUERY_ZALORA_NXD, RedashError, fetch_query_results,
 )
-from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
+from stations import ABBR_TO_HUB, HUBS, REGIONS, ZONES, ZONES_BY_REGION
 
 _MYT = timezone(timedelta(hours=8))
 
@@ -122,7 +136,10 @@ async def _fetch(query_id: int) -> list[dict]:
 
 _METRIC_COLUMNS = METRIC_KEYS
 # DoD Dashboard: the Station Health metrics plus what the daily view needs from Route Monitoring.
-_DOD_COLUMNS = METRIC_KEYS + ("attendance_rescue", "current_ovfd", "current_success", "fresh_unscan", "latlong")
+_DOD_COLUMNS = METRIC_KEYS + (
+    "attendance_rescue", "current_ovfd", "current_success", "fresh_unscan", "latlong",
+    "attendance_hd", "attendance_hr", "attendance_id", "attendance_ir",  # Management View v2 (2026-10-02)
+)
 
 async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_station: dict, shipment_by_station: dict) -> None:
     """DoD Dashboard (2026-09-26): store today's (Malaysia date) Station Health numbers per station, replacing what an earlier
@@ -138,6 +155,7 @@ async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_statio
             [row.get(k) or 0 for k in METRIC_KEYS]
             + [routed.get(k) or 0 for k in ("attendance_rescue", "current_ovfd", "current_success")]
             + [shipment.get(k) or 0 for k in ("fresh_unscan", "latlong")]
+            + [routed.get(k) or 0 for k in ("attendance_hd", "attendance_hr", "attendance_id", "attendance_ir")]
         )
         lh = (
             trips[0]["time"] if len(trips) > 0 else None, trips[0]["parcels"] if len(trips) > 0 else None,
@@ -152,6 +170,28 @@ async def _capture_dod(captured_at: datetime, by_station: dict, routed_by_statio
         params,
     )
     await db.execute("DELETE FROM dod_daily WHERE snap_date < %s", (today - timedelta(days=today.weekday() + 7),))
+
+
+_PROCESSING_TIME_SERIES = ("arrival", "sweep", "attempt", "success", "lh")
+_PROCESSING_TIME_DAYS = 7
+
+
+async def _capture_processing_time(captured_at: datetime, timelines: dict[str, dict[str, list[int]]]) -> None:
+    """Processing Time tab (2026-10-02): store today's (Malaysia date) per-station hour-of-day timelines -- the same ones
+    Shipment Details' chart shows for today -- replacing what an earlier refresh today stored (the last refresh of the day is
+    the day's number), and keep only the last 7 days (today included)."""
+    today = captured_at.astimezone(_MYT).date()
+    params = [
+        (today, hub, captured_at, json.dumps({k: t.get(k) or [0] * 24 for k in _PROCESSING_TIME_SERIES}))
+        for hub, t in timelines.items()
+    ]
+    await db.execute("DELETE FROM processing_time_daily WHERE snap_date = %s", (today,))
+    await db.execute_many(
+        "INSERT INTO processing_time_daily (snap_date, station_code, captured_at, timelines) VALUES (%s, %s, %s, %s)",
+        params,
+    )
+    await db.execute("DELETE FROM processing_time_daily WHERE snap_date < %s", (today - timedelta(days=_PROCESSING_TIME_DAYS - 1),))
+
 
 # Tracking-number lists behind each station's metric counts, for the UI's
 # click-a-number drill-down. In-memory only (not persisted) -- rebuilt on every
@@ -534,6 +574,11 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             log.exception("DoD snapshot failed")
 
         try:
+            await _capture_processing_time(captured_at, shipment_timelines)
+        except Exception:  # noqa: BLE001 - the Processing Time history is isolated from the rest of the refresh
+            log.exception("Processing Time snapshot failed")
+
+        try:
             await _prune_old_snapshots(captured_at)
             await _sync_urgent_no_status(captured_at)
         except Exception:  # noqa: BLE001 - isolated so a bug here can't fail the whole refresh
@@ -653,14 +698,28 @@ async def _hourly_refresh_loop() -> None:
         except Exception:  # noqa: BLE001 - never let the loop die
             log.exception("Scheduled refresh crashed")
         await recovery_lost.tick()  # Monday 22:00: Lost Declared This Week -> Summary (never raises)
+        await ptwh_app.purge_old_selfies()  # PTWH selfies are kept 14 days (never raises)
+        await ptwh_app.housekeeping_workers()  # PTWH end dates, 30-day inactivity, 60-day clean-up (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+
+
+_launch_task: asyncio.Task | None = None
+
+
+async def _launch_refresh_loop() -> None:
+    """Every pod re-reads the Attendance launch dates often, so a date set on one pod reaches the others within seconds."""
+    while True:
+        await asyncio.sleep(attendance_launch.REFRESH_SECONDS)
+        await attendance_launch.refresh_rules()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _refresh_task, _warm_task
+    global _refresh_task, _warm_task, _launch_task
     await db.init_pool()
     if os.getenv("DATABASE_URL"):
+        await attendance_launch.refresh_rules()
+        _launch_task = asyncio.create_task(_launch_refresh_loop())
         _refresh_task = asyncio.create_task(_hourly_refresh_loop())
         _warm_task = asyncio.create_task(kpi_data.warm_compacts())  # the KPI pages' big uploads are ready before anyone asks
     yield
@@ -668,6 +727,8 @@ async def lifespan(app: FastAPI):
         _refresh_task.cancel()
     if _warm_task is not None:
         _warm_task.cancel()
+    if _launch_task is not None:
+        _launch_task.cancel()
     await db.close_pool()
 
 
@@ -679,14 +740,30 @@ async def _kpi_fresh() -> None:
     await region_list.ensure_fresh()
 
 
+app.include_router(attendance_corrections.router)  # Attendance -> PTWH: controlled clock corrections + voids (attendance_corrections.py)
+app.include_router(attendance_launch.router)  # Settings -> Launch Timeline: Attendance goes live by batch (attendance_launch.py)
+app.include_router(hybrid_attendance.router)  # Attendance -> Hybrid: manual drivers + attendance (hybrid_attendance.py)
+app.include_router(staff_attendance.router)  # Attendance -> Staff: Station Heads / Fleet Assistants clock in by location (staff_attendance.py)
+app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
+app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
+app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
+app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
+app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
+app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Label from Hub: rows keyed by Recovery or the hub, answered by the other side (recovery_cases.py)
+app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
+app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence + tenancy dates, rent per station (premises.py)
+app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
+app.include_router(vehicles.router)  # Fleet Admin -> Vehicles: the Master Vehicle Inventory per plate (vehicles.py)
+app.include_router(assets.router)  # Fleet Admin -> Assets: station inventory by category (assets.py)
+app.include_router(asset_lists.router)  # Fleet Admin -> Assets: fire extinguisher + weighing scale registers (asset_lists.py); AFTER assets.router so /api/assets/inventory wins
 app.include_router(region_list.router)  # Admin: the station list from the Region List sheet (region_list.py)
 app.include_router(kpi_targets_router)  # KPI targets by region (kpi_targets.py)
 app.include_router(kpi_cisp_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Prior / Completion D0, D3 / Terminal T7 / FIFO D0 analysis (kpi_cisp.py)
-app.include_router(kpi_cod_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): COD RTS RCA views (kpi_cod.py)
-app.include_router(kpi_pod_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Invalid POD RCA + LM POD Performance (kpi_pod.py)
-app.include_router(kpi_rca_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): weekly KPI results, OPEX result (kpi_rca.py)
-app.include_router(kpi_router, dependencies=[Depends(_kpi_fresh)])  # KPI page (Beta): Hybrid Productivity (kpi.py)
+app.include_router(kpi_cod_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard: COD RTS RCA views (kpi_cod.py, staging)
+app.include_router(kpi_pod_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard: Invalid POD RCA + LM POD Performance (kpi_pod.py, staging)
+app.include_router(kpi_rca_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard RCA views: Invalid POD, COD RTS, Weekly KPI results (kpi_rca.py, staging)
+app.include_router(kpi_router, dependencies=[Depends(_kpi_fresh)])  # KPI Dashboard: Hybrid Productivity from Metabase (kpi.py, staging)
 app.include_router(tasklist_router)  # Task List: Email / Gchat follow-ups, To Do List, Task Assigned (tasklist.py)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -713,10 +790,20 @@ class Me(BaseModel):
     scope_type: str | None = None
     scope_values: list[str] = []
     display_name: str | None = None
+    is_impersonating: bool = False
+    real_role: str | None = None
+    # The stored job position ('rfs', 'opex' ...); `role` above is its access tier (see auth.POSITIONS).
+    position: str | None = None
 
 
 @app.get("/api/me", response_model=Me)
-async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email")):
+async def me(
+    x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email"),
+    x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
+    x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
+    x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
+    x_view_as_email: str | None = Header(default=None, alias="X-View-As-Email"),
+):
     if not x_forwarded_email:
         return {"email": None, "provisioned": False}
     row = await db.fetch_one(
@@ -726,9 +813,33 @@ async def me(x_forwarded_email: str | None = Header(default=None, alias="X-Forwa
     if row is None:
         return {"email": x_forwarded_email, "provisioned": False}
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
+    real_role = tier_of(row[1])
+    # Same "View As" overrides as auth.get_current_user -- gated on real_role
+    # from the DB, never on the override headers themselves.
+    if real_role == "admin" and x_view_as_email:
+        target = await db.fetch_one(
+            "SELECT email, role, scope_type, scope_values, display_name FROM users WHERE LOWER(email) = %s",
+            (x_view_as_email.strip().lower(),),
+        )
+        if target is None:
+            raise HTTPException(status_code=422, detail="That user isn't in the user list")
+        st, sv = data_scope(tier_of(target[1]), target[2], parse_scope_values(target[3]))
+        return {
+            "email": target[0], "provisioned": True, "role": tier_of(target[1]), "scope_type": st,
+            "scope_values": sv, "display_name": target[4],
+            "is_impersonating": True, "real_role": real_role, "position": target[1],
+        }
+    if real_role == "admin" and x_view_as_role:
+        st, sv = data_scope(tier_of(x_view_as_role), x_view_as_scope_type or "all", [v for v in (x_view_as_scope_values or "").split(",") if v])
+        return {
+            "email": row[0], "provisioned": True, "role": tier_of(x_view_as_role), "position": x_view_as_role,
+            "scope_type": st, "scope_values": sv,
+            "display_name": row[4], "is_impersonating": True, "real_role": real_role,
+        }
+    st, sv = data_scope(real_role, row[2], parse_scope_values(row[3]))
     return {
-        "email": row[0], "provisioned": True, "role": row[1], "scope_type": row[2],
-        "scope_values": parse_scope_values(row[3]), "display_name": row[4],
+        "email": row[0], "provisioned": True, "role": real_role, "scope_type": st,
+        "scope_values": sv, "display_name": row[4], "real_role": real_role, "position": row[1],
     }
 
 
@@ -881,7 +992,7 @@ async def dashboard(user: CurrentUser = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# DoD Dashboard (Beta): day-over-day Station Health for the current week + last week.
+# DoD Dashboard (staging): day-over-day Station Health for the current week + last week.
 # ---------------------------------------------------------------------------
 
 class LHTrip(BaseModel):
@@ -948,6 +1059,53 @@ async def dod(user: CurrentUser = Depends(get_current_user)):
         "rows": [{k: v for k, v in s.items() if k != "captured_at"} for s in scoped],
         "captured_at": latest.isoformat() if hasattr(latest, "isoformat") else (str(latest) if latest else None),
     }
+
+
+# ---------------------------------------------------------------------------
+# Processing Time tab (2026-10-02): the last 7 days of hour-of-day timelines per station (see _capture_processing_time).
+# ---------------------------------------------------------------------------
+
+class ProcessingTimeRow(BaseModel):
+    day: str
+    station_code: str
+    station_name: str
+    zone: str
+    region: str
+    arrival: list[int]
+    sweep: list[int]
+    attempt: list[int]
+    success: list[int]
+    lh: list[int]
+
+
+class ProcessingTimeResponse(BaseModel):
+    today: str
+    days: list[str]  # every day that has data, oldest first
+    rows: list[ProcessingTimeRow]
+
+
+@app.get("/api/processing-time", response_model=ProcessingTimeResponse)
+async def processing_time(user: CurrentUser = Depends(get_current_user)):
+    today = datetime.now(_MYT).date()
+    since = today - timedelta(days=_PROCESSING_TIME_DAYS - 1)
+    db_rows = await db.fetch_all(
+        "SELECT snap_date, station_code, timelines FROM processing_time_daily WHERE snap_date >= %s ORDER BY snap_date", (since,)
+    )
+    shaped = []
+    for r in db_rows:
+        hub = HUBS.get(r[1])
+        if hub is None:
+            continue
+        name, _full, zone, region = hub
+        tl = r[2]
+        if isinstance(tl, (str, bytes)):
+            tl = json.loads(tl)
+        shaped.append({
+            "day": str(r[0])[:10], "station_code": r[1], "station_name": name, "zone": zone, "region": region,
+            **{k: [int(v) for v in (tl.get(k) or [0] * 24)] for k in _PROCESSING_TIME_SERIES},
+        })
+    scoped = _scope_filter_stations(shaped, user)
+    return {"today": today.isoformat(), "days": sorted({s["day"] for s in scoped}), "rows": scoped}
 
 
 class DrilldownResponse(BaseModel):
@@ -1570,7 +1728,8 @@ async def _fetch_aging_rows(captured_at, aging_type: str) -> list[dict]:
 
 
 @app.get("/api/aging-details", response_model=AgingDetailsResponse)
-async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_current_user)):
+async def aging_details(type: str = "overall", summary: bool = False, user: CurrentUser = Depends(get_current_user)):
+    # summary=true leaves the TN-level rows out (Management View only needs the per-station age buckets).
     if type not in AGING_TYPES:
         raise HTTPException(status_code=422, detail=f"type must be one of {list(AGING_TYPES)}")
 
@@ -1593,7 +1752,7 @@ async def aging_details(type: str = "overall", user: CurrentUser = Depends(get_c
             for g in rows if g["station_count"] > 0
         ]
 
-    tn_rows = [r for r in _aging_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
+    tn_rows = [] if summary else [r for r in _aging_rows_cache.get(type, []) if r["station_code"] in scoped_codes]
     tn_rows_total = len(tn_rows)
     tn_rows_truncated = tn_rows_total > AGING_TN_ROWS_CAP
     if tn_rows_truncated:
@@ -2348,9 +2507,16 @@ async def get_recovery_settings(user: CurrentUser = Depends(get_current_user)):
 
 @app.put("/api/recovery/settings", response_model=RecoverySettings)
 async def put_recovery_settings(payload: RecoverySettings, user: CurrentUser = Depends(get_current_user)):
-    _require_can_edit_thresholds(user)
+    # 2026-10-04: the COD value is the Superadmin's alone; the item keywords are for the HOD / Manager (the manager tier) and the Recovery role.
+    if not (user.role in ("admin", "manager") or user.position == "recovery"):
+        raise HTTPException(status_code=403, detail="Only the HOD, a Manager, Recovery or the Superadmin can change the Recovery settings")
     if payload.high_cod_value_threshold < 0:
         raise HTTPException(status_code=422, detail="high_cod_value_threshold must be >= 0")
+    if user.role != "admin":
+        current = await db.fetch_one("SELECT high_cod_value_threshold FROM recovery_settings WHERE id = 1")
+        current_value = current[0] if current else DEFAULT_HIGH_COD_VALUE_THRESHOLD
+        if float(payload.high_cod_value_threshold) != float(current_value):
+            raise HTTPException(status_code=403, detail="Only the Superadmin can change the COD value; the item keywords you can")
     keywords = [k.strip().lower() for k in payload.high_value_item_keywords if k.strip()]
     now = datetime.now(timezone.utc)
     await db.execute(
@@ -2923,13 +3089,56 @@ async def urgent_pic_suggestions(q: str = "", user: CurrentUser = Depends(get_cu
     if len(q) < 2:
         return []
     like = f"%{q}%"
+    me = user.email.lower()
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(r) -> None:
+        if r[0].lower() not in seen:
+            seen.add(r[0].lower())
+            out.append({"email": r[0], "display_name": r[1], "role": r[2]})
+
+    # 2026-10-02: type a STATION (its name, or its 3-letter code) and everyone looking after it comes up -- the station's own
+    # staff first, then the Region Head / RFS of its zone, then the manager of its region -- so the PIC is one search away.
+    # Only when the text names a station (or at most three); a loose "ka" would otherwise match half the country.
+    places = [(name, zone, region) for name, _full, zone, region in HUBS.values() if q in name.lower()]
+    exact = [p for p in places if p[0].lower() == q]
+    abbr = HUBS.get(ABBR_TO_HUB.get(q.upper(), ""))
+    if abbr:
+        exact = [(abbr[0], abbr[2], abbr[3])]
+    places = exact or places
+    if 1 <= len(places) <= 3:
+        names = {p[0] for p in places}
+        zones = {p[1] for p in places}
+        regions = {p[2] for p in places}
+        cover = await db.fetch_all(
+            # by where they are POSTED (Staff & Org Chart), not by what they can see -- someone covering another station is still at home
+            "SELECT email, display_name, role, COALESCE(home_scope_type, scope_type), COALESCE(home_scope_values, scope_values) FROM users "
+            "WHERE COALESCE(home_scope_type, scope_type) NOT IN ('all', 'hq') AND LOWER(email) <> %s",
+            (me,),
+        )
+        tiers: dict[int, list] = {0: [], 1: [], 2: []}
+        for r in cover:
+            values = set(parse_scope_values(r[4]))
+            if r[3] == "station" and values & names:
+                tiers[0].append(r)
+            elif r[3] == "zone" and values & zones:
+                tiers[1].append(r)
+            elif r[3] == "region" and values & regions:
+                tiers[2].append(r)
+        for tier in (0, 1, 2):
+            for r in sorted(tiers[tier], key=lambda x: (x[2] != "station_head", (x[1] or x[0]).lower())):  # the Station Head first
+                add(r)
+
     rows = await db.fetch_all(
         """SELECT email, display_name, role FROM users
            WHERE (LOWER(email) LIKE %s OR LOWER(display_name) LIKE %s) AND LOWER(email) <> %s
            ORDER BY email LIMIT 8""",
-        (like, like, user.email.lower()),
+        (like, like, me),
     )
-    return [{"email": r[0], "display_name": r[1], "role": r[2]} for r in rows]
+    for r in rows:
+        add(r)
+    return out[:15]
 
 
 @app.post("/api/urgent-tn/items", response_model=OkResult)
@@ -3166,6 +3375,10 @@ class Notifications(BaseModel):
     followups_due_soon: int
     todos_due_soon: int
     tasks_due_soon: int
+    ptwh_approvals: int = 0  # new PTWH hires waiting for MY approval (Region Head: step 1, Manager / HOD: step 2) -- attendance.approvals_count
+    ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
+    attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
+    ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
 
 
 @app.get("/api/notifications", response_model=Notifications)
@@ -3201,6 +3414,10 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "urgent_owner_reminder": await _urgent_owner_reminder_count(user.email),
         "urgent_owner_updates": int(owner[0] or 0),
         "feedback_replies_unread": int(unread[0] or 0),
+        "ptwh_review": await ptwh_app.review_count(user),
+        "ptwh_approvals": await attendance.approvals_count(user),
+        "ptwh_corrections": await attendance_corrections.pending_count(user),
+        "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
         **await tasklist_counts(user),
     }
 
@@ -3309,13 +3526,13 @@ class UserOut(BaseModel):
 
 class UserIn(BaseModel):
     email: str
-    role: str  # 'admin' | 'manager' | 'region' | 'station'
-    scope_type: str  # 'all' | 'region' | 'zone' | 'station'
+    role: str  # a position, see auth.POSITIONS
+    scope_type: str  # 'all' | 'hq' | 'region' | 'zone' | 'station'
     scope_values: list[str] = []
     display_name: str | None = None
 
 
-# Only the app owner can grant the Admin role -- not just any existing admin.
+# Only the app owner can grant the Superadmin (stored as "admin") role -- not just any existing admin.
 # 2026-09-21 feedback: an admin promoted by the owner still can't create more
 # admins themselves, which this single check (keyed off the ACTING user's own
 # email, not their role) gives for free.
@@ -3327,35 +3544,93 @@ def _require_admin(user: CurrentUser) -> None:
     Region staff get scoped add/edit/remove, see _require_can_add_users and
     _require_can_manage_target."""
     if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(status_code=403, detail="Superadmin access required")
 
 
 def _require_can_add_users(user: CurrentUser) -> None:
     if user.role not in ("admin", "manager", "region"):
-        raise HTTPException(status_code=403, detail="Admin, Manager, or Region staff access required")
+        raise HTTPException(status_code=403, detail="Superadmin, Manager / HOD or Region staff access required")
+
+
+# 2026-10-02: Region Heads / RFS / Managers now run the Users page for their own people, so what they can see,
+# grant, edit and remove is limited to places INSIDE their own scope (before, a Region staff member could
+# grant or edit station access anywhere, since only the role was checked, not where).
+def _stations_for_scope(scope_type: str, scope_values: list[str]) -> set[str] | None:
+    """Station names a scope covers; None means everything ('all', or 'hq' = HQ staff with no dedicated place)."""
+    if scope_type in ("all", "hq"):
+        return None
+    out = set()
+    for name, _full, zone, region in HUBS.values():
+        if (scope_type == "station" and name in scope_values) or (scope_type == "zone" and zone in scope_values) \
+                or (scope_type == "region" and region in scope_values):
+            out.add(name)
+    return out
+
+
+def _scope_within(acting: CurrentUser, scope_type: str, scope_values: list[str]) -> bool:
+    """True when everything the (scope_type, scope_values) covers is also covered by the acting user's own scope."""
+    # Where the person belongs (a Manager's dedicated region), not the wider scope their data is read with.
+    if acting.role == "manager":  # Managers / HOD manage everyone (2026-10-02: a manager often covers another manager's region)
+        return True
+    mine = _stations_for_scope(acting.home_scope_type or acting.scope_type, acting.home_scope_values if acting.home_scope_type else acting.scope_values)
+    if mine is None:
+        return True
+    theirs = _stations_for_scope(scope_type, scope_values)
+    return theirs is not None and theirs <= mine
+
+
+_SHORT_TAG = {"region_head": "RH", "rfs": "RFS", "station_head": "SH", "fleet_assistant": "FA"}  # the sheet's own abbreviations
+
+
+def _auto_display_name(email: str, role: str, scope_type: str, scope_values: list[str]) -> str:
+    """"Afnan Roslan (Station staff - Larkin)" from the email when nobody typed a name, so the PIC box always shows who a
+    person is and where (2026-10-02: the picker searches by station, and a bare email says neither)."""
+    name = " ".join(p.capitalize() for p in email.split("@")[0].replace("_", ".").split(".") if p)
+    tag = _SHORT_TAG.get(role) or POSITIONS.get(role, (role,))[0]
+    where = "" if scope_type in ("all", "hq") else " - " + " & ".join(scope_values)
+    return f"{name} ({tag}{where})" if name else email
+
+
+# Who may hand out / manage which positions, by the ACTING user's access tier (auth.POSITIONS): a Manager / HOD looks after
+# Region and Station staff, Region staff look after Station staff, only the Admin side (the owner) hands out HQ positions.
+# Who may add / edit / remove whom on the Users page (i.e. who may change ACCESS), by POSITION:
+#   Superadmin   everyone (the Superadmin role itself only by the owner, see _require_can_grant_role);
+#   HOD          everyone except the Superadmin;
+#   Manager      everyone except the HOD and the Superadmin -- HQ staff and other Managers included (2026-10-02: a manager often
+#                covers another manager's work);
+#   Region staff Station staff in their own zone / region only.
+# The Fleet Admin team keeps the staff list (who is posted where) in Staff & Org Chart (staff.py) and does not edit access.
+def _may_manage_position(acting: CurrentUser, target_position: str) -> bool:
+    if acting.role == "admin":
+        return True
+    tier = tier_of(target_position)
+    if acting.role == "manager":
+        if tier == "admin":
+            return False
+        return target_position != "hod" or acting.position == "hod"
+    if acting.role == "region":
+        return tier == "station"
+    return False
+
+
+def _manageable_label(acting: CurrentUser) -> str:
+    if acting.role == "manager":
+        return "anyone except the Superadmin" if acting.position == "hod" else "anyone except the HOD and the Superadmin"
+    return "Station staff"
 
 
 def _require_can_manage_target(acting: CurrentUser, target_role: str) -> None:
-    """Edit/delete permission on an existing user -- keyed off the TARGET's
-    current role, mirroring _validate_grant_limits' ceiling: a Manager can
-    manage Station/Region-role users, Region staff can manage Station-role
-    users only, Admin can manage anyone."""
-    if acting.role == "admin":
-        return
-    if acting.role == "manager":
-        if target_role not in ("station", "region"):
-            raise HTTPException(status_code=403, detail="Managers can only edit or remove Station staff or Region staff")
-        return
-    if acting.role == "region":
-        if target_role != "station":
-            raise HTTPException(status_code=403, detail="Region staff can only edit or remove Station staff")
-        return
-    raise HTTPException(status_code=403, detail="You can't edit or remove other users")
+    """Edit/delete permission on an existing user -- keyed off the TARGET's current position, mirroring
+    _validate_grant_limits' ceiling."""
+    if acting.role not in ("admin", "manager", "region"):
+        raise HTTPException(status_code=403, detail="You can't edit or remove other users")
+    if not _may_manage_position(acting, target_role):
+        raise HTTPException(status_code=403, detail="You can only edit or remove " + _manageable_label(acting))
 
 
 def _require_can_grant_role(acting: CurrentUser, role: str) -> None:
     if role == "admin" and acting.email != _OWNER_EMAIL:
-        raise HTTPException(status_code=403, detail="Only the app owner can grant the Admin role")
+        raise HTTPException(status_code=403, detail="Only the app owner can grant the Superadmin role")
 
 
 def _row_to_user_out(r) -> dict:
@@ -3374,17 +3649,16 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
     out = [_row_to_user_out(r) for r in rows]
     # Same view mirrors what each role can manage (see _require_can_manage_target) --
     # a Manager/Region user only ever sees the subset they're allowed to act on.
+    # ...and only the ones inside their own scope (2026-10-02).
     if user.role == "admin":
         return out
-    if user.role == "manager":
-        return [u for u in out if u["role"] in ("station", "region")]
-    if user.role == "region":
-        return [u for u in out if u["role"] == "station"]
-    return []
+    return [u for u in out if _may_manage_position(user, u["role"]) and _scope_within(user, u["scope_type"], u["scope_values"])]
 
 
-_VALID_ROLES = {"admin", "manager", "region", "station"}
-_VALID_SCOPE_TYPES = {"all", "region", "zone", "station"}
+# 2026-10-02: roles are job positions (auth.POSITIONS). HQ staff have no dedicated region / zone / station, so they get the
+# scope 'hq' (read as 'all' for the data they see today); the position decides the permissions through its access tier.
+_VALID_ROLES = set(POSITIONS)
+_VALID_SCOPE_TYPES = {"all", "hq", "region", "zone", "station"}
 
 
 def _validate_user_in(payload: UserIn) -> None:
@@ -3392,7 +3666,9 @@ def _validate_user_in(payload: UserIn) -> None:
         raise HTTPException(status_code=422, detail=f"role must be one of {sorted(_VALID_ROLES)}")
     if payload.scope_type not in _VALID_SCOPE_TYPES:
         raise HTTPException(status_code=422, detail=f"scope_type must be one of {sorted(_VALID_SCOPE_TYPES)}")
-    if payload.scope_type == "all":
+    if payload.scope_type == "hq" and tier_of(payload.role) not in ("admin", "manager", "hq_staff"):
+        raise HTTPException(status_code=422, detail="HQ scope is only for HQ staff (HOD, Manager, Fleet Admin, OPEX, Recovery, Restock)")
+    if payload.scope_type in ("all", "hq"):
         return
     if not payload.scope_values:
         raise HTTPException(status_code=422, detail="scope_values can't be empty unless scope_type is 'all'")
@@ -3419,16 +3695,21 @@ def _validate_grant_limits(acting: CurrentUser, payload: UserIn) -> None:
     a privilege-escalation hole."""
     if acting.role == "admin":
         return
-    if acting.role == "manager":
-        if payload.role not in ("station", "region"):
-            raise HTTPException(status_code=403, detail="Managers can only grant the Station staff or Region staff role")
-        if payload.scope_type == "all":
-            raise HTTPException(status_code=403, detail="Managers can't grant 'sees everything' access")
-    elif acting.role == "region":
-        if payload.role != "station":
-            raise HTTPException(status_code=403, detail="Region staff can only grant the Station staff role")
-        if payload.scope_type != "station":
-            raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
+    if acting.role not in ("manager", "region"):
+        raise HTTPException(status_code=403, detail="You can't grant access")
+    if not _may_manage_position(acting, payload.role):
+        raise HTTPException(status_code=403, detail="You can only grant " + _manageable_label(acting))
+    if payload.scope_type == "all" or (payload.scope_type == "hq" and acting.role != "manager"):
+        raise HTTPException(status_code=403, detail="You can't grant 'sees everything' access")
+    if acting.role == "region" and payload.scope_type != "station":
+        raise HTTPException(status_code=403, detail="Region staff can only grant station-level access")
+    if not _scope_within(acting, payload.scope_type, payload.scope_values):
+        raise HTTPException(status_code=403, detail="You can only give access to places inside your own scope")
+
+
+def _require_target_in_scope(acting: CurrentUser, target_scope_type: str, target_scope_values: list[str]) -> None:
+    if acting.role != "admin" and not _scope_within(acting, target_scope_type, target_scope_values):
+        raise HTTPException(status_code=403, detail="That person is outside your scope")
 
 
 def _scope_values_json(values: list[str]) -> str | None:
@@ -3445,11 +3726,15 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
     if existing:
         raise HTTPException(status_code=409, detail="That email is already set up")
     await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
-           VALUES (%s, %s, %s, %s, %s, %s)""",
+        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",  # a new person's posting starts out the same as their access
         (payload.email, payload.role, payload.scope_type, _scope_values_json(payload.scope_values),
-         payload.display_name, user.email),
+         payload.scope_type, _scope_values_json(payload.scope_values),
+         (payload.display_name or "").strip() or _auto_display_name(payload.email, payload.role, payload.scope_type, payload.scope_values),
+         user.email),
     )
+    if payload.scope_type == "station":
+        await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
     return {"ok": True}
 
 
@@ -3486,17 +3771,20 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             skipped.append(email)
             continue
         await db.execute(
-            """INSERT INTO users (email, role, scope_type, scope_values, display_name, invited_by)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
-            (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.display_name, user.email),
+            """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.scope_type, _scope_values_json(row.scope_values),
+             (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email),
         )
+        if row.scope_type == "station":
+            await headcount.consume_seat(row.scope_values, row.role)
         added.append(email)
     return {"added": added, "skipped": skipped, "errors": errors}
 
 
 @app.patch("/api/admin/users/{email}", response_model=OkResult)
 async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(get_current_user)):
-    target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
+    target = await db.fetch_one("SELECT role, scope_type, scope_values FROM users WHERE email=%s", (email,))
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     # The owner's role is fixed -- nobody, including the owner themselves, can change it
@@ -3505,13 +3793,14 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
     if email == _OWNER_EMAIL and payload.role != "admin":
         raise HTTPException(status_code=403, detail="The app owner's role can't be changed")
     _require_can_manage_target(user, target[0])
+    _require_target_in_scope(user, target[1], parse_scope_values(target[2]))
     _validate_user_in(payload)
     _validate_grant_limits(user, payload)
     _require_can_grant_role(user, payload.role)
     await db.execute(
-        """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=%s
-           WHERE email=%s""",
-        (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), payload.display_name, email),
+        """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=COALESCE(%s, display_name)
+           WHERE email=%s""",  # a form that sends no name keeps the one on file (it used to blank it)
+        (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), (payload.display_name or "").strip() or None, email),
     )
     return {"ok": True}
 
@@ -3520,19 +3809,12 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
 async def delete_user(email: str, user: CurrentUser = Depends(get_current_user)):
     if email == user.email:
         raise HTTPException(status_code=400, detail="You can't remove your own access")
-    target = await db.fetch_one("SELECT role FROM users WHERE email=%s", (email,))
+    target = await db.fetch_one("SELECT role, scope_type, scope_values FROM users WHERE email=%s", (email,))
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
     _require_can_manage_target(user, target[0])
-    await db.execute("DELETE FROM users WHERE email=%s", (email,))
-    # Urgent TN items follow their owner: the ones this user created go with them,
-    # and any assigned to them are just unassigned (V27 migration).
-    await tasklist_user_deleted(email)
-    await db.execute("DELETE FROM urgent_tn_items WHERE LOWER(created_by) = %s", (email.lower(),))
-    await db.execute(
-        "UPDATE urgent_tn_items SET assignee_email = NULL, assignee_seen_at = NULL WHERE LOWER(assignee_email) = %s",
-        (email.lower(),),
-    )
+    _require_target_in_scope(user, target[1], parse_scope_values(target[2]))
+    await staff.purge_user(email)  # the person and what hangs off them (Urgent TN items ...), shared with Staff & Org Chart
     return {"ok": True}
 
 
@@ -3585,6 +3867,7 @@ class QueryFetchStatus(BaseModel):
     query_id: int
     label: str
     fetched_at: str | None
+    url: str | None = None  # the Redash page of the query -- only sent to the Superadmin
 
 
 class RefreshStatus(BaseModel):
@@ -3596,6 +3879,7 @@ class RefreshStatus(BaseModel):
     error_message: str | None
     triggered_by: str | None
     queries: list[QueryFetchStatus]
+    can_refresh: bool = False  # only the Superadmin may press Refresh now
 
 
 @app.post("/api/admin/refresh", response_model=RefreshStatus)
@@ -3611,12 +3895,24 @@ async def trigger_refresh(user: CurrentUser = Depends(get_current_user)):
 
 @app.get("/api/admin/refresh-status", response_model=RefreshStatus | None)
 async def refresh_status(user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
+    # Data Refresh moved to Settings (2026-10-04): the Superadmin, HOD / Manager, OPEX and Region staff can look; only the Superadmin can press Refresh now.
+    if not (user.role in ("admin", "manager", "region") or user.position == "opex"):
+        raise HTTPException(status_code=403, detail="Not available for your role")
     row = await db.fetch_one(
         """SELECT id, started_at, finished_at, status, stations_count, error_message, triggered_by
            FROM refresh_log ORDER BY id DESC LIMIT 1"""
     )
-    return _refresh_row_to_dict(row) if row else None
+    if not row:
+        return None
+    out = _refresh_row_to_dict(row)
+    out["can_refresh"] = user.role == "admin"
+    if user.role == "admin":
+        from redash_client import REDASH_BASE_URL
+
+        if REDASH_BASE_URL:
+            for q in out["queries"]:
+                q["url"] = f"{REDASH_BASE_URL}/queries/{q['query_id']}"
+    return out
 
 
 def _refresh_row_to_dict(row) -> dict:
@@ -3697,6 +3993,23 @@ def _require_can_edit_thresholds(user: CurrentUser) -> None:
         raise HTTPException(status_code=403, detail="Admin or Manager access required")
 
 
+def _may_edit_threshold_scope(user: CurrentUser, scope: str) -> bool:
+    """Station Metric Targets (2026-10-04): the Superadmin sets everything; the HOD sets the nationwide numbers (and the per-driver-type ones, which are
+    nationwide too); a Manager sets the numbers of their own region(s) -- all regions if they have no posting -- but never nationwide."""
+    if user.role == "admin":
+        return True
+    if user.position == "hod":
+        return scope == "nationwide" or scope in _SLA_DRIVER_POSITION_SCOPES
+    if user.role == "manager":
+        if scope not in REGIONS:
+            return False
+        # "their region" is where the Manager is POSTED (Staff & Org Chart); with no posting, any region.
+        if user.home_scope_type == "region" and user.home_scope_values:
+            return scope in user.home_scope_values
+        return True
+    return False
+
+
 @app.put("/api/thresholds", response_model=OkResult)
 async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_current_user)):
     _require_can_edit_thresholds(user)
@@ -3717,6 +4030,11 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
             raise HTTPException(status_code=422, detail=f"direction must be one of {sorted(_SLA_DIRECTIONS)}")
         if row.percent_of is not None and row.percent_of not in _SLA_METRIC_KEYS:
             raise HTTPException(status_code=422, detail=f"Unknown percent_of metric_key: {row.percent_of}")
+        if not _may_edit_threshold_scope(user, row.scope):
+            raise HTTPException(
+                status_code=403,
+                detail=f"You can't change the '{row.scope}' targets. The HOD sets the nationwide numbers, a Manager sets their own region, the Superadmin sets any.",
+            )
         params.append((
             row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
             row.percent_of, user.email, now,

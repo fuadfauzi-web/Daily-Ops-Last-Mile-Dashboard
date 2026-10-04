@@ -46,7 +46,7 @@ export function resolveThreshold(rows, metricKey, region) {
 // the same row instead of its raw count -- e.g. Age >3 scored as % of Total In Hub
 // (threshold.percent_of === "total_in_hub") rather than a flat number, per
 // 2026-09-20 feedback. Only takes effect when the threshold actually has
-// percent_of set (via Admin -> SLA Targets); every other metric classifies its
+// percent_of set (via Superadmin -> SLA Targets); every other metric classifies its
 // raw value exactly as before.
 export function classify(threshold, value, row) {
   if (!threshold.scored) return "reference";

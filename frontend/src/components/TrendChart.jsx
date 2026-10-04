@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FEATURES } from "../lib/features";
 
 // A small line chart with values on the points -- the DoD Dashboard's week-over-week lines and the KPI Dashboard's trends.
 // Drawn at its real pixel width (measured), like the timing chart, so the text stays the same size as the rest of the page.
@@ -12,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 // Several measures with different units (a count next to a %): give each measure its own `group`. Every group is then scaled on
 // its own (the y axis is left unlabelled), lines of one group share a scale -- so last week vs this week of the SAME measure are
 // compared honestly -- and the real values show in the labels / the hover box.
-const TONES = {
+const TONES_BASE = {
   brand: { stroke: "stroke-brand", fill: "fill-brand", text: "fill-brand", dot: "bg-brand" },
   slate: { stroke: "stroke-slate-400", fill: "fill-slate-400", text: "fill-slate-500", dot: "bg-slate-400" },
   good: { stroke: "stroke-status-good", fill: "fill-status-good", text: "fill-status-good", dot: "bg-status-good" },
@@ -58,7 +59,17 @@ function scaleFor(values, zeroBased) {
   return { lo, hi, ticks };
 }
 
-export default function TrendChart({ labels, series, format = (v) => String(Math.round(v * 10) / 10), zeroBased = true, height = 190 }) {
+// FEATURES.chartStyle (staging trial, design review D13): the primary line is ink (brand red is chrome only), the comparison line a quiet grey, gridlines
+// pale. An optional `target` ({ value, label }) draws a dashed dark-red target line labelled at the right edge.
+export default function TrendChart({ labels, series, format = (v) => String(Math.round(v * 10) / 10), zeroBased = true, height = 190, target = null }) {
+  const TONES = FEATURES.chartStyle
+    ? {
+        ...TONES_BASE,
+        brand: { stroke: "stroke-ink", fill: "fill-ink", text: "fill-ink", dot: "bg-ink" },
+        slate: { stroke: "stroke-[#9AA1AA]", fill: "fill-[#9AA1AA]", text: "fill-[#6B7280]", dot: "bg-[#9AA1AA]" },
+      }
+    : TONES_BASE;
+  const grid = FEATURES.chartStyle ? "stroke-[#EEF0F3]" : "stroke-slate-200";
   const [wrapEl, setWrapEl] = useState(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState(null);
@@ -144,13 +155,13 @@ export default function TrendChart({ labels, series, format = (v) => String(Math
         <svg width={width} height={height} className="block" role="img" aria-label="Trend chart" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
           {independent
             ? [0, 0.5, 1].map((f) => (
-                <line key={f} x1={padLeft} x2={width - padRight} y1={padTop + plotH * f} y2={padTop + plotH * f} className="stroke-slate-200" strokeWidth="1" strokeDasharray={f === 1 ? undefined : "3 3"} />
+                <line key={f} x1={padLeft} x2={width - padRight} y1={padTop + plotH * f} y2={padTop + plotH * f} className={grid} strokeWidth="1" strokeDasharray={f === 1 ? undefined : "3 3"} />
               ))
             : shared.ticks.map((t) => {
                 const yy = padTop + plotH - ((t - shared.lo) / (shared.hi - shared.lo)) * plotH;
                 return (
                   <g key={t}>
-                    <line x1={padLeft} x2={width - padRight} y1={yy} y2={yy} className="stroke-slate-200" strokeWidth="1" strokeDasharray={t === shared.lo ? undefined : "3 3"} />
+                    <line x1={padLeft} x2={width - padRight} y1={yy} y2={yy} className={grid} strokeWidth="1" strokeDasharray={t === shared.lo ? undefined : "3 3"} />
                     <text x={padLeft - 6} y={yy + 3} textAnchor="end" className="fill-slate-500 text-xs">
                       {format(t)}
                     </text>
@@ -163,6 +174,28 @@ export default function TrendChart({ labels, series, format = (v) => String(Math
                 {l}
               </text>
             ) : null
+          )}
+          {FEATURES.chartStyle && target && !independent && shared && target.value >= shared.lo && target.value <= shared.hi && (
+            <g>
+              <line
+                x1={padLeft}
+                x2={width - padRight}
+                y1={padTop + plotH - ((target.value - shared.lo) / (shared.hi - shared.lo)) * plotH}
+                y2={padTop + plotH - ((target.value - shared.lo) / (shared.hi - shared.lo)) * plotH}
+                stroke="#8C1D18"
+                strokeWidth="1"
+                strokeDasharray="4 3"
+              />
+              <text
+                x={width - padRight}
+                y={padTop + plotH - ((target.value - shared.lo) / (shared.hi - shared.lo)) * plotH - 4}
+                textAnchor="end"
+                fill="#8C1D18"
+                className="text-[10px] font-semibold"
+              >
+                {target.label}
+              </text>
+            </g>
           )}
           {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={padTop} y2={padTop + plotH} className="stroke-slate-300" strokeWidth="1" strokeDasharray="2 3" />}
           {series.map((s, si) => {

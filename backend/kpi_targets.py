@@ -92,8 +92,9 @@ def include_east_malaysia() -> bool:
 
 
 def include_sarawak() -> bool:
-    """Whether the KPI pages count the Sarawak stations (default no -- and never while East Malaysia itself is left out)."""
-    return _settings["include_sarawak"]
+    """Whether the KPI pages count the Sarawak stations. Sarawak (East Malaysia 3 and 4) is East Malaysia, so it follows the single East Malaysia
+    switch (2026-10-04: the separate Sarawak tick was merged into it); the old include_sarawak setting row is ignored."""
+    return _settings["include_east_malaysia"]
 
 
 def excluded_region(region: str | None) -> bool:
@@ -193,16 +194,26 @@ def _view() -> dict:
     }
 
 
+def _can_edit_targets(user: CurrentUser) -> bool:
+    """KPI targets: the HOD and OPEX set them (and the Superadmin, who has every access)."""
+    return user.role == "admin" or user.position in ("hod", "opex")
+
+
+def _can_edit_scope(user: CurrentUser) -> bool:
+    """KPI settings (the East Malaysia switch): HOD, OPEX and Manager (and the Superadmin)."""
+    return user.role == "admin" or user.position in ("hod", "opex", "manager")
+
+
 @router.get("/api/kpi/targets")
 async def get_kpi_targets(user: CurrentUser = Depends(get_current_user)):
     await ensure_fresh()
-    return {**_view(), "can_edit": user.role == "admin"}
+    return {**_view(), "can_edit": _can_edit_targets(user), "can_edit_scope": _can_edit_scope(user)}
 
 
 @router.put("/api/kpi/targets")
 async def put_kpi_targets(payload: TargetsIn, user: CurrentUser = Depends(get_current_user)):
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if not _can_edit_targets(user):
+        raise HTTPException(status_code=403, detail="Only the HOD or OPEX can change the KPI targets")
     if not payload.rows:
         raise HTTPException(status_code=422, detail="No rows given")
     now = datetime.now(timezone.utc)
@@ -224,14 +235,14 @@ async def put_kpi_targets(payload: TargetsIn, user: CurrentUser = Depends(get_cu
                 (row.kpi, row.region, target, user.email, now),
             )
     await ensure_fresh(force=True)
-    return {"ok": True, **_view(), "can_edit": True}
+    return {"ok": True, **_view(), "can_edit": True, "can_edit_scope": _can_edit_scope(user)}
 
 
 @router.put("/api/kpi/settings")
 async def put_kpi_settings(payload: SettingsIn, user: CurrentUser = Depends(get_current_user)):
-    """Admin only: switch KPI settings -- whether the KPI pages count East Malaysia and whether they count Sarawak (both default off; Retail, not Last Mile)."""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+    """HOD / OPEX / Manager (or the Superadmin): whether the KPI pages count East Malaysia, Sarawak included (default off; Retail, not Last Mile)."""
+    if not _can_edit_scope(user):
+        raise HTTPException(status_code=403, detail="Only the HOD, OPEX or a Manager can change the KPI settings")
     for key in SETTING_DEFAULTS:
         value = getattr(payload, key, None)
         if value is None:
@@ -243,4 +254,4 @@ async def put_kpi_settings(payload: SettingsIn, user: CurrentUser = Depends(get_
                 (key, "1" if value else "0", user.email, datetime.now(timezone.utc)),
             )
     await ensure_fresh(force=True)
-    return {"ok": True, **_view(), "can_edit": True}
+    return {"ok": True, **_view(), "can_edit": _can_edit_targets(user), "can_edit_scope": True}

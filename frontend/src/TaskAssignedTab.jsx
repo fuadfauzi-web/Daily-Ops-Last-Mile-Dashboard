@@ -175,7 +175,7 @@ export default function TaskAssignedTab({ refreshTick }) {
           <div className="text-xs text-slate-500">
             Assign to — one or more dashboard users
             <div className="mt-1">
-              <MultiPicInput value={form.assignees} onChange={(v) => setForm({ ...form, assignees: v })} placeholder="Start typing a name or email…" />
+              <MultiPicInput value={form.assignees} onChange={(v) => setForm({ ...form, assignees: v })} placeholder="Type a name, email or station…" />
             </div>
           </div>
           <DueInput label="Due date (time is optional)" date={form.due_date} time={form.due_time} onChange={(d, t) => setForm({ ...form, due_date: d, due_time: t })} />

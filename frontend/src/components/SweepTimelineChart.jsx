@@ -12,7 +12,8 @@ import MultiSelect from "./MultiSelect";
 // and ignores the master filters until reset. `allStations` is every station the
 // user may see, `timelines` the per-station 24-hour counts, `masterCodes` the
 // station codes the master filters currently leave in the table.
-const SERIES = [
+// Shipment Details uses these four; the Processing Time tab passes its own list (adds Shipment Arrival) via `series`.
+export const DEFAULT_SERIES = [
   { key: "sweep", label: "Scan-in", text: "text-brand", stroke: "stroke-brand", fill: "fill-brand", dot: "bg-brand" },
   { key: "attempt", label: "1st attempt", text: "text-status-warning", stroke: "stroke-status-warning", fill: "fill-status-warning", dot: "bg-status-warning" },
   { key: "success", label: "Success", text: "text-status-good", stroke: "stroke-status-good", fill: "fill-status-good", dot: "bg-status-good" },
@@ -62,7 +63,8 @@ function smoothPath(pts, yMin, yMax) {
 const selectClass =
   "h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 focus:border-brand focus:outline-none";
 
-export default function SweepTimelineChart({ allStations, timelines, masterCodes, excludeEastMalaysia }) {
+export default function SweepTimelineChart({ allStations, timelines, masterCodes, excludeEastMalaysia, series }) {
+  const SERIES = series || DEFAULT_SERIES;
   const [region, setRegion] = useState("all");
   const [zone, setZone] = useState("all");
   const [stationCodes, setStationCodes] = useState([]);
@@ -276,7 +278,7 @@ export default function SweepTimelineChart({ allStations, timelines, masterCodes
             height={height}
             className="block"
             role="img"
-            aria-label="Scan-in, first attempt, success and LH Timing by hour of day"
+            aria-label={`${SERIES.map((x) => x.label).join(", ")} by hour of day`}
             onMouseMove={onMove}
             onMouseLeave={() => setHover(null)}
           >

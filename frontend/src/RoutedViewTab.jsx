@@ -68,7 +68,7 @@ const STATION_COLUMNS = [
   // Productivity = Total Success / Total Routed, same underlying number as
   // Success Rate but shown as a plain 2-decimal number, not a percentage --
   // kept as its own column (rather than just relabelling Success Rate) since
-  // Admin -> SLA Targets scores "Productivity" separately, per driver type, at
+  // Superadmin -> SLA Targets scores "Productivity" separately, per driver type, at
   // the driver view (see the driver-level column below).
   { key: "productivity_pct", label: "Productivity", rate: "success", source: "success_rate" },
   { key: "completion_rate", label: "Completion Rate", percent: true, rate: "completion" },
@@ -362,7 +362,7 @@ export default function RoutedViewTab({ regionFilter, zoneFilter, search, me, ex
     { key: "total_routed", label: withNote("Total Routed", "total_routed"), render: (r) => r.total_routed.toLocaleString() },
     ...levelColumns.map((c) => {
       // Driver-level Productivity is admin-scored per driver type (HR/HD/ID/IR --
-      // see Admin -> SLA Targets), unlike every other rate column here which is
+      // see Superadmin -> SLA Targets), unlike every other rate column here which is
       // just a fixed colour band -- so it needs the SLA threshold system instead
       // of rateClass().
       if (c.key === "productivity_pct" && isDriverLevel) {

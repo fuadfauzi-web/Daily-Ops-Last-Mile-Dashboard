@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { useThresholds, resolveThreshold, classify, SEVERITY_MARK, SEVERITY_CLASS } from "./lib/thresholds";
-import { ALL_COLUMNS } from "./lib/metrics";
+import { ALL_COLUMNS, HEALTH_GROUPS } from "./lib/metrics";
 import { METRIC_NOTES } from "./lib/metricNotes";
 import { exportCsv } from "./lib/csv";
 import SummaryCard from "./components/SummaryCard";
 import { FEATURES } from "./lib/features";
+import { taskListBadges } from "./lib/sideNav";
+import HeadlineStrip from "./components/HeadlineStrip";
+import BetaTag from "./components/BetaTag";
 import DataTable from "./components/DataTable";
 import FilterBar from "./components/FilterBar";
 import TnModal from "./components/TnModal";
@@ -24,6 +27,7 @@ import UrgentTnTab from "./UrgentTnTab";
 import TaskListTab from "./TaskListTab";
 import DodTab from "./DodTab";
 import DailyKpiTab from "./DailyKpiTab";
+import ProcessingTimeTab from "./ProcessingTimeTab";
 
 // Metrics with an actual tracking-number list behind them server-side (mirrors
 // backend/aggregate.py's DRILLDOWN_METRICS) -- everything else is a route-level
@@ -66,6 +70,19 @@ const AUTO_REFRESH_INTERVAL_MS = 60 * 1000;
 const TABS = [
   { key: "action", label: "Action Board" },
   { key: "shipment", label: "Shipment Details" },
+  ...(FEATURES.processingTime
+    ? [
+        {
+          key: "processingTime",
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              Processing Time
+              <BetaTag />
+            </span>
+          ),
+        },
+      ]
+    : []),
   { key: "health", label: "Station Health" },
   ...(FEATURES.dailyKpi
     ? [
@@ -74,7 +91,7 @@ const TABS = [
           label: (
             <span className="inline-flex items-center gap-1.5">
               Daily KPI
-              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+              <BetaTag />
             </span>
           ),
         },
@@ -93,7 +110,7 @@ const TABS = [
           label: (
             <span className="inline-flex items-center gap-1.5">
               DoD
-              <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wide text-amber-800">Beta</span>
+              <BetaTag />
             </span>
           ),
         },
@@ -101,6 +118,8 @@ const TABS = [
     : []), // every role, limited to its own scope (the backend filters)
   { key: "urgent", label: "Urgent TN" },
 ];
+// The tab keys, for the staging sidebar (App.jsx) -- which of them a person may open is decided by what Dashboard itself renders.
+export const DASHBOARD_TAB_KEYS = TABS.map((t) => t.key);
 
 // Attendance shows "12 (2 Rescue)" when some of the drivers are rescue, same as Route Monitoring (2026-09-26 feedback).
 function attendanceText(row) {
@@ -124,6 +143,17 @@ function fmtWithPercentOf(key, value, row, threshold) {
   const pct = denom ? (value / denom) * 100 : 0;
   return `${base} (${pct.toFixed(1)}%)`;
 }
+
+// Station Health trial (FEATURES.healthTable): the small target line under a column's header, read from the SLA Targets page (nationwide row; region
+// overrides still apply to the cells). "" = no SLA. "warning / critical" (≤ when lower is worse); a % target / "% of" metric adds %.
+function targetLine(key, t) {
+  if (!t.scored || (t.warning_at === 0 && t.critical_at === 0)) return "";
+  const unit = PERCENT_METRICS.has(key) || t.percent_of ? "%" : "";
+  const op = t.direction === "lower-is-worse" ? "≤" : "";
+  return t.warning_at === t.critical_at ? `${op}${t.critical_at}${unit}` : `${op}${t.warning_at}${unit} / ${t.critical_at}${unit}`;
+}
+const HEALTH_SHORT = Object.fromEntries(HEALTH_GROUPS.flatMap((g) => g.columns));
+const TINT_CLASS = { critical: "bg-status-critical-fill", warning: "bg-status-warning-fill", good: "", reference: "" };
 
 function sumMetrics(rows) {
   const zero = Object.fromEntries(METRIC_KEYS.map((k) => [k, 0]));
@@ -243,7 +273,8 @@ function exportStationHealthCsv(rows) {
   exportCsv(`daily-ops-station-health-${new Date().toISOString().slice(0, 10)}.csv`, headers, values);
 }
 
-export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts }) {
+// sidebar / requestedTab / onTabState: the staging sidebar (FEATURES.sidebarNav) drives and mirrors the tab from outside -- with `sidebar` on, the tab strip below is hidden.
+export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts, sidebar = false, requestedTab = null, onTabState, recoveryGroup }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -274,8 +305,25 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       /* private browsing / storage blocked -- choice just won't persist */
     }
   };
+  useEffect(() => {
+    if (!requestedTab) return;
+    if (tabs.some((t) => t.key === requestedTab.key)) setTab(requestedTab.key);
+    // Jump search -> a station: show every region/zone and search for that station's name.
+    if (requestedTab.station) {
+      setRegionFilter("all");
+      setZoneFilter("all");
+      setSearch(requestedTab.station.station_name);
+      if (requestedTab.station.region === "East Malaysia") setIncludeEastMalaysia(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedTab?.n]);
+  useEffect(() => {
+    onTabState?.(tab);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
+  const [flaggedBusy, setFlaggedBusy] = useState(false);
+  const [flaggedCopied, setFlaggedCopied] = useState(false);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
   // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
   const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
@@ -306,6 +354,59 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       const next = { ...prev, [level]: value };
       try {
         localStorage.setItem(levelsKey, JSON.stringify(next));
+      } catch {
+        /* private browsing / storage blocked -- the choice just won't persist */
+      }
+      return next;
+    });
+  // Station Health trial (FEATURES.healthTable): which column groups are hidden -- remembered per person, like the region/zone row switches.
+  const groupsKey = `station-health-groups-${me.email}`;
+  const [hiddenGroups, setHiddenGroups] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(groupsKey) || "null");
+      if (Array.isArray(saved)) return new Set(saved);
+    } catch {
+      /* storage blocked / bad JSON -- show every group */
+    }
+    return new Set();
+  });
+  // ...and in what order: the pills above the table can be dragged (or nudged with the arrows) to arrange the column groups, per person.
+  const orderKey = `station-health-group-order-${me.email}`;
+  const [groupOrder, setGroupOrder] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(orderKey) || "null");
+      if (Array.isArray(saved)) return saved;
+    } catch {
+      /* storage blocked / bad JSON -- default order */
+    }
+    return [];
+  });
+  const [dragGroup, setDragGroup] = useState(null);
+  // Saved order first (ignoring groups that no longer exist), then any group the person has not placed yet in its default position.
+  const orderedGroups = useMemo(() => {
+    const byKey = new Map(HEALTH_GROUPS.map((g) => [g.key, g]));
+    const placed = groupOrder.filter((k) => byKey.has(k));
+    return [...placed.map((k) => byKey.get(k)), ...HEALTH_GROUPS.filter((g) => !placed.includes(g.key))];
+  }, [groupOrder]);
+  const moveGroup = (from, to) => {
+    if (from < 0 || to < 0 || from >= orderedGroups.length || to >= orderedGroups.length || from === to) return;
+    const next = orderedGroups.map((g) => g.key);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setGroupOrder(next);
+    try {
+      localStorage.setItem(orderKey, JSON.stringify(next));
+    } catch {
+      /* private browsing / storage blocked -- the order just won't persist */
+    }
+  };
+  const toggleGroup = (key) =>
+    setHiddenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(groupsKey, JSON.stringify([...next]));
       } catch {
         /* private browsing / storage blocked -- the choice just won't persist */
       }
@@ -564,7 +665,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   if (!data.captured_at)
     return (
       <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
-        No data yet — the first refresh hasn't run. {me.role === "admin" && "Use Admin → Refresh now."}
+        No data yet — the first refresh hasn't run. {me.role === "admin" && "Use Superadmin → Refresh now."}
       </div>
     );
 
@@ -589,8 +690,9 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const isZoneOpen = (key) => (startsExpanded ? !expandedZones.has(key) : expandedZones.has(key));
 
   const combinedRowClassName = (row) => {
-    if (row.type === "region") return "bg-slate-100";
-    if (row.type === "zone") return "bg-slate-50";
+    if (FEATURES.detailPanel && detailRow && row.id === detailRow.id) return "bg-row-selected";
+    if (row.type === "region") return FEATURES.healthTable ? "bg-row-region" : "bg-slate-100";
+    if (row.type === "zone") return FEATURES.healthTable ? "bg-row-zone" : "bg-slate-50";
     return "";
   };
   const combinedColumns = [
@@ -629,8 +731,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       const isReference = !natThreshold.scored;
       const label = (
         <span className="inline-flex items-center gap-1">
-          {c.label}
-          {METRIC_NOTES[c.key] && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
+          {FEATURES.healthTable ? HEALTH_SHORT[c.key] || c.label : c.label}
+          {METRIC_NOTES[c.key] && !FEATURES.healthTable && <HeaderNote>{METRIC_NOTES[c.key]}</HeaderNote>}
           {!isReference && natThreshold.percent_of &&
             sortBasisToggle(c.key, ALL_COLUMNS.find((col) => col.key === natThreshold.percent_of)?.label || natThreshold.percent_of)}
         </span>
@@ -641,7 +743,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
           key: c.key,
           label,
           render: (row) => (c.key === "attendance" ? attendanceText(row) : fmt(c.key, row[c.key])),
-          className: () => "text-slate-700",
+          className: () => (FEATURES.healthTable ? "text-slate-500" : "text-slate-700"),
           onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
           clickable,
         };
@@ -658,18 +760,69 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         render: (row) => {
           const t = scaledThreshold(row);
           const sev = classify(t, row[c.key], row);
+          if (FEATURES.healthTable) return fmtWithPercentOf(c.key, row[c.key], row, t);
           return `${SEVERITY_MARK[sev]}${fmtWithPercentOf(c.key, row[c.key], row, t)}`;
         },
         className: (row) => {
           const t = scaledThreshold(row);
           const sev = classify(t, row[c.key], row);
-          return SEVERITY_CLASS[sev];
+          return FEATURES.healthTable ? `${SEVERITY_CLASS[sev]} ${TINT_CLASS[sev]}` : SEVERITY_CLASS[sev];
         },
         onClick: DRILLDOWN_METRICS.has(c.key) ? (row) => openDrilldown(row, c) : undefined,
         clickable,
       };
     }),
   ];
+  // Station Health trial (FEATURES.healthTable): short sub-labels under 9 group headers, a target line per column, and the person's chosen column groups.
+  let tableColumns = combinedColumns;
+  let healthGroupHeaders;
+  if (FEATURES.healthTable) {
+    const byKey = Object.fromEntries(combinedColumns.map((c) => [c.key, c]));
+    tableColumns = [{ ...combinedColumns[0], headerAlign: "center" }];
+    healthGroupHeaders = [];
+    orderedGroups.filter((g) => !hiddenGroups.has(g.key)).forEach((g) => {
+      let span = 0;
+      g.columns.forEach(([key]) => {
+        const base = byKey[key];
+        if (!base) return;
+        const full = ALL_COLUMNS.find((col) => col.key === key)?.label || key;
+        const t = resolveThreshold(thresholdRows, key, null);
+        tableColumns.push({
+          ...base,
+          tip: (
+            <>
+              <div className="font-display text-[13px] font-semibold text-ink">{full}</div>
+              {METRIC_NOTES[key] && <p className="mt-1">{METRIC_NOTES[key]}</p>}
+              <div className="mt-2 border-t border-line pt-2">
+                {t.scored && targetLine(key, t) ? (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="font-display text-[10px] font-bold uppercase tracking-wider text-subtle">Target</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm bg-status-warning" />
+                      Warning {t.direction === "lower-is-worse" ? "≤" : "≥"} {targetLine(key, t).replace("≤", "").split(" / ")[0]}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm bg-status-critical" />
+                      Critical {t.direction === "lower-is-worse" ? "≤" : "≥"} {targetLine(key, t).replace("≤", "").split(" / ").pop()}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-subtle">Reference only — no SLA target</span>
+                )}
+              </div>
+            </>
+          ),
+          align: "center",
+          groupStart: span === 0,
+          reference: !t.scored,
+          // a 0 has no tracking numbers to open -- no underline on it
+          clickable: base.onClick ? (row) => row.type === "station" && row[key] > 0 : undefined,
+        });
+        span += 1;
+      });
+      if (span) healthGroupHeaders.push({ key: g.key, label: g.label, span });
+    });
+  }
   const activeSortPercentOf =
     combinedSortBasis === "percent" ? resolveThreshold(thresholdRows, combinedSortKey, null).percent_of : null;
   const combinedRows = buildCombinedRows(
@@ -686,6 +839,63 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
       setDetailRow(row);
     } else {
       toggleInSet(row.type === "region" ? setExpandedRegions : setExpandedZones, row.key);
+    }
+  };
+
+  // Detail panel trial (FEATURES.detailPanel): the same metrics, under the Station Health group headings, with the count of flagged ones.
+  const flaggedMetrics = [];
+  const detailGroups =
+    FEATURES.detailPanel && detailRow
+      ? HEALTH_GROUPS.map((g) => ({
+          label: g.label,
+          rows: g.columns.map(([key]) => {
+            const c = ALL_COLUMNS.find((col) => col.key === key);
+            const reference = !resolveThreshold(thresholdRows, key, null).scored;
+            const t = resolveThreshold(thresholdRows, key, detailRow.region);
+            const sev = reference ? "reference" : classify(t, detailRow[key], detailRow);
+            if (sev === "critical" || sev === "warning") flaggedMetrics.push({ key, label: c.label, sev });
+            const hasTarget = !reference && !(t.warning_at === 0 && t.critical_at === 0);
+            const percentOfLabel = t.percent_of ? ALL_COLUMNS.find((col) => col.key === t.percent_of)?.label : null;
+            return {
+              label: c.label,
+              value: key === "attendance" ? attendanceText(detailRow) : fmtWithPercentOf(key, detailRow[key], detailRow, t),
+              className: SEVERITY_CLASS[sev],
+              tint: TINT_CLASS[sev],
+              target: hasTarget ? `${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${percentOfLabel ? `% of ${percentOfLabel}` : ""}` : null,
+            };
+          }),
+        }))
+      : null;
+  const copyFlaggedTns = async (asCsv) => {
+    const keys = flaggedMetrics.filter((m) => DRILLDOWN_METRICS.has(m.key));
+    setFlaggedBusy(true);
+    try {
+      const results = await Promise.all(
+        keys.map((m) =>
+          api
+            .drilldown(detailRow.station_code, m.key)
+            .then((r) => ({ ...m, tns: r.tracking_numbers || [] }))
+            .catch(() => ({ ...m, tns: [] }))
+        )
+      );
+      if (asCsv) {
+        const max = Math.max(0, ...results.map((r) => r.tns.length));
+        // Station name on the first line, then the metric names, then the tracking numbers.
+        exportCsv(
+          `daily-ops-${detailRow.station_name.replace(/\s+/g, "-").toLowerCase()}-flagged-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+          [`${detailRow.station_name} (${detailRow.station_code}) — ${detailRow.region} · ${detailRow.zone}`, ...results.slice(1).map(() => "")],
+          [results.map((r) => `${r.label} (${r.tns.length})`), ...Array.from({ length: max }, (_, i) => results.map((r) => r.tns[i] || ""))]
+        );
+      } else {
+        await navigator.clipboard.writeText(
+          `${detailRow.station_name} (${detailRow.station_code}) — ${detailRow.region} · ${detailRow.zone}\n\n` +
+            results.map((r) => `${r.label} (${r.tns.length}):\n${r.tns.join("\n")}`).join("\n\n")
+        );
+        setFlaggedCopied(true);
+        setTimeout(() => setFlaggedCopied(false), 2000);
+      }
+    } finally {
+      setFlaggedBusy(false);
     }
   };
 
@@ -719,8 +929,35 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         open={!!detailRow}
         onClose={() => setDetailRow(null)}
         title={detailRow?.station_name}
-        subtitle={detailRow ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}` : null}
+        subtitle={
+          detailRow
+            ? `${detailRow.region} · ${detailRow.zone} · ${detailRow.station_code}${detailGroups ? ` · ${flaggedMetrics.length} metric${flaggedMetrics.length === 1 ? "" : "s"} flagged` : ""}`
+            : null
+        }
         rows={detailRows}
+        groups={detailGroups}
+        footer={
+          detailGroups && flaggedMetrics.some((m) => DRILLDOWN_METRICS.has(m.key)) ? (
+            <>
+              <button
+                type="button"
+                disabled={flaggedBusy}
+                onClick={() => copyFlaggedTns(false)}
+                className="min-h-[44px] flex-1 rounded-lg bg-ink px-3 font-display text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {flaggedCopied ? "Copied!" : flaggedBusy ? "Loading…" : "Copy flagged tracking numbers"}
+              </button>
+              <button
+                type="button"
+                disabled={flaggedBusy}
+                onClick={() => copyFlaggedTns(true)}
+                className="min-h-[44px] rounded-lg border border-slate-300 px-4 font-display text-xs font-medium text-ink-2 disabled:opacity-50"
+              >
+                CSV
+              </button>
+            </>
+          ) : null
+        }
       />
 
       {!FEATURES.hideSummaryCards && showTotalCard && (
@@ -750,6 +987,12 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {showFilterBar && (
         <FilterBar
+          v2={!!FEATURES.filterBar}
+          scopeChip={
+            me.scope_type !== "all" && (me.scope_values || []).length
+              ? `${{ region: "Region", zone: "Zone", station: "Station" }[me.scope_type] || "Scope"}: ${me.scope_values.join(", ")} (your scope)`
+              : null
+          }
           canPickRegion={canPickRegion}
           canPickZone={canPickZone}
           canToggleEastMalaysia={canToggleEastMalaysia}
@@ -776,25 +1019,22 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
         />
       )}
 
-      <TabBar
-        tabs={tabs.map((t) =>
-          t.key === "urgent"
-            ? {
-                ...t,
-                // With the Task List flag on, this tab is the Task List and its bell adds up all four sub-tabs.
-                label: FEATURES.taskList ? "Task List" : t.label,
-                dot: FEATURES.taskList ? (notifCounts?.followups_due_soon || 0) + (notifCounts?.todos_due_soon || 0) + (notifCounts?.tasks_due_soon || 0) : 0,
-                badge:
-                  (notifCounts?.urgent_notify || 0) +
-                  (notifCounts?.urgent_owner_updates || 0) +
-                  (notifCounts?.urgent_owner_reminder || 0) +
-                  (FEATURES.taskList ? (notifCounts?.followups_notify || 0) + (notifCounts?.todos_notify || 0) + (notifCounts?.tasks_notify || 0) : 0),
-              }
-            : t
-        )}
-        activeKey={tab}
-        onSelect={setTab}
-      />
+      {!sidebar && (
+        <TabBar
+          tabs={tabs.map((t) =>
+            t.key === "urgent"
+              ? {
+                  ...t,
+                  // With the Task List flag on, this tab is the Task List and its bell adds up all four sub-tabs.
+                  label: FEATURES.taskList ? "Task List" : t.label,
+                  ...taskListBadges(notifCounts, FEATURES.taskList),
+                }
+              : t
+          )}
+          activeKey={tab}
+          onSelect={setTab}
+        />
+      )}
 
       {tab === "action" && (
         <ActionBoard
@@ -817,6 +1057,72 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {tab === "health" && (
         <>
+          {FEATURES.headlineCards && (() => {
+            const now = sumMetrics(filteredStations);
+            const prev = filteredYesterdayStations.length ? sumMetrics(filteredYesterdayStations) : null;
+            const delta = (k) => (prev ? now[k] - prev[k] : null);
+            return (
+              <HeadlineStrip
+                cards={[
+                  { key: "total_fresh", label: "Total Fresh", value: now.total_fresh, delta: delta("total_fresh"), goodWhen: "neutral" },
+                  { key: "total_routed", label: "Total Routed", value: now.total_routed, delta: delta("total_routed"), goodWhen: "neutral" },
+                  { key: "zero_attempt_total", label: "Total 0 Attempt", value: now.zero_attempt_total, delta: delta("zero_attempt_total"), goodWhen: "down" },
+                  { key: "total_in_hub", label: "In Hub", value: now.total_in_hub, delta: delta("total_in_hub"), goodWhen: "neutral" },
+                  {
+                    key: "age_gt3",
+                    label: "Age >3",
+                    value: now.age_gt3,
+                    sub: now.total_in_hub ? `${((now.age_gt3 / now.total_in_hub) * 100).toFixed(1)}% of in hub` : null,
+                    delta: delta("age_gt3"),
+                    goodWhen: "down",
+                  },
+                ]}
+              />
+            );
+          })()}
+          {FEATURES.healthTable && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-[11px] font-semibold uppercase tracking-wider text-slate-500">Column groups</span>
+              {orderedGroups.map((g, i) => {
+                const shown = !hiddenGroups.has(g.key);
+                const arrow = shown ? "text-white/60 hover:text-white" : "text-slate-400 hover:text-ink";
+                return (
+                  <span
+                    key={g.key}
+                    draggable
+                    onDragStart={(e) => {
+                      setDragGroup(g.key);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", g.key);
+                    }}
+                    onDragOver={(e) => {
+                      if (dragGroup) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (dragGroup) moveGroup(orderedGroups.findIndex((x) => x.key === dragGroup), i);
+                      setDragGroup(null);
+                    }}
+                    onDragEnd={() => setDragGroup(null)}
+                    className={`inline-flex min-h-[32px] cursor-grab items-center rounded-full border font-display text-xs font-semibold ${
+                      shown ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-slate-500"
+                    } ${dragGroup === g.key ? "opacity-40" : ""}`}
+                  >
+                    <button type="button" onClick={() => moveGroup(i, i - 1)} disabled={i === 0} aria-label={`Move ${g.label} left`} className={`pl-2.5 pr-0.5 disabled:opacity-25 ${arrow}`}>
+                      ‹
+                    </button>
+                    <button type="button" aria-pressed={shown} onClick={() => toggleGroup(g.key)} title={shown ? "Click to hide this group" : "Click to show this group"} className="px-1.5">
+                      {g.label} <span className={shown ? "text-white/60" : "text-slate-400"}>{g.columns.length}</span>
+                    </button>
+                    <button type="button" onClick={() => moveGroup(i, i + 1)} disabled={i === orderedGroups.length - 1} aria-label={`Move ${g.label} right`} className={`pl-0.5 pr-2.5 disabled:opacity-25 ${arrow}`}>
+                      ›
+                    </button>
+                  </span>
+                );
+              })}
+              <span className="text-[10px] text-slate-400">click to show / hide · drag a pill (or use ‹ ›) to reorder the columns · saved for you</span>
+            </div>
+          )}
           <DataTable
             title={
               <>
@@ -851,7 +1157,9 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
               </div>
             }
             maxHeight="75vh"
-            columns={combinedColumns}
+            columns={tableColumns}
+            groupHeaders={healthGroupHeaders}
+            dense={!!FEATURES.healthTable}
             rows={combinedRows}
             rowKey={(r) => r.id}
             rowClassName={combinedRowClassName}
@@ -862,9 +1170,15 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             emptyMessage="No stations match."
             footer={`${combinedRows.filter((r) => r.type === "station").length} of ${filteredStations.length} stations shown · first column pinned, header freezes while scrolling`}
           />
+          {FEATURES.healthTable && (
+            <p className="text-xs text-slate-500">
+              Red tint = critical, amber tint = warning · greyed header = reference only (no SLA) · underlined number → tracking numbers · hover a column name
+              for what it counts and its target from SLA Targets (warning / critical).
+            </p>
+          )}
           <p className="text-xs text-slate-400">
             ▲ critical · ■ warning — colour is never the only signal. Greyed column headers are reference data: no
-            SLA, never scored, shown for context only. Targets are set in Admin → SLA Targets. A region/zone row's
+            SLA, never scored, shown for context only. Targets are set in Superadmin → SLA Targets. A region/zone row's
             raw-count target scales up by how many stations it contains (e.g. a target of 100 becomes 500 for a
             5-station region) — a percentage target (or a metric scored as "% of" another field) never scales, the
             same number applies at every level. Total Fresh, Total Routed, Attendance and COD % (Hub) aren't
@@ -874,6 +1188,14 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
             by that percentage.
           </p>
         </>
+      )}
+
+      {FEATURES.processingTime && tab === "processingTime" && (
+        <ProcessingTimeTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
+        />
       )}
 
       {FEATURES.dailyKpi && tab === "dailyKpi" && (
@@ -912,6 +1234,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {tab === "recovery" && (
         <RecoveryTab
+          externalGroup={sidebar ? recoveryGroup : undefined}
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}

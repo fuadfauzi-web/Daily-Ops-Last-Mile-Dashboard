@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { exportCsv } from "./lib/csv";
+import { FEATURES } from "./lib/features";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
 import DetailPanel from "./components/DetailPanel";
 import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
+import BetaTag from "./components/BetaTag";
+import RecoveryCases from "./RecoveryCases";
 import Skeleton from "./components/Skeleton";
 import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 
@@ -14,13 +17,33 @@ import { ActiveMissingView, LostDeclaredView } from "./RecoveryLost";
 const TN_TYPES = ["Hub", "Driver/Rider", "Ship In", "Ship Out", "Other"];
 const DEFAULT_TN_TYPES = TN_TYPES.filter((t) => t !== "Other");
 
-const SUB_TABS = [
-  { key: "missing", label: "Missing Details" },
-  { key: "active", label: "Active Missing" },
-  { key: "b2b", label: "B2B Document Active Missing" },
-  { key: "lostweek", label: "Lost Declared This Week" },
-  { key: "lostsummary", label: "Lost Declared Summary" },
+// Groups (2026-10-03 feedback): Active Missing (Missing Details, Active Missing, B2B Document Active Missing), Lost Declared (This Week, Summary),
+// and three lists the recovery team keeps -- PDCNR, Damage, No Label from Hub (RecoveryCases.jsx, no sub-tabs).
+const GROUPS = [
+  { key: "activemissing", label: "Active Missing" },
+  { key: "lostdeclared", label: "Lost Declared" },
+  { key: "pdcnr", label: "PDCNR" },
+  { key: "damage", label: "Damage" },
+  { key: "nolabel", label: "No Label from Hub" },
 ];
+const SUB_TABS = {
+  activemissing: [
+    { key: "missing", label: "Missing Details" },
+    { key: "active", label: "Active Missing" },
+    { key: "b2b", label: "B2B Document Active Missing" },
+  ],
+  lostdeclared: [
+    { key: "lostweek", label: "Lost Declared This Week" },
+    { key: "lostsummary", label: "Lost Declared Summary" },
+  ],
+};
+const CASE_GROUPS = ["pdcnr", "damage", "nolabel"];
+// Beta (2026-10-04): the three lists are not final with the Recovery team -- only the Superadmin, Manager / HOD and Recovery see them (the backend says no to anyone else).
+const canUseCaseLists = (me) => !!FEATURES.recoveryBeta && (me?.role === "admin" || me?.role === "manager" || me?.position === "recovery");
+const groupOptions = (me) =>
+  GROUPS.filter((g) => !CASE_GROUPS.includes(g.key) || canUseCaseLists(me)).map((g) =>
+    CASE_GROUPS.includes(g.key) ? { ...g, label: <span className="inline-flex items-center gap-1.5">{g.label}<BetaTag /></span> } : g,
+  );
 
 const OVERVIEW_COLUMNS = [
   { key: "hub_count", label: "Hub", render: (r) => r.hub_count.toLocaleString() },
@@ -270,7 +293,7 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
             {filteredTnRows.length.toLocaleString()} tracking numbers · rows in{" "}
             <span className="font-semibold text-status-critical">red</span> have a COD value ≥{" "}
             {data.high_cod_value_threshold.toLocaleString()} or an item description matching a high-value keyword
-            (editable in Admin → Recovery Settings).
+            (editable in Superadmin → Recovery Settings).
             {data.tn_rows_truncated && (
               <span className="ml-1 font-medium text-status-critical">
                 · showing the oldest {filteredTnRows.length.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}
@@ -284,12 +307,25 @@ function MissingDetailsView({ regionFilter, zoneFilter, search, me, excludeEastM
   );
 }
 
-export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  const [subTab, setSubTab] = useState("missing");
+// externalGroup: set while the sidebar / category row drives the groups (staging navigation trial) -- the group strip is then hidden, because the
+// groups are already listed under the Recovery category and showing them twice would duplicate it.
+export default function RecoveryTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, externalGroup }) {
+  const [ownGroup, setGroup] = useState("activemissing");
+  const group = externalGroup || ownGroup;
+  const [subTabs, setSubTabs] = useState({ activemissing: "missing", lostdeclared: "lostweek" }); // each group remembers its own sub-tab
+  const subTab = subTabs[group];
+  const setSubTab = (key) => setSubTabs((s) => ({ ...s, [group]: key }));
 
   return (
     <div className="space-y-3">
-      <SegmentedControl options={SUB_TABS} value={subTab} onChange={setSubTab} />
+      {!externalGroup && <SegmentedControl options={groupOptions(me)} value={group} onChange={setGroup} />}
+      {SUB_TABS[group] && <SegmentedControl options={SUB_TABS[group]} value={subTab} onChange={setSubTab} />}
+      {CASE_GROUPS.includes(group) && canUseCaseLists(me) && (
+        <RecoveryCases
+          key={group} type={group} me={me}
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      )}
       {subTab === "missing" && (
         <MissingDetailsView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
