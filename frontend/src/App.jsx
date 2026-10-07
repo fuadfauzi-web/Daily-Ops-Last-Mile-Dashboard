@@ -24,7 +24,16 @@ import AttendanceTab from "./AttendanceTab";
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = error
-  const [tab, setTab] = useState("dashboard");
+  const [tabRaw, setTabRaw] = useState("dashboard");
+  // The page you were on (and the Recovery group) come back after a refresh / reopen -- remembered per person in this browser.
+  const setTab = (t) => {
+    setTabRaw(t);
+    try {
+      if (me?.email) localStorage.setItem(`app-tab:${me.email}`, t);
+    } catch {
+      /* storage blocked -- it just won't be remembered */
+    }
+  };
   const [density, setDensity] = useDensity();
   const [menuOpen, setMenuOpen] = useState(false);
   // Reported up by Dashboard once its data loads -- shown here so it's visible
@@ -36,7 +45,7 @@ export default function App() {
   // below that the existing top tabs / phone menu are used, since the sidebar has no phone layout yet.
   const [navMode, setNavModeState] = useState(() => {
     try {
-      return localStorage.getItem("nav-mode") === "sidebar" ? "sidebar" : "tabs"; // the first paint; replaced by this person's own choice once we know who they are
+      return localStorage.getItem("nav-mode") === "tabs" ? "tabs" : "sidebar"; // the first paint (the sidebar is the default); replaced by this person's own choice once we know who they are
     } catch {
       return "tabs";
     }
@@ -55,7 +64,7 @@ export default function App() {
     if (!me?.email) return;
     try {
       const saved = localStorage.getItem(`nav-mode:${me.email}`) || localStorage.getItem("nav-mode");
-      setNavModeState(saved === "sidebar" ? "sidebar" : "tabs");
+      setNavModeState(saved === "tabs" ? "tabs" : "sidebar");
     } catch {
       /* storage blocked -- keep the default */
     }
@@ -85,7 +94,26 @@ export default function App() {
   }, []);
   const [dashTab, setDashTab] = useState(null); // the Dashboard's active sub-tab, reported up so the sidebar can highlight it
   const [dashRequest, setDashRequest] = useState(null); // { key, n } -- asks the Dashboard to open a sub-tab
-  const [recGroup, setRecGroup] = useState("activemissing"); // which Recovery group the sidebar / category row has selected
+  const [recGroup, setRecGroupRaw] = useState("activemissing"); // which Recovery group the sidebar / category row has selected
+  const setRecGroup = (g) => {
+    setRecGroupRaw(g);
+    try {
+      if (me?.email) localStorage.setItem(`app-recgroup:${me.email}`, g);
+    } catch {
+      /* storage blocked */
+    }
+  };
+  useEffect(() => {
+    if (!me?.email) return;
+    try {
+      const t = localStorage.getItem(`app-tab:${me.email}`);
+      if (t) setTabRaw(t);
+      const g = localStorage.getItem(`app-recgroup:${me.email}`);
+      if (g) setRecGroupRaw(g);
+    } catch {
+      /* storage blocked */
+    }
+  }, [me?.email]);
   const [jumpOpen, setJumpOpen] = useState(false);
   useEffect(() => {
     if (!FEATURES.jumpSearch) return undefined;
@@ -98,11 +126,6 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  // "Copy as image" (staging trial, FEATURES.copyImage): captures <main> as a PNG. A small stamp (page title + "Data as of") is shown inside
-  // <main> only while the picture is taken, so the pasted image says what it is and how fresh it is.
-  const mainRef = useRef(null);
-  const [capturing, setCapturing] = useState(false);
-  const [imgState, setImgState] = useState(null); // null | "busy" | "copied" | "saved" | "error"
   const stickyRef = useRef(null);
   const [stickyH, setStickyH] = useState(96);
   useLayoutEffect(() => {
@@ -218,6 +241,7 @@ export default function App() {
     "help", // Feedback, Guide, What's new
     ...(me.role === "admin" ? ["admin"] : []),
   ];
+  const tab = navTabs.includes(tabRaw) ? tabRaw : "dashboard";
   const navLabel = (t) =>
     t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
@@ -249,40 +273,6 @@ export default function App() {
     setTab("dashboard");
     setDashRequest({ key: "health", n: Date.now(), station });
   };
-  const copyAsImage = async () => {
-    if (!mainRef.current || imgState === "busy") return;
-    setImgState("busy");
-    setCapturing(true);
-    try {
-      await new Promise((r) => setTimeout(r, 120)); // let the stamp render before the picture is taken
-      const { toBlob } = await import("html-to-image");
-      // A picture that never finishes (a hidden tab does that) ends in an error after 20s instead of a button stuck on "Working…".
-      const blob = await Promise.race([
-        toBlob(mainRef.current, { pixelRatio: 2, backgroundColor: "#f8fafc", cacheBust: true }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 20000)),
-      ]);
-      if (!blob) throw new Error("no image");
-      if (navigator.clipboard && window.ClipboardItem) {
-        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
-        setImgState("copied");
-      } else {
-        // Browsers without image-clipboard support: download the PNG instead.
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `daily-ops-${new Date().toISOString().slice(0, 10)}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setImgState("saved");
-      }
-    } catch {
-      setImgState("error");
-    } finally {
-      setCapturing(false);
-      setTimeout(() => setImgState(null), 2500);
-    }
-  };
-  const pageTitle = sideItems.find((i) => i.active)?.label || "Daily Ops Last Mile";
   const selectSide = (id) => {
     const item = SIDE_ITEMS.find((i) => i.id === id);
     if (item?.dash) {
@@ -292,6 +282,11 @@ export default function App() {
     } else setTab(id);
   };
   const onRoleChanged = () => {
+    try {
+      Object.keys(sessionStorage).filter((k) => k.startsWith("dash-filter:")).forEach((k) => sessionStorage.removeItem(k));
+    } catch {
+      /* storage blocked */
+    }
     setTab("dashboard");
     setViewKey((k) => k + 1);
     loadMe();
@@ -309,16 +304,9 @@ export default function App() {
         <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex shrink-0 items-center gap-4">
             <Logo />
-            <div className={`hidden h-6 w-px bg-slate-200 ${tidy ? "min-[1800px]:block" : "lg:block"}`} />
-            <h1 className={`hidden whitespace-nowrap font-display text-sm font-semibold tracking-tight text-ink ${tidy ? "min-[1800px]:block" : "lg:block"}`}>Daily Ops Last Mile</h1>
-          </div>
-
-          {/* Desktop chrome: freshness, density toggle, nav, user block all inline.
-              headerTidy (staging): the title only shows from 1440px, freshness from 1360px, density from 1200px (below those
-              they live in the user menu), the station count only from 1536px, and the Role Tester moves into the user menu. */}
-          <div className="hidden min-w-0 flex-1 items-center justify-end gap-3 lg:flex">
-            {(tidy || tab === "dashboard") && freshness && (
-              <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500">
+            {/* Data as of sits right after the logo, in both the sidebar and the top-bar layouts */}
+            {freshness && (
+              <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 lg:flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
                 Data as of {formatTime(freshness)}
                 {stationsInScope != null && (
@@ -328,6 +316,10 @@ export default function App() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Desktop chrome after the logo and Data as of: the categories (top-bar layout), then search + the user menu on the right. */}
+          <div className="hidden min-w-0 flex-1 items-center gap-3 lg:flex">
             <div className={`overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold ${tidy ? "hidden" : "flex"}`}>
               <button
                 onClick={() => setDensity("compact")}
@@ -362,6 +354,8 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            {catActive && <CategoryNav items={sideItems} onSelect={selectSide} />}
+            <div className="flex-1" />
             {FEATURES.jumpSearch && me.provisioned && (
               <button
                 type="button"
@@ -378,26 +372,6 @@ export default function App() {
                 <kbd className={`hidden whitespace-nowrap rounded border border-line bg-white px-1 font-sans text-[10px] text-subtle ${externalNav ? "min-[1440px]:inline" : "min-[1800px]:inline"}`}>Ctrl K</kbd>
               </button>
             )}
-            {FEATURES.copyImage && (
-              <button
-                type="button"
-                onClick={copyAsImage}
-                title="Copy this page as an image (with its title and Data as of) to paste in Gchat"
-                aria-label="Copy this page as an image"
-                className="flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-white px-3 text-xs font-medium text-ink-2 hover:bg-canvas"
-              >
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <rect x="2.5" y="5" width="15" height="11" rx="2" />
-                  <circle cx="10" cy="10.5" r="2.8" />
-                  <path d="M7 5l1-1.8h4L13 5" />
-                </svg>
-                <span className="hidden min-[1600px]:inline">
-                  {imgState === "busy" ? "Working…" : imgState === "copied" ? "Copied!" : imgState === "saved" ? "Saved" : imgState === "error" ? "Couldn't copy" : "Copy as image"}
-                </span>
-                {imgState && <span className="min-[1600px]:hidden text-[11px] font-semibold">{imgState === "copied" ? "✓" : imgState === "busy" ? "…" : "!"}</span>}
-              </button>
-            )}
-            {catActive && <CategoryNav items={sideItems} onSelect={selectSide} />}
             {tidy ? (
               <UserMenu
                 me={me}
@@ -435,7 +409,7 @@ export default function App() {
           <button
             onClick={() => setMenuOpen((v) => !v)}
             aria-label="Menu"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white lg:hidden"
+            className="ml-auto flex h-11 w-11 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white lg:hidden"
           >
             {initials}
           </button>
@@ -513,18 +487,7 @@ export default function App() {
       )}
       <div className={sidebarActive ? "flex" : ""}>
       {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
-      <main ref={mainRef} className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
-        {capturing && (
-          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-line pb-2">
-            <div className="font-display text-lg font-bold text-ink">{pageTitle}</div>
-            <div className="text-xs text-muted">
-              {freshness ? `Data as of ${formatTime(freshness)}` : ""}
-              {stationsInScope != null ? ` · ${stationsInScope} station${stationsInScope === 1 ? "" : "s"} in scope` : ""}
-              {" · "}
-              {me.display_name || me.email}
-            </div>
-          </div>
-        )}
+      <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
         {tab === "dashboard" && (
           <Dashboard
             key={`dashboard-${viewKey}`}

@@ -39,7 +39,7 @@ export function GuideCards({ sections, ctx }) {
   const [openId, setOpenId] = useState(null);
   const q = query.trim().toLowerCase();
 
-  const withArea = useMemo(() => sections.map((s) => ({ ...s, area: GUIDE_AREA[s.id] || "Monitor", blurb: GUIDE_BLURB[s.id] || "" })), [sections]);
+  const withArea = useMemo(() => sections.map((s) => ({ ...s, area: GUIDE_AREA[s.id] || "Last Mile Ops", blurb: GUIDE_BLURB[s.id] || "" })), [sections]);
   const counts = useMemo(() => {
     const c = {};
     withArea.forEach((s) => (c[s.area] = (c[s.area] || 0) + 1));

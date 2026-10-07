@@ -2,13 +2,13 @@
 // exist: `dash: true` items are the Dashboard's own sub-tabs (same keys as Dashboard.jsx's TABS), the others are App.jsx's level-1 pages. Nothing here
 // decides who may see what -- App passes in only the pages this person's role can open.
 // People = the workforce pages (Attendance now; Overtime for hybrid and staff is planned after it; Staff & Org Chart lives here too).
-export const SIDE_GROUPS = ["Act", "Monitor", "Recovery", "Dashboard", "People", "System"];
+export const SIDE_GROUPS = ["Act", "Last Mile Ops", "Recovery", "Dashboard", "People", "System"];
 
 // One colour per group, so the collapsed sidebar (two-letter codes) can still be read by colour. chip = the code badge, dot = the group label's marker.
 // Deliberately not brand red / status red-amber-green -- those mean "chrome" and "data" elsewhere.
 export const SIDE_GROUP_COLORS = {
   Act: { chip: "bg-[#E5E7EB] text-[#231F20]", dot: "bg-[#231F20]" },
-  Monitor: { chip: "bg-[#DBEAFE] text-[#1E40AF]", dot: "bg-[#2563EB]" },
+  "Last Mile Ops": { chip: "bg-[#DBEAFE] text-[#1E40AF]", dot: "bg-[#2563EB]" },
   Recovery: { chip: "bg-[#CCFBF1] text-[#115E59]", dot: "bg-[#0D9488]" },
   Dashboard: { chip: "bg-[#EDE9FE] text-[#5B21B6]", dot: "bg-[#7C3AED]" },
   People: { chip: "bg-[#FAE8FF] text-[#86198F]", dot: "bg-[#C026D3]" },
@@ -18,13 +18,13 @@ export const SIDE_GROUP_COLORS = {
 export const SIDE_ITEMS = [
   { id: "action", dash: true, group: "Act", label: "Action Board", code: "AB" },
   { id: "urgent", dash: true, group: "Act", label: "Urgent TN", taskListLabel: "Task List", code: "TL" },
-  { id: "health", dash: true, group: "Monitor", label: "Station Health", code: "SH" },
-  { id: "dailyKpi", dash: true, group: "Monitor", label: "Daily KPI", beta: true, code: "DK" },
-  { id: "shipment", dash: true, group: "Monitor", label: "Shipment Details", code: "SD" },
-  { id: "routed", dash: true, group: "Monitor", label: "Route Monitoring", code: "RM" },
-  { id: "aging", dash: true, group: "Monitor", label: "Aging Details", code: "AD" },
-  { id: "rpu", dash: true, group: "Monitor", label: "RPU", code: "RP" },
-  { id: "shipper", dash: true, group: "Monitor", label: "Shipper Radar", code: "SR" },
+  { id: "health", dash: true, group: "Last Mile Ops", label: "Station Health", code: "SH" },
+  { id: "dailyKpi", dash: true, group: "Last Mile Ops", label: "Daily KPI", beta: true, code: "DK" },
+  { id: "shipment", dash: true, group: "Last Mile Ops", label: "Shipment Details", code: "SD" },
+  { id: "routed", dash: true, group: "Last Mile Ops", label: "Route Monitoring", code: "RM" },
+  { id: "aging", dash: true, group: "Last Mile Ops", label: "Aging Details", code: "AD" },
+  { id: "rpu", dash: true, group: "Last Mile Ops", label: "Return Pick Up (RPU)", code: "RP" },
+  { id: "shipper", dash: true, group: "Last Mile Ops", label: "Shipper Radar", code: "SR" },
   { id: "rec:activemissing", dash: true, dashKey: "recovery", recGroup: "activemissing", group: "Recovery", label: "Active Missing", code: "AM" },
   { id: "rec:lostdeclared", dash: true, dashKey: "recovery", recGroup: "lostdeclared", group: "Recovery", label: "Lost Declared", code: "LD" },
   { id: "rec:pdcnr", dash: true, dashKey: "recovery", recGroup: "pdcnr", group: "Recovery", label: "PDCNR", beta: true, recLists: true, code: "PD" },

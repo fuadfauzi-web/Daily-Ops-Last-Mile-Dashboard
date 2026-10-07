@@ -99,7 +99,7 @@ const TABS = [
     : []),
   { key: "routed", label: "Route Monitoring" },
   { key: "aging", label: "Aging Details" },
-  { key: "rpu", label: "RPU" },
+  { key: "rpu", label: "Return Pick Up (RPU)" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Shipper Radar" },
   ...(FEATURES.dod
@@ -274,14 +274,36 @@ function exportStationHealthCsv(rows) {
 }
 
 // sidebar / requestedTab / onTabState: the staging sidebar (FEATURES.sidebarNav) drives and mirrors the tab from outside -- with `sidebar` on, the tab strip below is hidden.
+// Filters (region / zone / search / East Malaysia) stay while the browser tab stays open -- moving to another page and back keeps them -- and reset when the
+// dashboard is opened in a new session. sessionStorage is per browser tab, which is exactly that.
+function useSessionState(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(key);
+      if (saved !== null) return JSON.parse(saved);
+    } catch {
+      /* storage blocked / bad JSON -- start fresh */
+    }
+    return initial;
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* storage blocked */
+    }
+  }, [key, value]);
+  return [value, setValue];
+}
+
 export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts, sidebar = false, requestedTab = null, onTabState, recoveryGroup }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
   const [error, setError] = useState(null);
-  const [regionFilter, setRegionFilter] = useState("all");
-  const [zoneFilter, setZoneFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [regionFilter, setRegionFilter] = useSessionState(`dash-filter:${me.email}:region`, "all");
+  const [zoneFilter, setZoneFilter] = useSessionState(`dash-filter:${me.email}:zone`, "all");
+  const [search, setSearch] = useSessionState(`dash-filter:${me.email}:search`, "");
   const [sortKey, setSortKey] = useState("on_hold");
   const [sortDir, setSortDir] = useState("desc");
   // Remembers the last tab this user had open, per Phase 5 -- a first-ever
@@ -326,7 +348,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const [flaggedCopied, setFlaggedCopied] = useState(false);
   // East Malaysia is Retail, not Last Mile -- admins/full-access viewers can
   // toggle it back in. Defaults to excluded per 2026-09-20 feedback.
-  const [includeEastMalaysia, setIncludeEastMalaysia] = useState(false);
+  const [includeEastMalaysia, setIncludeEastMalaysia] = useSessionState(`dash-filter:${me.email}:em`, false);
 
   // Station Health: one combined region -> zone -> station table, each level
   // expandable (2026-09-24: replaced the old three-separate-tables layout).
