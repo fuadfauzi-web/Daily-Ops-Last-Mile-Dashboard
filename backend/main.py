@@ -702,6 +702,7 @@ async def _hourly_refresh_loop() -> None:
         await ptwh_app.purge_old_selfies()  # PTWH selfies are kept 14 days (never raises)
         await ptwh_app.housekeeping_workers()  # PTWH end dates, 30-day inactivity, 60-day clean-up (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+        await hybrid_attendance.housekeeping_drivers()  # Hybrid drivers past their end date: off at once, removed a month later (never raises)
 
 
 _launch_task: asyncio.Task | None = None
@@ -3382,6 +3383,7 @@ class Notifications(BaseModel):
     ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
     attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
+    staff_flags: int = 0  # Station Heads / Fleet Assistants who should have clocked in / out and did not (not yet handled) -- only for a Region Head / RFS / HOD / Manager
     documents_stale: int = 0  # Superadmin only: daily Metabase files not uploaded today (the bell on Superadmin -> Documents)
 
 
@@ -3432,6 +3434,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "ptwh_review": await ptwh_app.review_count(user),
         "ptwh_approvals": await attendance.approvals_count(user),
         "ptwh_corrections": await attendance_corrections.pending_count(user),
+        "staff_flags": await staff_attendance.pending_flag_count(user),
         "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
         "documents_stale": await _documents_stale_count(user),
         **await tasklist_counts(user),

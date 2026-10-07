@@ -345,6 +345,12 @@ const SECTIONS = [
           entry shows who keyed it. The Schedule's Hybrid list comes from these drivers. When Hybrid drivers can sign in with their driver-app login, this changes.
         </p>
         <p>
+          <strong>Staff flags</strong> -- <em>Attendance → Staff → Flags</em> lists Station Heads and Fleet Assistants who didn't clock in or out as scheduled. Someone scheduled AM / Middle / PM is flagged
+          <strong> not clocked in</strong> 30 minutes after the shift starts (the station's own shift hours), <strong>late</strong> if they clocked in after that, <strong>no clock-out</strong> an hour after the shift should
+          have ended, and <strong>short day</strong> under 8 hours (staff have an 8-hour minimum, PTWH have none). <strong>Region Heads, RFS and Managers are alerted</strong> (a banner on the Attendance tab) and press
+          <em> Mark handled</em> with a note saying what was done. Staff <em>Today</em> and <em>Month sheet</em> have Region / Zone / Station filters (a station only sees its own hub) and keep their header while you scroll.
+        </p>
+        <p>
           <strong>PTWH half day</strong> -- on the Schedule a PTWH half day is <em>Half day AM</em>, <em>Half day Middle</em> or <em>Half day PM</em>; it starts when that shift starts at the station (the station's own hours).
         </p>
         <p>
@@ -355,7 +361,7 @@ const SECTIONS = [
           (a reason is needed, a shift is 12 hours at most, the original times are kept, and nobody fixes their own). A QR code issued by the Region Head, and Hybrid drivers (who will use their driver app login), come later.
         </p>
         <p>
-          <strong>Schedule</strong> -- the <em>Schedule</em> tab is where a station keys in who works which shift, week by week, for <strong>PTWH, Staff and Hybrid drivers</strong> in one place (pick the group above the grid; <em>Copy last week</em> saves retyping). Only <strong>Station Heads, Region Heads and Managers</strong> can change it; everyone else with the station in their scope can read it. PTWH come from the PTWH list, Staff from the Staff &amp; Org Chart; Hybrid drivers are typed in for now and will come from a Fleet Admin driver list once that tab is built. The shifts are <strong>AM, Middle and PM</strong> (plus Half day for PTWH, and Off / Leave) -- every station writes down its <em>own</em> AM / Middle / PM hours in the <em>Shift times</em> box above the grid (Station Heads, Region Heads and Managers can set them), because an AM can start at 5am in one station and 8am in another; those hours show beside the shift for that station's PTWH and Staff. Each PTWH sees their own next two weeks in the PTWH app.
+          <strong>Schedule</strong> -- the <em>Schedule</em> tab is where a station keys in who works which shift, week by week, for <strong>PTWH, Staff and Hybrid drivers</strong> in one place (pick the group above the grid; <em>Copy last week</em> saves retyping). Only <strong>Station Heads, Region Heads and Managers</strong> can change it; everyone else with the station in their scope can read it. PTWH come from the PTWH list, Staff from the Staff &amp; Org Chart; Hybrid drivers are typed in for now and will come from a Fleet Admin driver list once that tab is built. The Schedule lists <strong>Staff, Hybrid, then PTWH</strong>. The shifts are <strong>AM, Middle and PM</strong> (plus Half day for PTWH, and Off / Leave) -- every station writes down its <em>own</em> AM / Middle / PM hours in the <em>Shift times</em> box above the grid (Station Heads, Region Heads and Managers can set them), because an AM can start at 5am in one station and 8am in another; those hours show beside the shift for that station's PTWH and Staff, and each shift can have its own <strong>break time</strong>. <strong>Hybrid drivers have no shift</strong>: mark the day Working (add the time they clock in if you know it -- the clock-out will come from their route data), Off or Leave. Each PTWH sees their own next two weeks in the PTWH app.
         </p>
         <p>
           <strong>PTWH app</strong> -- PTWH clock themselves in and out in a separate small app on their own phone (not this dashboard), with their own login.
