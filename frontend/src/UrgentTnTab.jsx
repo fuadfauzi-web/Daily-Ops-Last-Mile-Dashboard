@@ -789,7 +789,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
               to you. A tracking number on several rows (one per PIC) is kept together and shares a colour. Double-click a Note to edit / re-send it, and a PIC Reply to answer it. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
               marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
-              Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
+              Parcel details come from the same query 78 data Station Health uses (refreshed every 10 minutes), not a live
               search; "Not found" means the parcel is already completed or added to a shipment.
             </>
           }

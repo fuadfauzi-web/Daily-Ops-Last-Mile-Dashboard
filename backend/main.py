@@ -89,7 +89,7 @@ _MYT = timezone(timedelta(hours=8))
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
-REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
+REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "600"))  # every 10 minutes (was 15; 2026-10-08) -- set REFRESH_INTERVAL_SECONDS to change it without a release
 # 2026-09-22 incident: the backend OOM-killed (exit 137) on every restart --
 # root cause was fetching all 11 Redash queries concurrently, holding every
 # raw nationwide payload in memory at once; that happens on EVERY pod start
@@ -589,7 +589,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             "UPDATE refresh_log SET finished_at=%s, status='ok', stations_count=%s WHERE id=%s",
             (datetime.now(timezone.utc), len(params), log_id),
         )
-        log.info("Refresh ok: %d stations", len(params))
+        log.info("Refresh ok: %d stations in %.1fs", len(params), (datetime.now(timezone.utc) - started_at).total_seconds())
         return {"ok": True, "stations": len(params), "captured_at": captured_at.isoformat()}
     except (RedashError, Exception) as exc:  # noqa: BLE001 - log and keep the app alive
         log.exception("Refresh failed")
@@ -3883,6 +3883,7 @@ class QueryFetchStatus(BaseModel):
     query_id: int
     label: str
     fetched_at: str | None
+    redash_at: str | None = None  # when Redash itself last computed the query (its retrieved_at)
     url: str | None = None  # the Redash page of the query -- only sent to the Superadmin
 
 
@@ -3896,6 +3897,7 @@ class RefreshStatus(BaseModel):
     triggered_by: str | None
     queries: list[QueryFetchStatus]
     can_refresh: bool = False  # only the Superadmin may press Refresh now
+    interval_seconds: int = 0  # how often the scheduler refreshes
 
 
 @app.post("/api/admin/refresh", response_model=RefreshStatus)
@@ -3931,14 +3933,22 @@ async def refresh_status(user: CurrentUser = Depends(get_current_user)):
     return out
 
 
+def _redash_retrieved_at(query_id: int):
+    import redash_client as _rc
+
+    return _rc.RETRIEVED_AT.get(query_id)
+
+
 def _refresh_row_to_dict(row) -> dict:
     return {
         "id": row[0], "started_at": str(row[1]), "finished_at": str(row[2]) if row[2] else None,
         "status": row[3], "stations_count": row[4], "error_message": row[5], "triggered_by": row[6],
+        "interval_seconds": REFRESH_INTERVAL_SECONDS,
         "queries": [
             {
                 "query_id": qid, "label": label,
                 "fetched_at": _query_fetched_at[qid].isoformat() if qid in _query_fetched_at else None,
+                "redash_at": _redash_retrieved_at(qid),
             }
             for qid, label in _QUERY_LABELS.items()
         ],

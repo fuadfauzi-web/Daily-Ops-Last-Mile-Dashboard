@@ -162,7 +162,7 @@ const SECTIONS = [
 
             <strong>Data as of X</strong> (top right) is when the numbers were last pulled from Redash -- the whole app
 
-            refreshes together every 15 minutes, so this one timestamp covers everything except Urgent TN's own list and
+            refreshes together every 10 minutes, so this one timestamp covers everything except Urgent TN's own list and
 
             Pending in Yesterday Route (captured once a day at ~12:30am).
 
@@ -1488,7 +1488,7 @@ const SECTIONS = [
 
 const FAQS = [
 
-  { q: "How often does the data refresh?", a: "Every 15 minutes. \"Data as of\" in the header is when everything was last refreshed." },
+  { q: "How often does the data refresh?", a: "Every 10 minutes. \"Data as of\" in the header is when everything was last refreshed." },
 
   { q: "Why does a tracking number show \"Not found\" in Urgent TN?", a: "Urgent TN looks parcels up in the same active dataset Station Health uses. A parcel that's already completed or added to a shipment is no longer in it." },
 

@@ -60,7 +60,7 @@ export default function RegionListPanel({ me }) {
         </p>
         <p className="mt-1 text-xs text-slate-500">
           Only Active / Virtual rows in Klang Valley, Northern, Southern, East Coast and East Malaysia count; Closed stations and the SAMEDAY / NO HUB groups are left out. A change is used at once by the KPI pages and by the
-          dashboards at their next refresh (within 15 minutes).
+          dashboards at their next refresh (within 10 minutes).
         </p>
         {(ch.added.length > 0 || ch.removed.length > 0 || ch.changed.length > 0) && (
           <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">

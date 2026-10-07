@@ -454,7 +454,7 @@ function SlaTargetsPanel({ regions, me }) {
 
         <div className="ml-auto flex items-center gap-3">
 
-          <span className="text-xs text-slate-400">Applies at the next 15-minute refresh</span>
+          <span className="text-xs text-slate-400">Applies at the next refresh</span>
 
           <button
 
@@ -920,7 +920,7 @@ function RecoverySettingsPanel({ me }) {
 
             {settings.changed_by ? `Last changed ${formatTime(settings.changed_at)} · ${settings.changed_by}` : "Never changed"}
 
-            {" · applies at the next 15-minute refresh"}
+            {" · applies at the next refresh"}
 
           </span>
 
@@ -1774,7 +1774,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
           <p className="mt-2 text-xs text-slate-400">
 
-            Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
+            Runs automatically every {Math.round((refreshStatus?.interval_seconds || 600) / 60)} minutes, and asks Redash to re-run each query first (best-effort — if
 
             the API key can't trigger that, it falls back to whatever Redash last computed on its own).
 
@@ -1796,6 +1796,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
                     <th className="px-3 py-2 font-medium">Feeds</th>
 
+                    <th className="px-3 py-2 font-medium">Redash computed</th>
                     <th className="px-3 py-2 font-medium">Last pulled</th>
 
                   </tr>
@@ -1828,6 +1829,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
                       <td className="px-3 py-1.5 text-slate-700">{q.label}</td>
 
+                      <td className="px-3 py-1.5 text-slate-600">{q.redash_at ? formatTime(q.redash_at) : "—"}</td>
                       <td className="px-3 py-1.5 text-slate-600">{formatTime(q.fetched_at)}</td>
 
                     </tr>
