@@ -2,7 +2,7 @@
 Only HOD and Manager (and the Superadmin) can open it. A Manager is locked to their own region (the home scope the Fleet Admin team keeps on the user); an HOD or the Superadmin sees every region.
 
 Where each number comes from:
-  * Plan headcount / plan volume / drivers required / riders required -- typed in by the manager (table manager_station_plan, V84), exactly like the sheet's yellow cells.
+  * Plan headcount / plan volume / drivers required / riders required -- typed in by the manager (table manager_station_plan, V91), exactly like the sheet's yellow cells.
   * Staff -- the Staff & Org Chart (headcount.py): people posted at the station + approved TBA seats.
   * Drivers by type (HD / HR / ID / IR), who resigned in the last week / 2 weeks / month -- Metabase question 127638 (drivers_enriched by hub and type; an empty End Date is a driver still employed).
   * Active drivers past 2 / 4 weeks (a route with at least one parcel delivered) -- Metabase questions 127639 / 127640. All three are pulled by the app on a schedule (metabase_pull.py), or uploaded.
