@@ -41,6 +41,7 @@ import attendance_launch
 import hybrid_attendance
 import ptwh_app
 import work_schedule as schedule_mod
+import departments
 import headcount
 import premises
 import vehicles
@@ -702,7 +703,6 @@ async def _hourly_refresh_loop() -> None:
         await ptwh_app.purge_old_selfies()  # PTWH selfies are kept 14 days (never raises)
         await ptwh_app.housekeeping_workers()  # PTWH end dates, 30-day inactivity, 60-day clean-up (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
-        await hybrid_attendance.housekeeping_drivers()  # Hybrid drivers past their end date: off at once, removed a month later (never raises)
 
 
 _launch_task: asyncio.Task | None = None
@@ -751,6 +751,7 @@ app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthl
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
 app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
+app.include_router(departments.router)  # Superadmin -> Departments + the Users page's department list (departments.py)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Label from Hub: rows keyed by Recovery or the hub, answered by the other side (recovery_cases.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
@@ -3383,7 +3384,6 @@ class Notifications(BaseModel):
     ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
     attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
-    staff_flags: int = 0  # Station Heads / Fleet Assistants who should have clocked in / out and did not (not yet handled) -- only for a Region Head / RFS / HOD / Manager
     documents_stale: int = 0  # Superadmin only: daily Metabase files not uploaded today (the bell on Superadmin -> Documents)
 
 
@@ -3434,7 +3434,6 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "ptwh_review": await ptwh_app.review_count(user),
         "ptwh_approvals": await attendance.approvals_count(user),
         "ptwh_corrections": await attendance_corrections.pending_count(user),
-        "staff_flags": await staff_attendance.pending_flag_count(user),
         "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
         "documents_stale": await _documents_stale_count(user),
         **await tasklist_counts(user),
@@ -3541,6 +3540,7 @@ class UserOut(BaseModel):
     display_name: str | None
     created_at: str
     last_seen_at: str | None
+    department: str | None = None
 
 
 class UserIn(BaseModel):
@@ -3549,6 +3549,7 @@ class UserIn(BaseModel):
     scope_type: str  # 'all' | 'hq' | 'region' | 'zone' | 'station'
     scope_values: list[str] = []
     display_name: str | None = None
+    department: str | None = None  # departments.py -- the roles a department offers; None leaves the person without one (an update that omits it keeps the current one)
 
 
 # Only the app owner can grant the Superadmin (stored as "admin") role -- not just any existing admin.
@@ -3656,6 +3657,7 @@ def _row_to_user_out(r) -> dict:
     return {
         "email": r[0], "role": r[1], "scope_type": r[2], "scope_values": parse_scope_values(r[3]),
         "display_name": r[4], "created_at": str(r[5]), "last_seen_at": str(r[6]) if r[6] else None,
+        "department": r[7] if len(r) > 7 else None,
     }
 
 
@@ -3663,7 +3665,7 @@ def _row_to_user_out(r) -> dict:
 async def list_users(user: CurrentUser = Depends(get_current_user)):
     _require_can_add_users(user)
     rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_values, display_name, created_at, last_seen_at FROM users ORDER BY created_at"
+        "SELECT email, role, scope_type, scope_values, display_name, created_at, last_seen_at, department FROM users ORDER BY created_at"
     )
     out = [_row_to_user_out(r) for r in rows]
     # Same view mirrors what each role can manage (see _require_can_manage_target) --
@@ -3744,13 +3746,14 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
     existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (payload.email,))
     if existing:
         raise HTTPException(status_code=409, detail="That email is already set up")
+    department = await departments.check_user_department(payload.department, payload.role)
     await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",  # a new person's posting starts out the same as their access
+        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, department)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",  # a new person's posting starts out the same as their access
         (payload.email, payload.role, payload.scope_type, _scope_values_json(payload.scope_values),
          payload.scope_type, _scope_values_json(payload.scope_values),
          (payload.display_name or "").strip() or _auto_display_name(payload.email, payload.role, payload.scope_type, payload.scope_values),
-         user.email),
+         user.email, department),
     )
     if payload.scope_type == "station":
         await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
@@ -3782,6 +3785,7 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             _validate_user_in(row)
             _validate_grant_limits(user, row)
             _require_can_grant_role(user, row.role)
+            row_department = await departments.check_user_department(row.department, row.role)
         except HTTPException as exc:
             errors.append(f"{email}: {exc.detail}")
             continue
@@ -3790,10 +3794,10 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             skipped.append(email)
             continue
         await db.execute(
-            """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, department)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.scope_type, _scope_values_json(row.scope_values),
-             (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email),
+             (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email, row_department),
         )
         if row.scope_type == "station":
             await headcount.consume_seat(row.scope_values, row.role)
@@ -3816,11 +3820,14 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
     _validate_user_in(payload)
     _validate_grant_limits(user, payload)
     _require_can_grant_role(user, payload.role)
+    department = await departments.check_user_department(payload.department, payload.role) if "department" in payload.model_fields_set else None
     await db.execute(
         """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=COALESCE(%s, display_name)
            WHERE email=%s""",  # a form that sends no name keeps the one on file (it used to blank it)
         (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), (payload.display_name or "").strip() or None, email),
     )
+    if "department" in payload.model_fields_set:  # only a form that sends the department changes it
+        await db.execute("UPDATE users SET department=%s WHERE email=%s", (department, email))
     return {"ok": True}
 
 

@@ -25,7 +25,7 @@ router = APIRouter()
 STATUSES = ("present", "absent", "leave")
 WINDOW_DAYS = 35  # a day can be keyed / changed up to five weeks back, never in the future
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-_COLS = "id, station, name, driver_id, phone, vehicle_type, NULL AS plate_unused, joined_date, end_date, active, notes, created_by, created_at"
+_COLS = "id, station, name, driver_id, phone, vehicle_type, vehicle_plate, joined_date, end_date, active, notes, created_by, created_at"
 
 
 def _d(v) -> str | None:
@@ -34,7 +34,7 @@ def _d(v) -> str | None:
 
 def _driver_json(r) -> dict:
     zone, region = _zone_region(r[1])
-    return {"id": r[0], "station": r[1], "zone": zone, "region": region, "name": r[2], "driver_id": r[3], "phone": r[4], "vehicle_type": r[5],
+    return {"id": r[0], "station": r[1], "zone": zone, "region": region, "name": r[2], "driver_id": r[3], "phone": r[4], "vehicle_type": r[5], "vehicle_plate": r[6],
             "joined_date": _d(r[7]), "end_date": _d(r[8]), "active": bool(r[9]), "notes": r[10], "created_by": r[11]}
 
 
@@ -67,6 +67,7 @@ class DriverIn(BaseModel):
     driver_id: str | None = None
     phone: str | None = None
     vehicle_type: str | None = None
+    vehicle_plate: str | None = None
     joined_date: str | None = None
     end_date: str | None = None
     notes: str | None = None
@@ -85,9 +86,10 @@ async def add_driver(p: DriverIn, user: CurrentUser = Depends(get_current_user))
         raise HTTPException(status_code=422, detail="The end date is before the joined date")
     now = _now()
     new_id = await db.execute(
-        "INSERT INTO hybrid_drivers (station, name, driver_id, phone, vehicle_type, joined_date, end_date, active, notes, created_by, created_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-        (p.station, name, _clean(p.driver_id, 60), _clean(p.phone, 30), _clean(p.vehicle_type, 40), joined, end, 0 if (end and end < now.date()) else 1, _clean(p.notes, 300), user.email, now),
+        "INSERT INTO hybrid_drivers (station, name, driver_id, phone, vehicle_type, vehicle_plate, joined_date, end_date, active, notes, created_by, created_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (p.station, name, _clean(p.driver_id, 60), _clean(p.phone, 30), _clean(p.vehicle_type, 40), _clean(p.vehicle_plate, 30).upper() if _clean(p.vehicle_plate, 30) else None,
+         joined, end, 0 if (end and end < now.date()) else 1, _clean(p.notes, 300), user.email, now),
     )
     return {"ok": True, "id": new_id}
 
@@ -97,6 +99,7 @@ class DriverPatch(BaseModel):
     driver_id: str | None = None
     phone: str | None = None
     vehicle_type: str | None = None
+    vehicle_plate: str | None = None
     joined_date: str | None = None
     end_date: str | None = None
     active: bool | None = None
@@ -126,10 +129,12 @@ async def edit_driver(driver_id: int, p: DriverPatch, user: CurrentUser = Depend
         active = bool(p.active)
     if end and str(end)[:10] < str(_now().date()):
         active = False  # an end date in the past switches them off
-    vals = {k: (_clean(getattr(p, k), n) if k in sent else r[i]) for k, n, i in (("driver_id", 60, 3), ("phone", 30, 4), ("vehicle_type", 40, 5), ("notes", 300, 10))}
+    vals = {k: (_clean(getattr(p, k), n) if k in sent else r[i]) for k, n, i in (("driver_id", 60, 3), ("phone", 30, 4), ("vehicle_type", 40, 5), ("vehicle_plate", 30, 6), ("notes", 300, 10))}
+    if vals["vehicle_plate"]:
+        vals["vehicle_plate"] = vals["vehicle_plate"].upper()
     await db.execute(
-        "UPDATE hybrid_drivers SET name=%s, driver_id=%s, phone=%s, vehicle_type=%s, joined_date=%s, end_date=%s, active=%s, notes=%s, updated_at=%s WHERE id=%s",
-        (name, vals["driver_id"], vals["phone"], vals["vehicle_type"], joined, end, 1 if active else 0, vals["notes"], _now(), driver_id),
+        "UPDATE hybrid_drivers SET name=%s, driver_id=%s, phone=%s, vehicle_type=%s, vehicle_plate=%s, joined_date=%s, end_date=%s, active=%s, notes=%s, updated_at=%s WHERE id=%s",
+        (name, vals["driver_id"], vals["phone"], vals["vehicle_type"], vals["vehicle_plate"], joined, end, 1 if active else 0, vals["notes"], _now(), driver_id),
     )
     if name != r[2]:  # the Schedule refers to a Hybrid driver by name
         await db.execute("UPDATE schedule_entries SET person_ref = %s WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (name, r[1], r[2]))
@@ -262,25 +267,3 @@ async def month_view(month: str | None = None, user: CurrentUser = Depends(get_c
             continue
         rows.append({**_driver_json(r), "days": days, **{s: sum(1 for v in days.values() if v["status"] == s) for s in STATUSES}})
     return {"month": f"{lo.year:04d}-{lo.month:02d}", "days_in_month": (hi - lo).days, "rows": rows, "can_edit": _can_edit(user)}
-
-
-# ---------------------------------------------------------------- housekeeping (the app's hourly loop)
-
-KEEP_AFTER_END_DAYS = 31  # an ended driver's data is kept for a month, then removed for good
-
-
-async def housekeeping_drivers() -> None:
-    """Drivers past their end date are switched off (hidden from Today / the Schedule, history kept); one month after the end date the driver, their attendance and any
-    scheduled days are removed for good. Never raises."""
-    try:
-        today = _now().date()
-        n_off = await db.execute_rowcount("UPDATE hybrid_drivers SET active = 0, updated_at = %s WHERE active = 1 AND end_date IS NOT NULL AND end_date < %s", (_now(), today))
-        old = await db.fetch_all("SELECT id, station, name FROM hybrid_drivers WHERE end_date IS NOT NULL AND end_date < %s", (today - timedelta(days=KEEP_AFTER_END_DAYS),))
-        for did, station, name in old:
-            await db.execute("DELETE FROM hybrid_attendance WHERE driver_id = %s", (did,))
-            await db.execute("DELETE FROM schedule_entries WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (station, name))
-            await db.execute("DELETE FROM hybrid_drivers WHERE id = %s", (did,))
-        if n_off or old:
-            log.info("Hybrid housekeeping: %d switched off, %d removed", n_off, len(old))
-    except Exception:  # noqa: BLE001 -- housekeeping must never take the loop down
-        log.exception("Hybrid housekeeping failed")

@@ -48,14 +48,8 @@ _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 async def station_times(station: str) -> dict[str, dict]:
     """{'AM': {'start': '05:00', 'end': '14:00'}, ...} -- the hours this station wrote down (only the shifts it has set)."""
-    rows = await db.fetch_all("SELECT shift, start_time, end_time, break_start, break_end FROM station_shift_times WHERE station = %s", (station,))
-    return {r[0]: {"start": r[1], "end": r[2], **({"break_start": r[3], "break_end": r[4]} if r[3] and r[4] else {})} for r in rows}
-
-
-def break_text(times: dict[str, dict], code: str | None) -> str:
-    """The shift's break window, '12:00-13:00' (empty when the station hasn't set one). A half day has none."""
-    t = times.get(code or "")
-    return f"{t['break_start']}-{t['break_end']}" if t and t.get("break_start") else ""
+    rows = await db.fetch_all("SELECT shift, start_time, end_time FROM station_shift_times WHERE station = %s", (station,))
+    return {r[0]: {"start": r[1], "end": r[2]} for r in rows}
 
 
 HALF_BASE = {"HAM": "AM", "HMD": "MD", "HPM": "PM"}  # a PTWH half day starts when the shift it sits on starts
@@ -137,7 +131,7 @@ async def get_schedule(station: str | None = None, week_start: str | None = None
     return {
         "station": st, "stations": stations, "week_start": str(ws), "can_edit": can_edit(user), "shift_times": times,
         "days": [{"date": str(d), "dow": d.strftime("%a"), "day": d.day} for d in days],
-        "shifts": {g: [{"code": c, "label": SHIFTS[c][0], "hours": hours_text(times, c), "break": break_text(times, c)} for c in codes] for g, codes in GROUP_SHIFTS.items()},
+        "shifts": {g: [{"code": c, "label": SHIFTS[c][0], "hours": hours_text(times, c)} for c in codes] for g, codes in GROUP_SHIFTS.items()},
         "groups": groups,
     }
 
@@ -147,8 +141,6 @@ class ShiftTimeIn(BaseModel):
     shift: str  # AM | MD | PM
     start: str | None = None  # HH:MM; start and end both empty = take the hours off
     end: str | None = None
-    break_start: str | None = None  # the shift's break, both or neither
-    break_end: str | None = None
 
 
 @router.put("/api/attendance/schedule/shift-times")
@@ -164,20 +156,12 @@ async def set_shift_time(p: ShiftTimeIn, user: CurrentUser = Depends(get_current
         raise HTTPException(status_code=422, detail="Give a start and an end time like 05:00 and 14:00")
     if p.start == p.end:
         raise HTTPException(status_code=422, detail="The start and end can't be the same")
-    bs, be = (p.break_start or None), (p.break_end or None)
-    if bool(bs) != bool(be):
-        raise HTTPException(status_code=422, detail="Give both the break start and the break end, or neither")
-    if bs:
-        if not _HHMM.match(bs) or not _HHMM.match(be) or bs >= be:
-            raise HTTPException(status_code=422, detail="The break should look like 12:00 to 13:00 (start before end)")
-        if p.start < p.end and not (p.start <= bs and be <= p.end):  # a day shift's break has to sit inside the shift
-            raise HTTPException(status_code=422, detail="The break has to be inside the shift hours")
     now = _now()
     existing = await db.fetch_one("SELECT id FROM station_shift_times WHERE station = %s AND shift = %s", (p.station, p.shift))
     if existing:
-        await db.execute("UPDATE station_shift_times SET start_time = %s, end_time = %s, break_start = %s, break_end = %s, updated_by = %s, updated_at = %s WHERE id = %s", (p.start, p.end, bs, be, user.email, now, existing[0]))
+        await db.execute("UPDATE station_shift_times SET start_time = %s, end_time = %s, updated_by = %s, updated_at = %s WHERE id = %s", (p.start, p.end, user.email, now, existing[0]))
     else:
-        await db.execute("INSERT INTO station_shift_times (station, shift, start_time, end_time, break_start, break_end, updated_by, updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", (p.station, p.shift, p.start, p.end, bs, be, user.email, now))
+        await db.execute("INSERT INTO station_shift_times (station, shift, start_time, end_time, updated_by, updated_at) VALUES (%s,%s,%s,%s,%s,%s)", (p.station, p.shift, p.start, p.end, user.email, now))
     return {"ok": True}
 
 
@@ -194,9 +178,8 @@ async def set_cell(p: CellIn, user: CurrentUser = Depends(get_current_user)):
     _require_edit(user, p.station)
     if p.group not in GROUP_SHIFTS:
         raise HTTPException(status_code=422, detail="Group is ptwh, staff or hybrid")
-    # Hybrid drivers have NO shift: a day is Working (optionally with the time they clock in, "08:30" -- the clock-out comes from their route data later), Off or Leave.
-    if p.shift is not None and p.shift not in GROUP_SHIFTS[p.group] and not (p.group == "hybrid" and _HHMM.match(p.shift)):
-        raise HTTPException(status_code=422, detail=f"Shift for {p.group} is one of {', '.join(GROUP_SHIFTS[p.group])}" + (" (or a clock-in time like 08:30)" if p.group == "hybrid" else ""))
+    if p.shift is not None and p.shift not in GROUP_SHIFTS[p.group]:
+        raise HTTPException(status_code=422, detail=f"Shift for {p.group} is one of {', '.join(GROUP_SHIFTS[p.group])}")
     day = _date(p.date, _now().date())
     today = _now().date()
     if not (today - timedelta(days=35) <= day <= today + timedelta(days=180)):
@@ -272,5 +255,5 @@ async def ptwh_upcoming(worker_id: int, days: int = 14, station: str | None = No
     for i in range(days):
         d = today + timedelta(days=i)
         code = rows.get(str(d))
-        out.append({"date": str(d), "shift": code, "label": SHIFTS[code][0] if code in SHIFTS else None, "hours": (hours_text(times, code) or None) if code in SHIFTS else None, "break": (break_text(times, code) or None) if code in SHIFTS else None})
+        out.append({"date": str(d), "shift": code, "label": SHIFTS[code][0] if code in SHIFTS else None, "hours": (hours_text(times, code) or None) if code in SHIFTS else None})
     return out

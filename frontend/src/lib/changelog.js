@@ -20,14 +20,15 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
-    date: "2026-10-09",
-    title: "Attendance (Beta, staging only): staff clock-in flags, break times, Hybrid clean-up, frozen table headers",
-    feature: "attendance",
+    date: "2026-10-08",
+    title: "Users: Department, and a region / zone filter",
+    type: "new",
+    area: "System",
+    minRank: 1,
     points: [
-      "Staff flags: a Station Head or Fleet Assistant scheduled for an AM / Middle / PM shift who hasn't clocked in 30 minutes after the station's shift start, or hasn't clocked out an hour after the shift ended, is flagged. Region Heads, RFS and Managers get an alert on the Attendance tab and mark each flag handled with a note (Staff -> Flags). Late clock-ins and staff days under 8 hours show too.",
-      "Staff Today and Month sheet now have Region / Zone / Station filters for Region Heads and Managers (a station only sees its own hub), and the table headers stay put while you scroll. The Hybrid tables got the same.",
-      "Schedule: the order is now Staff, Hybrid, PTWH. Each shift can have its own break time (Shift times box). A Hybrid driver has no shift -- mark the day Working (with the time they clock in), Off or Leave.",
-      "Hybrid: the plate number is gone from the driver form. A driver past their end date is switched off, kept for a month, then removed for good with their attendance.",
+      "Every person now has a Department (Last Mile, Restock, Recovery). Pick the department when you add someone and the role list shows only that department's roles. People already set up were placed in their department.",
+      "The user list has Department, Region and Zone filters: pick East Coast and you see everyone whose access covers a station of East Coast (its region users, zone users and station users). Tick \"Include HQ / nationwide\" to add the people who see everything.",
+      "The Superadmin keeps the department list (and each department's roles) under Superadmin -> Departments.",
     ],
   },
   {

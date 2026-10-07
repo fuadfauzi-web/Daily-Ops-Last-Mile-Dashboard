@@ -161,6 +161,12 @@ export const api = {
     remove: (email) =>
       request(`/api/admin/users/${encodeURIComponent(email)}`, { method: "DELETE" }),
   },
+  departments: {
+    list: () => request("/api/departments"),
+    add: (payload) => request("/api/admin/departments", { method: "POST", body: JSON.stringify(payload) }),
+    update: (name, payload) => request(`/api/admin/departments/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(payload) }),
+    remove: (name) => request(`/api/admin/departments/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  },
   refresh: {
     trigger: () => request("/api/admin/refresh", { method: "POST" }),
     status: () => request("/api/admin/refresh-status"),
@@ -289,8 +295,6 @@ export const api = {
   // The month in the HR sheet's layout (text, not JSON) -- csv to download, tsv to copy into the sheet.
   ptwhExport: async ({ month, region, zone, station, fmt, header }) => {
     const qsx = new URLSearchParams({ ...(month ? { month } : {}), ...(region ? { region } : {}), ...(zone ? { zone } : {}), ...(station ? { station } : {}), fmt, header: header ? "true" : "false" });
-  staffFlags: () => request("/api/attendance/staff/flags"),
-  staffFlagAction: (payload) => request("/api/attendance/staff/flags/action", { method: "POST", body: JSON.stringify(payload) }),
     const res = await fetch(`/api/attendance/ptwh/export?${qsx}`, { headers: viewAsHeaders() });
     if (!res.ok) {
       let detail = res.statusText;

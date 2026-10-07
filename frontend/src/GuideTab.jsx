@@ -345,12 +345,6 @@ const SECTIONS = [
           entry shows who keyed it. The Schedule's Hybrid list comes from these drivers. When Hybrid drivers can sign in with their driver-app login, this changes.
         </p>
         <p>
-          <strong>Staff flags</strong> -- <em>Attendance → Staff → Flags</em> lists Station Heads and Fleet Assistants who didn't clock in or out as scheduled. Someone scheduled AM / Middle / PM is flagged
-          <strong> not clocked in</strong> 30 minutes after the shift starts (the station's own shift hours), <strong>late</strong> if they clocked in after that, <strong>no clock-out</strong> an hour after the shift should
-          have ended, and <strong>short day</strong> under 8 hours (staff have an 8-hour minimum, PTWH have none). <strong>Region Heads, RFS and Managers are alerted</strong> (a banner on the Attendance tab) and press
-          <em> Mark handled</em> with a note saying what was done. Staff <em>Today</em> and <em>Month sheet</em> have Region / Zone / Station filters (a station only sees its own hub) and keep their header while you scroll.
-        </p>
-        <p>
           <strong>PTWH half day</strong> -- on the Schedule a PTWH half day is <em>Half day AM</em>, <em>Half day Middle</em> or <em>Half day PM</em>; it starts when that shift starts at the station (the station's own hours).
         </p>
         <p>
@@ -361,7 +355,7 @@ const SECTIONS = [
           (a reason is needed, a shift is 12 hours at most, the original times are kept, and nobody fixes their own). A QR code issued by the Region Head, and Hybrid drivers (who will use their driver app login), come later.
         </p>
         <p>
-          <strong>Schedule</strong> -- the <em>Schedule</em> tab is where a station keys in who works which shift, week by week, for <strong>PTWH, Staff and Hybrid drivers</strong> in one place (pick the group above the grid; <em>Copy last week</em> saves retyping). Only <strong>Station Heads, Region Heads and Managers</strong> can change it; everyone else with the station in their scope can read it. PTWH come from the PTWH list, Staff from the Staff &amp; Org Chart; Hybrid drivers are typed in for now and will come from a Fleet Admin driver list once that tab is built. The Schedule lists <strong>Staff, Hybrid, then PTWH</strong>. The shifts are <strong>AM, Middle and PM</strong> (plus Half day for PTWH, and Off / Leave) -- every station writes down its <em>own</em> AM / Middle / PM hours in the <em>Shift times</em> box above the grid (Station Heads, Region Heads and Managers can set them), because an AM can start at 5am in one station and 8am in another; those hours show beside the shift for that station's PTWH and Staff, and each shift can have its own <strong>break time</strong>. <strong>Hybrid drivers have no shift</strong>: mark the day Working (add the time they clock in if you know it -- the clock-out will come from their route data), Off or Leave. Each PTWH sees their own next two weeks in the PTWH app.
+          <strong>Schedule</strong> -- the <em>Schedule</em> tab is where a station keys in who works which shift, week by week, for <strong>PTWH, Staff and Hybrid drivers</strong> in one place (pick the group above the grid; <em>Copy last week</em> saves retyping). Only <strong>Station Heads, Region Heads and Managers</strong> can change it; everyone else with the station in their scope can read it. PTWH come from the PTWH list, Staff from the Staff &amp; Org Chart; Hybrid drivers are typed in for now and will come from a Fleet Admin driver list once that tab is built. The shifts are <strong>AM, Middle and PM</strong> (plus Half day for PTWH, and Off / Leave) -- every station writes down its <em>own</em> AM / Middle / PM hours in the <em>Shift times</em> box above the grid (Station Heads, Region Heads and Managers can set them), because an AM can start at 5am in one station and 8am in another; those hours show beside the shift for that station's PTWH and Staff. Each PTWH sees their own next two weeks in the PTWH app.
         </p>
         <p>
           <strong>PTWH app</strong> -- PTWH clock themselves in and out in a separate small app on their own phone (not this dashboard), with their own login.
@@ -698,8 +692,10 @@ const SECTIONS = [
             rank >= 1 && (
               <>
                 <strong>Users page</strong>: add, edit and remove teammates within your own level. Region staff can edit Station staff and give them
-                more than one station. Find people with the search box, filter by role, scope type, a searchable scope or "Never opened", and click a column header
-                (e.g. Last opened) to sort.
+                more than one station. Every person has a <strong>Department</strong> (Last Mile, Restock, Recovery ...): pick it first and the role list shows only
+                that department's roles. Find people with the search box, filter by role, department, <strong>region</strong>, <strong>zone</strong>, scope type, a
+                searchable scope or "Never opened" (picking East Coast lists everyone whose access covers any station of East Coast; tick "Include HQ / nationwide"
+                to add the people who see everything), and click a column header (e.g. Last opened) to sort.
               </>
             ),
             rank >= 2 && (
@@ -736,6 +732,7 @@ const SECTIONS = [
           items={[
             <><strong>Documents</strong> (one tab, a card for each file): the first card is for <em>every Metabase feeder at once</em> -- open the one Metabase page, download each card as .csv, then drop all the files in the box; each is matched to its dataset by its columns (CSV or Excel, up to 25 at once). Below it, one card per document shows what it is, where it comes from, what is loaded (file, rows, who and when) and lets you replace or remove it. The Metabase files are meant to be refreshed daily: one that was not uploaded today says <em>Not updated today</em>, and a bell on Documents (and on the System menu) counts them until every daily file is in. The other cards are the driver / rider details CSV (the Tenure column in Route Monitoring), the weekly KPI results, the POD performance workbook, the Management View hub sizes and the OPEX download.</>,
             <><strong>Station list</strong> (the last card on Documents): where the app gets its stations (hub code, station, zone, region) -- the team's Region List sheet, so a station opening or closing needs no code change. Best: publish the sheet's Region tab to the web as CSV (File → Share → Publish to web) and paste the link -- the app re-reads it every hour (Sync now reads it at once). Or download the sheet and upload it. Only Active / Virtual rows in Klang Valley, Northern, Southern, East Coast and East Malaysia count (Closed, SAMEDAY and NO HUB are left out). Until you do either, the app uses the list built into it.</>,
+            <><strong>Departments</strong>: the list of departments people belong to (Last Mile, Restock, Recovery ...) and which roles each one includes. Add a department, tick its roles, and it shows up on the Users page straight away -- a department with no role ticked accepts any role.</>,
             <><strong>KPI Settings</strong> and <strong>Data Refresh</strong> are no longer here -- they are in Settings (KPI Settings for the HOD, OPEX and Managers; Data Refresh can be read by the HOD, Managers, OPEX and Region staff, and only the Superadmin can press Refresh now and sees the Redash links).</>,
             <>Feedback, the Guide and What's new are not here -- they're under Help{F.roleTester ? ", and the Role Tester is in the user menu" : ""}.</>,
           ]}

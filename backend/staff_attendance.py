@@ -23,7 +23,7 @@ import staff
 from attendance import _hours, _iso, _now, _visible_stations, _zone_region
 from auth import CurrentUser, get_current_user, parse_scope_values
 from ptwh_app import MAX_GPS_ACCURACY_M, RADIUS_M, _station_geo, distance_m
-from work_schedule import SHIFTS, STAFF_POSITIONS, break_text, hours_text, station_times
+from work_schedule import SHIFTS, STAFF_POSITIONS, hours_text, station_times
 
 log = logging.getLogger("staff_attendance")
 router = APIRouter()
@@ -59,8 +59,7 @@ async def _shift_today(email: str, day: date) -> dict | None:
     r = await db.fetch_one("SELECT shift, station FROM schedule_entries WHERE person_type = 'staff' AND person_ref = %s AND work_date = %s", (email.lower(), day))
     if not r:
         return None
-    times = await station_times(r[1])
-    return {"code": r[0], "label": SHIFTS.get(r[0], (r[0], ""))[0], "hours": hours_text(times, r[0]), "break": break_text(times, r[0])}
+    return {"code": r[0], "label": SHIFTS.get(r[0], (r[0], ""))[0], "hours": hours_text(await station_times(r[1]), r[0])}
 
 
 async def _open_or_today(email: str, today: date, now: datetime):
@@ -187,17 +186,13 @@ async def day(date_: str | None = Query(default=None, alias="date"), user: Curre
     recs = {r[1]: r for r in await db.fetch_all(f"SELECT {_COLS} FROM staff_attendance WHERE work_date = %s", (d,))}
     shifts = {r[0]: r[1] for r in await db.fetch_all("SELECT person_ref, shift FROM schedule_entries WHERE person_type = 'staff' AND work_date = %s", (d,))}
     times = {st: await station_times(st) for st in {p["station"] for p in people}}
-    flags, _ = await compute_flags(user, [d])
-    by_person: dict[str, list[dict]] = {}
-    for f in flags:
-        by_person.setdefault(f["email"], []).append(f)
     rows = []
     for p in people:
         rec = recs.get(p["email"])
         sh = shifts.get(p["email"])
-        rows.append({**p, "shift": ({"code": sh, "label": SHIFTS.get(sh, (sh, ""))[0], "hours": hours_text(times[p["station"]], sh), "break": break_text(times[p["station"]], sh)} if sh else None),
-                     "record": _record_json(rec) if rec else None, "flags": by_person.get(p["email"], [])})
-    return {"date": str(d), "rows": rows, "can_fix": _can_fix(user), "can_act": _alert_recipient(user)}
+        rows.append({**p, "shift": ({"code": sh, "label": SHIFTS.get(sh, (sh, ""))[0], "hours": hours_text(times[p["station"]], sh)} if sh else None),
+                     "record": _record_json(rec) if rec else None})
+    return {"date": str(d), "rows": rows, "can_fix": _can_fix(user)}
 
 
 def _month_bounds(month: str | None) -> tuple[date, date]:
@@ -288,128 +283,4 @@ async def fix_time(p: FixIn, user: CurrentUser = Depends(get_current_user)):
             "INSERT INTO staff_attendance (email, name, position, station, work_date, clock_in, clock_out, edited_by, edited_at, edit_reason, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (email, person["name"], person["position"], person["station"], day_, cin, cout, user.email, now, reason, now))
     log.info("staff clock fixed: %s %s by %s (%s)", email, day_, user.email, reason)
-    return {"ok": True}
-
-
-# ---------------------------------------------------------------- flags: staff who don't clock in / out as scheduled
-
-LATE_MINUTES = 30      # scheduled AM 8:00 and still not in at 8:30 -> "not in"
-NO_OUT_MINUTES = 60    # an hour after the shift should have ended and still no clock-out -> "no clock-out"
-MIN_STAFF_HOURS = 8    # a staff day under this is flagged "short" (PTWH have no minimum)
-WORKING_SHIFTS = ("AM", "MD", "PM")
-ALERT_KINDS = ("not_in", "no_out")  # these are the ones a Region Head / RFS / Manager is alerted about (late and short days are shown, not alerted)
-ALERT_POSITIONS = ("region_head", "rfs", "hod", "manager", "admin")
-KIND_LABEL = {"not_in": "Not clocked in", "late_in": "Clocked in late", "no_out": "No clock-out", "short": "Short day"}
-
-
-def _at(day: date, hhmm: str) -> datetime:
-    return datetime.combine(day, datetime.strptime(hhmm, "%H:%M").time())
-
-
-async def compute_flags(user: CurrentUser, days: list[date]) -> tuple[list[dict], int]:
-    """(flags, unconfigured) for the Station Heads / Fleet Assistants in the caller's scope on these days, worked out from the Schedule (AM / Middle / PM), the station's own shift
-    hours and the clock records. `unconfigured` = scheduled staff days whose station has not written its shift hours, so no clock-in time can be checked."""
-    people = await _people(user)
-    if not people:
-        return [], 0
-    emails = {p["email"] for p in people}
-    now = _now()
-    lo, hi = min(days), max(days)
-    sched = {(r[0], str(r[1])[:10]): r[2] for r in await db.fetch_all(
-        "SELECT person_ref, work_date, shift FROM schedule_entries WHERE person_type = 'staff' AND work_date >= %s AND work_date <= %s", (lo, hi)) if r[0] in emails}
-    recs = {(r[1], str(r[5])[:10]): r for r in await db.fetch_all(f"SELECT {_COLS} FROM staff_attendance WHERE work_date >= %s AND work_date <= %s", (lo, hi)) if r[1] in emails}
-    acts = {(r[0], str(r[1])[:10], r[2]): r for r in await db.fetch_all(
-        "SELECT person_ref, work_date, kind, note, acted_by, acted_at FROM attendance_flag_actions WHERE person_type = 'staff' AND work_date >= %s AND work_date <= %s", (lo, hi))}
-    times = {st: await station_times(st) for st in {p["station"] for p in people}}
-    flags, unconfigured = [], 0
-
-    def add(p, d, kind, detail, shift=None, minutes=None):
-        a = acts.get((p["email"], str(d), kind))
-        flags.append({"email": p["email"], "name": p["name"], "station": p["station"], "zone": p["zone"], "region": p["region"], "date": str(d), "kind": kind, "label": KIND_LABEL[kind],
-                      "detail": detail, "shift": shift, "minutes": minutes, "alert": kind in ALERT_KINDS,
-                      "handled": {"note": a[3], "by": a[4], "at": _iso(a[5])} if a else None})
-
-    for p in people:
-        for d in days:
-            shift = sched.get((p["email"], str(d)))
-            rec = recs.get((p["email"], str(d)))
-            t = times[p["station"]].get(shift) if shift in WORKING_SHIFTS else None
-            if shift in WORKING_SHIFTS and not t:
-                unconfigured += 1
-            start = _at(d, t["start"]) if t else None
-            end = None
-            if t:
-                end = _at(d, t["end"])
-                if end <= start:
-                    end += timedelta(days=1)  # a shift that runs past midnight
-            if rec is None:
-                if start and now >= start + timedelta(minutes=LATE_MINUTES):
-                    mins = int((now - start).total_seconds() // 60)
-                    add(p, d, "not_in", f"Scheduled {SHIFTS[shift][0]} from {t['start']}; not clocked in {mins} min after the start.", shift, mins)
-                continue
-            cin, cout = rec[6], rec[7]
-            if start and cin > start + timedelta(minutes=LATE_MINUTES):
-                mins = int((cin - start).total_seconds() // 60)
-                add(p, d, "late_in", f"Scheduled {SHIFTS[shift][0]} from {t['start']}; clocked in {mins} min late at {cin.strftime('%H:%M')}.", shift, mins)
-            if cout is None:
-                if end and now >= end + timedelta(minutes=NO_OUT_MINUTES):
-                    add(p, d, "no_out", f"Clocked in at {cin.strftime('%H:%M')}; no clock-out {int((now - end).total_seconds() // 60)} min after the shift end ({t['end']}).", shift)
-                elif not end and (now - cin).total_seconds() / 3600 > NIGHT_GRACE_HOURS:
-                    add(p, d, "no_out", f"Clocked in at {cin.strftime('%H:%M')}; still no clock-out.", shift)
-            elif (cout - cin).total_seconds() / 3600 < MIN_STAFF_HOURS:
-                add(p, d, "short", f"Worked {(cout - cin).total_seconds() / 3600:.1f} h; the minimum for staff is {MIN_STAFF_HOURS} h.", shift)
-    flags.sort(key=lambda f: (f["handled"] is not None, not f["alert"], f["date"], f["station"], f["name"]))
-    return flags, unconfigured
-
-
-def _alert_recipient(user: CurrentUser) -> bool:
-    return user.position in ALERT_POSITIONS
-
-
-async def pending_flag_count(user: CurrentUser) -> int:
-    """The number in the Attendance alert: staff who should have clocked in / out and didn't, not yet handled -- only for a Region Head / RFS / HOD / Manager / Superadmin."""
-    if not _alert_recipient(user):
-        return 0
-    today = _now().date()
-    flags, _ = await compute_flags(user, [today - timedelta(days=2), today - timedelta(days=1), today])
-    return sum(1 for f in flags if f["alert"] and not f["handled"])
-
-
-@router.get("/api/attendance/staff/flags")
-async def list_flags(user: CurrentUser = Depends(get_current_user)):
-    """Staff who didn't clock in / out as scheduled today and in the last two days (not clocked in 30 min after the shift starts, late, no clock-out, short day)."""
-    today = _now().date()
-    flags, unconfigured = await compute_flags(user, [today - timedelta(days=2), today - timedelta(days=1), today])
-    return {"flags": flags, "unconfigured": unconfigured, "can_act": _alert_recipient(user), "late_minutes": LATE_MINUTES, "no_out_minutes": NO_OUT_MINUTES, "min_hours": MIN_STAFF_HOURS}
-
-
-class FlagAction(BaseModel):
-    email: str
-    date: str
-    kind: str
-    note: str
-
-
-@router.post("/api/attendance/staff/flags/action")
-async def act_on_flag(p: FlagAction, user: CurrentUser = Depends(get_current_user)):
-    """A Region Head / RFS / HOD / Manager marks a flag as handled, with what was done (called, on MC, fixed the time ...)."""
-    if not _alert_recipient(user):
-        raise HTTPException(status_code=403, detail="Only a Region Head, RFS, HOD or Manager can handle a flag")
-    if p.kind not in KIND_LABEL:
-        raise HTTPException(status_code=422, detail="Unknown flag")
-    if len(p.note.strip()) < 3:
-        raise HTTPException(status_code=422, detail="Write what was done (a few words)")
-    try:
-        d = date.fromisoformat(p.date)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Dates look like 2026-10-05")
-    email = p.email.strip().lower()
-    if not any(x["email"] == email for x in await _people(user)):
-        raise HTTPException(status_code=403, detail="That person is not a Station Head / Fleet Assistant in your scope")
-    now = _now()
-    existing = await db.fetch_one("SELECT id FROM attendance_flag_actions WHERE person_type = 'staff' AND person_ref = %s AND work_date = %s AND kind = %s", (email, d, p.kind))
-    if existing:
-        await db.execute("UPDATE attendance_flag_actions SET note = %s, acted_by = %s, acted_at = %s WHERE id = %s", (p.note.strip()[:300], user.email, now, existing[0]))
-    else:
-        await db.execute("INSERT INTO attendance_flag_actions (person_type, person_ref, work_date, kind, note, acted_by, acted_at) VALUES ('staff',%s,%s,%s,%s,%s,%s)", (email, d, p.kind, p.note.strip()[:300], user.email, now))
     return {"ok": True}
