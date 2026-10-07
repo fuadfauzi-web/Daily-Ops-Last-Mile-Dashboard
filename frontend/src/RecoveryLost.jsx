@@ -341,14 +341,14 @@ export function LostDeclaredView({ view, me, ...props }) {
         </div>
         {data.can_upload && (
           <button onClick={() => setShowUpload((v) => !v)} className="h-9 shrink-0 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {showUpload ? "Hide data upload" : "Data upload"}
+            {showUpload ? "Hide data source" : "Data source"}
           </button>
         )}
       </div>
 
       {data.can_upload && showUpload && (
         <div className="space-y-2">
-          <KpiUploadPanel kpi="recovery" me={me} title="Data upload -- the Metabase CSVs" onChanged={() => setReload((n) => n + 1)} />
+          <KpiUploadPanel kpi="recovery" me={me} title="Data source -- pulled from Metabase" onChanged={() => setReload((n) => n + 1)} />
           {!isSummary && (
             <div className="flex justify-end">
               <button onClick={move} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">

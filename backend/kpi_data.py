@@ -194,6 +194,11 @@ KPI_DATASETS = {k: [d for d, v in DATASETS.items() if v["kpi"] == k] for k in {v
 _NOT_DAILY = {"cod_rts_overall"}
 
 
+def is_metabase_feed(name: str) -> bool:
+    """A dataset that is a Metabase question (its link): pulled by the app through the Metabase API on a schedule (metabase_pull.py), no longer uploaded by hand."""
+    return "metabase.ninjavan.co/question/" in ((DATASETS.get(name) or {}).get("link") or "")
+
+
 def is_daily_feeder(name: str) -> bool:
     link = (DATASETS.get(name) or {}).get("link") or ""
     return "metabase.ninjavan.co/question" in link and name not in _NOT_DAILY

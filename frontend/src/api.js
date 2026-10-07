@@ -216,6 +216,11 @@ export const api = {
   // KPI Dashboard -> Hybrid Productivity (Metabase): view "weekly" | "monthly"; refresh re-runs the questions (admin / manager only)
   kpiHybrid: (view, refresh = false) => request(`/api/kpi/hybrid?view=${view}${refresh ? "&refresh=true" : ""}`),
   kpiUploads: () => request("/api/kpi/uploads"),
+  metabaseFeeds: (refresh = false) => request(`/api/admin/metabase/feeds${refresh ? "?refresh=true" : ""}`),
+  metabaseSaveFeed: (dataset, payload) => request(`/api/admin/metabase/feeds/${dataset}`, { method: "PUT", body: JSON.stringify(payload) }),
+  metabasePull: (dataset) => request(`/api/admin/metabase/feeds/${dataset}/pull`, { method: "POST" }),
+  metabasePullAll: () => request("/api/admin/metabase/pull-all", { method: "POST" }),
+  metabaseCheck: () => request("/api/admin/metabase/check"),
   kpiUpload: async (dataset, file) => {
     const formData = new FormData();
     formData.append("file", file);

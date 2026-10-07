@@ -204,7 +204,7 @@ export default function WeeklyDashboard({ me }) {
         {data.meta && <span className="text-xs text-slate-400">From {data.meta.filename} · {formatTime(data.meta.uploaded_at)}</span>}
         {canUpload && (
           <button onClick={() => setShowUpload((v) => !v)} className="ml-auto h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {showUpload ? "Hide data upload" : "Data upload"}
+            {showUpload ? "Hide data source" : "Data source"}
           </button>
         )}
       </div>

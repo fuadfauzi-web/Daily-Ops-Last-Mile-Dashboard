@@ -42,6 +42,7 @@ import hybrid_attendance
 import ptwh_app
 import work_schedule as schedule_mod
 import departments
+import metabase_pull
 import headcount
 import premises
 import vehicles
@@ -100,6 +101,7 @@ REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "600"))  # 
 # refresh_metrics) -- the interval itself was never the actual cause.
 _refresh_task: asyncio.Task | None = None
 _warm_task: asyncio.Task | None = None
+_pull_task: asyncio.Task | None = None  # metabase_pull.scheduler_loop
 # 2026-09-23 incident: /api/admin/refresh (Settings page's manual Refresh
 # button) called refresh_metrics() with nothing stopping it from overlapping
 # the scheduler's own 15-minute call -- two concurrent refreshes each hold
@@ -719,14 +721,17 @@ async def _launch_refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _refresh_task, _warm_task, _launch_task
+    global _refresh_task, _warm_task, _launch_task, _pull_task
     await db.init_pool()
     if os.getenv("DATABASE_URL"):
         await attendance_launch.refresh_rules()
         _launch_task = asyncio.create_task(_launch_refresh_loop())
         _refresh_task = asyncio.create_task(_hourly_refresh_loop())
         _warm_task = asyncio.create_task(kpi_data.warm_compacts())  # the KPI pages' big uploads are ready before anyone asks
+        _pull_task = asyncio.create_task(metabase_pull.scheduler_loop())  # the Metabase feeder files are pulled on the Superadmin's schedule (06:00 by default)
     yield
+    if _pull_task is not None:
+        _pull_task.cancel()
     if _refresh_task is not None:
         _refresh_task.cancel()
     if _warm_task is not None:
@@ -752,6 +757,7 @@ app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthl
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
 app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
+app.include_router(metabase_pull.router)  # Superadmin -> Documents: the Metabase API pulls and their schedule (metabase_pull.py)
 app.include_router(departments.router)  # Superadmin -> Departments + the Users page's department list (departments.py)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Label from Hub: rows keyed by Recovery or the hub, answered by the other side (recovery_cases.py)
@@ -3386,16 +3392,14 @@ class Notifications(BaseModel):
     attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
     staff_flags: int = 0  # Station Heads / Fleet Assistants who should have clocked in / out and did not (not yet handled) -- only for a Region Head / RFS / HOD / Manager
-    documents_stale: int = 0  # Superadmin only: daily Metabase files not uploaded today (the bell on Superadmin -> Documents)
+    documents_stale: int = 0  # Superadmin only: Metabase pulls that failed or are overdue (the bell on Superadmin -> Documents)
 
 
 async def _documents_stale_count(user: CurrentUser) -> int:
     if user.role != "admin" or user.is_impersonating:
         return 0
     try:
-        import kpi_data as _kd
-
-        return len(await _kd.stale_daily_feeders())
+        return await metabase_pull.problem_count()  # feeds whose last Metabase pull failed or is overdue
     except Exception:  # noqa: BLE001 -- a bell is never worth failing the notifications call
         return 0
 

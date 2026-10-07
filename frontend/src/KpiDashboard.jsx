@@ -740,7 +740,7 @@ function HybridProductivity({ me }) {
       )}
       {canUpload && (
         <button onClick={() => setShowUpload((v) => !v)} className="h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-          {showUpload ? "Hide data upload" : "Data upload"}
+          {showUpload ? "Hide data source" : "Data source"}
         </button>
       )}
       <button
@@ -769,8 +769,8 @@ function HybridProductivity({ me }) {
           {canUpload ? (
             <>
               <p className="mt-2">
-                The data comes from the Metabase questions "Hybrid Weekly / Monthly / Daily Apps - All Regions" (127194, 127195, 127196) and "Hybrid Data Current Year - All Regions" (127193). While the app's own Metabase link is being
-                sorted out, you can <strong>upload the downloaded files</strong> below -- that works today and is used instead of Metabase until removed.
+                The data is pulled from the Metabase Hybrid questions (Weekly, Monthly and Daily) automatically. The data source panel below shows when each was last pulled, and Superadmin -> Documents sets the schedule and the
+                question.
               </p>
               {data.error && <p className="mt-2 rounded-lg bg-red-50 p-2 text-status-critical">Metabase said: {data.error}</p>}
             </>

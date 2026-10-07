@@ -21,6 +21,18 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "Metabase files are pulled automatically",
+    type: "new",
+    area: "System",
+    minRank: 3,
+    points: [
+      "The KPI and Recovery files that used to be downloaded from Metabase and uploaded by hand (Prior, Completion, Terminal, FIFO, COD RTS, POD validation, Hybrid, Lost Declared, line-haul trips) are now pulled by the app through the Metabase API. The upload boxes on the KPI pages are gone -- each page has a Data source panel showing when its files were last pulled.",
+      "Superadmin -> Documents: every file has a schedule (every day at a time, every few hours, weekly or monthly -- Malaysia time), a Pull now button and a status. The default is every day at 06:00 (Metabase refreshes then); Lost Declared Tuesday to Sunday. The questions must sit in the Metabase Last Mile collection.",
+      "A failed or overdue pull puts a bell on Documents; the old data stays in use until the next successful pull.",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "DoD: LH Timing sorts, category bands, Copy image",
     feature: "dod",
     type: "improved",

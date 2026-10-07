@@ -93,7 +93,7 @@ export default function InvalidPodRca({ me }) {
       {data.has_data && <span className="text-xs text-slate-400">From {data.meta.filename} · {formatTime(data.meta.uploaded_at)}</span>}
       {canUpload && (
         <button onClick={() => setShowUpload((v) => !v)} className="ml-auto h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-          {showUpload ? "Hide data upload" : "Data upload"}
+          {showUpload ? "Hide data source" : "Data source"}
         </button>
       )}
     </div>
@@ -144,7 +144,7 @@ export default function InvalidPodRca({ me }) {
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
           <div className="font-display text-base font-semibold text-ink">No POD validation data {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">
-            {canUpload ? "Download the POP/POD Validation Tasks Raw Data from Metabase (link in the upload panel) or use the POD Validation Analysis file -- the whole workbook is fine, its Raw sheet is used -- and " : "Once it is loaded, "}
+            {canUpload ? "The POP/POD Validation Tasks Raw Data is pulled from Metabase automatically (the data source panel below shows when) and " : "Once it is loaded, "}
             this page breaks the invalid POD % down by station, driver, reason and day.
           </p>
         </div>
@@ -655,7 +655,7 @@ function PodPerformance({ me }) {
         {loading && <span className="text-xs text-slate-400">Loading…</span>}
         {canUpload && (
           <button onClick={() => setShowUpload((x) => !x)} className="ml-auto h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {showUpload ? "Hide data upload" : "Data upload"}
+            {showUpload ? "Hide data source" : "Data source"}
           </button>
         )}
       </div>
