@@ -39,6 +39,7 @@ import attendance_corrections
 import staff_attendance
 import attendance_launch
 import hybrid_attendance
+import hybrid_roster
 import ptwh_app
 import work_schedule as schedule_mod
 import departments
@@ -729,6 +730,7 @@ async def _launch_refresh_loop() -> None:
         await asyncio.sleep(attendance_launch.REFRESH_SECONDS)
         await attendance_launch.refresh_rules()
         await attendance_launch.clear_test_entries()  # a station that has reached its launch date starts clean (once)
+        await hybrid_roster.tick()  # the Hybrid driver list from Metabase, once a day after 06:30 (never raises)
 
 
 @asynccontextmanager

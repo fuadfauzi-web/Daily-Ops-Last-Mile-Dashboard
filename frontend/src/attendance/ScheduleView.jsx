@@ -177,7 +177,7 @@ export default function ScheduleView({ setError }) {
             {people.length === 0 && (
               <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                 {group === "ptwh" ? "No active PTWH at this station yet -- add them in PTWH → Workers." : group === "staff" ? "Nobody is posted at this station in the Staff & Org Chart yet." : "No Hybrid drivers on this station's schedule yet. (Until the Fleet Admin team has a Hybrid driver list, drivers are typed in here.)"}
-                {group === "hybrid" ? " Add them in Attendance → Hybrid → Drivers." : ""}
+                {group === "hybrid" ? " They come from Metabase (Attendance → Hybrid → Drivers)." : ""}
               </td></tr>
             )}
             {people.map((p) => (

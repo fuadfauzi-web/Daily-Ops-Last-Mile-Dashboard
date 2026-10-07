@@ -1,7 +1,7 @@
 """Attendance -> Hybrid (2026-10-04, staging): MANUAL for now.
 
 Until Hybrid drivers can sign in (they will use the same login as the driver app, later), station staff key in
-  * the drivers' details (name, driver ID, phone, vehicle, joined / end date) -- Attendance -> Hybrid -> Drivers; the Schedule's Hybrid roster reads this list;
+  * (the drivers themselves come from Metabase -- see hybrid_roster.py; a Manager can still add one by hand; the Schedule's Hybrid roster reads this list);
   * each day's attendance: Present / Absent / Leave, with optional clock in / out times and a note -- Attendance -> Hybrid -> Today / Month sheet.
 Who may key: station / region staff, Managers and the Superadmin, for the stations they can see (and only stations that have reached their launch date). Everyone
 else with the station in scope can read. Every row says who keyed it and who last edited it. This does NOT replace the Hybrid productivity KPI, which still reads its
@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 import attendance
 import db
+import hybrid_roster
 from attendance import _can_edit, _hours, _iso, _now, _require_editor, _visible_stations, _zone_region
 from auth import CurrentUser, get_current_user
 
@@ -54,11 +55,32 @@ def _date(raw: str | None, field: str = "date") -> date | None:
 
 # ---------------------------------------------------------------- drivers
 
+def _can_manage_drivers(user: CurrentUser) -> bool:
+    """The driver LIST comes from Metabase; only a Manager / HOD / Superadmin may add or fix a driver by hand (someone Metabase doesn't have yet)."""
+    return user.role in ("admin", "manager")
+
+
+def _require_manage_drivers(user: CurrentUser) -> None:
+    if not _can_manage_drivers(user):
+        raise HTTPException(status_code=403, detail="The Hybrid driver list comes from Metabase. If a driver is wrong or missing, update their employment end date in Ninja Van Operator -> Driver Strength; the list refreshes every morning.")
+
+
 @router.get("/api/attendance/hybrid/drivers")
 async def list_drivers(user: CurrentUser = Depends(get_current_user)):
     stations = _visible_stations(user)
     rows = await db.fetch_all(f"SELECT {_COLS} FROM hybrid_drivers ORDER BY station, name")
-    return {"drivers": [_driver_json(r) for r in rows if r[1] in stations], "stations": sorted(stations), "can_edit": _can_edit(user)}
+    return {"drivers": [_driver_json(r) for r in rows if r[1] in stations], "stations": sorted(stations), "can_edit": _can_edit(user), "can_manage": _can_manage_drivers(user), "source": hybrid_roster.status()}
+
+
+@router.post("/api/attendance/hybrid/drivers/refresh")
+async def refresh_drivers(user: CurrentUser = Depends(get_current_user)):
+    """Pull the Active Driver Details question from Metabase now (it also runs every morning at 06:30)."""
+    _require_manage_drivers(user)
+    try:
+        return {"ok": True, "result": await hybrid_roster.refresh(source=user.email)}
+    except Exception as exc:  # noqa: BLE001
+        hybrid_roster._state["error"] = str(exc)[:300]
+        raise HTTPException(status_code=502, detail=str(exc)[:300])
 
 
 class DriverIn(BaseModel):
@@ -74,6 +96,7 @@ class DriverIn(BaseModel):
 
 @router.post("/api/attendance/hybrid/drivers")
 async def add_driver(p: DriverIn, user: CurrentUser = Depends(get_current_user)):
+    _require_manage_drivers(user)
     _require_editor(user, p.station)
     name = _clean(p.name, 150)
     if not name or len(name) < 2:
@@ -106,6 +129,7 @@ class DriverPatch(BaseModel):
 @router.patch("/api/attendance/hybrid/drivers/{driver_id}")
 async def edit_driver(driver_id: int, p: DriverPatch, user: CurrentUser = Depends(get_current_user)):
     """Edit a driver's details. Only the fields sent change ("" clears one). A name change follows the driver onto the Schedule. Ending or switching a driver off keeps their history."""
+    _require_manage_drivers(user)
     r = await db.fetch_one(f"SELECT {_COLS} FROM hybrid_drivers WHERE id = %s", (driver_id,))
     if r is None:
         raise HTTPException(status_code=404, detail="Driver not found")

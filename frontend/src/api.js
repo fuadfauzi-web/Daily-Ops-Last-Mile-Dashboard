@@ -330,6 +330,7 @@ export const api = {
   hybridDay: (date) => request(`/api/attendance/hybrid/day?date=${encodeURIComponent(date)}`),
   hybridMonth: (month) => request(`/api/attendance/hybrid/month?month=${encodeURIComponent(month)}`),
   hybridSave: (payload) => request("/api/attendance/hybrid/record", { method: "PUT", body: JSON.stringify(payload) }),
+  hybridDriversRefresh: () => request("/api/attendance/hybrid/drivers/refresh", { method: "POST" }),
   hybridClear: (driverId, date) => request(`/api/attendance/hybrid/record?driver_id=${driverId}&work_date=${encodeURIComponent(date)}`, { method: "DELETE" }),
   scheduleShiftTime: (payload) => request("/api/attendance/schedule/shift-times", { method: "PUT", body: JSON.stringify(payload) }),
   scheduleCell: (payload) => request("/api/attendance/schedule/cell", { method: "PUT", body: JSON.stringify(payload) }),

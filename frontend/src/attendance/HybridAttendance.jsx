@@ -119,7 +119,7 @@ function TodayView({ setError }) {
               <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Driver</th><th className="px-3 py-2">Schedule</th><th className="px-3 py-2">Attendance</th><th className="px-3 py-2">In – Out (optional)</th><th className="px-3 py-2">Note</th><th className="px-3 py-2" /></tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">No Hybrid driver on the list for this day -- add them in the Drivers view.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">No Hybrid driver on the list for this day -- the list comes from Metabase every morning (see the Drivers view).</td></tr>}
               {rows.map((r) => <DayRow key={`${r.id}-${date}`} row={r} date={date} canEdit={data.can_edit} onSaved={load} setError={setError} />)}
             </tbody>
           </table>
@@ -222,13 +222,27 @@ function DriverModal({ driver, stations, onClose, onSaved, setError }) {
 
 function DriversView({ setError }) {
   const [data, setData] = useState(null);
-  const [station, setStation] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(null); // {} = new, driver = edit
   const [showOff, setShowOff] = useState(false);
   const load = useCallback(() => { api.hybridDrivers().then(setData).catch((e) => setError(e.message)); }, [setError]);
   useEffect(load, [load]);
   if (!data) return <Skeleton rows={4} />;
-  const rows = data.drivers.filter((d) => (!station || d.station === station) && (showOff || d.active));
+  const { rows: inScope, controls } = useScopeFilter(data.drivers);
+  const rows = inScope.filter((d) => showOff || d.active);
+  const src = data.source || {};
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await api.hybridDriversRefresh();
+      load();
+    } catch (e) {
+      setError(e.message);
+      load();
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const toggle = async (d) => {
     try {
       await api.hybridDriverEdit(d.id, { active: !d.active, ...(d.active ? {} : { end_date: "" }) });
@@ -240,9 +254,18 @@ function DriversView({ setError }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
-        <StationPicker stations={data.stations} value={station} onChange={setStation} />
+        {controls}
         <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600"><input type="checkbox" checked={showOff} onChange={(e) => setShowOff(e.target.checked)} /> Show inactive</label>
-        {data.can_edit && data.stations.length > 0 && <button onClick={() => setEditing({})} className={`${btnCls} ml-auto bg-brand text-white`}>Add driver</button>}
+        <div className="ml-auto flex items-center gap-2">
+          {data.can_manage && <button disabled={refreshing} onClick={refresh} className={`${btnCls} border border-slate-300 text-slate-700 disabled:opacity-50`}>{refreshing ? "Pulling…" : "Refresh from Metabase"}</button>}
+          {data.can_manage && data.stations.length > 0 && <button onClick={() => setEditing({})} className={`${btnCls} bg-brand text-white`}>Add driver</button>}
+        </div>
+      </div>
+      <div className={`rounded-lg p-3 text-sm ring-1 ${src.error ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-slate-50 text-slate-600 ring-slate-200"}`}>
+        The Hybrid drivers come from the Metabase question <b>Active Driver Details</b> and refresh every morning{src.last_ok ? <> (last pulled {src.last_ok.replace("T", " ")}, {src.hybrid_rows} Hybrid drivers)</> : ""}.
+        {src.error && <> <b>Last problem:</b> {src.error}</>}
+        {" "}A driver who has resigned or been terminated stays here until their <b>employment end date</b> is updated in <b>Ninja Van Operator → Driver Strength</b>; the next morning they turn inactive, are kept for a month, then removed with their attendance.
+        {!src.configured && " Metabase isn't connected on this app yet (METABASE_API_KEY), so the list only has what a Manager added by hand."}
       </div>
       <div className="max-h-[70vh] overflow-auto rounded-xl bg-white ring-1 ring-slate-200">
         <table className="w-full text-sm">
@@ -250,7 +273,7 @@ function DriversView({ setError }) {
             <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Driver ID</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Vehicle type</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">End</th><th className="px-3 py-2" /></tr>
           </thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No Hybrid driver yet{data.can_edit ? " -- press Add driver." : "."}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No Hybrid driver yet -- the list fills from Metabase every morning.</td></tr>}
             {rows.map((d) => (
               <tr key={d.id} className={`border-t border-slate-100 ${d.active ? "" : "text-slate-400"}`}>
                 <td className="px-3 py-2">{d.station}</td>
@@ -261,7 +284,7 @@ function DriversView({ setError }) {
                 <td className="px-3 py-2 tabular-nums">{d.joined_date}</td>
                 <td className="px-3 py-2 tabular-nums">{d.end_date}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
-                  {data.can_edit && (
+                  {data.can_manage && (
                     <span className="flex justify-end gap-3 text-xs">
                       <button onClick={() => setEditing(d)} className="text-slate-500 underline">Edit</button>
                       <button onClick={() => toggle(d)} className="text-slate-500 underline">{d.active ? "Switch off" : "Switch on"}</button>
