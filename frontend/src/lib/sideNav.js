@@ -4,6 +4,10 @@
 // People = the workforce pages (Attendance now; Overtime for hybrid and staff is planned after it; Staff & Org Chart lives here too).
 export const SIDE_GROUPS = ["Act", "Last Mile Ops", "Recovery", "Dashboard", "People", "System"];
 
+// What a group is called on screen when that differs from its key (the key is what pages and colours are filed under).
+export const SIDE_GROUP_LABELS = { Dashboard: "Dashboard (Last Mile)" };
+export const sideGroupLabel = (g) => SIDE_GROUP_LABELS[g] || g;
+
 // One colour per group, so the collapsed sidebar (two-letter codes) can still be read by colour. chip = the code badge, dot = the group label's marker.
 // Deliberately not brand red / status red-amber-green -- those mean "chrome" and "data" elsewhere.
 export const SIDE_GROUP_COLORS = {

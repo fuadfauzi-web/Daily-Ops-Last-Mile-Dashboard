@@ -21,9 +21,22 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "DoD: LH Timing sorts, category bands, Copy image",
+    feature: "dod",
+    type: "improved",
+    area: "Dashboard",
+    points: [
+      "In the DoD Daily View, click the LH Timing header to sort by the latest line-haul arrival of the day (stations with no trip stay at the bottom).",
+      "The columns now sit under category bands -- Location, Shipment Details, Station Health, Route Monitoring -- like the Station Health tab.",
+      "New Copy image button: puts the table as you see it (sort, rows, change vs the day before) on your clipboard as a picture, to paste straight into a chat.",
+      "The Dashboard group in the side menu is now called Dashboard (Last Mile).",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "Lost Declared: liable party shows Recovered once the parcel is back",
     points: [
-      "In Recovery -> Lost Declared (This Week and Summary), a tracking number whose current status is anything other than Cancelled (Completed, Returned to Sender ...) now shows Recovered as its liable party, set by the app. It cannot be changed by hand; if the status is Cancelled, or there is no status on file yet, the liable party stays what the region picked. A Recovered tracking number counts as Recovered -- neither answered nor waiting for an answer: there is a Recovered card on top and a Recovered column in the by-station table, and "to answer only" leaves them out.",
+      "In Recovery -> Lost Declared (This Week and Summary), a tracking number whose current status is anything other than Cancelled (Completed, Returned to Sender ...) now shows Recovered as its liable party, set by the app. It cannot be changed by hand; if the status is Cancelled, or there is no status on file yet, the liable party stays what the region picked. A Recovered tracking number counts as Recovered -- neither answered nor waiting for an answer: there is a Recovered card on top and a Recovered column in the by-station table, and 'to answer only' leaves them out.",
     ],
   },
   {

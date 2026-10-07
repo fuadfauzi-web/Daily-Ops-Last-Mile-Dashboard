@@ -5,8 +5,9 @@ import MultiSelect from "./components/MultiSelect";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 import TrendChart, { TONE_ORDER } from "./components/TrendChart";
-import TripBadge from "./components/TripBadge";
+import TripBadge, { tripLabel } from "./components/TripBadge";
 import { exportCsv } from "./lib/csv";
+import { copyTableImage } from "./lib/tableImage";
 import { ALL_COLUMNS } from "./lib/metrics";
 
 // DoD Dashboard (Beta; every role, limited to their own scope): past numbers -- one snapshot per station per day (the
@@ -61,6 +62,12 @@ function lhTrips(rows) {
     return { time: trips.reduce((a, b) => (b.time > a.time ? b : a)).time, parcels: trips.reduce((s, t) => s + t.parcels, 0) };
   });
 }
+// The LH Timing column sorts by the latest (worst) trip arrival of the day, so one click lists the stations that landed latest first.
+const tripMs = (t) => new Date(t.time.includes("T") ? t.time : t.time.replace(" ", "T")).getTime();
+const latestTripMs = (s) => {
+  const ms = (s.lhTrips || []).filter(Boolean).map(tripMs).filter((n) => !Number.isNaN(n));
+  return ms.length ? Math.max(...ms) : null;
+};
 function summarize(rows) {
   const routed = sum(rows, "total_routed");
   const attendance = sum(rows, "attendance");
@@ -138,6 +145,7 @@ export default function DodTab({ stationCodes }) {
   const [picked, setPicked] = useState("__total");
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("desc");
+  const [imageNote, setImageNote] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -247,12 +255,7 @@ export default function DodTab({ stationCodes }) {
   // Latlong and Total 0 Attempt, matching the Shipment Details tab's own column order.
   const dailyMetricColumn = (k) => ({
     key: k.key,
-    label: (
-      <span title={k.note || k.src}>
-        <span className="block text-[9px] font-normal normal-case leading-tight opacity-60">{k.src}</span>
-        {k.label}
-      </span>
-    ),
+    label: <span title={k.note || k.src}>{k.label}</span>,
     render: (r) => (
       <>
         <div>{k.key === "attendance" && r.cur.rescue > 0 ? `${int(r.cur.attendance)} (${int(r.cur.rescue)} Rescue)` : k.fmt(valueOf(k, r.cur))}</div>
@@ -267,12 +270,14 @@ export default function DodTab({ stationCodes }) {
       .map((g) => ({ key: g.key, name: g.name, region: g.region, zone: g.zone, cur: g.days.get(activeDay) || null, prev: prevDay ? g.days.get(prevDay) || null : null }))
       .filter((g) => g.cur);
     const total = { key: "__total", name: "Total in view", cur: totalDays.get(activeDay), prev: prevDay ? totalDays.get(prevDay) : null, isTotal: true };
-    const validKeys = ["name", ...DAILY_COLS.map((k) => k.key)];
+    const validKeys = ["name", "lh_timing", ...DAILY_COLS.map((k) => k.key)];
     const sk = sortKey && validKeys.includes(sortKey) ? sortKey : "inHub";
     const sorted = [...list].sort((a, b) => {
       const col = DAILY_COLS.find((k) => k.key === sk);
-      const av = sk === "name" ? a.name : valueOf(col, a.cur);
-      const bv = sk === "name" ? b.name : valueOf(col, b.cur);
+      const av = sk === "name" ? a.name : sk === "lh_timing" ? latestTripMs(a.cur) : valueOf(col, a.cur);
+      const bv = sk === "name" ? b.name : sk === "lh_timing" ? latestTripMs(b.cur) : valueOf(col, b.cur);
+      // stations with no line-haul trip that day always sit at the bottom, whichever way it is sorted
+      if (av == null || bv == null) return av == null && bv == null ? 0 : av == null ? 1 : -1;
       const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
       return sortKey ? (sortDir === "asc" ? cmp : -cmp) : -cmp; // default: most in hub first
     });
@@ -285,12 +290,10 @@ export default function DodTab({ stationCodes }) {
       {
         key: "lh_timing",
         label: (
-          <span title={level === "station" ? "Line-haul trip arrival that day · parcels on that trip" : "The latest (worst) trip in the group per slot, and its parcels summed across the group"}>
-            <span className="block text-[9px] font-normal normal-case leading-tight opacity-60">Shipment Details</span>
+          <span title={`${level === "station" ? "Line-haul trip arrival that day · parcels on that trip" : "The latest (worst) trip in the group per slot, and its parcels summed across the group"}. Click to sort by the latest arrival.`}>
             LH Timing
           </span>
         ),
-        sortable: false,
         render: (r) => (
           <div className="flex justify-center gap-1.5">
             <TripBadge trip={r.cur.lhTrips[0]} />
@@ -300,6 +303,17 @@ export default function DodTab({ stationCodes }) {
       },
       ...DAILY_COLS.slice(3).map((k) => dailyMetricColumn(k)),
     ];
+    // Category bands above the columns, like Station Health: where each number comes from. Region / Zone sit under a "Location" band.
+    const srcOf = (c) => (c.key === "lh_timing" ? "Shipment Details" : DAILY_COLS.find((k) => k.key === c.key)?.src);
+    const bandCols = columns.filter((c) => !c.sticky).map((c) => ({ c, band: c.key === "region" || c.key === "zone" ? "Location" : srcOf(c) }));
+    const groupHeaders = [];
+    bandCols.forEach(({ c, band }, i) => {
+      if (i > 0 && groupHeaders[groupHeaders.length - 1].label === band) groupHeaders[groupHeaders.length - 1].span += 1;
+      else {
+        groupHeaders.push({ key: band, label: band, span: 1 });
+        c.groupStart = i > 0;
+      }
+    });
     const exportRows = () => {
       const stationRows = (byDay.get(activeDay) || []).slice().sort((a, b) => (b.metrics.total_in_hub || 0) - (a.metrics.total_in_hub || 0));
       exportCsv(
@@ -311,6 +325,46 @@ export default function DodTab({ stationCodes }) {
         })
       );
     };
+    // "Copy image": the table as shown (this sort, these rows, the change vs the day before) as a PNG on the clipboard to paste into a chat.
+    const copyImage = async () => {
+      const trips = (s) => s.lhTrips.map((t) => (t ? `${tripLabel(t.time)} · ${t.parcels.toLocaleString()}` : "—")).join("  /  ");
+      const cell = (k, r) => {
+        const cur = valueOf(k, r.cur);
+        const prev = r.prev ? valueOf(k, r.prev) : null;
+        const d = prev == null ? 0 : cur - prev;
+        const text = k.key === "attendance" && r.cur.rescue > 0 ? `${int(r.cur.attendance)} (${int(r.cur.rescue)} Rescue)` : k.fmt(cur);
+        if (Math.abs(d) < (k.decimals === 0 ? 0.5 : 0.05)) return { text };
+        const arrow = `${d > 0 ? "▲" : "▼"} ${k.decimals === 0 ? int(Math.abs(d)) : Math.abs(d).toFixed(k.decimals)}`;
+        const good = k.good === "higher" ? d > 0 : k.good === "lower" ? d < 0 : null;
+        return { text: `${text}  ${arrow}`, sev: good === false ? "warning" : undefined };
+      };
+      const imgCols = [
+        { label: levelLabel, align: "left" },
+        ...(level !== "region" ? [{ label: "Region", sub: "Location" }] : []),
+        ...(level === "station" ? [{ label: "Zone", sub: "Location" }] : []),
+        ...DAILY_COLS.slice(0, 3).map((k) => ({ label: k.label, sub: k.src })),
+        { label: "LH Timing", sub: "Shipment Details" },
+        ...DAILY_COLS.slice(3).map((k) => ({ label: k.label, sub: k.src })),
+      ];
+      const imgRows = tableRows.map((r) => ({
+        cells: [
+          { text: r.name },
+          ...(level !== "region" ? [{ text: r.region || "" }] : []),
+          ...(level === "station" ? [{ text: r.zone || "" }] : []),
+          ...DAILY_COLS.slice(0, 3).map((k) => cell(k, r)),
+          { text: trips(r.cur) },
+          ...DAILY_COLS.slice(3).map((k) => cell(k, r)),
+        ],
+      }));
+      const copied = await copyTableImage({
+        title: `DoD by ${levelLabel.toLowerCase()} — ${dayLabel(activeDay)}${prevDay ? `, change vs ${dayLabel(prevDay)}` : ""}`,
+        columns: imgCols,
+        rows: imgRows,
+        filename: `daily-ops-dod-${activeDay}`,
+      });
+      setImageNote(copied ? "Image copied -- paste it into your chat" : "Image saved as a download (this browser can't copy images)");
+      setTimeout(() => setImageNote(""), 4000);
+    };
     return (
       <div className="space-y-3">
         {chips}
@@ -318,12 +372,19 @@ export default function DodTab({ stationCodes }) {
           key={`daily-${level}`}
           title={`${dayLabel(activeDay)}${activeDay === data.today ? " (today so far)" : ""} — by ${levelLabel.toLowerCase()}${prevDay ? `, change vs ${dayLabel(prevDay)}` : ""}`}
           titleExtra={
-            <button onClick={exportRows} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-              Export CSV
-            </button>
+            <div className="flex items-center gap-2">
+              {imageNote && <span className="text-[11px] text-slate-500">{imageNote}</span>}
+              <button onClick={copyImage} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
+                Copy image
+              </button>
+              <button onClick={exportRows} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
+                Export CSV
+              </button>
+            </div>
           }
           maxHeight="70vh"
           columns={columns}
+          groupHeaders={groupHeaders}
           rows={tableRows}
           rowKey={(r) => r.key}
           rowClassName={(r) => (r.isTotal ? "bg-slate-100" : "")}
