@@ -21,6 +21,14 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "Attendance (Beta, staging only): test-run entries are cleared at launch",
+    feature: "attendance",
+    points: [
+      "What a station keys in during the test run (attendance, corrections, photos) is cleared once, when the station reaches its launch date, so it starts clean. The PTWH, drivers, schedule and shift hours stay.",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "New Station Profile page, and the Staff list is now for the Fleet Admin team, HOD and Managers (staging only)",
     points: [
       "Station Profile (People): pick a station and see its zone, Station ID, Warehouse ID, how long it has been open, Google Chat space, address, its Fleet Manager, Region Head and Region Supervisor (with the station they are based at), its team, workmail groups, managers on duty, business hours, how many Last Mile stations each region has, and the postcodes it covers. Every role can open it.",

@@ -712,6 +712,7 @@ async def _launch_refresh_loop() -> None:
     while True:
         await asyncio.sleep(attendance_launch.REFRESH_SECONDS)
         await attendance_launch.refresh_rules()
+        await attendance_launch.clear_test_entries()  # a station that has reached its launch date starts clean (once)
 
 
 @asynccontextmanager

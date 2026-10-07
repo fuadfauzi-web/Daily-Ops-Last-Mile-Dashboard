@@ -40,7 +40,7 @@ export default function AttendanceTab({ me }) {
       {test.length > 0 && (
         <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
           <strong>Test run.</strong> Attendance goes live for {test.length === 1 ? test[0].station : `${test.length} of your stations`} on <strong>{test[0].date}</strong>
-          {test.length > 1 && new Set(test.map((t) => t.date)).size > 1 ? " (dates differ by station)" : ""}. You can start early and try it out until then.
+          {test.length > 1 && new Set(test.map((t) => t.date)).size > 1 ? " (dates differ by station)" : ""}. You can start early and try it out until then -- what you key in now is cleared when the station goes live.
         </div>
       )}
       {approvals > 0 && (

@@ -337,7 +337,7 @@ const SECTIONS = [
         <p>
           <strong>Launch Timeline</strong> -- Attendance goes live in <strong>batches</strong>. A <strong>Superadmin, HOD or Manager</strong> sets a launch date for a region, a zone or a single station in
           <em> Settings → Launch Timeline</em> (the most specific date wins). A station with <strong>no date can't see Attendance at all</strong>. From <strong>the day before</strong> its date the station can see it and
-          <strong> test-run</strong> it if it wants to start early; from the date it is live. Attendance opens on the <em>Staff</em> tab.
+          <strong> test-run</strong> it if it wants to start early; from the date it is live. Whatever was keyed in during the test run (attendance, corrections, photos) is <strong>cleared once, when the station reaches its launch date</strong>; the people, drivers and schedule stay. Attendance opens on the <em>Staff</em> tab.
         </p>
         <p>
           <strong>Hybrid attendance</strong> -- <em>manual for now</em>: station staff key in the Hybrid drivers in <em>Attendance → Hybrid → Drivers</em> (name, driver ID, phone, vehicle, joined / end date), then each day in
