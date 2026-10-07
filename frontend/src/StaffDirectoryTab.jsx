@@ -19,11 +19,14 @@ const POSITION_GROUPS = GROUPS.map((g) => ({ ...g, positions: g.positions.filter
 const whereText = (sc) => (!sc || sc.scope_type === "all" || sc.scope_type === "hq" ? "HQ" : (sc.scope_values || []).join(", "));
 
 // Headcount is for the Manager, the HOD and the Fleet Admin role (and the Superadmin); other HQ roles -- OPEX, Recovery, Restock ... -- do not see it.
+const LIST_POSITIONS = ["fleet_admin", "hod", "manager"];
 const HEADCOUNT_POSITIONS = ["hod", "manager", "fleet_admin"];
 
 export default function StaffDirectoryTab({ me }) {
   const canSeeHeadcount = me?.role === "admin" || HEADCOUNT_POSITIONS.includes(me?.position);
-  const [view, setView] = useState("list");
+  // The staff LIST is for the Fleet Admin team, HOD, Managers and the Superadmin; the org chart (and its details list) is open to every role (2026-10-07).
+  const canSeeList = me?.role === "admin" || LIST_POSITIONS.includes(me?.position);
+  const [view, setView] = useState(canSeeList ? "list" : "chart");
   const [chartMode, setChartMode] = useState("visual"); // the org chart as a picture (default) or the details list
   const [chart, setChart] = useState(null);
   const [people, setPeople] = useState(null);
@@ -42,7 +45,8 @@ export default function StaffDirectoryTab({ me }) {
 
   const load = () => {
     api.orgChart().then(setChart).catch((e) => setError(e.message));
-    api.staff.list().then((r) => { setPeople(r.people); setVacant(r.vacant || []); setHqView(!!r.hq_view); }).catch(() => setPeople([]));
+    if (!canSeeList) setPeople([]);
+    else api.staff.list().then((r) => { setPeople(r.people); setVacant(r.vacant || []); setHqView(!!r.hq_view); }).catch(() => setPeople([]));
   };
   useEffect(() => {
     load();
@@ -149,7 +153,7 @@ export default function StaffDirectoryTab({ me }) {
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-          {[["list", "Staff list"], ["chart", "Org chart"], ...(canSeeHeadcount ? [["headcount", "Headcount"]] : [])].map(([k, label]) => (
+          {[...(canSeeList ? [["list", "Staff list"]] : []), ["chart", "Org chart"], ...(canSeeHeadcount ? [["headcount", "Headcount"]] : [])].map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "text-slate-500"}`}>
               {label}
             </button>
@@ -174,7 +178,7 @@ export default function StaffDirectoryTab({ me }) {
         </div>
       )}
 
-      {chart && view === "list" && (
+      {chart && view === "list" && canSeeList && (
         <>
           {canEdit && !showForm && (
             <div className="flex flex-wrap gap-2">
