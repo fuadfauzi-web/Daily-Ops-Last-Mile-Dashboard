@@ -4,6 +4,8 @@ import HeadcountView from "./HeadcountView";
 import OrgChartVisual from "./OrgChartVisual";
 import OrgDetailsList from "./OrgDetailsList";
 import OrgPeoplePanel from "./OrgPeoplePanel";
+import StationProfileTab from "./StationProfileTab";
+import { FEATURES } from "./lib/features";
 import StaffImport from "./StaffImport";
 import MultiSelect from "./components/MultiSelect";
 import { GROUPS, POSITIONS, positionLabel } from "./lib/roles";
@@ -153,7 +155,7 @@ export default function StaffDirectoryTab({ me }) {
           </p>
         </div>
         <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-          {[...(canSeeList ? [["list", "Staff list"]] : []), ["chart", "Org chart"], ...(canSeeHeadcount ? [["headcount", "Headcount"]] : [])].map(([k, label]) => (
+          {[...(canSeeList ? [["list", "Staff list"]] : []), ["chart", "Org chart"], ...(FEATURES.stationProfile ? [["station", "Station profile"]] : []), ...(canSeeHeadcount ? [["headcount", "Headcount"]] : [])].map(([k, label]) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 ${view === k ? "bg-ink text-white" : "text-slate-500"}`}>
               {label}
             </button>
@@ -165,6 +167,7 @@ export default function StaffDirectoryTab({ me }) {
       {!chart && !error && <div className="text-sm text-slate-400">Loading…</div>}
 
       {view === "headcount" && canSeeHeadcount && <HeadcountView />}
+      {view === "station" && FEATURES.stationProfile && <StationProfileTab />}
 
       {chart && view === "chart" && (
         <div className="space-y-3">

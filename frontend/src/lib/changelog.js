@@ -29,9 +29,9 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-08",
-    title: "New Station Profile page, and the Staff list is now for the Fleet Admin team, HOD and Managers (staging only)",
+    title: "New Station profile in Staff & Org Chart, and the Staff list is now for the Fleet Admin team, HOD and Managers (staging only)",
     points: [
-      "Station Profile (People): pick a station and see its zone, Station ID, Warehouse ID, how long it has been open, Google Chat space, address, its Fleet Manager, Region Head and Region Supervisor (with the station they are based at), its team, workmail groups, managers on duty, business hours, how many Last Mile stations each region has, and the postcodes it covers. Every role can open it.",
+      "Station profile (inside Staff & Org Chart): pick a station and see its zone, Station ID, Warehouse ID, how long it has been open, Google Chat space, address, its Fleet Manager, Region Head and Region Supervisor (with the station they are based at), its team, workmail groups, managers on duty, business hours, how many Last Mile stations each region has, and the postcodes it covers. Every role can open it.",
       "The Staff list and Headcount tabs inside Staff & Org Chart are for the Fleet Admin team, the HOD, the Managers and the Superadmin (Headcount: HOD, Manager and Fleet Admin). The Org chart and its Details list stay open to every role.",
       "Only the Fleet Admin Team Lead (and the Superadmin) edits the staff list, the people on the chart who have no dashboard access, the Warehouse ID, the Station Profile boxes and the postcodes. Operation Support (LM) and Admin (LM) can read.",
     ],
