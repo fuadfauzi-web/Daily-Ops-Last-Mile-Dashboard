@@ -4356,6 +4356,324 @@
         ]
       }
     },
+    "/api/manager-dashboard/stations": {
+      "get": {
+        "summary": "Stations",
+        "operationId": "stations_api_manager_dashboard_stations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/plan/{station_code}": {
+      "put": {
+        "summary": "Save one station's plan figures (null clears a figure).",
+        "description": "Save one station's plan figures (null clears a figure). Only for stations inside the person's own scope.",
+        "operationId": "put_plan_api_manager_dashboard_plan__station_code__put",
+        "parameters": [
+          {
+            "name": "station_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/links": {
+      "get": {
+        "summary": "List Links",
+        "operationId": "list_links_api_manager_dashboard_links_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LinkOut"
+                  },
+                  "title": "Response List Links Api Manager Dashboard Links Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "post": {
+        "summary": "Add Link",
+        "operationId": "add_link_api_manager_dashboard_links_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/links/{link_id}": {
+      "put": {
+        "summary": "Edit Link",
+        "operationId": "edit_link_api_manager_dashboard_links__link_id__put",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "delete": {
+        "summary": "Delete Link",
+        "operationId": "delete_link_api_manager_dashboard_links__link_id__delete",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/notes": {
+      "get": {
+        "summary": "Get Notes",
+        "operationId": "get_notes_api_manager_dashboard_notes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "put": {
+        "summary": "Put Notes",
+        "operationId": "put_notes_api_manager_dashboard_notes_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotesIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/management-view/capacity": {
       "get": {
         "summary": "Management View -- Hub Size, Staff headcount, PTWH and parcel capacity per station plus the parcels-per-sqft setting. Managers and admins only.",
@@ -10861,7 +11179,7 @@
           },
           "stations": {
             "items": {
-              "$ref": "#/components/schemas/StationRow"
+              "$ref": "#/components/schemas/main__StationRow"
             },
             "type": "array",
             "title": "Stations"
@@ -10893,7 +11211,7 @@
           },
           "previous_stations": {
             "items": {
-              "$ref": "#/components/schemas/StationRow"
+              "$ref": "#/components/schemas/main__StationRow"
             },
             "type": "array",
             "title": "Previous Stations",
@@ -10912,7 +11230,7 @@
           },
           "yesterday_stations": {
             "items": {
-              "$ref": "#/components/schemas/StationRow"
+              "$ref": "#/components/schemas/main__StationRow"
             },
             "type": "array",
             "title": "Yesterday Stations",
@@ -12918,6 +13236,67 @@
         ],
         "title": "LhTripsResponse"
       },
+      "LinkIn": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": ""
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "default": ""
+          },
+          "due_text": {
+            "type": "string",
+            "title": "Due Text",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "LinkIn"
+      },
+      "LinkOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "due_text": {
+            "type": "string",
+            "title": "Due Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "title",
+          "url",
+          "due_text"
+        ],
+        "title": "LinkOut"
+      },
       "LoginCreate": {
         "properties": {
           "username": {
@@ -13552,6 +13931,41 @@
         },
         "type": "object",
         "title": "NoteIn"
+      },
+      "NotesIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "NotesIn"
+      },
+      "NotesOut": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "NotesOut"
       },
       "Notifications": {
         "properties": {
@@ -14224,6 +14638,106 @@
           "role"
         ],
         "title": "PicSuggestion"
+      },
+      "Plan": {
+        "properties": {
+          "headcount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headcount"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          },
+          "drivers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drivers"
+          },
+          "riders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riders"
+          }
+        },
+        "type": "object",
+        "title": "Plan"
+      },
+      "PlanIn": {
+        "properties": {
+          "headcount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headcount"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          },
+          "drivers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drivers"
+          },
+          "riders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riders"
+          }
+        },
+        "type": "object",
+        "title": "PlanIn"
       },
       "PremisesBulkIn": {
         "properties": {
@@ -17821,158 +18335,67 @@
         ],
         "title": "StationNote"
       },
-      "StationRow": {
+      "StationsResponse": {
         "properties": {
-          "total_in_hub": {
-            "type": "integer",
-            "title": "Total In Hub"
-          },
-          "zero_attempt_total": {
-            "type": "integer",
-            "title": "Zero Attempt Total"
-          },
-          "zero_attempt": {
-            "type": "integer",
-            "title": "Zero Attempt"
-          },
-          "zero_attempt_gt_d0": {
-            "type": "integer",
-            "title": "Zero Attempt Gt D0"
-          },
-          "on_hold": {
-            "type": "integer",
-            "title": "On Hold"
-          },
-          "pending_ats_zero_attempt": {
-            "type": "integer",
-            "title": "Pending Ats Zero Attempt"
-          },
-          "pending_ats_attempted": {
-            "type": "integer",
-            "title": "Pending Ats Attempted"
-          },
-          "missing_open": {
-            "type": "integer",
-            "title": "Missing Open"
-          },
-          "missing_hub": {
-            "type": "integer",
-            "title": "Missing Hub"
-          },
-          "missing_driver_rider": {
-            "type": "integer",
-            "title": "Missing Driver Rider"
-          },
-          "missing_ship_in": {
-            "type": "integer",
-            "title": "Missing Ship In"
-          },
-          "total_fresh": {
-            "type": "integer",
-            "title": "Total Fresh"
-          },
-          "age_gt3": {
-            "type": "integer",
-            "title": "Age Gt3"
-          },
-          "reschedule": {
-            "type": "integer",
-            "title": "Reschedule"
-          },
-          "still_ovfd": {
-            "type": "integer",
-            "title": "Still Ovfd"
-          },
-          "prior_d0": {
-            "type": "integer",
-            "title": "Prior D0"
-          },
-          "prior_gt_d0": {
-            "type": "integer",
-            "title": "Prior Gt D0"
-          },
-          "unsweep_document": {
-            "type": "integer",
-            "title": "Unsweep Document"
-          },
-          "unsweep_parcel": {
-            "type": "integer",
-            "title": "Unsweep Parcel"
-          },
-          "cod_pct_hub": {
-            "type": "number",
-            "title": "Cod Pct Hub"
-          },
-          "total_routed": {
-            "type": "integer",
-            "title": "Total Routed"
-          },
-          "routed_pct": {
-            "type": "number",
-            "title": "Routed Pct"
-          },
-          "attendance": {
-            "type": "integer",
-            "title": "Attendance"
-          },
-          "cod_pct_routed": {
-            "type": "number",
-            "title": "Cod Pct Routed"
-          },
-          "attendance_rescue": {
-            "type": "integer",
-            "title": "Attendance Rescue",
-            "default": 0
-          },
-          "station_code": {
+          "scope": {
             "type": "string",
-            "title": "Station Code"
+            "title": "Scope"
           },
-          "station_name": {
-            "type": "string",
-            "title": "Station Name"
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
           },
-          "zone": {
-            "type": "string",
-            "title": "Zone"
+          "scope_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note"
           },
-          "region": {
+          "can_edit_plan": {
+            "type": "boolean",
+            "title": "Can Edit Plan",
+            "default": true
+          },
+          "sources": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Sources"
+          },
+          "today": {
             "type": "string",
-            "title": "Region"
+            "title": "Today"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/manager_dashboard__StationRow"
+            },
+            "type": "array",
+            "title": "Rows"
           }
         },
         "type": "object",
         "required": [
-          "total_in_hub",
-          "zero_attempt_total",
-          "zero_attempt",
-          "zero_attempt_gt_d0",
-          "on_hold",
-          "pending_ats_zero_attempt",
-          "pending_ats_attempted",
-          "missing_open",
-          "missing_hub",
-          "missing_driver_rider",
-          "missing_ship_in",
-          "total_fresh",
-          "age_gt3",
-          "reschedule",
-          "still_ovfd",
-          "prior_d0",
-          "prior_gt_d0",
-          "unsweep_document",
-          "unsweep_parcel",
-          "cod_pct_hub",
-          "total_routed",
-          "routed_pct",
-          "attendance",
-          "cod_pct_routed",
-          "station_code",
-          "station_name",
-          "zone",
-          "region"
+          "scope",
+          "locked",
+          "sources",
+          "today",
+          "rows"
         ],
-        "title": "StationRow"
+        "title": "StationsResponse"
       },
       "TargetIn": {
         "properties": {
@@ -20345,6 +20768,405 @@
         },
         "type": "object",
         "title": "OkOut"
+      },
+      "main__StationRow": {
+        "properties": {
+          "total_in_hub": {
+            "type": "integer",
+            "title": "Total In Hub"
+          },
+          "zero_attempt_total": {
+            "type": "integer",
+            "title": "Zero Attempt Total"
+          },
+          "zero_attempt": {
+            "type": "integer",
+            "title": "Zero Attempt"
+          },
+          "zero_attempt_gt_d0": {
+            "type": "integer",
+            "title": "Zero Attempt Gt D0"
+          },
+          "on_hold": {
+            "type": "integer",
+            "title": "On Hold"
+          },
+          "pending_ats_zero_attempt": {
+            "type": "integer",
+            "title": "Pending Ats Zero Attempt"
+          },
+          "pending_ats_attempted": {
+            "type": "integer",
+            "title": "Pending Ats Attempted"
+          },
+          "missing_open": {
+            "type": "integer",
+            "title": "Missing Open"
+          },
+          "missing_hub": {
+            "type": "integer",
+            "title": "Missing Hub"
+          },
+          "missing_driver_rider": {
+            "type": "integer",
+            "title": "Missing Driver Rider"
+          },
+          "missing_ship_in": {
+            "type": "integer",
+            "title": "Missing Ship In"
+          },
+          "total_fresh": {
+            "type": "integer",
+            "title": "Total Fresh"
+          },
+          "age_gt3": {
+            "type": "integer",
+            "title": "Age Gt3"
+          },
+          "reschedule": {
+            "type": "integer",
+            "title": "Reschedule"
+          },
+          "still_ovfd": {
+            "type": "integer",
+            "title": "Still Ovfd"
+          },
+          "prior_d0": {
+            "type": "integer",
+            "title": "Prior D0"
+          },
+          "prior_gt_d0": {
+            "type": "integer",
+            "title": "Prior Gt D0"
+          },
+          "unsweep_document": {
+            "type": "integer",
+            "title": "Unsweep Document"
+          },
+          "unsweep_parcel": {
+            "type": "integer",
+            "title": "Unsweep Parcel"
+          },
+          "cod_pct_hub": {
+            "type": "number",
+            "title": "Cod Pct Hub"
+          },
+          "total_routed": {
+            "type": "integer",
+            "title": "Total Routed"
+          },
+          "routed_pct": {
+            "type": "number",
+            "title": "Routed Pct"
+          },
+          "attendance": {
+            "type": "integer",
+            "title": "Attendance"
+          },
+          "cod_pct_routed": {
+            "type": "number",
+            "title": "Cod Pct Routed"
+          },
+          "attendance_rescue": {
+            "type": "integer",
+            "title": "Attendance Rescue",
+            "default": 0
+          },
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_in_hub",
+          "zero_attempt_total",
+          "zero_attempt",
+          "zero_attempt_gt_d0",
+          "on_hold",
+          "pending_ats_zero_attempt",
+          "pending_ats_attempted",
+          "missing_open",
+          "missing_hub",
+          "missing_driver_rider",
+          "missing_ship_in",
+          "total_fresh",
+          "age_gt3",
+          "reschedule",
+          "still_ovfd",
+          "prior_d0",
+          "prior_gt_d0",
+          "unsweep_document",
+          "unsweep_parcel",
+          "cod_pct_hub",
+          "total_routed",
+          "routed_pct",
+          "attendance",
+          "cod_pct_routed",
+          "station_code",
+          "station_name",
+          "zone",
+          "region"
+        ],
+        "title": "StationRow"
+      },
+      "manager_dashboard__StationRow": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "plan_updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Updated By"
+          },
+          "staff_filled": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Filled"
+          },
+          "staff_tba": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Tba"
+          },
+          "hd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hd"
+          },
+          "hr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hr"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "ir": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ir"
+          },
+          "resigned_w1": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resigned W1"
+          },
+          "resigned_w2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resigned W2"
+          },
+          "resigned_w4": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resigned W4"
+          },
+          "active_2w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active 2W"
+          },
+          "active_4w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active 4W"
+          },
+          "attendance_today": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance Today"
+          },
+          "routed_today": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routed Today"
+          },
+          "week_days": {
+            "type": "integer",
+            "title": "Week Days",
+            "default": 0
+          },
+          "avg_fresh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Fresh"
+          },
+          "avg_routed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Routed"
+          },
+          "avg_attendance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Attendance"
+          },
+          "success_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Pct"
+          },
+          "productivity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productivity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "plan"
+        ],
+        "title": "StationRow"
       },
       "metabase_pull__OkOut": {
         "properties": {
