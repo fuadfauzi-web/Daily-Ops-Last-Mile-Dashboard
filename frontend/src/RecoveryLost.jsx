@@ -208,8 +208,9 @@ export function ActiveMissingView(props) {
 
 // ------------------------------------------------------------------------------------------------ Lost Declared (This Week + Summary)
 const LD_KEYS = ["customer_received", "liable_party", "remarks", "driver_name"];
-// "Recovered" is set by the app, so it does not count as someone having answered the row
-const answeredLd = (r) => answered({ ...r, liable_party: r.liable_auto ? r.liable_entered : r.liable_party }, LD_KEYS);
+// "Recovered" (liable party set by the app, status not Cancelled) is neither answered nor waiting for an answer -- it is counted as Recovered (Fleet Manager, 2026-10-08)
+const answeredLd = (r) => !r.liable_auto && answered(r, LD_KEYS);
+const toAnswerLd = (r) => !r.liable_auto && !answered(r, LD_KEYS);
 
 export function LostDeclaredView({ view, me, ...props }) {
   const { refreshTick } = props;
@@ -241,7 +242,7 @@ export function LostDeclaredView({ view, me, ...props }) {
 
   const inScope = useMemo(() => rows.filter((r) => inFilters(r, props)), [rows, props.regionFilter, props.zoneFilter, props.search, props.excludeEastMalaysia]); // eslint-disable-line react-hooks/exhaustive-deps
   const stationOptions = useMemo(() => [...new Set(inScope.map((r) => r.station_name))].sort().map((v) => ({ value: v, label: v })), [inScope]);
-  const list = useMemo(() => inScope.filter((r) => (!stations.length || stations.includes(r.station_name)) && (!toAnswerOnly || !answeredLd(r))), [inScope, stations, toAnswerOnly]);
+  const list = useMemo(() => inScope.filter((r) => (!stations.length || stations.includes(r.station_name)) && (!toAnswerOnly || toAnswerLd(r))), [inScope, stations, toAnswerOnly]);
   const outcomes = useMemo(() => [...new Set(inScope.map((r) => r.outcome).filter(Boolean))].sort(), [inScope]);
   const liableList = [...(data?.options?.liable_party || []), ...(data?.liable_auto ? [data.liable_auto] : [])]; // Recovered is set by the app (current status not Cancelled), so it only gets a summary column
   const byStation = useMemo(() => {
@@ -284,6 +285,8 @@ export function LostDeclaredView({ view, me, ...props }) {
   const opt = data.options;
   const total = inScope.length;
   const done = inScope.filter((r) => answeredLd(r)).length;
+  const recovered = inScope.filter((r) => r.liable_auto).length;
+  const toAnswer = inScope.filter((r) => toAnswerLd(r)).length;
 
   const columns = [
     { key: "station_name", label: "Station", sticky: true, align: "left", text: true },
@@ -377,11 +380,12 @@ export function LostDeclaredView({ view, me, ...props }) {
           </label>
         )}
         <Cards
-          cols="sm:grid-cols-3 flex-1"
+          cols="sm:grid-cols-4 flex-1"
           items={[
             [isSummary ? `Lost declared${weekLabel ? ` · week ${weekLabel.week}` : ""}` : "Lost declared this week", total.toLocaleString()],
-            ["Answered", done.toLocaleString(), total ? `${Math.round((done / total) * 100)}%` : ""],
-            ["To answer", (total - done).toLocaleString()],
+            ["Recovered", recovered.toLocaleString(), total ? `${Math.round((recovered / total) * 100)}%` : ""],
+            ["Answered", done.toLocaleString(), total - recovered ? `${Math.round((done / (total - recovered)) * 100)}% of the rest` : ""],
+            ["To answer", toAnswer.toLocaleString()],
           ]}
         />
       </div>

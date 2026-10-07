@@ -23,7 +23,7 @@ export const CHANGELOG = [
     date: "2026-10-08",
     title: "Lost Declared: liable party shows Recovered once the parcel is back",
     points: [
-      "In Recovery -> Lost Declared (This Week and Summary), a tracking number whose current status is anything other than Cancelled (Completed, Returned to Sender ...) now shows Recovered as its liable party, set by the app. It cannot be changed by hand; if the status is Cancelled, or there is no status on file yet, the liable party stays what the region picked. The by-station table has a Recovered column.",
+      "In Recovery -> Lost Declared (This Week and Summary), a tracking number whose current status is anything other than Cancelled (Completed, Returned to Sender ...) now shows Recovered as its liable party, set by the app. It cannot be changed by hand; if the status is Cancelled, or there is no status on file yet, the liable party stays what the region picked. A Recovered tracking number counts as Recovered -- neither answered nor waiting for an answer: there is a Recovered card on top and a Recovered column in the by-station table, and "to answer only" leaves them out.",
     ],
   },
   {
