@@ -6,7 +6,7 @@ import TabBar from "./components/TabBar";
 import FeedbackPanel from "./FeedbackPanel";
 import GuideTab from "./GuideTab";
 import KpiTargetsPanel from "./KpiTargetsPanel";
-import RegionListPanel from "./RegionListPanel";
+import DocumentsPage from "./DocumentsPage";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
@@ -592,7 +592,6 @@ const SETTINGS_TABS = [
   { key: "faq", label: "Common Questions", area: "help", visible: () => true },
   { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
@@ -607,7 +606,9 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const visibleSettingsTabs = useMemo(
     () =>
       SETTINGS_TABS.filter((t) => t.area === mode && t.visible(me)).map((t) =>
-        t.key === "feedback"
+        t.key === "documents"
+          ? { ...t, badge: notifCounts?.documents_stale || 0 }
+          : t.key === "feedback"
           ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 }
           : t.key === "whatsnew"
             ? { ...t, badge: whatsNewUnread }
@@ -834,14 +835,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       {adminTab === "whatsnew" && <GuideTab me={me} only="new" />}
       {adminTab === "faq" && <GuideTab me={me} only="faq" />}
 
-      {adminTab === "documents" && (
-        <div className="space-y-3">
-          <DocumentsPanel />
-          <KpiUploadPanel kpi="recovery" me={me} title="Recovery -- Lost Declared This Week (upload once a day)" />
-        </div>
-      )}
-
-      {adminTab === "stationlist" && isFullAdmin && <RegionListPanel me={me} />}
+      {adminTab === "documents" && <DocumentsPage me={me} driverDetails={<DocumentsPanel />} />}
 
       {adminTab === "refresh" && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">

@@ -21,7 +21,7 @@ import re
 import sys
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import xlsx_fast
 from starlette.concurrency import run_in_threadpool
@@ -187,6 +187,35 @@ DATASETS: dict[str, dict] = {
     },
 }
 KPI_DATASETS = {k: [d for d, v in DATASETS.items() if v["kpi"] == k] for k in {v["kpi"] for v in DATASETS.values()}}
+
+# Documents page (2026-10-04): the Metabase files are meant to be refreshed every day. Every dataset downloaded from a Metabase question counts, except
+# the optional RTS overall file; the sheets / workbooks / OPEX download are uploaded when they change. A daily file that was not uploaded today
+# (Malaysia date) is "stale": it puts a bell on the Superadmin's Documents tab until it is.
+_NOT_DAILY = {"cod_rts_overall"}
+
+
+def is_daily_feeder(name: str) -> bool:
+    link = (DATASETS.get(name) or {}).get("link") or ""
+    return "metabase.ninjavan.co/question" in link and name not in _NOT_DAILY
+
+
+def uploaded_today(uploaded_at) -> bool:
+    """Whether an upload's timestamp (stored UTC) falls on today's Malaysia date."""
+    if not uploaded_at:
+        return False
+    try:
+        when = datetime.fromisoformat(str(uploaded_at))
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    myt = timezone(timedelta(hours=8))
+    return when.astimezone(myt).date() == datetime.now(myt).date()
+
+
+async def stale_daily_feeders() -> list[str]:
+    current = await list_uploads()
+    return [n for n in DATASETS if is_daily_feeder(n) and not uploaded_today((current.get(n) or {}).get("uploaded_at"))]
 
 
 class UploadError(ValueError):

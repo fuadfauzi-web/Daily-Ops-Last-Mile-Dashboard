@@ -3379,6 +3379,18 @@ class Notifications(BaseModel):
     ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
     attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
+    documents_stale: int = 0  # Superadmin only: daily Metabase files not uploaded today (the bell on Superadmin -> Documents)
+
+
+async def _documents_stale_count(user: CurrentUser) -> int:
+    if user.role != "admin" or user.is_impersonating:
+        return 0
+    try:
+        import kpi_data as _kd
+
+        return len(await _kd.stale_daily_feeders())
+    except Exception:  # noqa: BLE001 -- a bell is never worth failing the notifications call
+        return 0
 
 
 @app.get("/api/notifications", response_model=Notifications)
@@ -3418,6 +3430,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "ptwh_approvals": await attendance.approvals_count(user),
         "ptwh_corrections": await attendance_corrections.pending_count(user),
         "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
+        "documents_stale": await _documents_stale_count(user),
         **await tasklist_counts(user),
     }
 

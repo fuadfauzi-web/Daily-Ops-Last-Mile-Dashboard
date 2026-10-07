@@ -327,6 +327,8 @@ class UploadInfo(BaseModel):
     uploaded_by: str | None = None
     uploaded_at: str | None = None
     can_upload: bool = False  # whether the caller may upload / remove this file
+    daily: bool = False  # a Metabase file that is meant to be refreshed every day (Documents page)
+    updated_today: bool = False  # ...and whether it was uploaded today (Malaysia date)
 
 
 @router.get("/api/kpi/uploads", response_model=list[UploadInfo])
@@ -335,7 +337,8 @@ async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
     current = await kd.list_uploads()
     return [
         {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"] if user.role in _uploader_roles(name) else "", "link": spec.get("link") if user.role in _uploader_roles(name) else None,  # who cannot upload a file does not need to know where it comes from
-         "link_label": spec.get("link_label") if user.role in _uploader_roles(name) else None, "can_upload": user.role in _uploader_roles(name), **current.get(name, {})}
+         "link_label": spec.get("link_label") if user.role in _uploader_roles(name) else None, "can_upload": user.role in _uploader_roles(name),
+         "daily": kd.is_daily_feeder(name), "updated_today": kd.uploaded_today(current.get(name, {}).get("uploaded_at")), **current.get(name, {})}
         for name, spec in kd.DATASETS.items()
     ]
 
