@@ -2649,6 +2649,205 @@
         ]
       }
     },
+    "/api/admin/metabase/feeds": {
+      "get": {
+        "summary": "Get Feeds",
+        "operationId": "get_feeds_api_admin_metabase_feeds_get",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/feeds/{dataset}": {
+      "put": {
+        "summary": "Save Feed",
+        "operationId": "save_feed_api_admin_metabase_feeds__dataset__put",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/metabase_pull__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/feeds/{dataset}/pull": {
+      "post": {
+        "summary": "Pull Now",
+        "operationId": "pull_now_api_admin_metabase_feeds__dataset__pull_post",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/metabase_pull__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/pull-all": {
+      "post": {
+        "summary": "Pull every feed that is not switched off, one after the other, in the background (the page shows each as it finishes).",
+        "description": "Pull every feed that is not switched off, one after the other, in the background (the page shows each as it finishes).",
+        "operationId": "pull_all_api_admin_metabase_pull_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/metabase_pull__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/check": {
+      "get": {
+        "summary": "What Metabase answers to this app's API key (never returns the key).",
+        "description": "What Metabase answers to this app's API key (never returns the key).",
+        "operationId": "check_api_admin_metabase_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/api/departments": {
       "get": {
         "summary": "Get Departments",
@@ -2704,7 +2903,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkOut"
+                  "$ref": "#/components/schemas/departments__OkOut"
                 }
               }
             }
@@ -2756,7 +2955,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkOut"
+                  "$ref": "#/components/schemas/departments__OkOut"
                 }
               }
             }
@@ -2798,7 +2997,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkOut"
+                  "$ref": "#/components/schemas/departments__OkOut"
                 }
               }
             }
@@ -11085,6 +11284,247 @@
         "type": "object",
         "title": "DriverPatch"
       },
+      "FeedIn": {
+        "properties": {
+          "question_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Id"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "run_time": {
+            "type": "string",
+            "title": "Run Time",
+            "default": "06:00"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "default": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          "month_day": {
+            "type": "integer",
+            "title": "Month Day",
+            "default": 1
+          },
+          "every_hours": {
+            "type": "integer",
+            "title": "Every Hours",
+            "default": 4
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "FeedIn"
+      },
+      "FeedOut": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kpi": {
+            "type": "string",
+            "title": "Kpi"
+          },
+          "default_question_id": {
+            "type": "integer",
+            "title": "Default Question Id"
+          },
+          "question_id": {
+            "type": "integer",
+            "title": "Question Id"
+          },
+          "question_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Name"
+          },
+          "in_collection": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Collection"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "run_time": {
+            "type": "string",
+            "title": "Run Time"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays"
+          },
+          "month_day": {
+            "type": "integer",
+            "title": "Month Day"
+          },
+          "every_hours": {
+            "type": "integer",
+            "title": "Every Hours"
+          },
+          "schedule": {
+            "type": "string",
+            "title": "Schedule"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_ok_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ok At"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "last_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message"
+          },
+          "last_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rows"
+          },
+          "last_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seconds"
+          },
+          "last_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last By"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running",
+            "default": false
+          },
+          "problem": {
+            "type": "boolean",
+            "title": "Problem",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "label",
+          "kpi",
+          "default_question_id",
+          "question_id",
+          "mode",
+          "run_time",
+          "weekdays",
+          "month_day",
+          "every_hours",
+          "schedule"
+        ],
+        "title": "FeedOut"
+      },
       "FeedbackRow": {
         "properties": {
           "id": {
@@ -11266,6 +11706,61 @@
         },
         "type": "object",
         "title": "FeedbackUpdate"
+      },
+      "FeedsOut": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "collection_url": {
+            "type": "string",
+            "title": "Collection Url"
+          },
+          "collection_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Error"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOut"
+            },
+            "type": "array",
+            "title": "Questions",
+            "default": []
+          },
+          "feeds": {
+            "items": {
+              "$ref": "#/components/schemas/FeedOut"
+            },
+            "type": "array",
+            "title": "Feeds"
+          },
+          "pull_all_running": {
+            "type": "boolean",
+            "title": "Pull All Running",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "base_url",
+          "collection_url",
+          "feeds"
+        ],
+        "title": "FeedsOut"
       },
       "FixIn": {
         "properties": {
@@ -13041,17 +13536,6 @@
         ],
         "title": "Ok"
       },
-      "OkOut": {
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "title": "Ok",
-            "default": true
-          }
-        },
-        "type": "object",
-        "title": "OkOut"
-      },
       "OkResult": {
         "properties": {
           "ok": {
@@ -14174,6 +14658,24 @@
           "fetched_at"
         ],
         "title": "QueryFetchStatus"
+      },
+      "QuestionOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "QuestionOut"
       },
       "RdoComplianceResponse": {
         "properties": {
@@ -16476,6 +16978,51 @@
             "title": "Shipper Sla Breach",
             "default": 0
           },
+          "shipper_sla_warning_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Ovfd",
+            "default": 0
+          },
+          "shipper_sla_warning_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Aash",
+            "default": 0
+          },
+          "shipper_sla_breach_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Ovfd",
+            "default": 0
+          },
+          "shipper_sla_breach_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Aash",
+            "default": 0
+          },
+          "aging_delivery_gt3": {
+            "type": "integer",
+            "title": "Aging Delivery Gt3",
+            "default": 0
+          },
+          "aging_ats_gt7": {
+            "type": "integer",
+            "title": "Aging Ats Gt7",
+            "default": 0
+          },
+          "rpu_aging_gt5": {
+            "type": "integer",
+            "title": "Rpu Aging Gt5",
+            "default": 0
+          },
+          "missing_to_answer": {
+            "type": "integer",
+            "title": "Missing To Answer",
+            "default": 0
+          },
+          "lost_to_answer": {
+            "type": "integer",
+            "title": "Lost To Answer",
+            "default": 0
+          },
           "cold_chain_zero_attempt": {
             "type": "integer",
             "title": "Cold Chain Zero Attempt",
@@ -16592,6 +17139,51 @@
           "shipper_sla_breach": {
             "type": "integer",
             "title": "Shipper Sla Breach",
+            "default": 0
+          },
+          "shipper_sla_warning_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Ovfd",
+            "default": 0
+          },
+          "shipper_sla_warning_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Aash",
+            "default": 0
+          },
+          "shipper_sla_breach_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Ovfd",
+            "default": 0
+          },
+          "shipper_sla_breach_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Aash",
+            "default": 0
+          },
+          "aging_delivery_gt3": {
+            "type": "integer",
+            "title": "Aging Delivery Gt3",
+            "default": 0
+          },
+          "aging_ats_gt7": {
+            "type": "integer",
+            "title": "Aging Ats Gt7",
+            "default": 0
+          },
+          "rpu_aging_gt5": {
+            "type": "integer",
+            "title": "Rpu Aging Gt5",
+            "default": 0
+          },
+          "missing_to_answer": {
+            "type": "integer",
+            "title": "Missing To Answer",
+            "default": 0
+          },
+          "lost_to_answer": {
+            "type": "integer",
+            "title": "Lost To Answer",
             "default": 0
           },
           "cold_chain_zero_attempt": {
@@ -17255,6 +17847,20 @@
             ],
             "title": "Assignee Replied At"
           },
+          "cc": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cc",
+            "default": []
+          },
+          "cc_me": {
+            "type": "boolean",
+            "title": "Cc Me",
+            "default": false
+          },
           "is_new": {
             "type": "boolean",
             "title": "Is New"
@@ -17335,6 +17941,14 @@
             },
             "type": "array",
             "title": "Assignee Emails",
+            "default": []
+          },
+          "cc_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Emails",
             "default": []
           },
           "title": {
@@ -17463,6 +18077,20 @@
             "type": "boolean",
             "title": "Reopen",
             "default": false
+          },
+          "cc_emails": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cc Emails"
           }
         },
         "type": "object",
@@ -17504,6 +18132,28 @@
               }
             ],
             "title": "Percent Of"
+          },
+          "min_count_warning": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Count Warning"
+          },
+          "min_count_critical": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Count Critical"
           },
           "changed_by": {
             "anyOf": [
@@ -17880,6 +18530,11 @@
           "updated_today": {
             "type": "boolean",
             "title": "Updated Today",
+            "default": false
+          },
+          "metabase": {
+            "type": "boolean",
+            "title": "Metabase",
             "default": false
           }
         },
@@ -19411,6 +20066,33 @@
           "station"
         ],
         "title": "WorkerIn"
+      },
+      "departments__OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
+      },
+      "metabase_pull__OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
       }
     }
   }
