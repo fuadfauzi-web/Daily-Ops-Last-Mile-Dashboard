@@ -43,6 +43,7 @@ import ptwh_app
 import work_schedule as schedule_mod
 import departments
 import metabase_pull
+import role_access
 import headcount
 import premises
 import vehicles
@@ -768,6 +769,7 @@ app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthl
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
 app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
+app.include_router(role_access.router)  # Superadmin -> Role Access: none / view / edit per role and module, enforced in auth.get_current_user (role_access.py)
 app.include_router(metabase_pull.router)  # Superadmin -> Documents: the Metabase API pulls and their schedule (metabase_pull.py)
 app.include_router(departments.router)  # Superadmin -> Departments + the Users page's department list (departments.py)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
@@ -817,6 +819,8 @@ class Me(BaseModel):
     real_role: str | None = None
     # The stored job position ('rfs', 'opex' ...); `role` above is its access tier (see auth.POSITIONS).
     position: str | None = None
+    # Superadmin -> Role Access: the overrides of this position, module -> {level: none|view, scope_type, scope_values}; empty = nothing restricted. The menu hides 'none' pages, 'view' pages say so.
+    access: dict = {}
 
 
 @app.get("/api/me", response_model=Me)
@@ -850,19 +854,19 @@ async def me(
         return {
             "email": target[0], "provisioned": True, "role": tier_of(target[1]), "scope_type": st,
             "scope_values": sv, "display_name": target[4],
-            "is_impersonating": True, "real_role": real_role, "position": target[1],
+            "is_impersonating": True, "real_role": real_role, "position": target[1], "access": await role_access.access_for(target[1]),
         }
     if real_role == "admin" and x_view_as_role:
         st, sv = data_scope(tier_of(x_view_as_role), x_view_as_scope_type or "all", [v for v in (x_view_as_scope_values or "").split(",") if v])
         return {
             "email": row[0], "provisioned": True, "role": tier_of(x_view_as_role), "position": x_view_as_role,
             "scope_type": st, "scope_values": sv,
-            "display_name": row[4], "is_impersonating": True, "real_role": real_role,
+            "display_name": row[4], "is_impersonating": True, "real_role": real_role, "access": await role_access.access_for(x_view_as_role),
         }
     st, sv = data_scope(real_role, row[2], parse_scope_values(row[3]))
     return {
         "email": row[0], "provisioned": True, "role": real_role, "scope_type": st,
-        "scope_values": sv, "display_name": row[4], "real_role": real_role, "position": row[1],
+        "scope_values": sv, "display_name": row[4], "real_role": real_role, "position": row[1], "access": await role_access.access_for(row[1]),
     }
 
 

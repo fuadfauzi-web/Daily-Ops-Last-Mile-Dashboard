@@ -114,6 +114,19 @@ export default function App() {
       /* storage blocked */
     }
   }, [me?.email]);
+  // Role Access (Superadmin): a Dashboard page this role has no access to is never left open (a remembered or default page) -- move to the first one it can open.
+  useEffect(() => {
+    const acc = me?.access || {};
+    if (!dashTab || !Object.keys(acc).length) return;
+    const mod = dashTab === "recovery" ? `rec:${recGroup}` : dashTab === "restock" ? recGroup : dashTab;
+    if (acc[mod]?.level !== "none") return;
+    const recLists = me.role === "admin" || me.role === "manager" || me.position === "recovery";
+    const next = SIDE_ITEMS.find((i) => i.dash && DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) && acc[i.id]?.level !== "none" && (!i.recLists || recLists));
+    if (!next) return;
+    if (next.recGroup) setRecGroup(next.recGroup);
+    setDashRequest({ key: next.dashKey || next.id, n: Date.now() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashTab, recGroup, me?.access]);
   const [jumpOpen, setJumpOpen] = useState(false);
   useEffect(() => {
     if (!FEATURES.jumpSearch) return undefined;
@@ -223,6 +236,7 @@ export default function App() {
   // Recovery Settings for admin/manager, plus Feedback and Guide for everyone); Admin is
   // admin-only (Documents, Data Refresh) -- 2026-09-25 feedback. Each tab inside applies its
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
+  const access = me.access || {}; // Superadmin -> Role Access: this role's overrides, module -> { level: "none" | "view", scope_type, scope_values }
   const canSeeManagementView = FEATURES.managementView && (me.role === "manager" || me.role === "admin");
   // The Fleet Admin team's own tab (2026-10-02, staging): keeps the staff list and org chart. Admin and managers can open it too.
   const canSeeStaff = true; // the Staff list and org chart are for everyone signed in (2026-10-03); only the Fleet Admin role edits
@@ -240,7 +254,7 @@ export default function App() {
     ...(me.role === "admin" || me.role === "manager" || me.role === "region" || me.position === "opex" || me.position === "recovery" ? ["settings"] : []), // targets, KPI settings, Recovery settings, Data Refresh -- which tabs inside depends on the role
     "help", // Feedback, Guide, What's new
     ...(me.role === "admin" ? ["admin"] : []),
-  ];
+  ].filter((t) => access[t]?.level !== "none"); // a page the Superadmin switched off for this role is not in the menu
   const tab = navTabs.includes(tabRaw) ? tabRaw : "dashboard";
   const navLabel = (t) =>
     t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
@@ -259,7 +273,7 @@ export default function App() {
   const externalNav = sidebarActive || catActive;
   // PDCNR / Damage / No Label from Hub are Beta (2026-10-04): only the Superadmin, Manager / HOD and Recovery see them.
   const canSeeRecLists = me.role === "admin" || me.role === "manager" || me.position === "recovery";
-  const sideItems = SIDE_ITEMS.filter((i) => (!i.recLists || canSeeRecLists) && (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
+  const sideItems = SIDE_ITEMS.filter((i) => (!i.recLists || canSeeRecLists) && access[i.id]?.level !== "none" && (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
     const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
     return {
       ...i,
@@ -269,6 +283,9 @@ export default function App() {
       dot: bells.dot,
     };
   });
+  // the module the open page belongs to (lib/sideNav.js ids), for the "view only" note
+  const currentModule = tab !== "dashboard" ? tab : dashTab === "recovery" ? `rec:${recGroup}` : dashTab === "restock" ? recGroup : dashTab;
+  const viewOnly = access[currentModule]?.level === "view" ? SIDE_ITEMS.find((i) => i.id === currentModule)?.label || "this page" : null;
   const jumpToStation = (station) => {
     setTab("dashboard");
     setDashRequest({ key: "health", n: Date.now(), station });
@@ -488,6 +505,11 @@ export default function App() {
       <div className={sidebarActive ? "flex" : ""}>
       {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
       <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
+        {viewOnly && (
+          <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
+            View only -- your role can look at {viewOnly} but not change anything there (set by the Superadmin under Role Access).
+          </div>
+        )}
         {tab === "dashboard" && (
           <Dashboard
             key={`dashboard-${viewKey}`}

@@ -21,6 +21,17 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "Superadmin -> Role Access: control what each role can open and change",
+    type: "new",
+    area: "System",
+    minRank: 3,
+    points: [
+      "A new Role Access tab: every module against every role, each set to Edit, View (read only) or None (hidden and refused). An optional scope limits the data a role sees in a module to a region, zones or stations.",
+      "It is enforced for every page at once, so the Superadmin's choices apply to all of them; a role with View only sees a \"View only\" note on the page and gets a clear message if it tries to change something.",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "Action Board: every metric by default, copy as an image, new metrics",
     feature: "boardViews",
     type: "improved",

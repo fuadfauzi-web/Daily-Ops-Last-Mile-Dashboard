@@ -8,6 +8,7 @@ import GuideTab from "./GuideTab";
 import KpiTargetsPanel from "./KpiTargetsPanel";
 import DocumentsPage from "./DocumentsPage";
 import DepartmentsPanel from "./DepartmentsPanel";
+import RoleAccessPanel from "./RoleAccessPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
@@ -612,6 +613,7 @@ const SETTINGS_TABS = [
   { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
   { key: "departments", label: "Departments", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "roleaccess", label: "Role Access", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
@@ -950,6 +952,8 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       {adminTab === "documents" && <DocumentsPage me={me} driverDetails={<DocumentsPanel />} />}
 
       {adminTab === "departments" && <DepartmentsPanel />}
+
+      {adminTab === "roleaccess" && <RoleAccessPanel />}
 
       {adminTab === "refresh" && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">

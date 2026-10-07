@@ -161,6 +161,8 @@ export const api = {
     remove: (email) =>
       request(`/api/admin/users/${encodeURIComponent(email)}`, { method: "DELETE" }),
   },
+  roleAccess: () => request("/api/admin/role-access"),
+  roleAccessSave: (payload) => request("/api/admin/role-access", { method: "PUT", body: JSON.stringify(payload) }),
   departments: {
     list: () => request("/api/departments"),
     add: (payload) => request("/api/admin/departments", { method: "POST", body: JSON.stringify(payload) }),

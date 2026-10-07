@@ -9,7 +9,7 @@ answers *what they can see*.
 import json
 from dataclasses import dataclass
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from db import fetch_one
 
@@ -98,7 +98,7 @@ def _scope_fields(tier: str, scope_type: str, scope_values: list[str]) -> dict:
 _VIEW_AS_ROLES = tuple(POSITIONS)
 
 
-async def get_current_user(
+async def _get_current_user_raw(
     x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email"),
     x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
     x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
@@ -155,6 +155,22 @@ async def get_current_user(
         home_scope_type=row[5] or row[2], home_scope_values=parse_scope_values(row[6] if row[5] else row[3]),
         **_scope_fields(real_role, row[2], parse_scope_values(row[3])),
     )
+
+
+async def get_current_user(
+    request: Request,
+    x_forwarded_email: str | None = Header(default=None, alias="X-Forwarded-Email"),
+    x_view_as_role: str | None = Header(default=None, alias="X-View-As-Role"),
+    x_view_as_scope_type: str | None = Header(default=None, alias="X-View-As-Scope-Type"),
+    x_view_as_scope_values: str | None = Header(default=None, alias="X-View-As-Scope-Values"),
+    x_view_as_email: str | None = Header(default=None, alias="X-View-As-Email"),
+) -> CurrentUser:
+    """Who is asking, narrowed by Superadmin -> Role Access (role_access.py): a request for a module the person's role has no access to is refused here, once, for every endpoint."""
+    user = await _get_current_user_raw(x_forwarded_email, x_view_as_role, x_view_as_scope_type, x_view_as_scope_values, x_view_as_email)
+    import role_access  # imported here: role_access itself imports this module
+
+    await role_access.apply(request, user)
+    return user
 
 
 async def require_admin(user: CurrentUser) -> None:
