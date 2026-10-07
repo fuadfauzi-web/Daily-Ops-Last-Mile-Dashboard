@@ -339,6 +339,15 @@ export const api = {
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>
     request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
+  managerStations: () => request("/api/manager-dashboard/stations"),
+  managerPlanSave: (stationCode, payload) =>
+    request(`/api/manager-dashboard/plan/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
+  managerLinks: () => request("/api/manager-dashboard/links"),
+  managerLinkAdd: (payload) => request("/api/manager-dashboard/links", { method: "POST", body: JSON.stringify(payload) }),
+  managerLinkEdit: (id, payload) => request(`/api/manager-dashboard/links/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  managerLinkDelete: (id) => request(`/api/manager-dashboard/links/${id}`, { method: "DELETE" }),
+  managerNotes: () => request("/api/manager-dashboard/notes"),
+  managerNotesSave: (payload) => request("/api/manager-dashboard/notes", { method: "PUT", body: JSON.stringify(payload) }),
   kpiMetabaseCheck: () => request("/api/kpi/metabase-check"),
   kpiWeekly: () => request("/api/kpi/weekly"),
   kpiInvalidPod: (q = {}) => request(`/api/kpi/invalid-pod?${qs(q)}`),

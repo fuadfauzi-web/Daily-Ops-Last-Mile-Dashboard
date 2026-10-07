@@ -34,6 +34,7 @@ from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
 import management_view
+import manager_dashboard
 import attendance
 import attendance_corrections
 import staff_attendance
@@ -779,6 +780,7 @@ app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Lab
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
 app.include_router(station_profile.router)  # Station Profile tab: one station's IDs, address, people, boxes, postcodes (station_profile.py)
 app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence + tenancy dates, rent per station (premises.py)
+app.include_router(manager_dashboard.router)  # Manager Dashboard: Station Capacity + Driver Strength of the manager's region, private workspace (manager_dashboard.py)
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
 app.include_router(vehicles.router)  # Fleet Admin -> Vehicles: the Master Vehicle Inventory per plate (vehicles.py)

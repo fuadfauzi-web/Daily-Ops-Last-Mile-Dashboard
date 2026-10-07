@@ -21,6 +21,20 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "New: Manager Dashboard (HOD and Fleet Manager)",
+    feature: "managerDashboard",
+    minRank: 2,
+    type: "new",
+    area: "Dashboard",
+    points: [
+      "A new Manager Dashboard page in the Dashboard (Last Mile) group, built from the South Management sheet. Only HOD and Fleet Manager see it; a Fleet Manager sees their own region, an HOD every region.",
+      "Station Capacity: plan headcount and plan volume per station (typed in the page, no more sheet), staff posted, average fresh / routed per day, success rate, productivity and today's attendance.",
+      "Driver Strength: drivers and riders required (typed in), drivers by type HD / HR / ID / IR, fill and how many to hire, active in the last 2 / 4 weeks, resignations, attendance against strength.",
+      "My Workspace: your own links with due dates and a notes page -- private to you.",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "Superadmin -> Role Access: control what each role can open and change",
     type: "new",
     area: "System",

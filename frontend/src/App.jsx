@@ -18,6 +18,7 @@ import { FEATURES } from "./lib/features";
 import { positionLabel } from "./lib/roles";
 import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
+import ManagerDashboardTab from "./ManagerDashboardTab";
 import StaffDirectoryTab from "./StaffDirectoryTab";
 import FleetAdminTab from "./FleetAdminTab";
 import AttendanceTab from "./AttendanceTab";
@@ -238,6 +239,8 @@ export default function App() {
   // own role checks (see SettingsPanel.jsx's SETTINGS_TABS).
   const access = me.access || {}; // Superadmin -> Role Access: this role's overrides, module -> { level: "none" | "view", scope_type, scope_values }
   const canSeeManagementView = FEATURES.managementView && (me.role === "manager" || me.role === "admin");
+  // Manager Dashboard (2026-10-08): HOD and Fleet Manager only (the Superadmin too); a Manager sees their own region.
+  const canSeeManagerDash = FEATURES.managerDashboard && (me.role === "manager" || me.role === "admin");
   // The Fleet Admin team's own tab (2026-10-02, staging): keeps the staff list and org chart. Admin and managers can open it too.
   const canSeeStaff = true; // the Staff list and org chart are for everyone signed in (2026-10-03); only the Fleet Admin role edits
   // Fleet Admin (2026-10-02, staging): the lists the Fleet Admin team keeps (premises first). HQ staff and above can read; only the Fleet Admin team edits.
@@ -247,6 +250,7 @@ export default function App() {
     // Launch Timeline: a station without a launch date (or more than a day before it) has no Attendance. Until the first notification count arrives only Managers / Superadmin see it.
     ...(FEATURES.attendance && (notifCounts ? notifCounts.attendance_visible !== false : me.role === "admin" || me.role === "manager") ? ["attendance"] : []),
     ...(canSeeManagementView ? ["management"] : []),
+    ...(canSeeManagerDash ? ["managerDash"] : []),
     ...(canSeeStaff ? ["staff"] : []),
     ...(canSeeFleetAdmin ? ["fleetadmin"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
@@ -257,7 +261,7 @@ export default function App() {
   ].filter((t) => access[t]?.level !== "none"); // a page the Superadmin switched off for this role is not in the menu
   const tab = navTabs.includes(tabRaw) ? tabRaw : "dashboard";
   const navLabel = (t) =>
-    t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
+    t === "managerDash" ? <span className="inline-flex items-center gap-1.5">Manager Dashboard<BetaTag /></span> : t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : t === "attendance" ? "Attendance" : "Management View"}
         <BetaTag />
@@ -525,6 +529,7 @@ export default function App() {
         )}
         {tab === "attendance" && FEATURES.attendance && <AttendanceTab key={`attendance-${viewKey}`} me={me} />}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
+        {tab === "managerDash" && canSeeManagerDash && <ManagerDashboardTab key={`managerDash-${viewKey}`} me={me} />}
         {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
         {tab === "fleetadmin" && canSeeFleetAdmin && <FleetAdminTab key={`fleetadmin-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}

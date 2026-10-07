@@ -390,6 +390,28 @@ const SECTIONS = [
     ),
   },
   {
+    id: "managerDash",
+    title: "Manager Dashboard",
+    show: ({ rank }) => F.managerDashboard && rank >= 2,
+    body: () => (
+      <div className="space-y-2 text-sm text-slate-700">
+        <p>
+          The <strong>Manager Dashboard</strong> tab (<em>Beta</em>; in the <strong>Dashboard (Last Mile)</strong> group of the menu; HOD and Fleet Manager only) is the Fleet Manager&apos;s own page, built from the
+          &quot;South Management&quot; sheet. A <strong>Fleet Manager</strong> sees the stations of the region posted on their account (the Fleet Admin team sets it); an <strong>HOD</strong> and the Superadmin see every region and can
+          pick one.
+        </p>
+        <Bullets
+          items={[
+            <><strong>Station Capacity</strong>: per station, the <em>Plan headcount</em> and <em>Plan vol / day</em> you type in (the yellow cells -- saved when you leave the cell), the people posted there (Staff &amp; Org Chart, plus approved TBA seats), what it really handled over the last 7 finished days (average fresh and routed per day, success rate, productivity), how that compares with the plan (amber above 85%, red above 100%), and today&apos;s attendance.</>,
+            <><strong>Driver Strength</strong>: the <em>Drivers</em> and <em>Riders required</em> you type in, how many drivers each station has by type (HD / HR hybrid, ID / IR independent -- part-time included; Bike = HR + IR, Car / van = HD + ID), the <em>Fill</em> against what is required and how many are <em>To hire</em>, how many were active in the last 2 and 4 weeks (a route with parcels delivered), how many resigned in the last week / 2 weeks / month, and today&apos;s attendance against the drivers on the books.</>,
+            <><strong>My Workspace</strong>: your own links with a category and a due date (for example payroll or OT submissions -- &quot;Every 20th&quot;) and a notes page. Only you can see them.</>,
+            <>The driver counts come from Metabase files the app pulls by itself every morning (Superadmin &rarr; Documents lists them: &quot;Manager Dashboard -- drivers per hub and type&quot; and the two &quot;active drivers&quot; files). Until they are loaded the driver columns show a dash. Every table has Export CSV.</>,
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
     id: "management",
     title: "Management View",
     show: ({ rank }) => F.managementView && rank >= 2,

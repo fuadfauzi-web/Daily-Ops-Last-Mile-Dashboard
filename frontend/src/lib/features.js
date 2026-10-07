@@ -14,6 +14,7 @@ export const FEATURES = {
   kpiDashboard: true, // "KPI" page (Beta -- preview only, not to be used until the green light): weekly results, OPEX result, RCA for Hybrid / Invalid POD / COD RTS
   dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; every role, limited to its own scope
   managementView: true, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
+  managerDashboard: true, // "Manager Dashboard" tab (Beta, HOD + Fleet Manager only): Station Capacity + Driver Strength of their region (plan figures typed in), and a private workspace (links, due dates, notes)
   processingTime: true, // "Processing Time" tab (Beta, staging-only for now): the past 7 days of hour-of-day timelines per station
   dailyKpi: true, // "Daily KPI" tab (Beta -- numbers not 100% accurate yet, says so in-app): today's FIFO D0 / Prior / Completion D0, how many parcels left to attempt or deliver
   attendance: true, // "Attendance" page (Beta, staging-only for now): PTWH clock in / out, month sheet and payable first; Staff and Hybrid attendance come later

@@ -35,6 +35,7 @@ export const SIDE_ITEMS = [
   { id: "rec:damage", dash: true, dashKey: "recovery", recGroup: "damage", group: "Recovery", label: "Damage", beta: true, recLists: true, code: "DM" },
   { id: "rec:nolabel", dash: true, dashKey: "recovery", recGroup: "nolabel", group: "Recovery", label: "No Label from Hub", beta: true, recLists: true, code: "NL" },
   { id: "management", group: "Dashboard", label: "Management View", beta: true, code: "MV" },
+  { id: "managerDash", group: "Dashboard", label: "Manager Dashboard", beta: true, code: "MD" },
   { id: "dod", dash: true, group: "Dashboard", label: "DoD", beta: true, code: "DD" },
   { id: "kpi", group: "Dashboard", label: "KPI", beta: true, code: "KP" },
   { id: "processingTime", dash: true, group: "Dashboard", label: "Processing Time", beta: true, code: "PT" },

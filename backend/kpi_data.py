@@ -180,6 +180,22 @@ DATASETS: dict[str, dict] = {
         "sheet": None, "required": ["desthubname", "primarydrivername", "actualarrivaldatetime", "totalorders"],
         "keep": ["desthubname", "primarydrivername", "actualarrivaldatetime", "totalorders", "vehiclenumber"],
     },
+    # Manager Dashboard (2026-10-08): Driver Strength per station. Pulled from Metabase by the app (metabase_pull.py); all three live in the Last Mile collection.
+    "mgr_drivers": {
+        "kpi": "manager_dashboard", "label": "Manager Dashboard -- drivers per hub and type", "link": "https://metabase.ninjavan.co/question/127638",
+        "hint": "Metabase question 127638 (Mgr Dashboard: Drivers per hub x type) -- Download results as .csv: how many HD / HR / ID / IR drivers each hub has (empty End Date = still employed) and who resigned in the last 35 days",
+        "sheet": None, "required": ["hubname", "drivertype", "drivers"],
+    },
+    "mgr_active_2w": {
+        "kpi": "manager_dashboard", "label": "Manager Dashboard -- active drivers, past 2 weeks", "link": "https://metabase.ninjavan.co/question/127639",
+        "hint": "Metabase question 127639 (Mgr Dashboard: Active drivers per hub, past 2 weeks) -- Download results as .csv",
+        "sheet": None, "required": ["driversenrichedhubname", "activedrivers"], "needs_name": "2 weeks",  # same columns as the 4 weeks file -- the file name tells them apart
+    },
+    "mgr_active_4w": {
+        "kpi": "manager_dashboard", "label": "Manager Dashboard -- active drivers, past 4 weeks", "link": "https://metabase.ninjavan.co/question/127640",
+        "hint": "Metabase question 127640 (Mgr Dashboard: Active drivers per hub, past 4 weeks) -- Download results as .csv",
+        "sheet": None, "required": ["driversenrichedhubname", "activedrivers"], "needs_name": "4 weeks",
+    },
     "opex_result": {
         "kpi": "opex", "label": "OPEX dashboard result", "link": "https://last-mile-dashboard.ninjavan.apps.substrait.build/",
         "hint": "the OPEX Last Mile Performance dashboard: pick the region / area and the dates, press Download CSV, then upload that file (any other table is shown as it is)",
