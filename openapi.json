@@ -13835,6 +13835,17 @@
             ],
             "title": "Fetched At"
           },
+          "redash_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redash At"
+          },
           "url": {
             "anyOf": [
               {
@@ -14491,6 +14502,11 @@
             "type": "boolean",
             "title": "Can Refresh",
             "default": false
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "title": "Interval Seconds",
+            "default": 0
           }
         },
         "type": "object",
