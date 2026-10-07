@@ -764,6 +764,76 @@
         ]
       }
     },
+    "/api/attendance/staff/flags": {
+      "get": {
+        "summary": "Staff (Station Head / Fleet Assistant) who didn't clock in or out as scheduled in the last three days: not clocked in 30 min after the shift start, late, no clock-out an hour after the shift ended, short day (<8 h); worked out live from the Schedule, the station's shift hours and the clock records.",
+        "description": "Staff who didn't clock in / out as scheduled today and in the last two days (not clocked in 30 min after the shift starts, late, no clock-out, short day).",
+        "operationId": "list_flags_api_attendance_staff_flags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/flags/action": {
+      "post": {
+        "summary": "Region Head / RFS / HOD / Manager marks a staff flag as handled with a note.",
+        "description": "A Region Head / RFS / HOD / Manager marks a flag as handled, with what was done (called, on MC, fixed the time ...).",
+        "operationId": "act_on_flag_api_attendance_staff_flags_action_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/ptwh/workers": {
       "get": {
         "summary": "Attendance -> PTWH (staging): the PTWH roster for the stations in the caller's scope (IC masked except for managers / admins), the stations they may use, and whether they may edit.",
@@ -2462,7 +2532,7 @@
     },
     "/api/attendance/schedule/shift-times": {
       "put": {
-        "summary": "Write down (or clear) a station's own hours for its AM, Middle or PM shift; Station Heads, Region Heads, Managers and the Superadmin for stations in scope.",
+        "summary": "Write down (or clear) a station's own hours, and optional break window, for its AM, Middle or PM shift; Station Heads, Region Heads, Managers and the Superadmin for stations in scope.",
         "description": "Write down (or clear) this station's own hours for its AM, Middle or PM shift. Same people who can edit the schedule.",
         "operationId": "set_shift_time_api_attendance_schedule_shift_times_put",
         "requestBody": {
@@ -2576,6 +2646,176 @@
         },
         "tags": [
           "Attendance"
+        ]
+      }
+    },
+    "/api/departments": {
+      "get": {
+        "summary": "Get Departments",
+        "operationId": "get_departments_api_departments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DepartmentOut"
+                  },
+                  "title": "Response Get Departments Api Departments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/admin/departments": {
+      "post": {
+        "summary": "Add Department",
+        "operationId": "add_department_api_admin_departments_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/departments/{old_name}": {
+      "put": {
+        "summary": "Edit Department",
+        "operationId": "edit_department_api_admin_departments__old_name__put",
+        "parameters": [
+          {
+            "name": "old_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Old Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/departments/{name}": {
+      "delete": {
+        "summary": "Delete Department",
+        "operationId": "delete_department_api_admin_departments__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -10413,6 +10653,53 @@
         ],
         "title": "DecisionIn"
       },
+      "DepartmentIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DepartmentIn"
+      },
+      "DepartmentOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "users": {
+            "type": "integer",
+            "title": "Users",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "roles"
+        ],
+        "title": "DepartmentOut"
+      },
       "DisableIn": {
         "properties": {
           "disabled": {
@@ -10663,17 +10950,6 @@
             ],
             "title": "Vehicle Type"
           },
-          "vehicle_plate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vehicle Plate"
-          },
           "joined_date": {
             "anyOf": [
               {
@@ -10760,17 +11036,6 @@
               }
             ],
             "title": "Vehicle Type"
-          },
-          "vehicle_plate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vehicle Plate"
           },
           "joined_date": {
             "anyOf": [
@@ -11040,6 +11305,34 @@
           "reason"
         ],
         "title": "FixIn"
+      },
+      "FlagAction": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "date",
+          "kind",
+          "note"
+        ],
+        "title": "FlagAction"
       },
       "FlagIn": {
         "properties": {
@@ -12698,6 +12991,11 @@
             "title": "Ptwh Review",
             "default": 0
           },
+          "staff_flags": {
+            "type": "integer",
+            "title": "Staff Flags",
+            "default": 0
+          },
           "documents_stale": {
             "type": "integer",
             "title": "Documents Stale",
@@ -12742,6 +13040,17 @@
           "ok"
         ],
         "title": "Ok"
+      },
+      "OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
       },
       "OkResult": {
         "properties": {
@@ -15703,6 +16012,28 @@
               }
             ],
             "title": "End"
+          },
+          "break_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Break Start"
+          },
+          "break_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Break End"
           }
         },
         "type": "object",
@@ -18222,6 +18553,17 @@
               }
             ],
             "title": "Display Name"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
           }
         },
         "type": "object",
@@ -18278,6 +18620,17 @@
               }
             ],
             "title": "Last Seen At"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
           }
         },
         "type": "object",
