@@ -216,11 +216,6 @@ export const api = {
   // KPI Dashboard -> Hybrid Productivity (Metabase): view "weekly" | "monthly"; refresh re-runs the questions (admin / manager only)
   kpiHybrid: (view, refresh = false) => request(`/api/kpi/hybrid?view=${view}${refresh ? "&refresh=true" : ""}`),
   kpiUploads: () => request("/api/kpi/uploads"),
-  metabaseFeeds: (refresh = false) => request(`/api/admin/metabase/feeds${refresh ? "?refresh=true" : ""}`),
-  metabaseSaveFeed: (dataset, payload) => request(`/api/admin/metabase/feeds/${dataset}`, { method: "PUT", body: JSON.stringify(payload) }),
-  metabasePull: (dataset) => request(`/api/admin/metabase/feeds/${dataset}/pull`, { method: "POST" }),
-  metabasePullAll: () => request("/api/admin/metabase/pull-all", { method: "POST" }),
-  metabaseCheck: () => request("/api/admin/metabase/check"),
   kpiUpload: async (dataset, file) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -295,13 +290,13 @@ export const api = {
   staffDay: (date) => request(`/api/attendance/staff/day?date=${encodeURIComponent(date)}`),
   staffMonth: (month) => request(`/api/attendance/staff/month?month=${encodeURIComponent(month)}`),
   staffFix: (payload) => request("/api/attendance/staff/fix", { method: "POST", body: JSON.stringify(payload) }),
+  staffFlags: () => request("/api/attendance/staff/flags"),
+  staffFlagAction: (payload) => request("/api/attendance/staff/flags/action", { method: "POST", body: JSON.stringify(payload) }),
   ptwhRehire: (id, station) => request(`/api/attendance/ptwh/workers/${id}/rehire`, { method: "POST", body: JSON.stringify({ station }) }),
   ptwhQr: (station, workerId) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}/qr`, { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
   // The month in the HR sheet's layout (text, not JSON) -- csv to download, tsv to copy into the sheet.
   ptwhExport: async ({ month, region, zone, station, fmt, header }) => {
     const qsx = new URLSearchParams({ ...(month ? { month } : {}), ...(region ? { region } : {}), ...(zone ? { zone } : {}), ...(station ? { station } : {}), fmt, header: header ? "true" : "false" });
-  staffFlags: () => request("/api/attendance/staff/flags"),
-  staffFlagAction: (payload) => request("/api/attendance/staff/flags/action", { method: "POST", body: JSON.stringify(payload) }),
     const res = await fetch(`/api/attendance/ptwh/export?${qsx}`, { headers: viewAsHeaders() });
     if (!res.ok) {
       let detail = res.statusText;
