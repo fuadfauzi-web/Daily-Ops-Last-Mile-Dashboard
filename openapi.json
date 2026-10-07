@@ -286,7 +286,7 @@
         ]
       },
       "post": {
-        "summary": "Add a Hybrid driver (name, driver ID, phone, vehicle, joined / end date) to a station the caller may key for.",
+        "summary": "Manager / Superadmin only: add a Hybrid driver by hand (the list normally comes from Metabase every morning).",
         "operationId": "add_driver_api_attendance_hybrid_drivers_post",
         "requestBody": {
           "required": true,
@@ -323,9 +323,39 @@
         ]
       }
     },
+    "/api/attendance/hybrid/drivers/refresh": {
+      "post": {
+        "summary": "Manager / Superadmin: pull the Metabase question Active Driver Details now and sync the Hybrid drivers (it also runs every morning at 06:30).",
+        "description": "Pull the Active Driver Details question from Metabase now (it also runs every morning at 06:30).",
+        "operationId": "refresh_drivers_api_attendance_hybrid_drivers_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/hybrid/drivers/{driver_id}": {
       "patch": {
-        "summary": "Edit or switch off a Hybrid driver; a name change follows onto the Schedule and an end date in the past switches them off.",
+        "summary": "Manager / Superadmin only: edit or switch off a Hybrid driver; a name change follows onto the Schedule and an end date in the past switches them off.",
         "description": "Edit a driver's details. Only the fields sent change (\"\" clears one). A name change follows the driver onto the Schedule. Ending or switching a driver off keeps their history.",
         "operationId": "edit_driver_api_attendance_hybrid_drivers__driver_id__patch",
         "parameters": [
@@ -2646,6 +2676,76 @@
         },
         "tags": [
           "Attendance"
+        ]
+      }
+    },
+    "/api/admin/role-access": {
+      "get": {
+        "summary": "Get Role Access",
+        "operationId": "get_role_access_api_admin_role_access_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAccessOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "put": {
+        "summary": "Save Role Access",
+        "operationId": "save_role_access_api_admin_role_access_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/role_access__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -12994,6 +13094,12 @@
               }
             ],
             "title": "Position"
+          },
+          "access": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Access",
+            "default": {}
           }
         },
         "type": "object",
@@ -13272,6 +13378,29 @@
           "is_high_value"
         ],
         "title": "MissingDetailsTnRow"
+      },
+      "ModuleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "group"
+        ],
+        "title": "ModuleOut"
       },
       "NewCase": {
         "properties": {
@@ -15647,6 +15776,61 @@
         ],
         "title": "RestockStationRow"
       },
+      "RoleAccessOut": {
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleOut"
+            },
+            "type": "array",
+            "title": "Modules"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleOut"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleOut"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "modules",
+          "roles",
+          "rules"
+        ],
+        "title": "RoleAccessOut"
+      },
+      "RoleOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "tier"
+        ],
+        "title": "RoleOut"
+      },
       "RoutedDriverRow": {
         "properties": {
           "driver_name": {
@@ -16419,6 +16603,90 @@
           "total_tn"
         ],
         "title": "RpuStationRow"
+      },
+      "RuleIn": {
+        "properties": {
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "scope_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Type"
+          },
+          "scope_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "module",
+          "level"
+        ],
+        "title": "RuleIn"
+      },
+      "RuleOut": {
+        "properties": {
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "scope_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Type"
+          },
+          "scope_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "module",
+          "level"
+        ],
+        "title": "RuleOut"
       },
       "SeatIn": {
         "properties": {
@@ -20089,6 +20357,17 @@
             "type": "string",
             "title": "Detail",
             "default": ""
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
+      },
+      "role_access__OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
           }
         },
         "type": "object",
