@@ -295,6 +295,8 @@ export const api = {
   // The month in the HR sheet's layout (text, not JSON) -- csv to download, tsv to copy into the sheet.
   ptwhExport: async ({ month, region, zone, station, fmt, header }) => {
     const qsx = new URLSearchParams({ ...(month ? { month } : {}), ...(region ? { region } : {}), ...(zone ? { zone } : {}), ...(station ? { station } : {}), fmt, header: header ? "true" : "false" });
+  staffFlags: () => request("/api/attendance/staff/flags"),
+  staffFlagAction: (payload) => request("/api/attendance/staff/flags/action", { method: "POST", body: JSON.stringify(payload) }),
     const res = await fetch(`/api/attendance/ptwh/export?${qsx}`, { headers: viewAsHeaders() });
     if (!res.ok) {
       let detail = res.statusText;

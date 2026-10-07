@@ -10,14 +10,37 @@ import { btnCls, Field, inputCls, localDay } from "./ui";
 // Staff = the people posted at the station in the Staff & Org Chart. PTWH = the station's active (approved) PTWH. Hybrid = the drivers keyed in by station staff in Attendance -> Hybrid -> Drivers (manual for now).
 
 const GROUPS = [
-  { key: "ptwh", label: "PTWH" },
   { key: "staff", label: "Staff" },
   { key: "hybrid", label: "Hybrid" },
+  { key: "ptwh", label: "PTWH" },
 ];
 const SHIFT_CLS = {
   AM: "bg-indigo-50 text-indigo-800", HAM: "bg-sky-50 text-sky-800", HMD: "bg-sky-50 text-sky-800", HPM: "bg-sky-50 text-sky-800", MD: "bg-teal-50 text-teal-800", HD: "bg-sky-50 text-sky-800", PM: "bg-violet-50 text-violet-800",
   WK: "bg-emerald-50 text-emerald-800", OFF: "bg-slate-100 text-slate-500", AL: "bg-amber-50 text-amber-800",
 };
+const isTime = (v) => /^\d\d:\d\d$/.test(v || "");
+
+// A Hybrid driver has no shift: the day is Working (with the time they clock in, if you know it), Off or Leave. The clock-out comes from their route data once that is built.
+function HybridCell({ v, canEdit, onChange }) {
+  const working = v === "WK" || isTime(v);
+  if (!canEdit) {
+    return working ? (
+      <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${SHIFT_CLS.WK}`}>{isTime(v) ? `In ${v}` : "Working"}</span>
+    ) : v ? <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${SHIFT_CLS[v]}`}>{v === "OFF" ? "Off" : "Leave"}</span> : <span className="text-slate-300">—</span>;
+  }
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <select value={working ? "WK" : v} onChange={(e) => onChange(e.target.value)} className={`w-[84px] rounded-md border border-transparent px-1 py-1 text-xs font-semibold hover:border-slate-300 ${v ? SHIFT_CLS[working ? "WK" : v] : "text-slate-300"}`}>
+        <option value="">—</option>
+        <option value="WK">Working</option>
+        <option value="OFF">Off</option>
+        <option value="AL">Leave</option>
+      </select>
+      {working && <input type="time" aria-label="Clock-in time" value={isTime(v) ? v : ""} onChange={(e) => onChange(e.target.value || "WK")} className="w-[84px] rounded-md border border-slate-200 px-1 py-0.5 text-[11px] tabular-nums" />}
+    </div>
+  );
+}
+
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return localDay(d); };
 
 // Each station writes down its own AM / Middle / PM hours (an AM starts at 5am in one station and 8am in the next). They show here, on the Staff clock and in the PTWH app.
@@ -27,16 +50,16 @@ function ShiftTimes({ data, reload, setError }) {
   const [draft, setDraft] = useState({});
   useEffect(() => { setDraft({}); }, [data.station, data.shift_times]);
   const val = (code, k) => draft[code]?.[k] ?? data.shift_times?.[code]?.[k] ?? "";
-  const set = (code, k, v) => setDraft((d) => ({ ...d, [code]: { start: val(code, "start"), end: val(code, "end"), ...d[code], [k]: v } }));
+  const set = (code, k, v) => setDraft((d) => ({ ...d, [code]: { start: val(code, "start"), end: val(code, "end"), break_start: val(code, "break_start"), break_end: val(code, "break_end"), ...d[code], [k]: v } }));
   const save = async (code) => {
     try {
-      await api.scheduleShiftTime({ station: data.station, shift: code, start: val(code, "start") || null, end: val(code, "end") || null });
+      await api.scheduleShiftTime({ station: data.station, shift: code, start: val(code, "start") || null, end: val(code, "end") || null, break_start: val(code, "break_start") || null, break_end: val(code, "break_end") || null });
       reload();
     } catch (e) {
       setError(e.message);
     }
   };
-  const dirty = (code) => draft[code] && (val(code, "start") !== (data.shift_times?.[code]?.start || "") || val(code, "end") !== (data.shift_times?.[code]?.end || ""));
+  const dirty = (code) => draft[code] && ["start", "end", "break_start", "break_end"].some((k) => val(code, k) !== (data.shift_times?.[code]?.[k] || ""));
   return (
     <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
       <div className="mb-2 text-sm font-semibold text-ink">Shift times at {data.station}</div>
@@ -49,16 +72,20 @@ function ShiftTimes({ data, reload, setError }) {
                 <input type="time" className={`${inputCls} w-[110px]`} value={val(s.code, "start")} onChange={(e) => set(s.code, "start", e.target.value)} aria-label={`${s.label} start`} />
                 <span className="text-slate-400">to</span>
                 <input type="time" className={`${inputCls} w-[110px]`} value={val(s.code, "end")} onChange={(e) => set(s.code, "end", e.target.value)} aria-label={`${s.label} end`} />
+                <span className="ml-2 text-slate-400">break</span>
+                <input type="time" className={`${inputCls} w-[110px]`} value={val(s.code, "break_start")} onChange={(e) => set(s.code, "break_start", e.target.value)} aria-label={`${s.label} break start`} />
+                <span className="text-slate-400">to</span>
+                <input type="time" className={`${inputCls} w-[110px]`} value={val(s.code, "break_end")} onChange={(e) => set(s.code, "break_end", e.target.value)} aria-label={`${s.label} break end`} />
                 {dirty(s.code) && <button onClick={() => save(s.code)} className={`${btnCls} bg-brand py-1 text-white`}>Save</button>}
               </>
             ) : (
-              <span className="tabular-nums text-slate-700">{data.shift_times?.[s.code] ? `${data.shift_times[s.code].start} – ${data.shift_times[s.code].end}` : <span className="text-slate-400">not set</span>}</span>
+              <span className="tabular-nums text-slate-700">{data.shift_times?.[s.code] ? `${data.shift_times[s.code].start} – ${data.shift_times[s.code].end}${data.shift_times[s.code].break_start ? ` · break ${data.shift_times[s.code].break_start} – ${data.shift_times[s.code].break_end}` : ""}` : <span className="text-slate-400">not set</span>}</span>
             )}
           </div>
         ))}
       </div>
       <p className="mt-2 text-xs text-slate-500">
-        {data.can_edit ? "Write this station's own hours once; leave both boxes empty to clear one. " : ""}They show next to the shift for this station's PTWH (in their app) and Staff.
+        {data.can_edit ? "Write this station's own hours and break once (the break has to sit inside the shift); leave the hours empty to clear a shift. " : ""}They show next to the shift for this station's PTWH (in their app) and Staff.
       </p>
     </div>
   );
@@ -67,7 +94,7 @@ function ShiftTimes({ data, reload, setError }) {
 export default function ScheduleView({ setError }) {
   const [station, setStation] = useState("");
   const [week, setWeek] = useState(localDay());
-  const [group, setGroup] = useState("ptwh");
+  const [group, setGroup] = useState("staff");
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -162,7 +189,9 @@ export default function ScheduleView({ setError }) {
                   const v = p.cells[d.date] || "";
                   return (
                     <td key={d.date} className="px-1 py-1 text-center">
-                      {data.can_edit ? (
+                      {group === "hybrid" ? (
+                        <HybridCell v={v} canEdit={data.can_edit} onChange={(x) => setCell(p, d.date, x)} />
+                      ) : data.can_edit ? (
                         <select value={v} onChange={(e) => setCell(p, d.date, e.target.value)} className={`w-[74px] rounded-md border border-transparent px-1 py-1 text-xs font-semibold hover:border-slate-300 ${v ? SHIFT_CLS[v] : "text-slate-300"}`}>
                           <option value="">—</option>
                           {shifts.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
@@ -181,7 +210,7 @@ export default function ScheduleView({ setError }) {
 
 
       <p className="text-xs text-slate-500">
-        {group === "hybrid" && " Hybrid drivers come from Attendance → Hybrid → Drivers (keyed in by station staff for now)."}
+        {group === "hybrid" && " Hybrid drivers have no shift: mark a day Working (add the time they clock in if you know it), Off or Leave. Their clock-out will come from their route data."}
         {group === "ptwh" && " Each PTWH sees their own next two weeks in the PTWH app (My month → My schedule)."}
         {group === "staff" && " Staff come from the Staff & Org Chart (Station Head and Fleet Assistants posted at this station)."}
       </p>

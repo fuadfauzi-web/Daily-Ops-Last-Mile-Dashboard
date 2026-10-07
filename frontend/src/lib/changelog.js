@@ -32,6 +32,17 @@ export const CHANGELOG = [
     ],
   },
   {
+    date: "2026-10-09",
+    title: "Attendance (Beta, staging only): staff clock-in flags, break times, Hybrid clean-up, frozen table headers",
+    feature: "attendance",
+    points: [
+      "Staff flags: a Station Head or Fleet Assistant scheduled for an AM / Middle / PM shift who hasn't clocked in 30 minutes after the station's shift start, or hasn't clocked out an hour after the shift ended, is flagged. Region Heads, RFS and Managers get an alert on the Attendance tab and mark each flag handled with a note (Staff -> Flags). Late clock-ins and staff days under 8 hours show too.",
+      "Staff Today and Month sheet now have Region / Zone / Station filters for Region Heads and Managers (a station only sees its own hub), and the table headers stay put while you scroll. The Hybrid tables got the same.",
+      "Schedule: the order is now Staff, Hybrid, PTWH. Each shift can have its own break time (Shift times box). A Hybrid driver has no shift -- mark the day Working (with the time they clock in), Off or Leave.",
+      "Hybrid: the plate number is gone from the driver form. A driver past their end date is switched off, kept for a month, then removed for good with their attendance.",
+    ],
+  },
+  {
     date: "2026-10-08",
     title: "Attendance (Beta, staging only): test-run entries are cleared at launch",
     feature: "attendance",
