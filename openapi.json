@@ -3176,7 +3176,7 @@
         ]
       },
       "post": {
-        "summary": "Add a person to the staff list (posting = access to start with). Fleet Admin team and Superadmin only.",
+        "summary": "Add a person to the staff list (posting = access to start with). Fleet Admin Team Lead and Superadmin only.",
         "operationId": "add_staff_api_staff_post",
         "requestBody": {
           "required": true,
@@ -3474,6 +3474,205 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-profile": {
+      "get": {
+        "summary": "Station Profile picker: every Last Mile station (code, zone, region), the station to open first for the caller and whether they can edit. Every signed-in role.",
+        "description": "The stations for the picker (region > zone > station) and the one to open first.",
+        "operationId": "station_list_api_station_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-profile/{station}": {
+      "get": {
+        "summary": "One station's profile like the Fleet Management sheet's Station tab: IDs, zone, opened-for, chat space, address, Region Head / Supervisor with their office, the station team, workmail groups, managers on duty, business hours, station totals per region and covered postcodes. Every signed-in role.",
+        "operationId": "station_profile_api_station_profile__station__get",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "patch": {
+        "summary": "Set a station's Warehouse ID. Fleet Admin Team Lead and Superadmin only.",
+        "description": "The Warehouse ID of a station (the sheet's control tab); \"\" clears it.",
+        "operationId": "set_warehouse_api_station_profile__station__patch",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-profile-info": {
+      "put": {
+        "summary": "Replace the workmail groups, managers on duty and business hours shown on every Station Profile. Fleet Admin Team Lead and Superadmin only.",
+        "description": "The three boxes that are the same for every station (only the ones sent are replaced).",
+        "operationId": "set_info_api_station_profile_info_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-postcodes/upload": {
+      "post": {
+        "summary": "Load the postcodes each station covers from a CSV / Excel file with Postcode and Station columns (stations in the file are replaced). Fleet Admin Team Lead and Superadmin only.",
+        "description": "The postcodes each station covers, from the [MY] Master Postcodes sheet (a regional tab, or all of them, saved as CSV / Excel). The file needs a 'Postcode'\nand a 'Station' column; every station found in the file gets its list replaced, stations not in the file are left as they were.",
+        "operationId": "upload_postcodes_api_station_postcodes_upload_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_postcodes_api_station_postcodes_upload_post"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9295,6 +9494,20 @@
         ],
         "title": "Body_upload_driver_details_api_admin_driver_details_upload_post"
       },
+      "Body_upload_postcodes_api_station_postcodes_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_postcodes_api_station_postcodes_upload_post"
+      },
       "BulkIn": {
         "properties": {
           "rows": {
@@ -11441,6 +11654,54 @@
         ],
         "title": "ImportIn"
       },
+      "InfoIn": {
+        "properties": {
+          "workmail_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workmail Groups"
+          },
+          "managers_on_duty": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managers On Duty"
+          },
+          "business_hours": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Hours"
+          }
+        },
+        "type": "object",
+        "title": "InfoIn"
+      },
       "InventoryIn": {
         "properties": {
           "items": {
@@ -12435,6 +12696,11 @@
           "ptwh_review": {
             "type": "integer",
             "title": "Ptwh Review",
+            "default": 0
+          },
+          "documents_stale": {
+            "type": "integer",
+            "title": "Documents Stale",
             "default": 0
           }
         },
@@ -17258,6 +17524,16 @@
             "type": "boolean",
             "title": "Can Upload",
             "default": false
+          },
+          "daily": {
+            "type": "boolean",
+            "title": "Daily",
+            "default": false
+          },
+          "updated_today": {
+            "type": "boolean",
+            "title": "Updated Today",
+            "default": false
           }
         },
         "type": "object",
@@ -18675,6 +18951,19 @@
           "plate"
         ],
         "title": "VehicleRow"
+      },
+      "WarehouseIn": {
+        "properties": {
+          "warehouse_id": {
+            "type": "string",
+            "title": "Warehouse Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "warehouse_id"
+        ],
+        "title": "WarehouseIn"
       },
       "WorkerIn": {
         "properties": {

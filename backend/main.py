@@ -46,6 +46,7 @@ import premises
 import vehicles
 import assets
 import asset_lists
+import station_profile
 import staff
 import recovery_cases
 import recovery_lost
@@ -751,6 +752,7 @@ app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works whe
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Label from Hub: rows keyed by Recovery or the hub, answered by the other side (recovery_cases.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
+app.include_router(station_profile.router)  # Station Profile tab: one station's IDs, address, people, boxes, postcodes (station_profile.py)
 app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence + tenancy dates, rent per station (premises.py)
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
