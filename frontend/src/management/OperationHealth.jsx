@@ -34,7 +34,7 @@ const LH_BUCKETS = [
   { key: "9", label: "9am", test: (h) => h === 9 },
   { key: "8", label: "8am and below", test: (h) => h < 9 },
 ];
-const aged3 = (r) => (r.age_4_6 || 0) + (r.age_7_plus || 0);
+const aged3 = (r) => (r.age_4_5 || 0) + (r.age_6_7 || 0) + (r.age_8_plus || 0);
 const agedD0 = (r) => (r.total || 0) - (r.age_0 || 0);
 const agedGt1 = (r) => (r.total || 0) - (r.age_0 || 0) - (r.age_1 || 0);
 

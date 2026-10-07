@@ -65,6 +65,8 @@ export const api = {
   dashboard: () => request("/api/dashboard"),
   stations: (opts) => request("/api/stations", opts),
   regions: (opts) => request("/api/regions", opts),
+  tnLastScan: (trackingNumbers) =>
+    request("/api/tn-last-scan", { method: "POST", body: JSON.stringify({ tracking_numbers: trackingNumbers }) }),
   drilldown: (stationCode, metric) =>
     request(`/api/drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`),
   shipmentDetails: () => request("/api/shipment-details"),

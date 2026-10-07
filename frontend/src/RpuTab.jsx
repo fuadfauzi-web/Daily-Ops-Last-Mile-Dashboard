@@ -32,8 +32,9 @@ const AGE_BUCKETS = [
   { key: "age_1", label: "Age 1" },
   { key: "age_2", label: "Age 2" },
   { key: "age_3", label: "Age 3" },
-  { key: "age_4_6", label: "Age 4-6" },
-  { key: "age_7_plus", label: "Age 7+" },
+  { key: "age_4_5", label: "Age 4-5" },
+  { key: "age_6_7", label: "Age 6-7" },
+  { key: "age_8_plus", label: "Age 8+" },
 ];
 
 // The summary table always breaks out every stage as its own column -- the

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { exportCsv } from "./lib/csv";
+import { formatLocalDateTime } from "./lib/format";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
@@ -27,8 +28,9 @@ const AGE_BUCKETS = [
   { key: "age_1", label: "Age 1" },
   { key: "age_2", label: "Age 2" },
   { key: "age_3", label: "Age 3" },
-  { key: "age_4_6", label: "Age 4-6" },
-  { key: "age_7_plus", label: "Age 7+" },
+  { key: "age_4_5", label: "Age 4-5" },
+  { key: "age_6_7", label: "Age 6-7" },
+  { key: "age_8_plus", label: "Age 8+" },
 ];
 
 // Mirrors backend/main.py's AGING_TN_ROWS_CAP -- for the truncation notice only.
@@ -42,13 +44,14 @@ const TN_COLUMNS = [
   { key: "tag", label: "Tag" },
   { key: "cod", label: "COD" },
   { key: "dest_hub", label: "Dest Hub" },
+  { key: "last_scan", label: "Last Scan", format: (v) => formatLocalDateTime(v) },
 ];
 
 const AGE_BUCKET_COLUMNS = AGE_BUCKETS.map((b) => ({ key: b.key, label: b.label, render: (r) => r[b.key].toLocaleString() }));
 
 // A TN row's raw `age` (days) sorted into the same buckets as the pivot table above (backend/aggregate.py's _age_bucket):
-// 0 or less -> Age 0, 1-3 each their own bucket, 4-6 together, 7+ together.
-const ageBucketKey = (age) => (age <= 0 ? "age_0" : age <= 3 ? `age_${age}` : age <= 6 ? "age_4_6" : "age_7_plus");
+// 0 or less -> Age 0, 1-3 each their own bucket, then 4-5, 6-7 and 8+ (2026-10-08 feedback).
+const ageBucketKey = (age) => (age <= 0 ? "age_0" : age <= 3 ? `age_${age}` : age <= 5 ? "age_4_5" : age <= 7 ? "age_6_7" : "age_8_plus");
 const AGE_FILTER_OPTIONS = AGE_BUCKETS.map((b) => ({ value: b.key, label: b.label }));
 
 function localRollup(rows, groupKey) {
@@ -186,7 +189,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
       label: c.label,
       sortable: true,
       className: () => "font-mono text-xs",
-      render: (r) => r[c.key] ?? "—",
+      render: (r) => (c.format ? (r[c.key] ? c.format(r[c.key]) : "—") : r[c.key] ?? "—"),
     })),
   ];
 

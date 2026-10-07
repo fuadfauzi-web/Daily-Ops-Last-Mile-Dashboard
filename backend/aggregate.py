@@ -1340,10 +1340,11 @@ def rollup_shipper_watch(station_rows: list[dict], group_key: str) -> list[dict]
 # at once (e.g. overall + delivery + zero_attempt + cod).
 # ---------------------------------------------------------------------------
 
-AGING_BUCKETS = ("0", "1", "2", "3", "4-6", "7+")
+# 2026-10-08 feedback: 0, 1, 2, 3, 4-5, 6-7, 8+ (was 0, 1, 2, 3, 4-6, 7+).
+AGING_BUCKETS = ("0", "1", "2", "3", "4-5", "6-7", "8+")
 # MySQL column names can't hold "-"/"+", so buckets map to SQL-safe keys; the
 # frontend gets the human labels back via AGING_BUCKET_LABELS.
-AGING_BUCKET_KEYS = {"0": "age_0", "1": "age_1", "2": "age_2", "3": "age_3", "4-6": "age_4_6", "7+": "age_7_plus"}
+AGING_BUCKET_KEYS = {"0": "age_0", "1": "age_1", "2": "age_2", "3": "age_3", "4-5": "age_4_5", "6-7": "age_6_7", "8+": "age_8_plus"}
 AGING_BUCKET_LABELS = {v: k for k, v in AGING_BUCKET_KEYS.items()}
 AGING_KEYS = ("total",) + tuple(AGING_BUCKET_KEYS.values())
 
@@ -1364,9 +1365,11 @@ def _age_bucket(age: int) -> str:
         return "0"
     if age <= 3:
         return str(age)
-    if age <= 6:
-        return "4-6"
-    return "7+"
+    if age <= 5:
+        return "4-5"
+    if age <= 7:
+        return "6-7"
+    return "8+"
 
 
 def _empty_aging_row(hub_code: str) -> dict:
@@ -1413,6 +1416,7 @@ def build_aging_details(health_v3_rows: list[dict]) -> tuple[dict[str, dict[str,
             "station_code": hub, "station_name": name, "zone": zone, "region": region,
             "tracking_number": r.get("tracking_id"), "status": status, "attempts": attempts,
             "age": age, "tag": r.get("tag"), "cod": cod, "dest_hub": dest_hub,
+            "last_scan": r.get("last_scan_datetime"),
         }
 
         for t in _aging_row_types(status, hub == dest_hub, attempts, age, cod):
@@ -1830,6 +1834,7 @@ def build_cold_chain(health_v3_rows: list[dict], cc_tns: set[str]) -> tuple[list
             "station_code": code, "station_name": name, "zone": zone, "region": region,
             "tracking_number": tn, "status": r.get("granular_status"), "attempts": r.get("delivery_attempts") or 0,
             "age": age, "tag": r.get("tag"), "cod": r.get("cod"), "dest_hub": r.get("dest_hub"),
+            "last_scan": r.get("last_scan_datetime"),
         })
     # A station with nothing in it is just noise (2026-09-25 feedback).
     return [s for s in stations.values() if s["total"] > 0], tn_rows, matched

@@ -477,6 +477,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
                 "age": r.get("days_since_current_hub_first_sweep"),
                 "attempts": r.get("delivery_attempts"),
                 "cod": r.get("cod"),
+                "last_scan": r.get("last_scan_datetime"),
             }
             for r in health_rows
             if r.get("tracking_id")
@@ -1142,6 +1143,27 @@ async def processing_time(user: CurrentUser = Depends(get_current_user)):
     return {"today": today.isoformat(), "days": sorted({s["day"] for s in scoped}), "rows": scoped}
 
 
+class TnLastScanRequest(BaseModel):
+    tracking_numbers: list[str]
+
+
+class TnLastScanResponse(BaseModel):
+    as_of: str | None
+    last_scan: dict[str, str | None]
+
+
+@app.post("/api/tn-last-scan", response_model=TnLastScanResponse)
+async def tn_last_scan(payload: TnLastScanRequest, user: CurrentUser = Depends(get_current_user)):
+    """Last scan date/time of each tracking number (query 78's last_scan_datetime), for the sortable column in every
+    tracking-number popup (2026-10-08 feedback). A TN that is no longer in the active-parcel data (completed, added to a
+    shipment ...) comes back null -- the popup shows a dash."""
+    tns = payload.tracking_numbers[:50000]
+    return {
+        "as_of": _health_v3_by_tn_captured_at,
+        "last_scan": {tn: (_health_v3_by_tn.get(tn) or {}).get("last_scan") for tn in tns},
+    }
+
+
 class DrilldownResponse(BaseModel):
     station_code: str
     station_name: str
@@ -1713,8 +1735,9 @@ class AgingFields(BaseModel):
     age_1: int
     age_2: int
     age_3: int
-    age_4_6: int
-    age_7_plus: int
+    age_4_5: int
+    age_6_7: int
+    age_8_plus: int
 
 
 class AgingStationRow(AgingFields):
@@ -1740,6 +1763,7 @@ class AgingRow(BaseModel):
     tag: str | None
     cod: str | None
     dest_hub: str | None
+    last_scan: str | None = None  # last scan date/time (query 78's last_scan_datetime), 2026-10-08 feedback
 
 
 AGING_TN_ROWS_CAP = 2000  # nationwide "Overall" can be tens of thousands of parcels;
