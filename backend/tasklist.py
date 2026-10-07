@@ -665,6 +665,7 @@ TASK_STATUSES = ("open", "in_progress", "done")
 class TaskIn(BaseModel):
     assignee_email: str | None = None
     assignee_emails: list[str] = []
+    cc_emails: list[str] = []  # told about the task and can see it, like an email CC (2026-10-08)
     title: str
     details: str | None = None
     due_date: str | None = None
@@ -683,6 +684,7 @@ class TaskUpdate(BaseModel):
     due_time: str | None = None  # '' clears the time
     clear_due: bool = False
     reopen: bool = False
+    cc_emails: list[str] | None = None  # owner: replace the CC list ([] clears it)
 
 
 class Task(BaseModel):
@@ -699,6 +701,8 @@ class Task(BaseModel):
     assigned_to_me: bool
     assignee_reply: str | None
     assignee_replied_at: str | None
+    cc: list[dict] = []  # [{email, name}] -- everyone CC'd on it
+    cc_me: bool = False  # I am CC'd (read-only for me)
     is_new: bool
     owner_unseen: bool
     overdue: bool
@@ -710,25 +714,57 @@ class Task(BaseModel):
 
 _TK = (
     "id, created_by, assignee_email, title, details, due_date, due_time, status, assignee_reply, assignee_replied_at, "
-    "assignee_ack_at, owner_unseen, created_at, done_at"
+    "assignee_ack_at, owner_unseen, created_at, done_at, cc_emails"
 )
+
+CC_MAX = 20
+
+
+def _cc_list(stored: str | None) -> list[str]:
+    return [e for e in (stored or "").split(",") if e]
+
+
+def _cc_store(emails: list[str]) -> str | None:
+    """',a@x,b@y,' -- comma on both ends, so one address can be matched with LIKE '%,me,%'."""
+    return ("," + ",".join(emails) + ",") if emails else None
+
+
+async def _resolve_cc(raw: list[str], owner: str, assignees: list[str]) -> list[str]:
+    """The CC list, checked: real dashboard users, lower-cased, no duplicates, not the person who assigned it and not an assignee (they already have it)."""
+    out: list[str] = []
+    skip = {owner.lower(), *[a.lower() for a in assignees]}
+    for email in raw:
+        if not (email or "").strip():
+            continue
+        stored, _ = await _resolve_user(email, "A CC")
+        key = stored.lower()
+        if key in skip or key in out:
+            continue
+        out.append(key)
+    if len(out) > CC_MAX:
+        raise HTTPException(status_code=422, detail=f"CC at most {CC_MAX} people")
+    return out
 
 
 @router.get("/api/tasks", response_model=list[Task])
 async def list_tasks(user: CurrentUser = Depends(get_current_user)):
     me = user.email.lower()
     rows = await db.fetch_all(
-        f"""SELECT {_TK} FROM assigned_tasks WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s
+        f"""SELECT {_TK} FROM assigned_tasks WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s OR LOWER(cc_emails) LIKE %s
             ORDER BY (status = 'done'), (due_date IS NULL), due_date, due_time, created_at DESC""",
-        (me, me),
+        (me, me, f"%,{me},%"),
     )
     acks = await _acks_for(me)
     names: dict[str, str | None] = {}
     out = []
     for (tid, created_by, assignee, title, details, due, due_time, status, reply, replied_at, ack_at, owner_unseen,
-         created_at, done_at) in rows:
+         created_at, done_at, cc_stored) in rows:
         if assignee not in names:
             names[assignee] = await _name_of(assignee)
+        cc = _cc_list(cc_stored)
+        for e in cc:
+            if e not in names:
+                names[e] = await _name_of(e)
         due_s, time_s, open_ = _day(due), _time_str(due_time), status != "done"
         overdue, due_today = _due_state(due_s, time_s, open_)
         mine = assignee.lower() == me
@@ -736,7 +772,8 @@ async def list_tasks(user: CurrentUser = Depends(get_current_user)):
             "id": tid, "title": title, "details": details, "due_date": due_s, "due_time": time_s, "status": status,
             "created_by": created_by, "created_by_me": created_by.lower() == me, "assignee_email": assignee,
             "assignee_name": names[assignee], "assigned_to_me": mine, "assignee_reply": reply,
-            "assignee_replied_at": _iso(replied_at), "is_new": mine and ack_at is None and open_,
+            "assignee_replied_at": _iso(replied_at), "cc": [{"email": e, "name": names[e]} for e in cc], "cc_me": me in cc,
+            "is_new": mine and ack_at is None and open_,
             "owner_unseen": bool(owner_unseen) and created_by.lower() == me,
             "overdue": overdue, "due_today": due_today,
             "reminder_active": _reminder_active(due_s, created_at, open_, acks.get(("task", tid))),
@@ -762,6 +799,7 @@ async def create_task(payload: TaskIn, user: CurrentUser = Depends(get_current_u
         if stored.lower() == user.email.lower():
             raise HTTPException(status_code=422, detail="Assign it to someone else -- your own tasks go in the To Do List")
         resolved.setdefault(stored.lower(), stored)
+    cc = await _resolve_cc(payload.cc_emails, user.email, list(resolved.values()))
     title = _text(payload.title, 255, "Title", required=True)
     details = _text(payload.details, 1000, "Details")
     due, due_time = _parse_day(payload.due_date), _parse_time(payload.due_time)
@@ -769,10 +807,10 @@ async def create_task(payload: TaskIn, user: CurrentUser = Depends(get_current_u
     now = _now()
     for stored in resolved.values():
         await db.execute(
-            """INSERT INTO assigned_tasks (created_by, assignee_email, title, details, due_date, due_time, status, owner_unseen,
+            """INSERT INTO assigned_tasks (created_by, assignee_email, cc_emails, title, details, due_date, due_time, status, owner_unseen,
                                            created_at, updated_at)
-               VALUES (%s, %s, %s, %s, %s, %s, 'open', 0, %s, %s)""",
-            (user.email, stored, title, details, due, due_time, now, now),
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', 0, %s, %s)""",
+            (user.email, stored, _cc_store(cc), title, details, due, due_time, now, now),
         )
     n = len(resolved)
     return {"ok": True, "detail": f"Assigned to {n} {'person' if n == 1 else 'people'}"}
@@ -826,6 +864,10 @@ async def update_task(tid: int, p: TaskUpdate, user: CurrentUser = Depends(get_c
                 _check_time_needs_date(_day(row[5]) if p.due_date is None else _parse_day(p.due_date), new_time)
                 sets.append("due_time = %s")
                 params.append(new_time)
+        if p.cc_emails is not None:
+            cc = await _resolve_cc(p.cc_emails, row[1], [row[2]])
+            sets.append("cc_emails = %s")
+            params.append(_cc_store(cc))
         if p.reopen:
             # Back to the assignee as a fresh, unacknowledged task.
             sets += ["status = 'open'", "done_at = NULL", "assignee_ack_at = NULL"]
@@ -902,8 +944,9 @@ async def notification_counts(user: CurrentUser) -> dict:
     )
 
     tk_rows = await db.fetch_all(
-        "SELECT id, due_date, created_at, (status <> 'done') FROM assigned_tasks WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s",
-        (me, me),
+        "SELECT id, due_date, created_at, (status <> 'done') FROM assigned_tasks "
+        "WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s OR LOWER(cc_emails) LIKE %s",
+        (me, me, f"%,{me},%"),
     )
     tk_ring, tk_soon = counts(tk_rows, "task")
     tk_other = await db.fetch_one(
@@ -934,4 +977,8 @@ async def on_user_deleted(email: str) -> None:
     )
     await db.execute("DELETE FROM todos WHERE LOWER(owner) = %s", (e,))
     await db.execute("DELETE FROM assigned_tasks WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s", (e, e))
+    await db.execute(
+        "UPDATE assigned_tasks SET cc_emails = NULLIF(REPLACE(LOWER(cc_emails), %s, ','), ',') WHERE LOWER(cc_emails) LIKE %s",
+        (f",{e},", f"%,{e},%"),
+    )
     await db.execute("DELETE FROM due_reminder_acks WHERE LOWER(user_email) = %s", (e,))

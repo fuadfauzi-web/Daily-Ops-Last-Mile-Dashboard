@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { resolveThreshold, classify, SEVERITY_MARK } from "./lib/thresholds";
-import { EXTRA_METRICS, NO_DRILLDOWN_METRICS, BOARD_COLUMNS, findBoardColumn as findColumn } from "./lib/actionMetrics";
+import { EXTRA_METRICS, NO_DRILLDOWN_METRICS, SHIPPER_DRILL_METRICS, BOARD_COLUMNS, BOARD_GROUPS, findBoardColumn as findColumn } from "./lib/actionMetrics";
 import { BOARD_NOTES, BOARD_SCOPE, targetText } from "./lib/boardNotes";
 import { METRIC_NOTES } from "./lib/metricNotes";
 import HeaderNote from "./components/HeaderNote";
 import { exportCsv } from "./lib/csv";
+import { copyTableImage } from "./lib/tableImage";
 import DataTable from "./components/DataTable";
 import MultiSelect from "./components/MultiSelect";
 import MetricPicker from "./components/MetricPicker";
@@ -17,7 +18,8 @@ import TnModal from "./components/TnModal";
 // the same role-scoped, already-filtered station list Dashboard already
 // has, so a station clerk automatically sees only their station and a
 // region head only their region, same as everywhere else in the app.
-const DEFAULT_METRICS = ["zero_attempt_total", "unsweep_parcel", "missing_hub"];
+// With nothing saved, the board opens with every scored metric (2026-10-08 feedback: not just 3); the order follows the picker groups.
+const GROUP_ORDER = BOARD_GROUPS.flatMap((g) => g.keys);
 const LEVELS = [
   { key: "region", label: "Region" },
   { key: "zone", label: "Zone" },
@@ -142,14 +144,14 @@ function CopyTnsButton({ tnsByMetric, breaches }) {
 
 export default function ActionBoard({ stations, yesterdayStations, thresholdRows, me, onFilterTo }) {
   const storageKey = `action-board-metrics-${me.email}`;
-  const [selectedMetrics, setSelectedMetrics] = useState(() => {
+  const [savedMetrics, setSavedMetrics] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
       if (Array.isArray(saved) && saved.length) return saved;
     } catch {
       /* private browsing / storage blocked / bad JSON -- use the default */
     }
-    return DEFAULT_METRICS;
+    return null; // nothing saved: every scored metric (see defaultMetrics below)
   });
   const [level, setLevel] = useState("station");
   const [breachesOnly, setBreachesOnly] = useState(true);
@@ -173,6 +175,10 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   });
   const [namingView, setNamingView] = useState(false);
   const [viewName, setViewName] = useState("");
+  const [renamingIdx, setRenamingIdx] = useState(null); // index in `views` of the saved view being renamed
+  const [renameText, setRenameText] = useState("");
+  const [dragView, setDragView] = useState(null); // index in `views` of the saved view being dragged to a new position
+  const [imageNote, setImageNote] = useState("");
   const persistViews = (next) => {
     setViews(next);
     try {
@@ -231,6 +237,11 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         fresh_unscan: shipmentByStation.get(s.station_code)?.fresh_unscan || 0,
         shipper_sla_warning: shipperByStation.get(s.station_code)?.shipper_sla_warning || 0,
         shipper_sla_breach: shipperByStation.get(s.station_code)?.shipper_sla_breach || 0,
+        ...Object.fromEntries(
+          [...SHIPPER_DRILL_METRICS]
+            .filter((k) => !["zalora_zero_attempt", "zalora_ovfd", "shipper_sla_warning", "shipper_sla_breach"].includes(k))
+            .map((k) => [k, shipperByStation.get(s.station_code)?.[k] || 0])
+        ),
       })),
     [stations, oldRouteByStation, shipperByStation, routedByStation, shipmentByStation]
   );
@@ -240,8 +251,17 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
     [thresholdRows]
   );
 
+  const defaultMetrics = useMemo(() => {
+    const rank = (k) => {
+      const i = GROUP_ORDER.indexOf(k);
+      return i < 0 ? 999 : i;
+    };
+    return scoredMetrics.map((c) => c.key).sort((a, b) => rank(a) - rank(b));
+  }, [scoredMetrics]);
+  const selectedMetrics = savedMetrics ?? defaultMetrics;
+
   const setMetrics = (next) => {
-    setSelectedMetrics(next);
+    setSavedMetrics(next);
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
@@ -259,10 +279,26 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
 
   const sameMetrics = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
   const allViews = [
-    { id: "default", name: "Default", metrics: DEFAULT_METRICS },
+    { id: "default", name: "Default", metrics: defaultMetrics },
     ...views.map((v, i) => ({ id: `v${i}`, name: v.name, metrics: v.metrics, saved: true, index: i })),
   ];
   const activeView = allViews.find((v) => sameMetrics(v.metrics.filter((m) => scoredMetrics.some((c) => c.key === m)), activeMetrics));
+  const moveView = (from, to) => {
+    if (from < 0 || to < 0 || from >= views.length || to >= views.length || from === to) return;
+    const next = [...views];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    persistViews(next);
+  };
+  const renameView = () => {
+    const name = renameText.trim().slice(0, 24);
+    if (name && renamingIdx != null) {
+      const clash = views.some((v, i) => i !== renamingIdx && v.name.toLowerCase() === name.toLowerCase());
+      if (!clash) persistViews(views.map((v, i) => (i === renamingIdx ? { ...v, name } : v)));
+    }
+    setRenamingIdx(null);
+    setRenameText("");
+  };
   const saveCurrentView = () => {
     const name = viewName.trim().slice(0, 24);
     if (!name) return;
@@ -387,7 +423,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         .map((row) => row.tracking_number);
       return Promise.resolve({ tracking_numbers: list, as_of: oldRouteData?.captured_at });
     }
-    if (["zalora_zero_attempt", "zalora_ovfd", "shipper_sla_warning", "shipper_sla_breach"].includes(metricKey)) {
+    if (SHIPPER_DRILL_METRICS.has(metricKey)) {
       return api.shipperDrilldown(stationCode, metricKey);
     }
     if (metricKey === "fresh_unscan") {
@@ -433,6 +469,40 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
   };
 
   const identityLabel = level === "region" ? "Region" : level === "zone" ? "Zone" : "Station";
+
+  // "Copy image": the heatmap exactly as arranged (columns, order, only the rows showing), as a PNG on the clipboard to paste into a chat.
+  const copyBoardImage = async () => {
+    const columns = [
+      { label: identityLabel, align: "left" },
+      ...(level !== "station" ? [{ label: "Breach", align: "left" }] : []),
+      ...activeMetrics.map((m) => {
+        const t = resolveThreshold(thresholdRows, m, null);
+        const scored = t.scored && !(t.warning_at === 0 && t.critical_at === 0);
+        return { label: findColumn(m).label, sub: scored ? `${t.direction === "lower-is-worse" ? "≥" : "≤"} ${t.warning_at}${t.percent_of ? "%" : ""}` : "" };
+      }),
+    ];
+    const rows = heatmapRows.map((r) => ({
+      cells: [
+        { text: r.name },
+        ...(level !== "station" ? [{ text: r.breachingStations.join(", ") || "—" }] : []),
+        ...activeMetrics.map((m) => {
+          const t = resolveThreshold(thresholdRows, m, r.region);
+          const sev = classify(t, r[m], r);
+          const pct = t.percent_of && r[t.percent_of] ? ` (${((r[m] / r[t.percent_of]) * 100).toFixed(1)}%)` : "";
+          return { text: `${SEVERITY_MARK[sev] || ""}${(r[m] || 0).toLocaleString()}${pct}`, sev };
+        }),
+      ],
+    }));
+    const stamp = new Date().toLocaleString("en-GB", { timeZone: "Asia/Kuala_Lumpur", dateStyle: "medium", timeStyle: "short" });
+    const copied = await copyTableImage({
+      title: `Action Board by ${level} — ${stamp}`,
+      columns,
+      rows,
+      filename: `daily-ops-action-board-${level}`,
+    });
+    setImageNote(copied ? "Image copied -- paste it into your chat" : "Image saved as a download (this browser can't copy images)");
+    setTimeout(() => setImageNote(""), 4000);
+  };
 
   const heatmapColumns = [
     { key: "name", label: identityLabel, sticky: true, align: "left" },
@@ -510,31 +580,104 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         {FEATURES.boardViews && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-display text-xs font-semibold text-slate-700">My views:</span>
-            {allViews.map((v) => (
-              <span key={v.id} className="inline-flex items-center">
-                <button
-                  type="button"
-                  onClick={() => setMetrics([...v.metrics])}
-                  aria-pressed={activeView?.id === v.id}
-                  className={`min-h-[44px] border px-3 font-display text-xs font-semibold ${v.saved ? "rounded-l-lg" : "rounded-lg"} ${
-                    activeView?.id === v.id ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-ink hover:bg-slate-50"
-                  }`}
+            {allViews.map((v) =>
+              v.saved && renamingIdx === v.index ? (
+                <input
+                  key={v.id}
+                  autoFocus
+                  value={renameText}
+                  maxLength={24}
+                  onChange={(e) => setRenameText(e.target.value)}
+                  onBlur={renameView}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") renameView();
+                    if (e.key === "Escape") {
+                      setRenamingIdx(null);
+                      setRenameText("");
+                    }
+                  }}
+                  aria-label={`Rename view ${v.name}`}
+                  className="min-h-[44px] w-44 rounded-lg border border-ink px-3 text-sm outline-none"
+                />
+              ) : (
+                <span
+                  key={v.id}
+                  draggable={!!v.saved && views.length > 1}
+                  onDragStart={() => v.saved && setDragView(v.index)}
+                  onDragOver={(e) => {
+                    if (v.saved && dragView != null) e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (v.saved && dragView != null) moveView(dragView, v.index);
+                    setDragView(null);
+                  }}
+                  onDragEnd={() => setDragView(null)}
+                  title={v.saved && views.length > 1 ? "Drag to change the order of your views" : undefined}
+                  className={`inline-flex items-center ${v.saved && dragView === v.index ? "opacity-40" : ""}`}
                 >
-                  {v.name}
-                </button>
-                {v.saved && (
                   <button
                     type="button"
-                    onClick={() => persistViews(views.filter((_, i) => i !== v.index))}
-                    aria-label={`Delete view ${v.name}`}
-                    title="Delete this view"
-                    className="min-h-[44px] rounded-r-lg border border-l-0 border-slate-300 bg-white px-2 text-slate-400 hover:text-status-critical"
+                    onClick={() => setMetrics([...v.metrics])}
+                    aria-pressed={activeView?.id === v.id}
+                    className={`min-h-[44px] border px-3 font-display text-xs font-semibold ${v.saved ? "rounded-l-lg" : "rounded-lg"} ${
+                      activeView?.id === v.id ? "border-ink bg-ink text-white" : "border-slate-300 bg-white text-ink hover:bg-slate-50"
+                    }`}
                   >
-                    ×
+                    {v.name}
                   </button>
-                )}
-              </span>
-            ))}
+                  {v.saved && (
+                    <>
+                      {views.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => moveView(v.index, v.index - 1)}
+                          disabled={v.index === 0}
+                          aria-label={`Move view ${v.name} left`}
+                          title="Move left"
+                          className="min-h-[44px] border border-l-0 border-slate-300 bg-white px-1.5 text-slate-400 hover:text-ink disabled:opacity-25"
+                        >
+                          ‹
+                        </button>
+                      )}
+                      {views.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => moveView(v.index, v.index + 1)}
+                          disabled={v.index === views.length - 1}
+                          aria-label={`Move view ${v.name} right`}
+                          title="Move right"
+                          className="min-h-[44px] border border-l-0 border-slate-300 bg-white px-1.5 text-slate-400 hover:text-ink disabled:opacity-25"
+                        >
+                          ›
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingIdx(v.index);
+                          setRenameText(v.name);
+                        }}
+                        aria-label={`Rename view ${v.name}`}
+                        title="Rename this view"
+                        className="min-h-[44px] border border-l-0 border-slate-300 bg-white px-2 text-xs text-slate-400 hover:text-ink"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => persistViews(views.filter((_, i) => i !== v.index))}
+                        aria-label={`Delete view ${v.name}`}
+                        title="Delete this view"
+                        className="min-h-[44px] rounded-r-lg border border-l-0 border-slate-300 bg-white px-2 text-slate-400 hover:text-status-critical"
+                      >
+                        ×
+                      </button>
+                    </>
+                  )}
+                </span>
+              )
+            )}
             {namingView ? (
               <input
                 autoFocus
@@ -678,7 +821,17 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
         <>
           <DataTable
             title={`${identityLabel} × metric heatmap`}
+            fit
             titleExtra={
+              <div className="flex items-center gap-2">
+                {imageNote && <span className="text-[11px] text-slate-500">{imageNote}</span>}
+                <button
+                  onClick={copyBoardImage}
+                  disabled={heatmapRows.length === 0}
+                  className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  Copy image
+                </button>
               <button
                 onClick={() =>
                   exportCsv(
@@ -695,6 +848,7 @@ export default function ActionBoard({ stations, yesterdayStations, thresholdRows
               >
                 Export CSV
               </button>
+              </div>
             }
             maxHeight="60vh"
             columns={heatmapColumns}

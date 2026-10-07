@@ -37,6 +37,8 @@ export function resolveThreshold(rows, metricKey, region) {
     warning_at: seed.warning ?? 0,
     critical_at: seed.critical ?? 0,
     percent_of: seed.percentOf || null,
+    min_count_warning: null,
+    min_count_critical: null,
   };
 }
 
@@ -59,8 +61,11 @@ export function classify(threshold, value, row) {
     effective = denom ? (value / denom) * 100 : 0;
   }
   const worse = threshold.direction === "lower-is-worse" ? (a, b) => a <= b : (a, b) => a >= b;
-  if (worse(effective, threshold.critical_at)) return "critical";
-  if (worse(effective, threshold.warning_at)) return "warning";
+  // A target can also need a minimum number of parcels (Age >3: 5% of In Hub AND at least 15 parcels = warning, AND at least 30 = critical), so a
+  // small station with one old parcel is not flagged. No minimum set = the percentage / count alone decides, as before.
+  const enough = (min) => min == null || value >= min;
+  if (worse(effective, threshold.critical_at) && enough(threshold.min_count_critical)) return "critical";
+  if (worse(effective, threshold.warning_at) && enough(threshold.min_count_warning)) return "warning";
   return "good";
 }
 

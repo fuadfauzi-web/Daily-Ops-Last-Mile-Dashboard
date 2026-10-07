@@ -129,8 +129,19 @@ const SECTIONS = [
         <p>
           The "what do I act on today" tab. Pick the metrics you care about from the searchable picker at the top -- it
           draws from Station Health plus a few extras (Old Route's stuck count, Zalora NXD 0 Attempt/OVFD, Fresh Unscan and
-          Route Monitoring's Current OVFD), plus <strong>Shipper SLA Warning / Breach</strong>: Amway, Watson, Orca and Cold Chain
-          parcels at the station or still on their way to it -- older than 0 days is a warning, older than 1 day is a breach.
+          Route Monitoring's Current OVFD), plus <strong>Shipper SLA Warning / Breach</strong>: Amway, Watson, Orca, Cold Chain, Soda Express
+          and Zalora NXD parcels at the station or still on their way to it -- older than 0 days is a warning, older than 1 day is a breach -- also
+          split by status into <strong>OVFD</strong> (On Vehicle for Delivery) and <strong>AASH</strong> (Arrived at Sorting Hub). The board opens with <strong>every metric</strong>;
+          remove the ones you don't need. More metrics: Aging Delivery &gt;3 days, Aging ATS &gt;7 days, RPU Aging &gt;5 days, and the cases a station
+          still has to answer (Active Missing, Lost Declared this week).
+        </p>
+        <p>
+          <strong>Age &gt;3</strong> is a warning at 5% of In Hub and at least 15 parcels, critical at 5% and at least 30 parcels (change it in Settings → Station Metric
+          Targets, where a target can now also need a minimum number of parcels).
+        </p>
+        <p>
+          <strong>Copy image</strong> puts the table exactly as you arranged it on the clipboard as a picture, ready to paste into a chat; the table is only as wide as its
+          columns. <strong>My views</strong>: save a set of metrics, rename it with ✎, and change the order of your views with ‹ › or by dragging.
         </p>
         <p>
           Every heatmap column has a small <strong>i</strong>: click it for what the metric counts, <strong>which parcels or shippers it covers</strong> (for
@@ -619,7 +630,7 @@ const SECTIONS = [
             </>,
             <>
               A tracking number with <strong>no status</strong> ("Not found") is never assigned to a PIC -- it isn't urgent. It stays on
-              your own list, and is removed automatically after 1 day if it still has no status (the list shows how many hours are left). Tick several rows and use <strong>Remove selected</strong> to clear them in one go.
+              your own list, and is removed automatically after 3 hours if it still has no status (the list shows how many hours are left). <strong>Clear all not found</strong> removes every Not found tracking number of yours in one click, and ticking several rows with <strong>Remove selected</strong> clears any rows in one go.
             </>,
             <>
               <strong>More than one PIC</strong>: on a row that already has a PIC, use <strong>Assign another PIC</strong> to give the same tracking number to additional people -- the
@@ -678,6 +689,8 @@ const SECTIONS = [
               <strong>Task Assigned</strong>: give a task to one or more other dashboard users (for yourself, use the To Do List) -- each person
               gets their own copy. They mark it Open / In progress / Done and can reply; you can edit, reopen or remove each one (removing deletes it
               for that person too). The bell rings for a task you haven't picked a status for and for a reply or status change on one you assigned.
+              Add people in <strong>CC</strong> (like an email) to let other related PICs see the task: they find it under <strong>CC'd to me</strong> and
+              can't change it, and you can edit the CC list later.
             </>,
           ]}
         />

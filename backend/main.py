@@ -73,11 +73,12 @@ from aggregate import (
     build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
     RDO_BREACH_KEYS, flatten_rdo_station,
     build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
-    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla,
+    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla, apply_rpu_aging,
     merge_routed_into_station_metrics, build_daily_kpi, rollup_daily_kpi, DAILY_KPI_KEYS,
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
+import board_counts  # Action Board's 'to answer' counts (reads the Recovery tables)
 from auth import POSITIONS, CurrentUser, data_scope, get_current_user, parse_scope_values, tier_of
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
@@ -359,6 +360,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             restock_rows,
             {r['tracking_id']: r.get('delivery_attempts') for r in health_rows if r.get('tracking_id') in restock_piece_tns},
         )
+        zalora_nxd_tns = {r.get("tracking_id") for r in zalora_rows if r.get("tracking_id")}  # Action Board's Shipper SLA counts these too
         del zalora_rows, restock_rows
 
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
@@ -378,7 +380,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         except Exception:  # noqa: BLE001
             log.exception("Cold Chain refresh failed -- keeping the previous data")
         try:
-            apply_shipper_sla(shipper_by_station, shipper_tn_details, health_rows, cc_tns_for_sla)
+            apply_shipper_sla(shipper_by_station, shipper_tn_details, health_rows, cc_tns_for_sla, zalora_nxd_tns)
         except Exception:  # noqa: BLE001 - Action Board's Shipper SLA is isolated from the rest of the refresh
             log.exception("Shipper SLA failed -- its counts stay at 0 this cycle")
 
@@ -389,6 +391,15 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         rpu_raw_rows = await _fetch(QUERY_RPU)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
         del rpu_raw_rows
+        # Action Board's RPU aging and the two "to answer" counts ride on the Shipper Watch snapshot; each is isolated so it can't fail the refresh.
+        try:
+            apply_rpu_aging(shipper_by_station, shipper_tn_details, rpu_rows_flat)
+        except Exception:  # noqa: BLE001
+            log.exception("RPU aging failed -- its count stays at 0 this cycle")
+        try:
+            await board_counts.apply_answer_counts(shipper_by_station, shipper_tn_details, missing_details_tn_rows)
+        except Exception:  # noqa: BLE001
+            log.exception("Active Missing / Lost Declared 'to answer' counts failed -- they stay at 0 this cycle")
 
         rdo_raw_rows = await _fetch(QUERY_RDO_PUSH_OFF)
         rdo_by_station, rdo_tn_rows, rdo_document_types = build_rdo_compliance(rdo_raw_rows)
@@ -619,7 +630,7 @@ _SINGLE_SNAPSHOT_TABLES = (
 async def _sync_urgent_no_status(now: datetime) -> None:
     """After a refresh: start the 3-day clock on Urgent TN items whose tracking number has no
     status, stop it for ones that have one again, and delete the ones that stayed status-less
-    for 1 day (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
+    for URGENT_NO_STATUS_TTL (3 hours) (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
     rows = await db.fetch_all("SELECT id, tracking_number, no_status_since FROM urgent_tn_items")
     cutoff = now - URGENT_NO_STATUS_TTL
     for item_id, tn, since in rows:
@@ -1575,6 +1586,15 @@ class ShipperFields(BaseModel):
     restock_breach: int
     shipper_sla_warning: int = 0
     shipper_sla_breach: int = 0
+    shipper_sla_warning_ovfd: int = 0
+    shipper_sla_warning_aash: int = 0
+    shipper_sla_breach_ovfd: int = 0
+    shipper_sla_breach_aash: int = 0
+    aging_delivery_gt3: int = 0
+    aging_ats_gt7: int = 0
+    rpu_aging_gt5: int = 0
+    missing_to_answer: int = 0
+    lost_to_answer: int = 0
     cold_chain_zero_attempt: int = 0
     cold_chain_aging: int = 0
 
@@ -2913,7 +2933,7 @@ URGENT_STATUSES = ("in_progress", "closed")
 # completed / added to a shipment) isn't urgent -- nothing to chase. It is never assigned to a
 # PIC, and if it still has no status 1 day after we first noticed, it is removed automatically
 # (see _sync_urgent_no_status, run after every refresh) unless its owner removed it sooner.
-URGENT_NO_STATUS_TTL = timedelta(days=1)
+URGENT_NO_STATUS_TTL = timedelta(hours=3)  # was 1 day; 3 hours since 2026-10-08
 
 
 class UrgentItemCreate(BaseModel):
@@ -3217,7 +3237,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         detail += (
             f". {no_status} {'has' if no_status == 1 else 'have'} no status (not found)"
             + (f", so {'it was' if not_assigned == 1 else f'{not_assigned} were'} not assigned to the PIC" if not_assigned else "")
-            + " -- kept on your list and removed automatically after 1 day unless you remove it first"
+            + " -- kept on your list and removed automatically after 3 hours unless you remove it first"
         )
     return {"ok": True, "detail": detail}
 
@@ -3991,6 +4011,8 @@ _SLA_METRIC_KEYS = (
     # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).
     "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "fresh_unscan", "productivity_pct",
     "shipper_sla_warning", "shipper_sla_breach",
+    "shipper_sla_warning_ovfd", "shipper_sla_warning_aash", "shipper_sla_breach_ovfd", "shipper_sla_breach_aash",
+    "aging_delivery_gt3", "aging_ats_gt7", "rpu_aging_gt5", "missing_to_answer", "lost_to_answer",
 )
 _SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
 # Productivity is scored per driver position instead of per region -- these are
@@ -4007,6 +4029,8 @@ class ThresholdRow(BaseModel):
     warning_at: float
     critical_at: float
     percent_of: str | None = None  # score as % of this other metric_key on the same row, if set
+    min_count_warning: int | None = None  # a warning also needs at least this many parcels (Age >3: 5% AND 15 parcels)
+    min_count_critical: int | None = None  # ...and a critical at least this many
     changed_by: str | None = None
     changed_at: str | None = None
 
@@ -4018,14 +4042,14 @@ class ThresholdsIn(BaseModel):
 @app.get("/api/thresholds", response_model=list[ThresholdRow])
 async def get_thresholds(user: CurrentUser = Depends(get_current_user)):
     rows = await db.fetch_all(
-        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at "
-        "FROM sla_thresholds"
+        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at, "
+        "min_count_warning, min_count_critical FROM sla_thresholds"
     )
     return [
         {
             "metric_key": r[0], "scope": r[1], "scored": bool(r[2]), "direction": r[3],
             "warning_at": r[4], "critical_at": r[5], "percent_of": r[6], "changed_by": r[7],
-            "changed_at": str(r[8]) if r[8] else None,
+            "changed_at": str(r[8]) if r[8] else None, "min_count_warning": r[9], "min_count_critical": r[10],
         }
         for r in rows
     ]
@@ -4080,7 +4104,7 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
             )
         params.append((
             row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
-            row.percent_of, user.email, now,
+            row.percent_of, user.email, now, row.min_count_warning, row.min_count_critical,
         ))
     # ON DUPLICATE KEY UPDATE references VALUES(col) rather than its own %s
     # placeholders -- asyncmy's executemany bulk-rewrites a batch of INSERTs
@@ -4088,11 +4112,13 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
     # (...) tuple it repeats per row; extra %s in the trailing clause raised
     # "not all arguments converted during string formatting".
     await db.execute_many(
-        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at,
+             min_count_warning, min_count_critical)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON DUPLICATE KEY UPDATE scored=VALUES(scored), direction=VALUES(direction),
              warning_at=VALUES(warning_at), critical_at=VALUES(critical_at), percent_of=VALUES(percent_of),
-             changed_by=VALUES(changed_by), changed_at=VALUES(changed_at)""",
+             changed_by=VALUES(changed_by), changed_at=VALUES(changed_at),
+             min_count_warning=VALUES(min_count_warning), min_count_critical=VALUES(min_count_critical)""",
         params,
     )
     return {"ok": True}

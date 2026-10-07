@@ -148,6 +148,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const ackOwnerReminder = () => run(() => api.urgentTn.reminderAck());
   // No "are you sure?" pop-up (2026-09-25 feedback): Close / remove deletes it straight away.
   const closeOrRemove = (item) => run(() => api.urgentTn.remove(item.id), `Removed ${item.tracking_number}`);
+  // Not found = no status in the active data (already completed or added to a shipment): clear every one of mine in one click (2026-10-08 feedback).
+  const notFoundMine = (items || []).filter((i) => !i.found && i.created_by_me);
+  const clearNotFound = async () => {
+    const ids = notFoundMine.map((i) => i.id);
+    if (!ids.length) return;
+    const ok = await run(() => api.urgentTn.removeMany(ids), `Cleared ${ids.length} not found`);
+    if (ok) setSelected(new Set());
+  };
   const removeSelected = async () => {
     const ids = [...selected];
     if (!ids.length) return;
@@ -606,6 +614,16 @@ export default function UrgentTnTab({ me, refreshTick }) {
               className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600"
             >
               Default order
+            </button>
+          )}
+          {notFoundMine.length > 0 && (
+            <button
+              onClick={clearNotFound}
+              disabled={busy}
+              title="Removes every tracking number of yours that is Not found (already settled), from your list and its PIC's"
+              className="min-h-[44px] rounded-lg border border-status-critical px-4 py-1.5 font-display text-xs font-semibold text-status-critical hover:bg-status-critical/5 disabled:opacity-40"
+            >
+              Clear all not found ({notFoundMine.length})
             </button>
           )}
           {selected.size > 0 && (

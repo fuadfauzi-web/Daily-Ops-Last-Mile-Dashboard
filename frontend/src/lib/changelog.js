@@ -21,6 +21,31 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "Action Board: every metric by default, copy as an image, new metrics",
+    feature: "boardViews",
+    type: "improved",
+    points: [
+      "The Action Board now opens with every metric instead of three. Remove the ones you don't need, or pick them again with + Add metric.",
+      "Copy image (next to Export CSV) puts the table on the clipboard as a picture, exactly as you arranged it, to paste straight into a chat. The table is now only as wide as its columns.",
+      "My views can be renamed (✎) and put in your own order (‹ › or drag).",
+      "Shipper SLA Warning and Breach now also count Soda Express and Zalora NXD parcels, and are split by status: OVFD (On Vehicle for Delivery) and AASH (Arrived at Sorting Hub).",
+      "New metrics: Aging Delivery >3 days, Aging ATS >7 days, RPU Aging >5 days, Active Missing to Answer and Lost Declared to Answer (cases the station has not answered yet).",
+      "Age >3 is now a warning at 5% of In Hub with at least 15 parcels, and critical at 5% with at least 30 parcels. Settings -> Station Metric Targets has two new columns for the minimum number of parcels.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Task List: CC on assigned tasks, Clear all not found, 3-hour auto-clear",
+    feature: "taskList",
+    type: "improved",
+    points: [
+      "Task Assigned has a CC box like an email: the people you CC see the task under CC'd to me (view only). You can change the CC list when you edit the task.",
+      "Urgent TN has a Clear all not found button that removes every Not found tracking number of yours in one click.",
+      "A Not found tracking number is now removed automatically after 3 hours (it used to be 1 day).",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "Metabase files are pulled automatically",
     type: "new",
     area: "System",

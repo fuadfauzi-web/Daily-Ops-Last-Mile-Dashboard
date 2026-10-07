@@ -176,6 +176,8 @@ function SlaTargetsPanel({ regions, me }) {
         warning_at: Number(draft[c.key].warning_at) || 0,
         critical_at: Number(draft[c.key].critical_at) || 0,
         percent_of: draft[c.key].percent_of || null,
+        min_count_warning: draft[c.key].min_count_warning === "" || draft[c.key].min_count_warning == null ? null : Number(draft[c.key].min_count_warning),
+        min_count_critical: draft[c.key].min_count_critical === "" || draft[c.key].min_count_critical == null ? null : Number(draft[c.key].min_count_critical),
       }));
       await api.thresholds.save(payload);
       setSaved(true);
@@ -263,6 +265,8 @@ function SlaTargetsPanel({ regions, me }) {
                 <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Warning at</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Critical at</th>
                 <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Score as % of</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium" title="Optional: a warning / critical also needs at least this many parcels">Warning also needs ≥ parcels</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium" title="Optional: a warning / critical also needs at least this many parcels">Critical also needs ≥ parcels</th>
                 <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Last changed</th>
               </tr>
             </thead>
@@ -325,6 +329,19 @@ function SlaTargetsPanel({ regions, me }) {
                         ))}
                       </select>
                     </td>
+                    {["min_count_warning", "min_count_critical"].map((f) => (
+                      <td key={f} className="px-4 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="—"
+                          disabled={!d.scored || !mayEdit(scope)}
+                          className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
+                          value={d[f] ?? ""}
+                          onChange={(e) => updateField(c.key, f, e.target.value)}
+                        />
+                      </td>
+                    ))}
                     <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">
                       {d.changed_by ? `${formatTime(d.changed_at)} · ${d.changed_by}` : "—"}
                     </td>
