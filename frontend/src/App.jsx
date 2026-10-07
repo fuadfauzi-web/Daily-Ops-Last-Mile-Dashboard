@@ -20,6 +20,7 @@ import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
 import StaffDirectoryTab from "./StaffDirectoryTab";
 import FleetAdminTab from "./FleetAdminTab";
+import StationProfileTab from "./StationProfileTab";
 import AttendanceTab from "./AttendanceTab";
 
 export default function App() {
@@ -211,6 +212,7 @@ export default function App() {
     ...(FEATURES.attendance && (notifCounts ? notifCounts.attendance_visible !== false : me.role === "admin" || me.role === "manager") ? ["attendance"] : []),
     ...(canSeeManagementView ? ["management"] : []),
     ...(canSeeStaff ? ["staff"] : []),
+    ...(FEATURES.stationProfile ? ["stationprofile"] : []),
     ...(canSeeFleetAdmin ? ["fleetadmin"] : []),
     ...(FEATURES.kpiDashboard ? ["kpi"] : []),
     ...(me.role === "admin" || me.role === "manager" || me.role === "region" ? ["users"] : []), // the Users page (was a tab inside Settings)
@@ -219,7 +221,7 @@ export default function App() {
     ...(me.role === "admin" ? ["admin"] : []),
   ];
   const navLabel = (t) =>
-    t === "staff" ? "Staff & Org Chart" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
+    t === "staff" ? "Staff & Org Chart" : t === "stationprofile" ? "Station Profile" : t === "fleetadmin" ? <span className="inline-flex items-center gap-1.5">Fleet Admin<BetaTag /></span> : t === "admin" ? "Superadmin" : t === "kpi" || t === "management" || t === "attendance" ? (
       <span className="inline-flex items-center gap-1.5">
         {t === "kpi" ? "KPI" : t === "attendance" ? "Attendance" : "Management View"}
         <BetaTag />
@@ -541,6 +543,7 @@ export default function App() {
         {tab === "attendance" && FEATURES.attendance && <AttendanceTab key={`attendance-${viewKey}`} me={me} />}
         {tab === "management" && canSeeManagementView && <ManagementViewTab key={`management-${viewKey}`} me={me} />}
         {tab === "staff" && canSeeStaff && <StaffDirectoryTab key={`staff-${viewKey}`} me={me} />}
+        {tab === "stationprofile" && FEATURES.stationProfile && <StationProfileTab key={`stationprofile-${viewKey}`} />}
         {tab === "fleetadmin" && canSeeFleetAdmin && <FleetAdminTab key={`fleetadmin-${viewKey}`} me={me} />}
         {tab === "kpi" && FEATURES.kpiDashboard && <KpiDashboard key={`kpi-${viewKey}`} me={me} />}
         {tab === "users" && <SettingsPanel key={`users-${viewKey}`} me={me} mode="users" notifCounts={notifCounts} />}
