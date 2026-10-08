@@ -60,7 +60,10 @@ from kpi_targets import router as kpi_targets_router
 from kpi_pod import router as kpi_pod_router
 from kpi_rca import router as kpi_rca_router
 from tasklist import (
+    cc_list as tasklist_cc_list,
+    cc_store as tasklist_cc_store,
     next_owner_slot_label as tasklist_next_owner_slot,
+    resolve_cc as tasklist_resolve_cc,
     notification_counts as tasklist_counts,
     router as tasklist_router,
     urgent_owner_ack as tasklist_urgent_owner_ack,
@@ -1672,6 +1675,7 @@ class ShipperDrilldownResponse(BaseModel):
     metric: str
     tracking_numbers: list[str]
     as_of: str | None
+    statuses: dict[str, str] | None = None  # tracking number -> parcel status, for the four Shipper SLA split metrics
 
 
 @app.get("/api/shipper-drilldown", response_model=ShipperDrilldownResponse)
@@ -1688,9 +1692,13 @@ async def shipper_drilldown(station_code: str, metric: str, user: CurrentUser = 
     if not in_scope:
         raise HTTPException(status_code=403, detail="That station isn't in your scope")
     tracking_numbers = [t for t in _shipper_tn_cache.get(station_code, {}).get(metric, []) if t]
+    statuses = None
+    if metric.startswith("shipper_sla_"):
+        known = _shipper_tn_cache.get(station_code, {}).get("_status", {})
+        statuses = {t: known[t] for t in tracking_numbers if known.get(t)}
     return {
         "station_code": station_code, "station_name": name, "metric": metric,
-        "tracking_numbers": tracking_numbers, "as_of": _shipper_tn_cache_captured_at,
+        "tracking_numbers": tracking_numbers, "as_of": _shipper_tn_cache_captured_at, "statuses": statuses,
     }
 
 
@@ -2948,6 +2956,7 @@ class UrgentItemCreate(BaseModel):
     tracking_numbers: list[str]
     assignee_email: str | None = None
     note: str | None = None
+    cc_emails: list[str] = []  # told about it and can see it, like an email CC (2026-10-08)
 
 
 class UrgentItemUpdate(BaseModel):
@@ -2978,6 +2987,8 @@ class UrgentItem(BaseModel):
     owner_reply: str | None = None
     owner_replied_at: str | None = None
     no_status_hours_left: int | None = None
+    cc: list[dict] = []  # [{email, name}]
+    cc_me: bool = False  # I am CC'd (read-only for me)
     created_by_me: bool
     assigned_to_me: bool
     is_new: bool
@@ -3006,7 +3017,7 @@ def _iso(value) -> str | None:
 _URGENT_COLUMNS = (
     "id, tracking_number, created_by, assignee_email, note, status, created_at, updated_at, closed_at, closed_by, "
     "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen, no_status_since, "
-    "note_sent_at, owner_reply, owner_replied_at"
+    "note_sent_at, owner_reply, owner_replied_at, cc_emails"
 )
 
 
@@ -3019,11 +3030,11 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     me = user.email.lower()
     rows = await db.fetch_all(
         f"""SELECT {_URGENT_COLUMNS} FROM urgent_tn_items
-            WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s
+            WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s OR LOWER(cc_emails) LIKE %s
             ORDER BY (status = 'closed'), created_at DESC""",
-        (me, me),
+        (me, me, f"%,{me},%"),
     )
-    assignee_emails = {r[3] for r in rows if r[3]}
+    assignee_emails = {r[3] for r in rows if r[3]} | {e for r in rows for e in tasklist_cc_list(r[19])}
     names: dict[str, str | None] = {}
     for email in assignee_emails:
         u = await db.fetch_one("SELECT display_name FROM users WHERE LOWER(email) = %s", (email.lower(),))
@@ -3032,7 +3043,8 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     items = []
     for r in rows:
         (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by,
-         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since, note_sent_at, owner_reply, owner_replied_at) = r
+         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since, note_sent_at, owner_reply, owner_replied_at, cc_stored) = r
+        cc = tasklist_cc_list(cc_stored)
         found = _health_v3_by_tn.get(tn)
         created_by_me = created_by.lower() == me
         assigned_to_me = bool(assignee) and assignee.lower() == me
@@ -3045,6 +3057,7 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
             hours_left = max(0, int(-(-left.total_seconds() // 3600)))
         items.append({
             "no_status_hours_left": hours_left,
+            "cc": [{"email": e, "name": names.get(e)} for e in cc], "cc_me": me in cc,
             "id": item_id, "tracking_number": tn, "created_by": created_by, "assignee_email": assignee,
             "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
             "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
@@ -3198,6 +3211,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
     if note and len(note) > 500:
         raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
     assignee = await _resolve_assignee(payload.assignee_email)
+    cc_stored = tasklist_cc_store(await tasklist_resolve_cc(payload.cc_emails, user.email, [assignee] if assignee else []))
 
     if _health_v3_by_tn_captured_at is None:
         # Right after a restart nothing looks "found" yet -- don't judge (or refuse to assign) on that.
@@ -3230,11 +3244,11 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         await db.execute(
             """INSERT INTO urgent_tn_items
                (tracking_number, created_by, assignee_email, note, status, created_at, updated_at,
-                assignee_seen_at, assignee_ack_at, owner_unseen, no_status_since)
-               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0, %s)""",
+                assignee_seen_at, assignee_ack_at, owner_unseen, no_status_since, cc_emails)
+               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0, %s, %s)""",
             (
                 tn, user.email, tn_assignee, note, now, now,
-                now if self_or_none else None, now if self_or_none else None, None if has_status else now,
+                now if self_or_none else None, now if self_or_none else None, None if has_status else now, cc_stored,
             ),
         )
         added += 1

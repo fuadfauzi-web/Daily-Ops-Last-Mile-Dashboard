@@ -31,10 +31,11 @@ export default function TnModal({ state, onClose, fetcher }) {
 
   const download = () => {
     if (!tns?.tracking_numbers?.length) return;
+    const st = tns.statuses;
     exportCsv(
       `daily-ops-${state.stationCode}-${state.metricKey}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Tracking Number"],
-      tns.tracking_numbers.map((tn) => [tn])
+      st ? ["Tracking Number", "Status"] : ["Tracking Number"],
+      tns.tracking_numbers.map((tn) => (st ? [tn, st[tn] || ""] : [tn]))
     );
   };
 
@@ -49,7 +50,7 @@ export default function TnModal({ state, onClose, fetcher }) {
           asOf={tns?.as_of ? formatTime(tns.as_of) : null}
           loading={!tns && !error}
           error={error}
-          rows={list.map((tn) => ({ key: tn, primary: tn }))}
+          rows={list.map((tn) => ({ key: tn, primary: tn, secondary: tns?.statuses?.[tn] }))}
           onClose={onClose}
           onCopy={copy}
           onCsv={download}
@@ -101,7 +102,12 @@ export default function TnModal({ state, onClose, fetcher }) {
               <div className="max-h-[45vh] overflow-y-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700">
                 {tns.tracking_numbers.length === 0
                   ? "No tracking numbers."
-                  : tns.tracking_numbers.map((tn) => <div key={tn}>{tn}</div>)}
+                  : tns.tracking_numbers.map((tn) => (
+                      <div key={tn} className={tns.statuses ? "flex justify-between gap-3" : ""}>
+                        <span>{tn}</span>
+                        {tns.statuses && <span className="font-sans text-slate-500">{tns.statuses[tn] || ""}</span>}
+                      </div>
+                    ))}
               </div>
             </>
           )}

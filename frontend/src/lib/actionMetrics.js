@@ -16,9 +16,8 @@ export const EXTRA_METRICS = [
   { key: "routed_current_ovfd", label: "Route Monitoring OVFD" },
   { key: "fresh_unscan", label: "Fresh Unscan" },
   // Amway / Watson / Orca / Cold Chain parcels still at the station: older than 0 days = warning, older than 1 day = breach.
-  { key: "shipper_sla_warning", label: "Shipper SLA Warning" },
-  { key: "shipper_sla_breach", label: "Shipper SLA Breach" },
-  // The same two counts split by parcel status (2026-10-08): On Vehicle for Delivery / Arrived at Sorting Hub.
+  // Shipper SLA Warning / Breach, split by parcel status (2026-10-08; the old totals are gone from the board): OVFD = On Vehicle for
+  // Delivery + En-route to Sorting Hub, AASH = Arrived at Sorting Hub.
   { key: "shipper_sla_warning_ovfd", label: "Shipper SLA Warning OVFD" },
   { key: "shipper_sla_warning_aash", label: "Shipper SLA Warning AASH" },
   { key: "shipper_sla_breach_ovfd", label: "Shipper SLA Breach OVFD" },
@@ -59,7 +58,7 @@ export const BOARD_GROUPS = [
   {
     label: "Shipper",
     keys: [
-      "zalora_zero_attempt", "zalora_ovfd", "shipper_sla_warning", "shipper_sla_breach",
+      "zalora_zero_attempt", "zalora_ovfd",
       "shipper_sla_warning_ovfd", "shipper_sla_warning_aash", "shipper_sla_breach_ovfd", "shipper_sla_breach_aash",
     ],
   },

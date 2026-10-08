@@ -5,6 +5,7 @@ import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
 import SegmentedControl from "./components/SegmentedControl";
 import PicInput from "./components/PicInput";
+import MultiPicInput from "./components/MultiPicInput";
 
 // Parses a paste of tracking numbers separated by newlines, commas, semicolons
 // or whitespace -- however the user copies them out of a sheet or chat message.
@@ -60,6 +61,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [input, setInput] = useState("");
   const [assignee, setAssignee] = useState("");
   const [note, setNote] = useState("");
+  const [ccList, setCcList] = useState([]); // CC (2026-10-08): told about it and can see it, but don't act on it
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
@@ -136,11 +138,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
     const tns = parseTns(input);
     if (!tns.length) return;
     const ok = await run(() =>
-      api.urgentTn.create({ tracking_numbers: tns, assignee_email: assignee.trim() || null, note: note.trim() || null })
+      api.urgentTn.create({ tracking_numbers: tns, assignee_email: assignee.trim() || null, note: note.trim() || null, cc_emails: ccList })
     );
     if (ok) {
       setInput("");
       setNote("");
+      setCcList([]);
     }
   };
 
@@ -242,20 +245,23 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const counts = useMemo(() => {
     const list = items || [];
     return {
-      open: list.filter((i) => i.status === "in_progress").length,
+      open: list.filter((i) => i.status === "in_progress" && !i.cc_me).length,
       mine: list.filter((i) => i.assigned_to_me && !i.created_by_me).length,
-      closed: list.filter((i) => i.status === "closed").length,
+      closed: list.filter((i) => i.status === "closed" && !i.cc_me).length,
+      cc: list.filter((i) => i.cc_me).length,
     };
   }, [items]);
 
   const rows = useMemo(() => {
     const list = items || [];
     const base =
-      view === "closed"
-        ? list.filter((i) => i.status === "closed")
-        : view === "mine"
-          ? list.filter((i) => i.assigned_to_me && !i.created_by_me)
-          : list.filter((i) => i.status === "in_progress");
+      view === "cc"
+        ? list.filter((i) => i.cc_me)
+        : view === "closed"
+          ? list.filter((i) => i.status === "closed" && !i.cc_me)
+          : view === "mine"
+            ? list.filter((i) => i.assigned_to_me && !i.created_by_me)
+            : list.filter((i) => i.status === "in_progress" && !i.cc_me);
     if (sortKey == null) {
       // Default order: one tracking number's rows sit together (the original assignment first, then the extra PICs).
       const newest = new Map();
@@ -484,6 +490,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
     { key: "attempts", label: "Attempt", render: (r) => r.attempts ?? "—" },
     { key: "cod", label: "COD", render: (r) => r.cod ?? "—" },
     {
+      key: "cc",
+      label: "CC",
+      sortable: false,
+      align: "left",
+      render: (r) => (r.cc?.length ? <div className="max-w-[200px] whitespace-normal break-words text-left">{r.cc.map((c) => (c.email.toLowerCase() === me?.email?.toLowerCase() ? "You" : c.name || c.email)).join(", ")}</div> : "—"),
+      className: () => "text-xs text-slate-600",
+    },
+    {
       key: "created_by",
       label: "Added by",
       render: (r) => (r.created_by_me ? "You" : r.created_by),
@@ -588,6 +602,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
               onChange={(e) => setNote(e.target.value)}
             />
           </label>
+        </div>
+        <div className="text-xs text-slate-500">
+          CC (optional) — they are told about it and can see it, but don't act on it
+          <div className="mt-1">
+            <MultiPicInput value={ccList} onChange={setCcList} placeholder="Type a name, email or station…" />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button

@@ -1218,7 +1218,7 @@ def build_shipper_watch(
 
 # Action Board "Shipper SLA" (2026-09-26): Amway, Watson, Orca and Cold Chain parcels still with a station (2026-10-08: plus Soda Express and Zalora NXD;
 # Zitron and Ceva follow once they are on Shipper Radar). Each warning / breach count is also split by status: ..._ovfd (On Vehicle for Delivery) and
-# ..._aash (Arrived at Sorting Hub); a parcel in any other status (e.g. en-route) is only in the total. Older than
+# ..._aash (Arrived at Sorting Hub, with the parcels in any other status listed but not counted); En-route counts as OVFD. Older than
 # SHIPPER_SLA_WARN_DAYS days = warning, older than SHIPPER_SLA_BREACH_DAYS days = breach (each parcel counts once: a parcel
 # that is already a breach is not also counted as a warning). Age = days since the parcel's first sweep at its current hub
 # (query 78's days_since_current_hub_first_sweep, the same age the rest of the app uses). A parcel still on its way to the
@@ -1285,10 +1285,19 @@ def apply_shipper_sla(
             continue
         row[key] += 1
         tn_details[hub][key].append(tn)
-        split = "ovfd" if status == "On Vehicle for Delivery" else "aash" if status == "Arrived at Sorting Hub" else None
-        if split:
+        # The Action Board shows only the four split metrics (2026-10-08): OVFD = On Vehicle for Delivery + En-route to Sorting Hub;
+        # AASH = Arrived at Sorting Hub. A parcel in any other status is listed under AASH's tracking numbers but NOT counted in its total.
+        # tn_details[hub]["_status"] keeps each parcel's status so the tracking-number list can show a Status column.
+        counted = True
+        if status in ("On Vehicle for Delivery", "En-route to Sorting Hub"):
+            split = "ovfd"
+        else:
+            split = "aash"
+            counted = status == "Arrived at Sorting Hub"
+        if counted:
             row[f"{key}_{split}"] += 1
-            tn_details[hub][f"{key}_{split}"].append(tn)
+        tn_details[hub][f"{key}_{split}"].append(tn)
+        tn_details[hub].setdefault("_status", {})[tn] = status
 
 
 RPU_AGING_DAYS = 5

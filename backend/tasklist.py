@@ -319,6 +319,7 @@ class FollowUpIn(BaseModel):
     due_date: str | None = None
     due_time: str | None = None
     helper_email: str | None = None
+    cc_emails: list[str] = []  # told about it and can see it, like an email CC (2026-10-08)
 
 
 class FollowUpUpdate(BaseModel):
@@ -357,6 +358,8 @@ class FollowUp(BaseModel):
     helper_acknowledged: bool
     helper_reply: str | None
     helper_replied_at: str | None
+    cc: list[dict] = []  # [{email, name}]
+    cc_me: bool = False  # I am CC'd (read-only for me)
     owner_unseen: bool
     overdue: bool
     due_today: bool
@@ -367,7 +370,7 @@ class FollowUp(BaseModel):
 
 _FU = (
     "id, created_by, channel, subject, contact, link, note, due_date, due_time, status, helper_email, helper_ack_at, "
-    "helper_reply, helper_replied_at, owner_unseen, created_at, done_at"
+    "helper_reply, helper_replied_at, owner_unseen, created_at, done_at, cc_emails"
 )
 
 
@@ -375,17 +378,21 @@ _FU = (
 async def list_followups(user: CurrentUser = Depends(get_current_user)):
     me = user.email.lower()
     rows = await db.fetch_all(
-        f"""SELECT {_FU} FROM followups WHERE LOWER(created_by) = %s OR LOWER(helper_email) = %s
+        f"""SELECT {_FU} FROM followups WHERE LOWER(created_by) = %s OR LOWER(helper_email) = %s OR LOWER(cc_emails) LIKE %s
             ORDER BY (status = 'done'), (due_date IS NULL), due_date, due_time, created_at DESC""",
-        (me, me),
+        (me, me, f"%,{me},%"),
     )
     acks = await _acks_for(me)
     names: dict[str, str | None] = {}
     out = []
     for (fid, created_by, channel, subject, contact, link, note, due, due_time, status, helper, ack_at, reply,
-         replied_at, owner_unseen, created_at, done_at) in rows:
+         replied_at, owner_unseen, created_at, done_at, cc_stored) in rows:
         if helper and helper not in names:
             names[helper] = await _name_of(helper)
+        cc = _cc_list(cc_stored)
+        for e in cc:
+            if e not in names:
+                names[e] = await _name_of(e)
         due_s, time_s, is_open = _day(due), _time_str(due_time), status != "done"
         overdue, due_today = _due_state(due_s, time_s, is_open)
         out.append({
@@ -395,6 +402,7 @@ async def list_followups(user: CurrentUser = Depends(get_current_user)):
             "is_helper": bool(helper) and helper.lower() == me and created_by.lower() != me,
             "helper_email": helper, "helper_name": names.get(helper) if helper else None,
             "helper_acknowledged": ack_at is not None, "helper_reply": reply, "helper_replied_at": _iso(replied_at),
+            "cc": [{"email": e, "name": names[e]} for e in cc], "cc_me": me in cc,
             "owner_unseen": bool(owner_unseen) and created_by.lower() == me,
             "overdue": overdue, "due_today": due_today,
             "reminder_active": _reminder_active(due_s, created_at, is_open, acks.get(("followup", fid))),
@@ -416,14 +424,15 @@ async def create_followup(payload: FollowUpIn, user: CurrentUser = Depends(get_c
         helper, _ = await _resolve_user(payload.helper_email, "The PIC")
         if helper.lower() == user.email.lower():
             raise HTTPException(status_code=422, detail="Pick someone else as the PIC (it's already your follow-up)")
+    cc = await _resolve_cc(payload.cc_emails, user.email, [helper] if helper else [])
     now = _now()
     await db.execute(
         """INSERT INTO followups (created_by, channel, subject, contact, link, note, due_date, due_time, status, helper_email,
-                                  owner_unseen, created_at, updated_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, 0, %s, %s)""",
+                                  cc_emails, owner_unseen, created_at, updated_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, 0, %s, %s)""",
         (
             user.email, channel, subject, _text(payload.contact, 255, "Contact"), _text(payload.link, 500, "Link"),
-            _text(payload.note, 1000, "Note"), due, due_time, helper, now, now,
+            _text(payload.note, 1000, "Note"), due, due_time, helper, _cc_store(cc), now, now,
         ),
     )
     return {"ok": True}
@@ -746,6 +755,10 @@ async def _resolve_cc(raw: list[str], owner: str, assignees: list[str]) -> list[
     return out
 
 
+# Public names for main.py's Urgent TN (CC works the same on Urgent TN, Email / Gchat and Task Assigned).
+cc_list, cc_store, resolve_cc = _cc_list, _cc_store, _resolve_cc
+
+
 @router.get("/api/tasks", response_model=list[Task])
 async def list_tasks(user: CurrentUser = Depends(get_current_user)):
     me = user.email.lower()
@@ -926,8 +939,9 @@ async def notification_counts(user: CurrentUser) -> dict:
         return ringing, due_soon
 
     fu_rows = await db.fetch_all(
-        "SELECT id, due_date, created_at, (status <> 'done') FROM followups WHERE LOWER(created_by) = %s OR LOWER(helper_email) = %s",
-        (me, me),
+        "SELECT id, due_date, created_at, (status <> 'done') FROM followups "
+        "WHERE LOWER(created_by) = %s OR LOWER(helper_email) = %s OR LOWER(cc_emails) LIKE %s",
+        (me, me, f"%,{me},%"),
     )
     fu_ring, fu_soon = counts(fu_rows, "followup")
     fu_other = await db.fetch_one(
@@ -977,8 +991,9 @@ async def on_user_deleted(email: str) -> None:
     )
     await db.execute("DELETE FROM todos WHERE LOWER(owner) = %s", (e,))
     await db.execute("DELETE FROM assigned_tasks WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s", (e, e))
-    await db.execute(
-        "UPDATE assigned_tasks SET cc_emails = NULLIF(REPLACE(LOWER(cc_emails), %s, ','), ',') WHERE LOWER(cc_emails) LIKE %s",
-        (f",{e},", f"%,{e},%"),
-    )
+    for table in ("assigned_tasks", "followups", "urgent_tn_items"):  # take them out of everyone's CC list
+        await db.execute(
+            f"UPDATE {table} SET cc_emails = NULLIF(REPLACE(LOWER(cc_emails), %s, ','), ',') WHERE LOWER(cc_emails) LIKE %s",
+            (f",{e},", f"%,{e},%"),
+        )
     await db.execute("DELETE FROM due_reminder_acks WHERE LOWER(user_email) = %s", (e,))

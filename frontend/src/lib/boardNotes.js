@@ -7,8 +7,6 @@ const SHIPPER_SLA_SCOPE = "Amway · Watson · Orca · Cold Chain · Soda Express
 
 // Shown under the column name, so a metric that only covers some parcels can't be read as "all shippers".
 export const BOARD_SCOPE = {
-  shipper_sla_warning: SHIPPER_SLA_SCOPE,
-  shipper_sla_breach: SHIPPER_SLA_SCOPE,
   shipper_sla_warning_ovfd: SHIPPER_SLA_SCOPE,
   shipper_sla_warning_aash: SHIPPER_SLA_SCOPE,
   shipper_sla_breach_ovfd: SHIPPER_SLA_SCOPE,
@@ -29,18 +27,14 @@ export const BOARD_NOTES = {
   routed_current_ovfd:
     "Route Monitoring's Current OVFD: parcels still on a vehicle across today's routes. It is route level, so there is no tracking-number list behind it. Action: follow up with the drivers who haven't cleared their route.",
   fresh_unscan: SHIPMENT_NOTES.fresh_unscan,
-  shipper_sla_warning:
-    "Amway, Watson, Orca, Cold Chain, Soda Express and Zalora NXD parcels ONLY -- not every shipper. Parcels older than 0 days (1 day since their first sweep at the hub), including ones still en-route to the station. Action: attempt or deliver them today, before they become a breach.",
-  shipper_sla_breach:
-    "Amway, Watson, Orca, Cold Chain, Soda Express and Zalora NXD parcels ONLY -- not every shipper. Parcels older than 1 day since their first sweep at the hub, including ones still en-route to the station: the SLA is missed. Action: clear these first and escalate the cause.",
   shipper_sla_warning_ovfd:
-    "Shipper SLA Warning, only the parcels that are On Vehicle for Delivery. Action: make sure the driver delivers or returns them today.",
+    "Amway, Watson, Orca, Cold Chain, Soda Express and Zalora NXD parcels ONLY. Warning = older than 0 days since their first sweep at the hub; counts the parcels On Vehicle for Delivery and the ones still En-route to the station. Action: make sure the driver delivers or returns them today.",
   shipper_sla_warning_aash:
-    "Shipper SLA Warning, only the parcels that are Arrived at Sorting Hub. Action: route and attempt them today, before they become a breach.",
+    "Amway, Watson, Orca, Cold Chain, Soda Express and Zalora NXD parcels ONLY. Warning = older than 0 days; counts the parcels Arrived at Sorting Hub. Parcels in any other status are listed in the tracking numbers (with their status) but not counted. Action: route and attempt them today, before they become a breach.",
   shipper_sla_breach_ovfd:
-    "Shipper SLA Breach, only the parcels that are On Vehicle for Delivery. Action: chase the driver to complete or return them and escalate the cause.",
+    "Amway, Watson, Orca, Cold Chain, Soda Express and Zalora NXD parcels ONLY. Breach = older than 1 day; counts the parcels On Vehicle for Delivery and the ones still En-route to the station: the SLA is missed. Action: chase the driver to complete or return them and escalate the cause.",
   shipper_sla_breach_aash:
-    "Shipper SLA Breach, only the parcels that are Arrived at Sorting Hub. Action: clear these first and escalate the cause.",
+    "Amway, Watson, Orca, Cold Chain, Soda Express and Zalora NXD parcels ONLY. Breach = older than 1 day; counts the parcels Arrived at Sorting Hub. Parcels in any other status are listed in the tracking numbers (with their status) but not counted. Action: clear these first and escalate the cause.",
   aging_delivery_gt3:
     "Aging Details -> Aging Delivery: parcels Arrived at Sorting Hub at their own destination hub that are more than 3 days old since their first sweep. Action: attempt them, or find out why they cannot be.",
   aging_ats_gt7:

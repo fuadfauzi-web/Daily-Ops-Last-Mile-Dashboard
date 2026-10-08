@@ -130,8 +130,9 @@ const SECTIONS = [
           The "what do I act on today" tab. Pick the metrics you care about from the searchable picker at the top -- it
           draws from Station Health plus a few extras (Old Route's stuck count, Zalora NXD 0 Attempt/OVFD, Fresh Unscan and
           Route Monitoring's Current OVFD), plus <strong>Shipper SLA Warning / Breach</strong>: Amway, Watson, Orca, Cold Chain, Soda Express
-          and Zalora NXD parcels at the station or still on their way to it -- older than 0 days is a warning, older than 1 day is a breach -- also
-          split by status into <strong>OVFD</strong> (On Vehicle for Delivery) and <strong>AASH</strong> (Arrived at Sorting Hub). The board opens with <strong>every metric</strong>;
+          and Zalora NXD parcels at the station or still on their way to it -- older than 0 days is a warning, older than 1 day is a breach -- shown as four
+          columns: Warning / Breach <strong>OVFD</strong> (On Vehicle for Delivery, plus parcels still en-route to the station) and Warning / Breach <strong>AASH</strong> (Arrived
+          at Sorting Hub; parcels in any other status are listed in its tracking numbers with their status, but not counted). The board opens with <strong>every metric</strong>;
           remove the ones you don't need. More metrics: Aging Delivery &gt;3 days, Aging ATS &gt;7 days, RPU Aging &gt;5 days, and the cases a station
           still has to answer (Active Missing, Lost Declared this week).
         </p>
@@ -712,7 +713,7 @@ const SECTIONS = [
               gets their own copy. They mark it Open / In progress / Done and can reply; you can edit, reopen or remove each one (removing deletes it
               for that person too). The bell rings for a task you haven't picked a status for and for a reply or status change on one you assigned.
               Add people in <strong>CC</strong> (like an email) to let other related PICs see the task: they find it under <strong>CC'd to me</strong> and
-              can't change it, and you can edit the CC list later.
+              can't change it, and you can edit the CC list later. <strong>Urgent TN</strong> and <strong>Email / Gchat</strong> have the same CC box when you add an item.
             </>,
           ]}
         />
