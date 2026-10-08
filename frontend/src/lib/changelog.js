@@ -25,7 +25,7 @@ export const CHANGELOG = [
     type: "improved",
     area: "System",
     points: [
-      "Choose a page in the sidebar and it folds to the narrow strip, giving the page the room. Move the mouse onto the strip and the full sidebar floats back over the page; pick another page and it folds again. The » button keeps it open.",
+      "Choose a page in the sidebar and it folds to the narrow strip, giving the page the room. Move the mouse onto the strip and the full sidebar opens again, the page moving over to make room; pick another page and it folds again. The » button keeps it open.",
       "Prefer it always open? Untick \"Auto-hide the sidebar after I pick a page\" in your user menu (top right, under Menu layout).",
     ],
   },
