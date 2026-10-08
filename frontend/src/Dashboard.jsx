@@ -306,11 +306,12 @@ function useSessionState(key, initial) {
   return [value, setValue];
 }
 
-export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCounts, sidebar = false, requestedTab = null, onTabState, recoveryGroup }) {
+export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefreshStatus, notifCounts, sidebar = false, requestedTab = null, onTabState, recoveryGroup }) {
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
   const [error, setError] = useState(null);
+  // 2026-10-08: automatic refresh failures are non-blocking once valid data exists.
   const [regionFilter, setRegionFilter] = useSessionState(`dash-filter:${me.email}:region`, "all");
   const [zoneFilter, setZoneFilter] = useSessionState(`dash-filter:${me.email}:zone`, "all");
   const [search, setSearch] = useSessionState(`dash-filter:${me.email}:search`, "");
@@ -523,8 +524,19 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
   const load = () => {
     api
       .dashboard()
-      .then(setData)
-      .catch((e) => setError(e.message));
+      .then((nextData) => {
+        setData(nextData);
+        setError(null);
+        onRefreshStatus?.(false);
+      })
+      .catch((e) => {
+        // 2026-10-08: keep the last successful data visible after an automatic refresh failure.
+        if (data) {
+          onRefreshStatus?.(true);
+        } else {
+          setError(e.message);
+        }
+      });
   };
 
   // Ticks up on an interval, purely to retrigger every tab's own fetch below --
