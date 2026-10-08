@@ -39,6 +39,6 @@ export const FEATURES = {
   // Production release 2026-10-04, step 1 (UI + System first). The People / Recovery-Beta modules are built but held back; flip each to true (and
   // backend/release.py to match) to release it, in this order: staffDirectory, attendance, fleetAdmin, recoveryBeta.
   staffDirectory: false, // Staff & Org Chart tab (also gates /api/staff, /api/org-chart in backend/release.py)
-  fleetAdmin: false, // Fleet Admin tab (premises / vehicles / assets / headcount)
+  fleetAdmin: true, // Fleet Admin tab (premises / vehicles / assets / headcount)
   recoveryBeta: false, // Recovery PDCNR / Damage / No Label from Hub lists (Beta)
 };
