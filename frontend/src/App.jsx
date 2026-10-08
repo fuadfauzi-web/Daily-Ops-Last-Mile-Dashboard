@@ -40,6 +40,8 @@ export default function App() {
   // Reported up by Dashboard once its data loads -- shown here so it's visible
   // the instant the app opens, regardless of which tab/sub-tab is active.
   const [freshness, setFreshness] = useState(null);
+  // 2026-10-08: Dashboard reports automatic refresh failures here for a non-blocking header warning.
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [stationsInScope, setStationsInScope] = useState(null); // shown as a footnote after "Data as of"
 
   // Staging sidebar trial (FEATURES.sidebarNav): per-person choice kept in this browser; top tabs stay the default. Only applies from 1024px up --
@@ -344,8 +346,8 @@ export default function App() {
             {/* Data as of sits right after the logo, in both the sidebar and the top-bar layouts */}
             {freshness && (
               <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-500 lg:flex">
-                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-                Data as of {formatTime(freshness)}
+                <span className={`h-1.5 w-1.5 rounded-full ${refreshFailed ? "bg-status-warning" : "bg-status-good"}`} />
+                {refreshFailed ? `Refresh failed — showing last successful data: ${formatTime(freshness)}` : `Data as of ${formatTime(freshness)}`}
                 {stationsInScope != null && (
                   <span className="text-[11px] text-slate-400">
                     · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
@@ -465,8 +467,8 @@ export default function App() {
             </div>
             {tab === "dashboard" && freshness && (
               <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-status-good" />
-                Data as of {formatTime(freshness)}
+                <span className={`h-1.5 w-1.5 rounded-full ${refreshFailed ? "bg-status-warning" : "bg-status-good"}`} />
+                {refreshFailed ? `Refresh failed — showing last successful data: ${formatTime(freshness)}` : `Data as of ${formatTime(freshness)}`}
                 {stationsInScope != null && (
                   <span className="text-[11px] text-slate-400">
                     · {stationsInScope} station{stationsInScope === 1 ? "" : "s"} in scope
@@ -538,6 +540,7 @@ export default function App() {
             me={me}
             onCapturedAt={setFreshness}
             onStationsInScope={setStationsInScope}
+            onRefreshStatus={setRefreshFailed}
             notifCounts={notifCounts}
             sidebar={externalNav}
             recoveryGroup={recGroup}
