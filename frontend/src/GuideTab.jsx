@@ -39,7 +39,7 @@ const SECTIONS = [
         { role: "Region staff: Region Head (RH), Regional Fleet Supervisor (RFS)", rank: 1, text: "View the dashboard for their zone(s) or region(s), plus add, edit and remove Station-staff teammates (SH / FA, with more than one station if needed) in Settings → Users." },
         { role: "HQ staff: HOD, Manager", rank: 2, text: "All of the above, plus add and manage Region and Station staff, and edit SLA Targets and Recovery Settings. A Manager can have a dedicated region (it places them in the org chart and the PIC list) and HOD has none, but both see every region's data and can manage Region staff, Station staff and other HQ staff in every region (not the HOD, which only the HOD and the Superadmin can)." },
         { role: "HQ staff: Fleet Admin, OPEX, Recovery, Restock", rank: 2, text: "See every region and station like a manager does, but are not managers: no user management and no SLA / Recovery settings. Each will get its own tabs for its own work." },
-        { role: "Superadmin", rank: 3, text: `Everything: full user management, all Settings screens, the Superadmin page (Documents, Station List, KPI Settings, Data Refresh), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
+        { role: "Superadmin", rank: 3, text: `Everything: full user management, all Settings screens, the Superadmin page (Documents, Station List, KPI Settings, Data Refresh, Metric Logic Summary -- how every Station Health number is built, Hypercare Settings -- the High-Value SLAs and Special Handling slide links), replying to feedback${F.roleTester ? " and the Role Tester" : ""}.` },
       ].filter((r) => r.rank <= rank);
       return (
         <div className="space-y-2 text-sm text-slate-700">
@@ -199,14 +199,17 @@ const SECTIONS = [
             <><strong>0 Attempt</strong> is age-0 only; <strong>0 Attempt &gt;D0</strong> is the same thing aged over 0 days -- they never overlap.</>,
             <><strong>Age &gt;3</strong> is parcels sitting in-hub more than 3 days, scored as a count or as a % of Total In Hub -- its header has a # / % toggle so you can sort by either.</>,
             <><strong>Missing (Hub / Driver-Rider / Ship-in)</strong>: open missing-parcel tickets split by who is on the hook. <strong>Pending ATS</strong> is parcels pending Add To Shipment.</>,
-            <><strong>Routed %</strong>: Total Routed ÷ (Total Routed + Total In Hub).</>,
+            <><strong>Total Route / Total OPS Route</strong>: Total Route is the parcels on valid routes. An OPS route (a hub route, no real driver) counts as a route only when it has 5 or more successes; with fewer, its parcels are <em>invalid</em> and sit in Total OPS Route instead. Total Route + Total OPS Route = Route Monitoring's Total Routed.</>,
+            <><strong>Invalid OPS Attempt</strong>: on those invalid OPS routes, the parcels routed but not delivered. They were never really attempted, so they are also added to <strong>In Hub</strong> (a count only -- its tracking-number list covers the physical parcels).</>,
+            <><strong>Productivity</strong>: Route Monitoring's productivity (total success ÷ total routed over every route), now also in Station Health.</>,
+            <><strong>Routed %</strong>: Total Route ÷ (Total Route + Total In Hub).</>,
             <><strong>Attendance</strong>: unique Hybrid / Independent drivers with a route today. "12 (2 Rescue)" means 2 of the 12 are routing away from their home station, same as Route Monitoring.</>,
             F.stationHealthCombined ? (
               <>One expandable table that starts at your own scope: a nationwide view opens Region → Zone → Station, a station-scoped view is just your stations. Anyone who sees region / zone rows can hide them with the "Show region rows" / "Show zone rows" checkboxes beside Export CSV (both off = a flat list of stations). Cells are coloured only where an SLA target exists (set in SLA Targets). Use Export CSV for what's shown.</>
             ) : (
               <>Coloured cells (▲ critical / ■ warning) are metrics with an SLA target. Cells without a target are shaded on a relative scale instead -- a ranking, never a pass/fail judgement.</>
             ),
-            <>Click any number for its tracking numbers; click a column header's <strong>i</strong> for what the number means and the action to take.</>,
+            <>Click any number for its tracking numbers; click a column header's <strong>i</strong> for what the number means and the action to take. Every tracking-number list shows each parcel's <strong>last scan</strong> date and time; click the Last Scan header to sort (newest or oldest first), and the CSV carries it too.</>,
           ]}
         />
       </div>
@@ -305,7 +308,7 @@ const SECTIONS = [
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
-          The <strong>DoD</strong> tab (<em>Beta</em> -- still being built; after Shipper Radar; everyone can open it, limited to their own region / zone / station) is the dashboard looking back: one snapshot per station per day --
+          The <strong>DoD</strong> tab (<em>Beta</em> -- still being built; after Hypercare Shippers; everyone can open it, limited to their own region / zone / station) is the dashboard looking back: one snapshot per station per day --
           the last refresh of the day, the run just before midnight -- kept for this week and last week only. It follows your scope and the filters above the tabs.
           History starts from the first refresh after it went live, so the first days have only a few dots, and today's numbers are still moving.
         </p>
@@ -422,12 +425,12 @@ const SECTIONS = [
           The <strong>Management View</strong> tab (<em>Beta</em>, staging only for now; managers and admins only) is the nationwide, higher-level
           rollup -- for a Head of Department / Head of Operations / COO view, not the station-level detail the rest of the app is built for.
           It reads the numbers the app already captures (the daily Station Health / Route Monitoring / Shipment Details snapshot that DoD keeps,
-          live Aging Details and Shipper Radar) and rolls them up nationwide.
+          live Aging Details and Hypercare Shippers) and rolls them up nationwide.
         </p>
         <Bullets
           items={[
             <><strong>Operation Health</strong> -- pick a date (defaults to yesterday; history is the current and last week) and switch Daily / Weekly. Routing health: Total Routed, Total Delivered, Success rate, Routed % (Routed &divide; (Routed + In Hub)) and attendance split Total / Hybrid / Independent / Rescue, with a day-by-day or week-by-week trend (the Hybrid / Independent split is only recorded from 2 Oct, earlier days show a dash). Routed % bucket: stations banded below 50%, 50-60, 60-70, 70-80, 80-90 and 90%+, each compared with its 0 Attempt (Arrived at Sorting Hub, 0 attempts, last sweep hub = destination hub). Attendance vs volume: volume = Routed + parcels in hub that day; pick parcels per driver (40-80) to see the attendance needed, the attendance rate, and the stations by rate and biggest gaps. Rescue routes: rescue attendance and the top stations.</>,
-            <><strong>Aging health</strong> (live, latest refresh) -- Aging delivery older than 3 days with the top 10 stations, Aging ATS older than 1 day with the top 3, Aging 0 Attempt older than D0 with the top 10, and the Control Tower Hypercare shippers (Watson, Orca, Zalora NXD, Cold Chain, from Shipper Radar) as a total plus the top 10 stations.</>,
+            <><strong>Aging health</strong> (live, latest refresh) -- Aging delivery older than 3 days with the top 10 stations, Aging ATS older than 1 day with the top 3, Aging 0 Attempt older than D0 with the top 10, and the Control Tower Hypercare shippers (Watson, Orca, Zalora NXD, Cold Chain, from Hypercare Shippers) as a total plus the top 10 stations.</>,
             <><strong>Shipment compliance</strong> -- LH timing: stations by their latest line-haul arrival that day (after 12pm, 11am, 10am, 9am, 8am and below). Per bucket, the top 10 hubs by their late trip (each hub's latest arrival, with that trip's driver, parcels and the hub's day total; switch to latest-arrival-first). Driver data comes from Metabase question 127512 (completed land-haul trips, last 14 days) -- an admin opens the link shown on the page, downloads the CSV and uploads it there; without it the page falls back to Redash's station-level timing. Latlong: total and the top 10 hubs.</>,
             <><strong>Capacity</strong> -- Hub Size (sqft) per station from the admin-uploaded Fleet Management workbook (re-upload whenever a hub relocates), and Staff from the Staff &amp; Org Chart: the people posted at the station plus its TBA seats (the Headcount view there is where a Manager / HOD adds or removes them). PTWH is typed in per station by a manager (some stations run a fixed daily PTWH, others only for offdays or backlog). Parcel capacity follows the hub's sqft (1 parcel per sqft -- change the parcels-per-sqft figure, or type a capacity for one hub) and shows how full each hub is. Driver / rider attendance is shown weekday vs weekend, by date or by week, per region, zone or station.</>,
             <><strong>Backlog Radar</strong> -- the top 20 hubs by 0 Attempt or Age &gt;3, by number or by % of In Hub (severity blends Age &gt;3 %, On Hold and 0 Attempt %, fixed bands for now). Click a row to type in the backlog mitigation plan with a status, owner and target date, plus the rescue plan and its deployment cost; the Rescue plans table lists every hub that has one.</>,
@@ -518,10 +521,11 @@ const SECTIONS = [
     title: "Aging Details",
     body: () => (
       <p className="text-sm text-slate-700">
-        Overall / 0 Attempt / Delivery / ATS / COD pivots by age bucket (0, 1, 2, 3, 4-6, 7+), grouped by where the parcel is.
+        Overall / 0 Attempt / Delivery / ATS / COD pivots by age bucket (0, 1, 2, 3, 4-5, 6-7, 8+), grouped by where the parcel is.
         Unlike Station Health's Age &gt;3 (which leaves out On Hold / On Vehicle for Delivery), this view includes them -- the
         full picture of everything sitting in a hub by age. The tracking-number table has a Station, Status and <strong>Age</strong>{" "}
-        filter (2026-09-28) -- each a dropdown where you can tick more than one -- so you can narrow it to, say, just Age 4-6 and 7+.
+        filter (2026-09-28) -- each a dropdown where you can tick more than one -- so you can narrow it to, say, just Age 6-7 and 8+. Every tracking-number row (here, Cold Chain and the Hypercare Shippers tables)
+        also shows the parcel's <strong>Last Scan</strong> date and time.
       </p>
     ),
   },
@@ -534,7 +538,7 @@ const SECTIONS = [
         Aging Overall, but only for the cold-chain tracking numbers: a station × age-bucket pivot and the full TN list, grouped by
         where each parcel physically is. Stations with nothing in them are hidden. Cold-chain parcels often sit at CC hubs that
         aren't stations; those show as their own "Other hubs" rows. A cold-chain TN missing from the active dataset is already
-        completed or added to a shipment. You'll find it under Shipper Radar.
+        completed or added to a shipment. You'll find it under Hypercare Shippers.
       </p>
     ),
   },
@@ -573,7 +577,7 @@ const SECTIONS = [
   },
   {
     id: "shipper",
-    title: F.shipperRadar ? "Shipper Radar" : "Shipper Watch",
+    title: F.shipperRadar ? "Hypercare Shippers" : "Shipper Watch",
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
@@ -584,8 +588,18 @@ const SECTIONS = [
         </p>
         {F.shipperRadar && (
           <p>
-            The other sub-tabs are <strong>Restock</strong>{F.coldChain ? " and " : ""}
-            {F.coldChain && <strong>Cold Chain</strong>}.
+            The tabs are <strong>Summary View</strong> (the shipper SLA table above; Zitron -- tracking numbers starting ZTRON -- and Ceva -- starting LSGMY -- are in it too),
+            {F.coldChain ? " " : ""}{F.coldChain && <><strong>Cold Chain</strong>, </>}
+            <strong>Special Handling Shippers</strong> (Orca and Soda Express: the note and the slide deck on their special flow, then their numbers),
+            <strong>High-Value Shippers</strong> and <strong>Restock</strong>.
+          </p>
+        )}
+        {F.shipperRadar && (
+          <p>
+            <strong>High-Value Shippers</strong> are Zalora NXD, Amway, Watson, Zitron and Ceva. Pick one for its parcels the way Cold Chain shows them: a station × age pivot
+            and every tracking number with its last scan. Each shipper has an <em>SLA Attempt</em> (a valid attempt is needed) and an <em>SLA Delivery</em> (the parcel must be
+            delivered) -- Same day, Next day, Within 2 days or Within 3 days, counted from the parcel's first sweep at its hub. Parcels past either are flagged Breached, and Due today on the last allowed day.
+            The Superadmin sets the SLAs, and the links to the Special Handling slides, under Superadmin → Hypercare Settings.
           </p>
         )}
       </div>

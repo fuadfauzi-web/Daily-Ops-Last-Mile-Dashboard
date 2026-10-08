@@ -65,6 +65,13 @@ export const api = {
   dashboard: () => request("/api/dashboard"),
   stations: (opts) => request("/api/stations", opts),
   regions: (opts) => request("/api/regions", opts),
+  hypercareConfig: () => request("/api/hypercare/config"),
+  hypercareSettings: (items) => request("/api/hypercare/settings", { method: "PUT", body: JSON.stringify({ items }) }),
+  hypercareHighValue: () => request("/api/hypercare/high-value"),
+  hypercareShipper: (key) => request(`/api/hypercare/shipper/${encodeURIComponent(key)}`),
+  metricLogic: () => request("/api/admin/metric-logic"),
+  tnLastScan: (trackingNumbers) =>
+    request("/api/tn-last-scan", { method: "POST", body: JSON.stringify({ tracking_numbers: trackingNumbers }) }),
   drilldown: (stationCode, metric) =>
     request(`/api/drilldown?station_code=${encodeURIComponent(stationCode)}&metric=${encodeURIComponent(metric)}`),
   shipmentDetails: () => request("/api/shipment-details"),
@@ -309,6 +316,8 @@ export const api = {
     }
     return { text: await res.text(), rows: Number(res.headers.get("X-Rows") || 0) };
   },
+  staffFlags: () => request("/api/attendance/staff/flags"),
+  staffFlagAction: (payload) => request("/api/attendance/staff/flags/action", { method: "POST", body: JSON.stringify(payload) }),
   // Attendance -> PTWH -> the PTWH app: logins, the station's hourly QR + location, selfie audit.
   ptwhLogins: () => request("/api/attendance/ptwh/logins"),
   ptwhLoginCreate: (workerId, username) => request(`/api/attendance/ptwh/workers/${workerId}/login`, { method: "POST", body: JSON.stringify({ username }) }),

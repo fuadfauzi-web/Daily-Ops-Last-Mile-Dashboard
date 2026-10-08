@@ -28,7 +28,7 @@ export const SIDE_ITEMS = [
   { id: "routed", dash: true, group: "Last Mile Ops", label: "Route Monitoring", code: "RM" },
   { id: "aging", dash: true, group: "Last Mile Ops", label: "Aging Details", code: "AD" },
   { id: "rpu", dash: true, group: "Last Mile Ops", label: "Return Pick Up (RPU)", code: "RP" },
-  { id: "shipper", dash: true, group: "Last Mile Ops", label: "Shipper Radar", code: "SR" },
+  { id: "shipper", dash: true, group: "Last Mile Ops", label: "Hypercare Shippers", code: "HS" },
   { id: "rec:activemissing", dash: true, dashKey: "recovery", recGroup: "activemissing", group: "Recovery", label: "Active Missing", code: "AM" },
   { id: "rec:lostdeclared", dash: true, dashKey: "recovery", recGroup: "lostdeclared", group: "Recovery", label: "Lost Declared", code: "LD" },
   { id: "rec:pdcnr", dash: true, dashKey: "recovery", recGroup: "pdcnr", group: "Recovery", label: "PDCNR", beta: true, recLists: true, code: "PD" },

@@ -21,6 +21,49 @@
 export const CHANGELOG = [
   {
     date: "2026-10-08",
+    title: "New: Hypercare Shippers (was Shipper Radar) with Special Handling and High-Value shippers",
+    type: "new",
+    area: "Monitor",
+    points: [
+      "Shipper Radar is now Hypercare Shippers, with the tabs Summary View (the shipper SLA table), Cold Chain, Special Handling Shippers, High-Value Shippers and Restock.",
+      "Special Handling Shippers: Orca and Soda Express, with the note and the slide deck on their special flow (the Superadmin pastes the link under Superadmin -> Hypercare Settings).",
+      "High-Value Shippers: Zalora NXD, Amway, Watson, Zitron (tracking numbers starting ZTRON) and Ceva (LSGMY). Pick one to see its parcels like Cold Chain: a station x age pivot and every tracking number, with the SLA Attempt and SLA Delivery of that shipper (Same day / Next day / Within 2 days / Within 3 days) and what is Breached or Due today.",
+      "Zitron and Ceva are also in the Summary View, with the same 0 Attempt and Aging numbers as Amway and Watson.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Station Health: Total Route / OPS Route, Invalid OPS Attempt and Productivity",
+    area: "Monitor",
+    points: [
+      "Total Routed is split into Total Route and Total OPS Route. An OPS route (a hub route, no real driver) only counts as a route when it has 5 or more successes; with fewer its parcels are invalid and show in Total OPS Route.",
+      "New Invalid OPS Attempt: on those invalid OPS routes, the parcels routed but not delivered. They are added to In Hub (a count only; its tracking-number list still shows the physical parcels), so Routed % moves with it.",
+      "Route Monitoring's Productivity is now a Station Health column. Route Monitoring itself still shows every route together.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Last scan date and time on every tracking-number list; new aging buckets",
+    area: "Monitor",
+    points: [
+      "Every tracking-number popup (Station Health, Shipment Details, Route Monitoring ...) now shows each parcel's last scan date and time. Click the Last Scan header to sort newest or oldest first; the CSV has it too.",
+      "The Aging Details, Cold Chain and Hypercare Shippers tracking-number tables show Last Scan on every row.",
+      "Aging buckets are now 0, 1, 2, 3, 4-5, 6-7 and 8+ (before: 0, 1, 2, 3, 4-6 and 7+).",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Superadmin: Metric Logic Summary and Hypercare Settings",
+    type: "new",
+    area: "System",
+    minRank: 3,
+    points: [
+      "Superadmin -> Metric Logic Summary lists every Station Health column: the Redash query it comes from, the exact rule the backend applies, how zone and region rows are rolled up and whether a click shows tracking numbers. Only the Superadmin can open it.",
+      "Superadmin -> Hypercare Settings sets the SLA Attempt and SLA Delivery of each High-Value shipper and the slide link and note of each Special Handling shipper.",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "New: Manager Dashboard (HOD and Fleet Manager)",
     feature: "managerDashboard",
     minRank: 2,

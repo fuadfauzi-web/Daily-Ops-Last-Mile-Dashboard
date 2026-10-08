@@ -16,6 +16,9 @@ export const METRICS = {
   // ---- reference only: no SLA, no colour ----
   total_fresh: { kind: "reference" },
   total_routed: { kind: "reference" },
+  total_ops_route: { kind: "reference" },
+  invalid_ops_attempt: { kind: "reference" },
+  productivity: { kind: "reference" },
   attendance: { kind: "reference" },
   total_in_hub: { kind: "reference" },
   still_ovfd: { kind: "reference" },

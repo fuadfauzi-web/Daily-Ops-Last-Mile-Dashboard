@@ -9,15 +9,21 @@ import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
 import RestockTab from "./RestockTab";
 import AgingDetailsTab from "./AgingDetailsTab";
+import HighValueView from "./HighValueView";
 
 // 2026-09-24 feedback: renamed Shipper Watch -> Shipper Radar, restructured
 // as two sub-tabs -- the original per-shipper SLA table below (now "Shipper
 // SLA") plus Restock (previously its own top-level tab, unchanged, just
 // relocated here since it's the same kind of watch-list).
+// 2026-10-08 feedback: renamed Hypercare Shippers, with Summary View (the old Shipper SLA table), Cold Chain, Special Handling Shippers (Orca,
+// Soda Express + their guideline) and High-Value Shippers (Zalora NXD, Amway, Watson, Zitron, Ceva: tracking-number level + SLA). Restock stays as
+// the last sub-tab -- it was not in the list of four, but dropping it would take B2B Document Compliance away, so it is kept until told otherwise.
 const RADAR_SUB_TABS = [
-  { key: "sla", label: "Shipper SLA" },
-  { key: "restock", label: "Restock" },
+  { key: "sla", label: "Summary View" },
   { key: "cold", label: "Cold Chain" }, // 2026-09-25: lives here only (its own top-level tab was removed)
+  { key: "special", label: "Special Handling Shippers" },
+  { key: "highvalue", label: "High-Value Shippers" },
+  { key: "restock", label: "Restock" },
 ];
 
 // Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt
@@ -54,6 +60,23 @@ const SHIPPERS = [
     ],
   },
   {
+    // 2026-10-08: Zitron (TN prefix ZTRON) and Ceva (prefix LSGMY) -- same rule and SLA as Amway.
+    key: "zitron",
+    label: "Zitron",
+    columns: [
+      { key: "zitron_zero_attempt", label: "Zitron 0 Attempt" },
+      { key: "zitron_aging", label: "Zitron Aging >D0" },
+    ],
+  },
+  {
+    key: "ceva",
+    label: "Ceva",
+    columns: [
+      { key: "ceva_zero_attempt", label: "Ceva 0 Attempt" },
+      { key: "ceva_aging", label: "Ceva Aging >D0" },
+    ],
+  },
+  {
     // 2026-09-26: same rule as Amway / Watson (0 Attempt, Aging >D0); parcels are picked by the Cold Chain tracking-number list.
     key: "coldchain",
     label: "Cold Chain",
@@ -72,18 +95,20 @@ const SHIPPERS = [
   },
   {
     key: "sodaxpress",
-    label: "Sodaxpress",
+    label: "Soda Express",
     columns: [
-      { key: "sodaxpress_ovfd", label: "Sodaxpress OVFD" },
-      { key: "sodaxpress_other", label: "Sodaxpress Other Status" },
+      { key: "sodaxpress_ovfd", label: "Soda Express OVFD" },
+      { key: "sodaxpress_other", label: "Soda Express Other Status" },
     ],
   },
 ];
-const ALL_SHIPPER_KEYS = SHIPPERS.map((s) => s.key);
 
-function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
-  const storageKey = `shipper-watch-shippers-${me.email}`;
-  const seenKey = `shipper-watch-seen-${me.email}`;
+// onlyKeys / variant / title (2026-10-08): the Special Handling tab shows just Orca and Soda Express through this same table, with its own remembered picks.
+function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, onlyKeys, variant, title }) {
+  const shippers = useMemo(() => (onlyKeys ? SHIPPERS.filter((s) => onlyKeys.includes(s.key)) : SHIPPERS), [onlyKeys]);
+  const allKeys = useMemo(() => shippers.map((s) => s.key), [shippers]);
+  const storageKey = `shipper-watch-shippers${variant ? `-${variant}` : ""}-${me.email}`;
+  const seenKey = `shipper-watch-seen${variant ? `-${variant}` : ""}-${me.email}`;
   const [selectedShippers, setSelectedShippers] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
@@ -91,21 +116,21 @@ function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalay
         // A shipper added after this person saved their picks (Cold Chain, 2026-09-26) is switched on once so it doesn't stay
         // hidden; after that their own choice wins.
         const seen = JSON.parse(localStorage.getItem(seenKey) || "null");
-        const known = Array.isArray(seen) ? seen : ALL_SHIPPER_KEYS.filter((k) => k !== "coldchain");
-        const fresh = ALL_SHIPPER_KEYS.filter((k) => !known.includes(k));
+        const known = Array.isArray(seen) ? seen : allKeys.filter((k) => k !== "coldchain");
+        const fresh = allKeys.filter((k) => !known.includes(k));
         const next = fresh.length ? [...saved, ...fresh] : saved;
-        localStorage.setItem(seenKey, JSON.stringify(ALL_SHIPPER_KEYS));
+        localStorage.setItem(seenKey, JSON.stringify(allKeys));
         if (fresh.length) localStorage.setItem(storageKey, JSON.stringify(next));
         return next;
       }
     } catch {
       /* private browsing / storage blocked / bad JSON -- default to everything */
     }
-    return ALL_SHIPPER_KEYS;
+    return allKeys;
   });
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [sortKey, setSortKey] = useState("zalora_zero_attempt");
+  const [sortKey, setSortKey] = useState(onlyKeys ? SHIPPERS.find((s) => s.key === onlyKeys[0]).columns[0].key : "zalora_zero_attempt");
   const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
@@ -127,8 +152,8 @@ function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalay
   };
 
   const activeColumns = useMemo(
-    () => SHIPPERS.filter((s) => selectedShippers.includes(s.key)).flatMap((s) => s.columns),
-    [selectedShippers]
+    () => shippers.filter((s) => selectedShippers.includes(s.key)).flatMap((s) => s.columns),
+    [selectedShippers, shippers]
   );
 
   useEffect(() => {
@@ -200,7 +225,7 @@ function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalay
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <span className="font-display text-xs font-semibold text-slate-700">Shippers:</span>
-        {SHIPPERS.map((s) => {
+        {shippers.map((s) => {
           const on = selectedShippers.includes(s.key);
           return (
             <button
@@ -222,7 +247,7 @@ function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalay
         </div>
       ) : (
         <DataTable
-          title="Shipper Watch"
+          title={title || "Hypercare Shippers — Summary"}
           titleExtra={
             <button
               onClick={() =>
@@ -259,6 +284,55 @@ function ShipperSlaView({ regionFilter, zoneFilter, search, me, excludeEastMalay
   );
 }
 
+// Special Handling Shippers (2026-10-08): Orca and Soda Express run a special parcel flow. Each has a card with its flow note and a link to the
+// guideline slides (both set by the Superadmin under Superadmin -> Hypercare Settings -- the slide links are still to come), then the same
+// station table as the Summary View, just for these two.
+function SpecialHandlingView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
+  const [config, setConfig] = useState(null);
+  useEffect(() => {
+    api
+      .hypercareConfig()
+      .then(setConfig)
+      .catch(() => setConfig({ special: [], can_edit: false }));
+  }, [refreshTick]);
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-2">
+        {(config?.special || []).map((s) => (
+          <div key={s.key} className="rounded-xl border-l-4 border-brand bg-white p-3 ring-1 ring-slate-200">
+            <div className="font-display text-sm font-bold text-ink">{s.label} — special flow</div>
+            {s.guideline_note ? (
+              <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{s.guideline_note}</p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-400">The flow note has not been added yet.</p>
+            )}
+            {s.guideline_url ? (
+              <a
+                href={s.guideline_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex min-h-[44px] items-center rounded-lg bg-ink px-3 font-display text-xs font-semibold text-white hover:bg-brand"
+              >
+                Open the {s.label} guideline slides ↗
+              </a>
+            ) : (
+              <p className="mt-2 text-xs text-slate-400">
+                Guideline slides: the link is coming soon{config?.can_edit ? " -- add it under Superadmin → Hypercare Settings." : "."}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      <ShipperSlaView
+        regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+        excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        onlyKeys={["orca", "sodaxpress"]} variant="special" title="Special Handling Shippers — Orca and Soda Express"
+      />
+    </div>
+  );
+}
+
 export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [subTab, setSubTab] = useState("sla");
 
@@ -274,6 +348,16 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
       ) : subTab === "cold" ? (
         <AgingDetailsTab
           source="coldchain"
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      ) : subTab === "special" ? (
+        <SpecialHandlingView
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
+        />
+      ) : subTab === "highvalue" ? (
+        <HighValueView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />

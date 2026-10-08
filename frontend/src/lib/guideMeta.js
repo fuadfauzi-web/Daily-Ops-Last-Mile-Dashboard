@@ -85,7 +85,7 @@ export function changelogType(entry) {
   if (entry.type) return entry.type;
   const t = entry.title;
   if (/\b(fix|fixed|bug|always adds up|no longer|stuck|corrected|wrong)\b/i.test(t)) return "fixed";
-  if (/^New\b|\bnew tab\b|\bNew:|^A new\b|^Cold Chain$|^Shipper Radar$|^Action Board$|^Role Tester$|^Completion Summary$/i.test(t)) return "new";
+  if (/^New\b|\bnew tab\b|\bNew:|^A new\b|^Cold Chain$|^Shipper Radar$|^Hypercare Shippers$|^Action Board$|^Role Tester$|^Completion Summary$/i.test(t)) return "new";
   return "improved";
 }
 

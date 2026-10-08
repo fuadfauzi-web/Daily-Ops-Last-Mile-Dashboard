@@ -864,6 +864,152 @@
         ]
       }
     },
+    "/api/hypercare/config": {
+      "get": {
+        "summary": "Hypercare Shippers settings: the SLA options, each High-Value shipper's SLA Attempt / SLA Delivery and each Special Handling shipper's guideline link and note.",
+        "operationId": "config_api_hypercare_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypercareConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/hypercare/settings": {
+      "put": {
+        "summary": "Superadmin only: save the High-Value shippers' SLAs and the Special Handling guideline links / notes.",
+        "description": "Superadmin only: SLA days of the high-value shippers and guideline link / note of the special-handling ones.",
+        "operationId": "put_settings_api_hypercare_settings_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hypercare__SettingsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypercareConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/hypercare/shipper/{key}": {
+      "get": {
+        "summary": "One High-Value shipper's parcels: station x age pivot and tracking-number rows with last scan and SLA state.",
+        "operationId": "shipper_detail_api_hypercare_shipper__key__get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HcShipperResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/hypercare/high-value": {
+      "get": {
+        "summary": "High-Value Shippers overview: parcels and SLA breaches per shipper (Zalora NXD, Amway, Watson, Zitron, Ceva) within the caller's scope.",
+        "operationId": "high_value_overview_api_hypercare_high_value_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighValueOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/attendance/ptwh/workers": {
       "get": {
         "summary": "Attendance -> PTWH (staging): the PTWH roster for the stations in the caller's scope (IC masked except for managers / admins), the stations they may use, and whether they may edit.",
@@ -5707,7 +5853,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SettingsIn"
+                "$ref": "#/components/schemas/kpi_targets__SettingsIn"
               }
             }
           }
@@ -7776,6 +7922,80 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProcessingTimeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/admin/metric-logic": {
+      "get": {
+        "summary": "Superadmin only: where each Station Health metric comes from and the rule the backend applies to it.",
+        "description": "Superadmin -> Metric Logic Summary: where each Station Health number comes from and the rule applied (2026-10-08).\nAdmin only, so the text stays out of the public bundle.",
+        "operationId": "admin_metric_logic_api_admin_metric_logic_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricLogicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/tn-last-scan": {
+      "post": {
+        "summary": "Last scan date/time of each tracking number in a list (from the active-parcel data), for the sortable column in every tracking-number popup.",
+        "description": "Last scan date/time of each tracking number (query 78's last_scan_datetime), for the sortable column in every\ntracking-number popup (2026-10-08 feedback). A TN that is no longer in the active-parcel data (completed, added to a\nshipment ...) comes back null -- the popup shows a dash.",
+        "operationId": "tn_last_scan_api_tn_last_scan_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TnLastScanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TnLastScanResponse"
                 }
               }
             }
@@ -9993,13 +10213,17 @@
             "type": "integer",
             "title": "Age 3"
           },
-          "age_4_6": {
+          "age_4_5": {
             "type": "integer",
-            "title": "Age 4 6"
+            "title": "Age 4 5"
           },
-          "age_7_plus": {
+          "age_6_7": {
             "type": "integer",
-            "title": "Age 7 Plus"
+            "title": "Age 6 7"
+          },
+          "age_8_plus": {
+            "type": "integer",
+            "title": "Age 8 Plus"
           },
           "key": {
             "type": "string",
@@ -10021,8 +10245,9 @@
           "age_1",
           "age_2",
           "age_3",
-          "age_4_6",
-          "age_7_plus",
+          "age_4_5",
+          "age_6_7",
+          "age_8_plus",
           "key",
           "region",
           "station_count"
@@ -10101,6 +10326,17 @@
               }
             ],
             "title": "Dest Hub"
+          },
+          "last_scan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan"
           }
         },
         "type": "object",
@@ -10139,13 +10375,17 @@
             "type": "integer",
             "title": "Age 3"
           },
-          "age_4_6": {
+          "age_4_5": {
             "type": "integer",
-            "title": "Age 4 6"
+            "title": "Age 4 5"
           },
-          "age_7_plus": {
+          "age_6_7": {
             "type": "integer",
-            "title": "Age 7 Plus"
+            "title": "Age 6 7"
+          },
+          "age_8_plus": {
+            "type": "integer",
+            "title": "Age 8 Plus"
           },
           "station_code": {
             "type": "string",
@@ -10171,8 +10411,9 @@
           "age_1",
           "age_2",
           "age_3",
-          "age_4_6",
-          "age_7_plus",
+          "age_4_5",
+          "age_6_7",
+          "age_8_plus",
           "station_code",
           "station_name",
           "zone",
@@ -10846,6 +11087,24 @@
           "matched_tn_count"
         ],
         "title": "ColdChainResponse"
+      },
+      "ColumnDef": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "ColumnDef"
       },
       "CopyIn": {
         "properties": {
@@ -12803,6 +13062,21 @@
             "type": "number",
             "title": "Cod Pct Routed"
           },
+          "total_ops_route": {
+            "type": "integer",
+            "title": "Total Ops Route",
+            "default": 0
+          },
+          "invalid_ops_attempt": {
+            "type": "integer",
+            "title": "Invalid Ops Attempt",
+            "default": 0
+          },
+          "productivity": {
+            "type": "number",
+            "title": "Productivity",
+            "default": 0.0
+          },
           "key": {
             "type": "string",
             "title": "Key"
@@ -12856,6 +13130,371 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HcGroupRow": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "age_0": {
+            "type": "integer",
+            "title": "Age 0"
+          },
+          "age_1": {
+            "type": "integer",
+            "title": "Age 1"
+          },
+          "age_2": {
+            "type": "integer",
+            "title": "Age 2"
+          },
+          "age_3": {
+            "type": "integer",
+            "title": "Age 3"
+          },
+          "age_4_5": {
+            "type": "integer",
+            "title": "Age 4 5"
+          },
+          "age_6_7": {
+            "type": "integer",
+            "title": "Age 6 7"
+          },
+          "age_8_plus": {
+            "type": "integer",
+            "title": "Age 8 Plus"
+          },
+          "attempt_breach": {
+            "type": "integer",
+            "title": "Attempt Breach"
+          },
+          "delivery_breach": {
+            "type": "integer",
+            "title": "Delivery Breach"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "station_count": {
+            "type": "integer",
+            "title": "Station Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "age_0",
+          "age_1",
+          "age_2",
+          "age_3",
+          "age_4_5",
+          "age_6_7",
+          "age_8_plus",
+          "attempt_breach",
+          "delivery_breach",
+          "key",
+          "region",
+          "station_count"
+        ],
+        "title": "HcGroupRow"
+      },
+      "HcShipperResponse": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "type_label": {
+            "type": "string",
+            "title": "Type Label"
+          },
+          "buckets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Buckets"
+          },
+          "stations": {
+            "items": {
+              "$ref": "#/components/schemas/HcStationRow"
+            },
+            "type": "array",
+            "title": "Stations"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/HcGroupRow"
+            },
+            "type": "array",
+            "title": "Zones"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/HcGroupRow"
+            },
+            "type": "array",
+            "title": "Regions"
+          },
+          "tn_rows": {
+            "items": {
+              "$ref": "#/components/schemas/HcTnRow"
+            },
+            "type": "array",
+            "title": "Tn Rows"
+          },
+          "tn_rows_total": {
+            "type": "integer",
+            "title": "Tn Rows Total"
+          },
+          "tn_rows_truncated": {
+            "type": "boolean",
+            "title": "Tn Rows Truncated"
+          },
+          "extra_columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnDef"
+            },
+            "type": "array",
+            "title": "Extra Columns"
+          },
+          "tn_extra_columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnDef"
+            },
+            "type": "array",
+            "title": "Tn Extra Columns"
+          },
+          "sla": {
+            "$ref": "#/components/schemas/SlaInfo"
+          },
+          "footer_note": {
+            "type": "string",
+            "title": "Footer Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "captured_at",
+          "type",
+          "type_label",
+          "buckets",
+          "stations",
+          "zones",
+          "regions",
+          "tn_rows",
+          "tn_rows_total",
+          "tn_rows_truncated",
+          "extra_columns",
+          "tn_extra_columns",
+          "sla",
+          "footer_note"
+        ],
+        "title": "HcShipperResponse"
+      },
+      "HcStationRow": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "age_0": {
+            "type": "integer",
+            "title": "Age 0"
+          },
+          "age_1": {
+            "type": "integer",
+            "title": "Age 1"
+          },
+          "age_2": {
+            "type": "integer",
+            "title": "Age 2"
+          },
+          "age_3": {
+            "type": "integer",
+            "title": "Age 3"
+          },
+          "age_4_5": {
+            "type": "integer",
+            "title": "Age 4 5"
+          },
+          "age_6_7": {
+            "type": "integer",
+            "title": "Age 6 7"
+          },
+          "age_8_plus": {
+            "type": "integer",
+            "title": "Age 8 Plus"
+          },
+          "attempt_breach": {
+            "type": "integer",
+            "title": "Attempt Breach"
+          },
+          "delivery_breach": {
+            "type": "integer",
+            "title": "Delivery Breach"
+          },
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "age_0",
+          "age_1",
+          "age_2",
+          "age_3",
+          "age_4_5",
+          "age_6_7",
+          "age_8_plus",
+          "attempt_breach",
+          "delivery_breach",
+          "station_code",
+          "station_name",
+          "zone",
+          "region"
+        ],
+        "title": "HcStationRow"
+      },
+      "HcTnRow": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "tracking_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Number"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "age": {
+            "type": "integer",
+            "title": "Age"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          },
+          "cod": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cod"
+          },
+          "dest_hub": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dest Hub"
+          },
+          "last_scan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan"
+          },
+          "attempt_sla": {
+            "type": "string",
+            "title": "Attempt Sla"
+          },
+          "delivery_sla": {
+            "type": "string",
+            "title": "Delivery Sla"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code",
+          "station_name",
+          "tracking_number",
+          "status",
+          "attempts",
+          "age",
+          "tag",
+          "cod",
+          "dest_hub",
+          "attempt_sla",
+          "delivery_sla"
+        ],
+        "title": "HcTnRow"
+      },
       "Health": {
         "properties": {
           "status": {
@@ -12868,6 +13507,162 @@
           "status"
         ],
         "title": "Health"
+      },
+      "HighValueConfig": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "attempt_days": {
+            "type": "integer",
+            "title": "Attempt Days"
+          },
+          "delivery_days": {
+            "type": "integer",
+            "title": "Delivery Days"
+          },
+          "attempt_label": {
+            "type": "string",
+            "title": "Attempt Label"
+          },
+          "delivery_label": {
+            "type": "string",
+            "title": "Delivery Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "attempt_days",
+          "delivery_days",
+          "attempt_label",
+          "delivery_label"
+        ],
+        "title": "HighValueConfig"
+      },
+      "HighValueOverview": {
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "shippers": {
+            "items": {
+              "$ref": "#/components/schemas/HighValueRow"
+            },
+            "type": "array",
+            "title": "Shippers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "captured_at",
+          "shippers"
+        ],
+        "title": "HighValueOverview"
+      },
+      "HighValueRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "attempt_label": {
+            "type": "string",
+            "title": "Attempt Label"
+          },
+          "delivery_label": {
+            "type": "string",
+            "title": "Delivery Label"
+          },
+          "parcels": {
+            "type": "integer",
+            "title": "Parcels"
+          },
+          "attempt_breach": {
+            "type": "integer",
+            "title": "Attempt Breach"
+          },
+          "delivery_breach": {
+            "type": "integer",
+            "title": "Delivery Breach"
+          },
+          "attempt_due_today": {
+            "type": "integer",
+            "title": "Attempt Due Today"
+          },
+          "delivery_due_today": {
+            "type": "integer",
+            "title": "Delivery Due Today"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "attempt_label",
+          "delivery_label",
+          "parcels",
+          "attempt_breach",
+          "delivery_breach",
+          "attempt_due_today",
+          "delivery_due_today"
+        ],
+        "title": "HighValueRow"
+      },
+      "HypercareConfig": {
+        "properties": {
+          "sla_options": {
+            "items": {
+              "$ref": "#/components/schemas/SlaOption"
+            },
+            "type": "array",
+            "title": "Sla Options"
+          },
+          "high_value": {
+            "items": {
+              "$ref": "#/components/schemas/HighValueConfig"
+            },
+            "type": "array",
+            "title": "High Value"
+          },
+          "special": {
+            "items": {
+              "$ref": "#/components/schemas/SpecialConfig"
+            },
+            "type": "array",
+            "title": "Special"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sla_options",
+          "high_value",
+          "special",
+          "can_edit"
+        ],
+        "title": "HypercareConfig"
       },
       "ImportIn": {
         "properties": {
@@ -13509,6 +14304,84 @@
           "provisioned"
         ],
         "title": "Me"
+      },
+      "MetricLogicResponse": {
+        "properties": {
+          "how": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "How"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricLogicRow"
+            },
+            "type": "array",
+            "title": "Metrics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "how",
+          "metrics"
+        ],
+        "title": "MetricLogicResponse"
+      },
+      "MetricLogicRow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "logic": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Logic"
+          },
+          "rollup": {
+            "type": "string",
+            "title": "Rollup"
+          },
+          "tn_list": {
+            "type": "boolean",
+            "title": "Tn List"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "group",
+          "source",
+          "logic",
+          "rollup",
+          "tn_list",
+          "notes"
+        ],
+        "title": "MetricLogicRow"
       },
       "MissingDetailsGroupRow": {
         "properties": {
@@ -17259,33 +18132,62 @@
         "type": "object",
         "title": "SeatIn"
       },
-      "SettingsIn": {
+      "SettingIn": {
         "properties": {
-          "include_east_malaysia": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Include East Malaysia"
+          "shipper_key": {
+            "type": "string",
+            "title": "Shipper Key"
           },
-          "include_sarawak": {
+          "attempt_days": {
             "anyOf": [
               {
-                "type": "boolean"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Include Sarawak"
+            "title": "Attempt Days"
+          },
+          "delivery_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Days"
+          },
+          "guideline_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guideline Url"
+          },
+          "guideline_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guideline Note"
           }
         },
         "type": "object",
-        "title": "SettingsIn"
+        "required": [
+          "shipper_key"
+        ],
+        "title": "SettingIn"
       },
       "ShiftTimeIn": {
         "properties": {
@@ -17742,6 +18644,26 @@
             "type": "integer",
             "title": "Watson Aging"
           },
+          "zitron_zero_attempt": {
+            "type": "integer",
+            "title": "Zitron Zero Attempt",
+            "default": 0
+          },
+          "zitron_aging": {
+            "type": "integer",
+            "title": "Zitron Aging",
+            "default": 0
+          },
+          "ceva_zero_attempt": {
+            "type": "integer",
+            "title": "Ceva Zero Attempt",
+            "default": 0
+          },
+          "ceva_aging": {
+            "type": "integer",
+            "title": "Ceva Aging",
+            "default": 0
+          },
           "orca_ovfd": {
             "type": "integer",
             "title": "Orca Ovfd"
@@ -17904,6 +18826,26 @@
           "watson_aging": {
             "type": "integer",
             "title": "Watson Aging"
+          },
+          "zitron_zero_attempt": {
+            "type": "integer",
+            "title": "Zitron Zero Attempt",
+            "default": 0
+          },
+          "zitron_aging": {
+            "type": "integer",
+            "title": "Zitron Aging",
+            "default": 0
+          },
+          "ceva_zero_attempt": {
+            "type": "integer",
+            "title": "Ceva Zero Attempt",
+            "default": 0
+          },
+          "ceva_aging": {
+            "type": "integer",
+            "title": "Ceva Aging",
+            "default": 0
           },
           "orca_ovfd": {
             "type": "integer",
@@ -18098,6 +19040,84 @@
           "regions"
         ],
         "title": "ShipperWatchResponse"
+      },
+      "SlaInfo": {
+        "properties": {
+          "attempt_label": {
+            "type": "string",
+            "title": "Attempt Label"
+          },
+          "delivery_label": {
+            "type": "string",
+            "title": "Delivery Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempt_label",
+          "delivery_label"
+        ],
+        "title": "SlaInfo"
+      },
+      "SlaOption": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "days",
+          "label"
+        ],
+        "title": "SlaOption"
+      },
+      "SpecialConfig": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "guideline_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guideline Url"
+          },
+          "guideline_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guideline Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "guideline_url",
+          "guideline_note"
+        ],
+        "title": "SpecialConfig"
       },
       "StaffBulkIn": {
         "properties": {
@@ -18931,6 +19951,57 @@
           "rows"
         ],
         "title": "ThresholdsIn"
+      },
+      "TnLastScanRequest": {
+        "properties": {
+          "tracking_numbers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tracking Numbers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tracking_numbers"
+        ],
+        "title": "TnLastScanRequest"
+      },
+      "TnLastScanResponse": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "last_scan": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Last Scan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "last_scan"
+        ],
+        "title": "TnLastScanResponse"
       },
       "Todo": {
         "properties": {
@@ -20827,6 +21898,50 @@
         "type": "object",
         "title": "OkOut"
       },
+      "hypercare__SettingsIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SettingIn"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SettingsIn"
+      },
+      "kpi_targets__SettingsIn": {
+        "properties": {
+          "include_east_malaysia": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include East Malaysia"
+          },
+          "include_sarawak": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Sarawak"
+          }
+        },
+        "type": "object",
+        "title": "SettingsIn"
+      },
       "main__StationRow": {
         "properties": {
           "total_in_hub": {
@@ -20924,6 +22039,21 @@
           "cod_pct_routed": {
             "type": "number",
             "title": "Cod Pct Routed"
+          },
+          "total_ops_route": {
+            "type": "integer",
+            "title": "Total Ops Route",
+            "default": 0
+          },
+          "invalid_ops_attempt": {
+            "type": "integer",
+            "title": "Invalid Ops Attempt",
+            "default": 0
+          },
+          "productivity": {
+            "type": "number",
+            "title": "Productivity",
+            "default": 0.0
           },
           "attendance_rescue": {
             "type": "integer",
