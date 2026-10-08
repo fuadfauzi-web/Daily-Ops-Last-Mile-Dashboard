@@ -106,8 +106,8 @@ DATASETS: dict[str, dict] = {
     },
     "invalid_pod_raw": {
         "kpi": "invalid_pod", "label": "POD validation (raw)",
-        "hint": "Metabase question 69573 (POP/POD Validation Tasks Raw Data): leave Hub Region empty for all regions, pick Date Type and Start / End date (a range that covers several weeks or the whole month gives the page its weeks and the month), then Download results as .csv -- or the Raw sheet of the POD Validation Analysis file",
-        "link": "https://metabase.ninjavan.co/question/69573?transaction_type=DELIVERY&hub_region=&shipper_id=&date_type=&parent_id_coalesce=&start_date=&end_date=&driver_type=",
+        "hint": "Metabase question 127660 (POD Validation - failed attempts, last 60 days, all regions -- built on my_views.pod_validation_tasks_enriched; the old native question 69573 needed typed-in dates) -- pulled by the app; Download results as .csv if it ever has to be loaded by hand, or the Raw sheet of the POD Validation Analysis file",
+        "link": "https://metabase.ninjavan.co/question/127660",
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
         "keep": ["hubshortname", "couriername", "trackingid", "transactionfailurereason", "validationresult", "invalidpodreason", "attempteddatetime", "validationdatetime", "validationusername"],
     },

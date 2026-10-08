@@ -35,10 +35,10 @@ _QUESTION_RE = re.compile(r"/question/(\d+)")
 _NO_MONDAY = {"lost_declared", "lost_current_status"}  # Lost Declared: Tuesday to Sunday (Monday is the week change)
 
 
-def question_parameters(dataset: str) -> list | None:
+def question_parameters(dataset: str, question_id: int | None = None) -> list | None:
     """Values for a question that asks for them (a native question with template tags). The POD validation question (69573) needs Date Type + Start / End date: the previous month
     and this month so far, by attempt date, every region (what was typed into Metabase by hand before)."""
-    if dataset != "invalid_pod_raw":
+    if dataset != "invalid_pod_raw" or question_id != 69573:  # only the old native question asks for them; the new feeder (127660) has its 60 days built in
         return None
     today = datetime.now(MYT).date()
     first_of_this = today.replace(day=1)
@@ -213,7 +213,7 @@ async def pull(dataset: str, by: str, question_id: int | None = None) -> dict:
     _running.add(dataset)
     try:
         async with _pull_lock:  # one at a time: the big files are parsed in memory
-            data = await mb.fetch_question_csv(qid, question_parameters(dataset))
+            data = await mb.fetch_question_csv(qid, question_parameters(dataset, qid))
             if len(data) > kd.MAX_UPLOAD_BYTES:
                 raise kd.UploadError(f"The file from Metabase is too large (max {kd.MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
             if data.count(b"\n") < 2:  # header only (or nothing): keep what we have rather than replace it with an empty file
