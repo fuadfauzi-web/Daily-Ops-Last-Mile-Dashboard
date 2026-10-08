@@ -106,10 +106,10 @@ DATASETS: dict[str, dict] = {
     },
     "invalid_pod_raw": {
         "kpi": "invalid_pod", "label": "POD validation (raw)",
-        "hint": "Metabase question 127660 (POD Validation - failed attempts, last 60 days, all regions -- built on my_views.pod_validation_tasks_enriched; the old native question 69573 needed typed-in dates) -- pulled by the app; Download results as .csv if it ever has to be loaded by hand, or the Raw sheet of the POD Validation Analysis file",
+        "hint": "THREE Metabase questions joined by the app: 127660 (invalid attempts row by row with tracking numbers, last 30 days), 127663 (valid attempts counted per hub / courier / day, last 30 days) and 127664 (counts per hub / day, rest of this year -- percentages only). Delivery attempts at station hubs, all regions, built on my_views.pod_validation_tasks_enriched",
         "link": "https://metabase.ninjavan.co/question/127660",
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
-        "keep": ["hubshortname", "couriername", "trackingid", "transactionfailurereason", "validationresult", "invalidpodreason", "attempteddatetime", "validationdatetime", "validationusername"],
+        "keep": ["hubshortname", "couriername", "trackingid", "transactionfailurereason", "validationresult", "invalidpodreason", "attempteddatetime", "validationdatetime", "validationusername", "count"],
     },
     "pod_performance": {
         "kpi": "invalid_pod", "label": "LM POD performance (managers + admins)", "link": None,

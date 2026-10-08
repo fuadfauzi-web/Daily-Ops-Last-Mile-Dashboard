@@ -35,6 +35,38 @@ _QUESTION_RE = re.compile(r"/question/(\d+)")
 _NO_MONDAY = {"lost_declared", "lost_current_status"}  # Lost Declared: Tuesday to Sunday (Monday is the week change)
 
 
+# A dataset too big for one Metabase question is fed by several: the first is the question set on Documents, these follow and are joined to it (same columns by name, a Count column for
+# the rows Metabase already counted). Invalid POD: 127660 = invalid attempts row by row (30 days), 127663 = valid attempts counted per hub / courier / day (30 days), 127664 = counts per hub /
+# day for the rest of the year.
+EXTRA_QUESTIONS: dict[str, list[int]] = {"invalid_pod_raw": [127663, 127664]}
+
+
+def join_csvs(parts: list[bytes]) -> bytes:
+    """One CSV from several: the first file's columns, in its order, plus a Count column; a column is matched across files by its normalised name (so "Attempted Datetime: Day" lines up with
+    "Attempted Datetime"); what a file does not have is left empty (Count empty = 1 attempt)."""
+    import csv
+    import io
+
+    first = list(csv.reader(io.StringIO(parts[0].decode("utf-8-sig"))))
+    head = first[0]
+    cols = [kd.norm(h) for h in head]
+    if "count" not in cols:
+        head = head + ["Count"]
+        cols = cols + ["count"]
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(head)
+    for row in first[1:]:
+        w.writerow(row + [""] * (len(head) - len(row)))
+    for part in parts[1:]:
+        rows = csv.reader(io.StringIO(part.decode("utf-8-sig")))
+        names = [kd.norm(h) for h in next(rows, [])]
+        for row in rows:
+            by = {names[i]: row[i] for i in range(min(len(names), len(row)))}
+            w.writerow([by.get(c, "") for c in cols])
+    return out.getvalue().encode("utf-8")
+
+
 def question_parameters(dataset: str, question_id: int | None = None) -> list | None:
     """Values for a question that asks for them (a native question with template tags). The POD validation question (69573) needs Date Type + Start / End date: the previous month
     and this month so far, by attempt date, every region (what was typed into Metabase by hand before)."""
@@ -214,6 +246,10 @@ async def pull(dataset: str, by: str, question_id: int | None = None) -> dict:
     try:
         async with _pull_lock:  # one at a time: the big files are parsed in memory
             data = await mb.fetch_question_csv(qid, question_parameters(dataset, qid))
+            if EXTRA_QUESTIONS.get(dataset):
+                parts = [data] + [await mb.fetch_question_csv(x) for x in EXTRA_QUESTIONS[dataset]]
+                data = join_csvs(parts)
+                del parts
             if len(data) > kd.MAX_UPLOAD_BYTES:
                 raise kd.UploadError(f"The file from Metabase is too large (max {kd.MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
             if data.count(b"\n") < 2:  # header only (or nothing): keep what we have rather than replace it with an empty file
