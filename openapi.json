@@ -1262,6 +1262,75 @@
         ]
       }
     },
+    "/api/attendance/hybrid/flags": {
+      "get": {
+        "summary": "Hybrid drivers whose attendance does not match the schedule or route monitoring data today: no route after 2pm, not clocked in on time, leave with a route, leave without proof.",
+        "operationId": "list_flags_api_attendance_hybrid_flags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/hybrid/flags/action": {
+      "post": {
+        "summary": "Region Head / RFS / HOD / Manager marks a Hybrid flag as handled with a note.",
+        "description": "A Region Head / RFS / HOD / Manager marks today's flag as handled, with what was done.",
+        "operationId": "act_on_flag_api_attendance_hybrid_flags_action_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hybrid_attendance__FlagAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/staff/me": {
       "get": {
         "summary": "Attendance -> Staff: the signed-in Station Head / Fleet Assistant's own clock -- whether they can clock, their station(s), today's record and scheduled shift.",
@@ -1508,7 +1577,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FlagAction"
+                "$ref": "#/components/schemas/staff_attendance__FlagAction"
               }
             }
           }
@@ -13174,34 +13243,6 @@
         ],
         "title": "FixIn"
       },
-      "FlagAction": {
-        "properties": {
-          "email": {
-            "type": "string",
-            "title": "Email"
-          },
-          "date": {
-            "type": "string",
-            "title": "Date"
-          },
-          "kind": {
-            "type": "string",
-            "title": "Kind"
-          },
-          "note": {
-            "type": "string",
-            "title": "Note"
-          }
-        },
-        "type": "object",
-        "required": [
-          "email",
-          "date",
-          "kind",
-          "note"
-        ],
-        "title": "FlagAction"
-      },
       "FlagIn": {
         "properties": {
           "status": {
@@ -15608,6 +15649,11 @@
           "ptwh_corrections": {
             "type": "integer",
             "title": "Ptwh Corrections",
+            "default": 0
+          },
+          "hybrid_flags": {
+            "type": "integer",
+            "title": "Hybrid Flags",
             "default": 0
           },
           "attendance_visible": {
@@ -22638,6 +22684,29 @@
         "type": "object",
         "title": "OkOut"
       },
+      "hybrid_attendance__FlagAction": {
+        "properties": {
+          "driver_id": {
+            "type": "integer",
+            "title": "Driver Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "driver_id",
+          "kind",
+          "note"
+        ],
+        "title": "FlagAction"
+      },
       "hypercare__SettingsIn": {
         "properties": {
           "items": {
@@ -23122,6 +23191,34 @@
         },
         "type": "object",
         "title": "OkOut"
+      },
+      "staff_attendance__FlagAction": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "date",
+          "kind",
+          "note"
+        ],
+        "title": "FlagAction"
       }
     }
   }
