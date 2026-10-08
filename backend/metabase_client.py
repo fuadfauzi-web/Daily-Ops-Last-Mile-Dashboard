@@ -6,6 +6,7 @@ Substrait portal after deploy). The API key must belong to a Metabase user / gro
 2026-09-26: the Fleet Manager connected Metabase and wants it to become the source for the data that is pasted by hand today
 (the logic for each will follow); the KPI Dashboard's Hybrid Productivity module is the first user.
 """
+import json
 import logging
 import os
 
@@ -85,14 +86,14 @@ def _check_status(resp: httpx.Response, what: str) -> None:
         raise MetabaseError(f"Metabase returned HTTP {resp.status_code} for {what}")
 
 
-async def fetch_question_csv(card_id: int) -> bytes:
+async def fetch_question_csv(card_id: int, parameters: list | None = None) -> bytes:
     """The file "Download results as .csv" gives for a saved question -- the same text the manual upload used to take, so every dataset parser keeps working unchanged."""
     if not METABASE_API_KEY:
         raise MetabaseError("METABASE_API_KEY is not set on this app")
     url = f"{METABASE_BASE_URL}/api/card/{card_id}/query/csv"
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
-            resp = await client.post(url, headers={"X-API-KEY": METABASE_API_KEY}, data={"parameters": "[]"})
+            resp = await client.post(url, headers={"X-API-KEY": METABASE_API_KEY}, data={"parameters": json.dumps(parameters or [])})
     except httpx.HTTPError as exc:
         raise MetabaseError(f"Could not reach Metabase: {exc.__class__.__name__}") from exc
     _check_status(resp, f"question {card_id}")
