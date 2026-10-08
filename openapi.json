@@ -12408,6 +12408,20 @@
             ],
             "title": "Helper Replied At"
           },
+          "cc": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cc",
+            "default": []
+          },
+          "cc_me": {
+            "type": "boolean",
+            "title": "Cc Me",
+            "default": false
+          },
           "owner_unseen": {
             "type": "boolean",
             "title": "Owner Unseen"
@@ -12544,6 +12558,14 @@
               }
             ],
             "title": "Helper Email"
+          },
+          "cc_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Emails",
+            "default": []
           }
         },
         "type": "object",
@@ -17676,6 +17698,20 @@
               }
             ],
             "title": "As Of"
+          },
+          "statuses": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statuses"
           }
         },
         "type": "object",
@@ -19475,6 +19511,20 @@
             ],
             "title": "No Status Hours Left"
           },
+          "cc": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cc",
+            "default": []
+          },
+          "cc_me": {
+            "type": "boolean",
+            "title": "Cc Me",
+            "default": false
+          },
           "created_by_me": {
             "type": "boolean",
             "title": "Created By Me"
@@ -19615,6 +19665,14 @@
               }
             ],
             "title": "Note"
+          },
+          "cc_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Emails",
+            "default": []
           }
         },
         "type": "object",
