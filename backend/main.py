@@ -1958,6 +1958,7 @@ class RestockBundleRow(BaseModel):
     days_group: str | None
     aging_days: int
     hold_details: str | None
+    ticket_type: str | None = None
     bundle_class: str
     tracking_numbers: list[str]
 
@@ -2184,6 +2185,8 @@ class RdoTnRow(BaseModel):
     bundle_status: str | None
     bundle_last_sweep_at: str | None
     bundle_delivered_at: str | None
+    rdo_route_driver: str | None = None
+    bundle_delivery_driver: str | None = None
 
 
 class RdoComplianceResponse(BaseModel):

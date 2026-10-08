@@ -20,6 +20,7 @@ import ActionBoard from "./ActionBoard";
 import ShipmentDetailsTab from "./ShipmentDetailsTab";
 import RoutedViewTab from "./RoutedViewTab";
 import ShipperWatchTab from "./ShipperWatchTab";
+import RestockTab, { DocumentComplianceTab } from "./RestockTab";
 import AgingDetailsTab from "./AgingDetailsTab";
 import RpuTab from "./RpuTab";
 import RecoveryTab from "./RecoveryTab";
@@ -102,6 +103,8 @@ const TABS = [
   { key: "rpu", label: "Return Pick Up (RPU)" },
   { key: "recovery", label: "Recovery" },
   { key: "shipper", label: "Hypercare Shippers" },
+  { key: "restock", label: "Restock NXD" },
+  { key: "docCompliance", label: "Document Compliance" },
   ...(FEATURES.dod
     ? [
         {
@@ -1255,6 +1258,22 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, notifCo
 
       {tab === "shipper" && (
         <ShipperWatchTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
+        />
+      )}
+
+      {tab === "restock" && (
+        <RestockTab
+          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
+          excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
+          refreshTick={refreshTick}
+        />
+      )}
+
+      {tab === "docCompliance" && (
+        <DocumentComplianceTab
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={canToggleEastMalaysia && !includeEastMalaysia}
           refreshTick={refreshTick}

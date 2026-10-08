@@ -2,7 +2,7 @@
 // exist: `dash: true` items are the Dashboard's own sub-tabs (same keys as Dashboard.jsx's TABS), the others are App.jsx's level-1 pages. Nothing here
 // decides who may see what -- App passes in only the pages this person's role can open.
 // People = the workforce pages (Attendance now; Overtime for hybrid and staff is planned after it; Staff & Org Chart lives here too).
-export const SIDE_GROUPS = ["Act", "Last Mile Ops", "Recovery", "Dashboard", "People", "System"];
+export const SIDE_GROUPS = ["Act", "Last Mile Ops", "Recovery", "Restock", "Dashboard", "People", "System"];
 
 // What a group is called on screen when that differs from its key (the key is what pages and colours are filed under).
 export const SIDE_GROUP_LABELS = { Dashboard: "Dashboard (Last Mile)" };
@@ -14,6 +14,7 @@ export const SIDE_GROUP_COLORS = {
   Act: { chip: "bg-[#E5E7EB] text-[#231F20]", dot: "bg-[#231F20]" },
   "Last Mile Ops": { chip: "bg-[#DBEAFE] text-[#1E40AF]", dot: "bg-[#2563EB]" },
   Recovery: { chip: "bg-[#CCFBF1] text-[#115E59]", dot: "bg-[#0D9488]" },
+  Restock: { chip: "bg-[#FEF3C7] text-[#92400E]", dot: "bg-[#D97706]" },
   Dashboard: { chip: "bg-[#EDE9FE] text-[#5B21B6]", dot: "bg-[#7C3AED]" },
   People: { chip: "bg-[#FAE8FF] text-[#86198F]", dot: "bg-[#C026D3]" },
   System: { chip: "bg-[#F3F4F6] text-[#4B5563]", dot: "bg-[#9CA3AF]" },
@@ -34,6 +35,8 @@ export const SIDE_ITEMS = [
   { id: "rec:pdcnr", dash: true, dashKey: "recovery", recGroup: "pdcnr", group: "Recovery", label: "PDCNR", beta: true, recLists: true, code: "PD" },
   { id: "rec:damage", dash: true, dashKey: "recovery", recGroup: "damage", group: "Recovery", label: "Damage", beta: true, recLists: true, code: "DM" },
   { id: "rec:nolabel", dash: true, dashKey: "recovery", recGroup: "nolabel", group: "Recovery", label: "No Label from Hub", beta: true, recLists: true, code: "NL" },
+  { id: "restock", dash: true, group: "Restock", label: "Restock NXD", code: "RN" },
+  { id: "docCompliance", dash: true, group: "Restock", label: "Document Compliance", code: "DC" },
   { id: "management", group: "Dashboard", label: "Management View", beta: true, code: "MV" },
   { id: "managerDash", group: "Dashboard", label: "Manager Dashboard", beta: true, code: "MD" },
   { id: "dod", dash: true, group: "Dashboard", label: "DoD", beta: true, code: "DD" },
