@@ -5,8 +5,7 @@ import { SIDE_GROUPS, SIDE_GROUP_COLORS, sideGroupLabel } from "../lib/sideNav";
 // [{ id, label, group, beta, code, active, badge, dot }]. 224px wide, or 72px with two-letter codes when collapsed.
 export default function SideNav({ items, onSelect, collapsed, onToggle, top, autoHide = true }) {
   const [query, setQuery] = useState("");
-  // Auto-hide (2026-10-08): once a page is chosen the sidebar folds to the narrow rail, and moving the mouse onto the rail floats the full sidebar back over the page (it does not push the page
-  // around). The « / » button keeps it open until the next choice. Turned off in the user menu, the sidebar then stays as it was.
+  // Auto-hide (2026-10-08): once a page is chosen the sidebar folds to the narrow rail, and moving the mouse onto the rail opens the full sidebar again, the page moving over to make room (it no longer covers the page text). The « / » button keeps it open until the next choice. Turned off in the user menu, the sidebar then stays as it was.
   const [rested, setRested] = useState(false);
   const [hover, setHover] = useState(false);
   const justPicked = useRef(false); // after a pick the mouse is still on the rail: the sidebar stays folded until the mouse has left it once
@@ -44,7 +43,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top, aut
   return (
     <div
       style={{ top, height: `calc(100vh - ${top}px)` }}
-      className={`sticky shrink-0 self-start ${rail ? "w-[72px]" : "w-56"}`}
+      className={`sticky shrink-0 self-start ${rail && !peek ? "w-[72px]" : "w-56"}`}
       onMouseMove={() => {
         if (!justPicked.current) setHover(true);
       }}
@@ -59,7 +58,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top, aut
     >
     <aside
       aria-label="Main navigation"
-      className={`absolute inset-y-0 left-0 z-30 overflow-y-auto border-r border-line bg-white pb-3 ${showCollapsed ? "w-[72px]" : "w-56"} ${peek ? "shadow-xl" : ""}`}
+      className="absolute inset-y-0 left-0 z-30 w-full overflow-y-auto border-r border-line bg-white pb-3"
     >
       {/* The collapse + search row stays put while the pages scroll underneath it. */}
       <div className={`sticky top-0 z-10 mb-1 flex items-center gap-1.5 border-b border-line/60 bg-white px-2 pb-2 pt-3 ${showCollapsed ? "flex-col" : ""}`}>

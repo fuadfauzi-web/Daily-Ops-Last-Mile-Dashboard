@@ -338,7 +338,7 @@ export default function App() {
           </div>
         )}
         <header className="border-b-[3px] border-brand bg-white">
-        <div className="mx-auto flex max-w-[1920px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex shrink-0 items-center gap-4">
             <Logo />
             {/* Data as of sits right after the logo, in both the sidebar and the top-bar layouts */}
