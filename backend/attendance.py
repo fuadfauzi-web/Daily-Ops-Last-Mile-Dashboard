@@ -162,7 +162,7 @@ def _zone_region(station: str) -> tuple[str, str]:
 
 
 # id, name, ic, phone, station, rate, joined, active, category, approval_status, end_date, inactive_since, inactive_reason, cleaned_at
-_WORKER_COLS = "id, full_name, ic_no, phone, station, daily_rate, joined_date, active, category, approval_status, end_date, inactive_since, inactive_reason, cleaned_at"
+_WORKER_COLS = "id, full_name, ic_no, phone, station, daily_rate, joined_date, active, category, approval_status, end_date, inactive_since, inactive_reason, cleaned_at, email"
 
 
 def _worker_json(r, full_ic: bool) -> dict:
@@ -170,7 +170,7 @@ def _worker_json(r, full_ic: bool) -> dict:
     return {
         "id": r[0], "name": r[1], "ic_no": _mask_ic(r[2], full_ic), "phone": r[3], "station": r[4], "zone": zone, "region": region,
         "daily_rate": float(r[5]), "joined_date": str(r[6]) if r[6] else None, "active": bool(r[7]), "category": r[8], "approval": r[9],
-        "end_date": str(r[10]) if r[10] else None, "inactive_since": str(r[11]) if r[11] else None, "inactive_reason": r[12], "cleaned": r[13] is not None,
+        "end_date": str(r[10]) if r[10] else None, "inactive_since": str(r[11]) if r[11] else None, "inactive_reason": r[12], "cleaned": r[13] is not None, "email": r[14] if len(r) > 14 else None,
     }
 
 
@@ -223,9 +223,23 @@ async def _pending_days(first: date, last: date) -> set[tuple[int, date]]:
     return {(r[0], r[1]) for r in rows}
 
 
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def clean_email(raw: str | None) -> str | None:
+    """A person's email, lower-cased -- the one the user whitelists for the Ninjavan Shift app. Empty = none; anything else has to look like an email."""
+    e = (raw or "").strip().lower()
+    if not e:
+        return None
+    if len(e) > 255 or not _EMAIL.match(e):
+        raise HTTPException(status_code=422, detail="That email doesn't look right (name@example.com)")
+    return e
+
+
 class WorkerIn(BaseModel):
     name: str
     station: str
+    email: str | None = None
     ic_no: str | None = None
     phone: str | None = None
     daily_rate: float = DEFAULT_RATE
@@ -280,9 +294,9 @@ async def add_worker(payload: WorkerIn, user: CurrentUser = Depends(get_current_
     # A new hire waits for the Region Head, then a Manager. A Region Head adding someone is their own first approval.
     status, now = ("pending_mgr", _now()) if user.position == "region_head" else ("pending_rh", None)
     await db.execute(
-        """INSERT INTO ptwh_workers (full_name, ic_no, phone, station, daily_rate, joined_date, active, category, approval_status, rh_by, rh_at, created_by, created_at)
-           VALUES (%s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)""",
-        (payload.name.strip().upper(), ic or None, (payload.phone or "").strip() or None,
+        """INSERT INTO ptwh_workers (full_name, ic_no, phone, email, station, daily_rate, joined_date, active, category, approval_status, rh_by, rh_at, created_by, created_at)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)""",
+        (payload.name.strip().upper(), ic or None, (payload.phone or "").strip() or None, clean_email(payload.email),
          payload.station, payload.daily_rate, joined, payload.category or None, status, user.email if now else None, now, user.email, _now()),
     )
     return {"ok": True, "approval": status, "message": APPROVAL_LABEL[status] + " -- they can start once the Region Head and then a Manager have approved"}
@@ -364,9 +378,9 @@ async def update_worker(worker_id: int, payload: WorkerIn, user: CurrentUser = D
     active = bool(row[7]) and row[9] == "approved" and not (end is not None and end < today)
     just_ended = bool(row[7]) and not active
     await db.execute(
-        """UPDATE ptwh_workers SET full_name=%s, ic_no=%s, phone=%s, station=%s, daily_rate=%s, joined_date=%s, end_date=%s, active=%s, category=%s,
+        """UPDATE ptwh_workers SET full_name=%s, ic_no=%s, phone=%s, email=%s, station=%s, daily_rate=%s, joined_date=%s, end_date=%s, active=%s, category=%s,
                   inactive_since=%s, inactive_reason=%s, updated_at=%s WHERE id=%s""",
-        (payload.name.strip().upper(), new_ic, (payload.phone or "").strip() or None, payload.station, payload.daily_rate, joined, end, 1 if active else 0,
+        (payload.name.strip().upper(), new_ic, (payload.phone or "").strip() or None, clean_email(payload.email), payload.station, payload.daily_rate, joined, end, 1 if active else 0,
          payload.category or None, today if just_ended else row[11], "End date passed" if just_ended else row[12], _now(), worker_id),
     )
     if just_ended:

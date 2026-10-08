@@ -41,6 +41,8 @@ import attendance
 import attendance_corrections
 import staff_attendance
 import attendance_launch
+import hybrid_app
+import attendance_emails
 import hybrid_attendance
 import hybrid_roster
 import ptwh_app
@@ -776,6 +778,9 @@ async def _kpi_fresh() -> None:
 
 app.include_router(attendance_corrections.router)  # Attendance -> PTWH: controlled clock corrections + voids (attendance_corrections.py)
 app.include_router(attendance_launch.router)  # Settings -> Launch Timeline: Attendance goes live by batch (attendance_launch.py)
+app.include_router(hybrid_app.router)  # Ninjavan Shift for Hybrid drivers: login / clock in / schedule (hybrid_app.py)
+app.include_router(hybrid_app.admin_router)  # their logins + selfie audit in the dashboard
+app.include_router(attendance_emails.router)  # Attendance -> Emails: PTWH + Hybrid emails to whitelist (attendance_emails.py)
 app.include_router(hybrid_attendance.router)  # Attendance -> Hybrid: manual drivers + attendance (hybrid_attendance.py)
 app.include_router(staff_attendance.router)  # Attendance -> Staff: Station Heads / Fleet Assistants clock in by location (staff_attendance.py)
 app.include_router(hypercare.router)  # Hypercare Shippers: High-Value TN level, SLA + guideline settings (hypercare.py)

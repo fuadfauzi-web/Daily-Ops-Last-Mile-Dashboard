@@ -5,6 +5,7 @@ import PtwhAttendance from "./attendance/PtwhAttendance";
 import ScheduleView from "./attendance/ScheduleView";
 import StaffAttendance from "./attendance/StaffAttendance";
 import HybridAttendance from "./attendance/HybridAttendance";
+import EmailsView from "./attendance/EmailsView";
 
 // Attendance (2026-10-02, staging, Beta): one tab for all attendance. PTWH is built first (clock in / out, month sheet, payable); Staff and Hybrid attendance
 // are placeholders until their turn -- Hybrid attendance already shows up inside KPI -> Hybrid Productivity (from Metabase), Staff will follow the Staff & Org
@@ -15,6 +16,7 @@ const SUB_TABS = [
   { key: "hybrid", label: "Hybrid" },
   { key: "ptwh", label: "PTWH" },
   { key: "schedule", label: "Schedule" },
+  { key: "emails", label: "Emails", rank: "manager" }, // Superadmin / HOD / Manager: the emails to whitelist for the Ninjavan Shift app
 ];
 
 export default function AttendanceTab({ me }) {
@@ -72,11 +74,13 @@ export default function AttendanceTab({ me }) {
           <button onClick={() => { setSub("ptwh"); setGoView({ view: "audit", n: Date.now() }); }} className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white">Open Audit</button>
         </div>
       )}
-      <TabBar tabs={SUB_TABS} activeKey={sub} onSelect={setSub} />
+      <TabBar tabs={SUB_TABS.filter((t) => !t.rank || me.role === "admin" || me.role === "manager")} activeKey={sub} onSelect={setSub} />
       {sub === "ptwh" ? (
         <PtwhAttendance me={me} requestView={goView} />
       ) : sub === "staff" ? (
         <StaffAttendance requestView={goStaff} />
+      ) : sub === "emails" ? (
+        <EmailsView />
       ) : sub === "hybrid" ? (
         <HybridAttendance />
       ) : sub === "schedule" ? (

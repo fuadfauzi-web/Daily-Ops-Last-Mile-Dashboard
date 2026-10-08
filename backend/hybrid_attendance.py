@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 import attendance
 import db
+import hybrid_app
 import hybrid_roster
 from attendance import _can_edit, _hours, _iso, _now, _require_editor, _visible_stations, _zone_region
 from auth import CurrentUser, get_current_user
@@ -26,7 +27,7 @@ router = APIRouter()
 STATUSES = ("present", "absent", "leave")
 WINDOW_DAYS = 35  # a day can be keyed / changed up to five weeks back, never in the future
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-_COLS = "id, station, name, driver_id, phone, vehicle_type, NULL AS plate_unused, joined_date, end_date, active, notes, created_by, created_at"
+_COLS = "id, station, name, driver_id, phone, vehicle_type, NULL AS plate_unused, joined_date, end_date, active, notes, created_by, created_at, email"
 
 
 def _d(v) -> str | None:
@@ -36,7 +37,7 @@ def _d(v) -> str | None:
 def _driver_json(r) -> dict:
     zone, region = _zone_region(r[1])
     return {"id": r[0], "station": r[1], "zone": zone, "region": region, "name": r[2], "driver_id": r[3], "phone": r[4], "vehicle_type": r[5],
-            "joined_date": _d(r[7]), "end_date": _d(r[8]), "active": bool(r[9]), "notes": r[10], "created_by": r[11]}
+            "joined_date": _d(r[7]), "end_date": _d(r[8]), "active": bool(r[9]), "notes": r[10], "created_by": r[11], "email": r[13] if len(r) > 13 else None}
 
 
 def _clean(s: str | None, n: int) -> str | None:
@@ -86,6 +87,7 @@ async def refresh_drivers(user: CurrentUser = Depends(get_current_user)):
 class DriverIn(BaseModel):
     station: str
     name: str
+    email: str | None = None
     driver_id: str | None = None
     phone: str | None = None
     vehicle_type: str | None = None
@@ -108,14 +110,15 @@ async def add_driver(p: DriverIn, user: CurrentUser = Depends(get_current_user))
         raise HTTPException(status_code=422, detail="The end date is before the joined date")
     now = _now()
     new_id = await db.execute(
-        "INSERT INTO hybrid_drivers (station, name, driver_id, phone, vehicle_type, joined_date, end_date, active, notes, created_by, created_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-        (p.station, name, _clean(p.driver_id, 60), _clean(p.phone, 30), _clean(p.vehicle_type, 40), joined, end, 0 if (end and end < now.date()) else 1, _clean(p.notes, 300), user.email, now),
+        "INSERT INTO hybrid_drivers (station, name, email, driver_id, phone, vehicle_type, joined_date, end_date, active, notes, created_by, created_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (p.station, name, attendance.clean_email(p.email), _clean(p.driver_id, 60), _clean(p.phone, 30), _clean(p.vehicle_type, 40), joined, end, 0 if (end and end < now.date()) else 1, _clean(p.notes, 300), user.email, now),
     )
     return {"ok": True, "id": new_id}
 
 
 class DriverPatch(BaseModel):
+    email: str | None = None
     name: str | None = None
     driver_id: str | None = None
     phone: str | None = None
@@ -129,12 +132,13 @@ class DriverPatch(BaseModel):
 @router.patch("/api/attendance/hybrid/drivers/{driver_id}")
 async def edit_driver(driver_id: int, p: DriverPatch, user: CurrentUser = Depends(get_current_user)):
     """Edit a driver's details. Only the fields sent change ("" clears one). A name change follows the driver onto the Schedule. Ending or switching a driver off keeps their history."""
-    _require_manage_drivers(user)
+    sent = p.model_dump(exclude_unset=True)
+    if set(sent) - {"email", "phone"}:  # the list itself comes from Metabase: a station may only add the driver's email (for the app whitelist) and phone
+        _require_manage_drivers(user)
     r = await db.fetch_one(f"SELECT {_COLS} FROM hybrid_drivers WHERE id = %s", (driver_id,))
     if r is None:
         raise HTTPException(status_code=404, detail="Driver not found")
     _require_editor(user, r[1])
-    sent = p.model_dump(exclude_unset=True)
     name, active = r[2], bool(r[9])
     if "name" in sent:
         name = _clean(p.name, 150)
@@ -151,9 +155,10 @@ async def edit_driver(driver_id: int, p: DriverPatch, user: CurrentUser = Depend
     if end and str(end)[:10] < str(_now().date()):
         active = False  # an end date in the past switches them off
     vals = {k: (_clean(getattr(p, k), n) if k in sent else r[i]) for k, n, i in (("driver_id", 60, 3), ("phone", 30, 4), ("vehicle_type", 40, 5), ("notes", 300, 10))}
+    email = attendance.clean_email(p.email) if "email" in sent else r[13]
     await db.execute(
-        "UPDATE hybrid_drivers SET name=%s, driver_id=%s, phone=%s, vehicle_type=%s, joined_date=%s, end_date=%s, active=%s, notes=%s, updated_at=%s WHERE id=%s",
-        (name, vals["driver_id"], vals["phone"], vals["vehicle_type"], joined, end, 1 if active else 0, vals["notes"], _now(), driver_id),
+        "UPDATE hybrid_drivers SET name=%s, email=%s, driver_id=%s, phone=%s, vehicle_type=%s, joined_date=%s, end_date=%s, active=%s, notes=%s, updated_at=%s WHERE id=%s",
+        (name, email, vals["driver_id"], vals["phone"], vals["vehicle_type"], joined, end, 1 if active else 0, vals["notes"], _now(), driver_id),
     )
     if name != r[2]:  # the Schedule refers to a Hybrid driver by name
         await db.execute("UPDATE schedule_entries SET person_ref = %s WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (name, r[1], r[2]))
@@ -239,7 +244,10 @@ async def clear_record(driver_id: int, work_date: str, user: CurrentUser = Depen
 
 def _rec_json(r) -> dict:
     h = _hours(r[3], r[4])
-    return {"status": r[2], "clock_in": _iso(r[3]), "clock_out": _iso(r[4]), "hours": None if h is None else round(h, 2), "note": r[5], "recorded_by": r[6], "edited_by": r[7]}
+    out = {"status": r[2], "clock_in": _iso(r[3]), "clock_out": _iso(r[4]), "hours": None if h is None else round(h, 2), "note": r[5], "recorded_by": r[6], "edited_by": r[7]}
+    if len(r) > 10:  # clocked in the Ninjavan Shift app: how far from the station, and whether the selfie is still kept
+        out.update({"id": r[8], "source": r[9], "has_photo": bool(r[10]), "in_dist": r[11] if len(r) > 11 else None})
+    return out
 
 
 @router.get("/api/attendance/hybrid/day")
@@ -249,7 +257,7 @@ async def day_view(date_: str | None = Query(default=None, alias="date"), user: 
     d = _date(date_, "day") or today
     stations = _visible_stations(user)
     drivers = [r for r in await db.fetch_all(f"SELECT {_COLS} FROM hybrid_drivers ORDER BY station, name") if r[1] in stations]
-    recs = {r[0]: r for r in await db.fetch_all("SELECT driver_id, work_date, status, clock_in, clock_out, note, recorded_by, edited_by FROM hybrid_attendance WHERE work_date = %s", (d,))}
+    recs = {r[0]: r for r in await db.fetch_all("SELECT driver_id, work_date, status, clock_in, clock_out, note, recorded_by, edited_by, id, source, in_selfie, in_dist FROM hybrid_attendance WHERE work_date = %s", (d,))}
     shifts = {r[0]: r[1] for r in await db.fetch_all("SELECT person_ref, shift FROM schedule_entries WHERE person_type = 'hybrid' AND work_date = %s", (d,))}
     rows = []
     for r in drivers:
@@ -302,9 +310,11 @@ async def housekeeping_drivers() -> None:
         old = await db.fetch_all("SELECT id, station, name FROM hybrid_drivers WHERE end_date IS NOT NULL AND end_date < %s", (today - timedelta(days=KEEP_AFTER_END_DAYS),))
         for did, station, name in old:
             await db.execute("DELETE FROM hybrid_attendance WHERE driver_id = %s", (did,))
+            await db.execute("DELETE FROM hybrid_credentials WHERE driver_id = %s", (did,))
             await db.execute("DELETE FROM schedule_entries WHERE station = %s AND person_type = 'hybrid' AND person_ref = %s", (station, name))
             await db.execute("DELETE FROM hybrid_drivers WHERE id = %s", (did,))
         if n_off or old:
             log.info("Hybrid housekeeping: %d switched off, %d removed", n_off, len(old))
+        await hybrid_app.purge_selfies()  # clock-in selfies are kept 14 days
     except Exception:  # noqa: BLE001 -- housekeeping must never take the loop down
         log.exception("Hybrid housekeeping failed")

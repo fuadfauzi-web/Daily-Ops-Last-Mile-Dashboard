@@ -355,6 +355,13 @@ const SECTIONS = [
           <strong> test-run</strong> it if it wants to start early; from the date it is live. Whatever was keyed in during the test run (attendance, corrections, photos) is <strong>cleared once, when the station reaches its launch date</strong>; the people, drivers and schedule stay. Attendance opens on the <em>Staff</em> tab.
         </p>
         <p>
+          <strong>Ninjavan Shift &amp; emails</strong> -- the phone app (the old PTWH app, now <em>Ninjavan Shift</em>) serves <strong>PTWH and Hybrid drivers / riders</strong> on the same login page. Give each person their
+          <strong> Google email</strong>: stations key it in (PTWH: <em>Workers → Add / Edit</em>; Hybrid: <em>Drivers → email add</em>). It is the email they open the app with, and Head Office adds it to the app's access list.
+          <strong> Superadmin, HOD and Managers</strong> see every email in <em>Attendance → Emails</em> (filter by group, region, zone or station; <em>Copy</em> gives them ready to paste; people without an email are listed so stations can be chased).
+          A <strong>Hybrid driver</strong>: the station presses <em>Create login</em> next to them in <em>Hybrid → Drivers</em> (username, temporary password and recovery code, shown once). They log in on the same page, <strong>clock in</strong> with their phone's location (within 100 m of the station) and a selfie, and see their own
+          schedule and attendance. A Hybrid driver <strong>never clocks out</strong> -- their day ends with their route data (built later). The station can open the clock-in selfie in <em>Today</em>; selfies are kept 14 days.
+        </p>
+        <p>
           <strong>Hybrid attendance</strong> -- <em>manual for now</em>: the Hybrid drivers are <strong>not typed in</strong>: the list is pulled from the Metabase question <em>Active Driver Details</em> every morning (name, driver ID, station, vehicle, joined / end date). A driver who resigned or was terminated stays on the list until the station updates their <strong>employment end date in Ninja Van Operator → Driver Strength</strong>; the next morning they turn inactive, are kept for a month, then removed for good with their attendance. Station staff then key each day in
           <em> Today</em>: choose <em>Present</em>, <em>Absent</em> or <em>Leave</em> (times and a note are optional) and press Save; <em>Month sheet</em> shows the grid. You can key or change the last 35 days and each
           entry shows who keyed it. The Schedule's Hybrid list comes from these drivers. When Hybrid drivers can sign in with their driver-app login, this changes.

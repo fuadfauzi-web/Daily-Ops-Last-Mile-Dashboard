@@ -15,7 +15,7 @@ function suggestUsername(name) {
 function Credentials({ worker, creds, username, appUrl, onClose }) {
   const [copied, setCopied] = useState(false);
   const msg = [
-    `PTWH app login for ${worker.name}`,
+    `Ninjavan Shift login for ${worker.name}`,
     appUrl ? `App: ${appUrl}` : null,
     `Username: ${username}`,
     `Temporary password: ${creds.temp_password}`,
@@ -48,7 +48,9 @@ function Credentials({ worker, creds, username, appUrl, onClose }) {
   );
 }
 
-export default function LoginModal({ worker, login, appUrl, onClose, onChanged, setError }) {
+export default function LoginModal({ worker, login, appUrl, onClose, onChanged, setError, kind = "ptwh" }) {
+  const fns = kind === "hybrid" ? { create: api.hybridLoginCreate, disable: api.hybridLoginDisable, reset: api.hybridLoginReset } : { create: api.ptwhLoginCreate, disable: api.ptwhLoginDisable, reset: api.ptwhLoginReset };
+  const who = kind === "hybrid" ? "Ninjavan Shift (Hybrid)" : "PTWH app";
   const [username, setUsername] = useState(login?.username || suggestUsername(worker.name));
   const [creds, setCreds] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -68,20 +70,20 @@ export default function LoginModal({ worker, login, appUrl, onClose, onChanged, 
   };
 
   return (
-    <Modal title={`PTWH app login · ${worker.name}`} onClose={creds ? () => { onChanged(); onClose(); } : onClose}>
+    <Modal title={`${who} login · ${worker.name}`} onClose={creds ? () => { onChanged(); onClose(); } : onClose}>
       {creds ? (
         <Credentials worker={worker} creds={creds} username={username} appUrl={appUrl} onClose={() => { onChanged(); onClose(); }} />
       ) : !login ? (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            Give {worker.name} a username. We make a temporary password and a recovery code -- you pass them on, and they can change the password themselves in the PTWH app.
+            Give {worker.name} a username. We make a temporary password and a recovery code -- you pass them on, and they can change the password themselves in the app.
           </p>
           <Field label="Username (letters, numbers, dot, dash)">
             <input className={`${inputCls} w-full font-mono`} value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} maxLength={30} />
           </Field>
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className={`${btnCls} text-slate-600`}>Cancel</button>
-            <button disabled={busy || username.length < 3} onClick={() => run(() => api.ptwhLoginCreate(worker.id, username), setCreds)} className={`${btnCls} bg-brand text-white disabled:opacity-50`}>Create login</button>
+            <button disabled={busy || username.length < 3} onClick={() => run(() => fns.create(worker.id, username), setCreds)} className={`${btnCls} bg-brand text-white disabled:opacity-50`}>Create login</button>
           </div>
         </div>
       ) : (
@@ -94,10 +96,10 @@ export default function LoginModal({ worker, login, appUrl, onClose, onChanged, 
           </dl>
           <p className="text-xs text-slate-500">Forgot the password and has no recovery code? Reset it -- you get a new temporary password and recovery code, and the old password stops working.</p>
           <div className="flex flex-wrap justify-end gap-2">
-            <button disabled={busy} onClick={() => run(() => api.ptwhLoginDisable(worker.id, !login.disabled), () => onClose())} className={`${btnCls} border border-slate-300 text-slate-700`}>
+            <button disabled={busy} onClick={() => run(() => fns.disable(worker.id, !login.disabled), () => onClose())} className={`${btnCls} border border-slate-300 text-slate-700`}>
               {login.disabled ? "Switch login on" : "Switch login off"}
             </button>
-            <button disabled={busy} onClick={() => window.confirm("Reset the password? The old one stops working straight away.") && run(() => api.ptwhLoginReset(worker.id), setCreds)} className={`${btnCls} bg-brand text-white`}>Reset password</button>
+            <button disabled={busy} onClick={() => window.confirm("Reset the password? The old one stops working straight away.") && run(() => fns.reset(worker.id), setCreds)} className={`${btnCls} bg-brand text-white`}>Reset password</button>
           </div>
         </div>
       )}
