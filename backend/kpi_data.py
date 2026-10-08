@@ -104,12 +104,70 @@ DATASETS: dict[str, dict] = {
         "link": "https://metabase.ninjavan.co/question/127513",
         "sheet": "Daily Raw", "required": ["courierdisplayname", "routedate"],
     },
-    "invalid_pod_raw": {
-        "kpi": "invalid_pod", "label": "POD validation (raw)",
-        "hint": "THREE Metabase questions joined by the app: 127660 (invalid attempts row by row with tracking numbers, last 30 days), 127663 (valid attempts counted per hub / courier / day, last 30 days) and 127664 (counts per hub / day, rest of this year -- percentages only). Delivery attempts at station hubs, all regions, built on my_views.pod_validation_tasks_enriched",
-        "link": "https://metabase.ninjavan.co/question/127660",
+    "invalid_pod_raw": {  # replaced 2026-10-09 by the POD store (pod_store.py): kept only so an old upload can be cleared
+        "kpi": "invalid_pod", "label": "POD validation (raw, old)", "link": None, "hidden": True,
+        "hint": "not used any more -- the Invalid POD page reads the POD store (pod_store.py), filled from Metabase",
         "sheet": "Raw", "required": ["hubshortname", "validationresult"],
-        "keep": ["hubshortname", "couriername", "trackingid", "transactionfailurereason", "validationresult", "invalidpodreason", "attempteddatetime", "validationdatetime", "validationusername", "count"],
+    },
+    "pod_tn_recent": {
+        "kpi": "pod_store", "label": "POD store -- daily: invalid attempts, last 7 days", "link": "https://metabase.ninjavan.co/question/127665",
+        "hint": "Metabase question 127665: invalid POD attempts row by row (with tracking numbers) for the last 7 full days; the app replaces those days in its own tables every day",
+        "sheet": None, "required": [], "ingest": {"kind": "tn", "window": ["recent", 7]},
+    },
+    "pod_valid_recent": {
+        "kpi": "pod_store", "label": "POD store -- daily: valid attempts counted, last 7 days", "link": "https://metabase.ninjavan.co/question/127666",
+        "hint": "Metabase question 127666: valid POD attempts counted per hub / courier / day for the last 7 full days; the app replaces those days in its own tables every day",
+        "sheet": None, "required": [], "ingest": {"kind": "valid", "window": ["recent", 7]},
+    },
+    "pod_tn_bf1": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 1/4: invalid attempts 09-01 to 09-10", "link": "https://metabase.ninjavan.co/question/127667",
+        "hint": "Metabase question 127667: invalid POD attempts 2026-09-01 to 2026-09-10; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "tn", "window": ["abs", "2026-09-01", "2026-09-10"], "once": True},
+    },
+    "pod_valid_bf1": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 1/4: valid attempts counted 09-01 to 09-10", "link": "https://metabase.ninjavan.co/question/127671",
+        "hint": "Metabase question 127671: valid POD attempts counted per hub / courier / day 2026-09-01 to 2026-09-10; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "valid", "window": ["abs", "2026-09-01", "2026-09-10"], "once": True},
+    },
+    "pod_tn_bf2": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 2/4: invalid attempts 09-11 to 09-20", "link": "https://metabase.ninjavan.co/question/127668",
+        "hint": "Metabase question 127668: invalid POD attempts 2026-09-11 to 2026-09-20; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "tn", "window": ["abs", "2026-09-11", "2026-09-20"], "once": True},
+    },
+    "pod_valid_bf2": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 2/4: valid attempts counted 09-11 to 09-20", "link": "https://metabase.ninjavan.co/question/127672",
+        "hint": "Metabase question 127672: valid POD attempts counted per hub / courier / day 2026-09-11 to 2026-09-20; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "valid", "window": ["abs", "2026-09-11", "2026-09-20"], "once": True},
+    },
+    "pod_tn_bf3": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 3/4: invalid attempts 09-21 to 09-30", "link": "https://metabase.ninjavan.co/question/127669",
+        "hint": "Metabase question 127669: invalid POD attempts 2026-09-21 to 2026-09-30; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "tn", "window": ["abs", "2026-09-21", "2026-09-30"], "once": True},
+    },
+    "pod_valid_bf3": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 3/4: valid attempts counted 09-21 to 09-30", "link": "https://metabase.ninjavan.co/question/127673",
+        "hint": "Metabase question 127673: valid POD attempts counted per hub / courier / day 2026-09-21 to 2026-09-30; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "valid", "window": ["abs", "2026-09-21", "2026-09-30"], "once": True},
+    },
+    "pod_tn_bf4": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 4/4: invalid attempts 10-01 to 10-08", "link": "https://metabase.ninjavan.co/question/127670",
+        "hint": "Metabase question 127670: invalid POD attempts 2026-10-01 to 2026-10-08; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "tn", "window": ["abs", "2026-10-01", "2026-10-08"], "once": True},
+    },
+    "pod_valid_bf4": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill 4/4: valid attempts counted 10-01 to 10-08", "link": "https://metabase.ninjavan.co/question/127674",
+        "hint": "Metabase question 127674: valid POD attempts counted per hub / courier / day 2026-10-01 to 2026-10-08; pulled ONCE (press Pull now once)",
+        "sheet": None, "required": [], "ingest": {"kind": "valid", "window": ["abs", "2026-10-01", "2026-10-08"], "once": True},
+    },
+    "pod_roll_w": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill: weekly counts per driver (Jan - Aug)", "link": "https://metabase.ninjavan.co/question/127675",
+        "hint": "Metabase question 127675: POD attempts counted per hub / courier / week / result, 2026-01-01 to 2026-08-31; pulled ONCE",
+        "sheet": None, "required": [], "ingest": {"kind": "roll_w", "window": ["none"], "once": True},
+    },
+    "pod_roll_m": {
+        "kpi": "pod_store", "label": "POD store -- one-time backfill: monthly counts per driver (Jan - Aug)", "link": "https://metabase.ninjavan.co/question/127676",
+        "hint": "Metabase question 127676: POD attempts counted per hub / courier / month / result, 2026-01-01 to 2026-08-31; pulled ONCE",
+        "sheet": None, "required": [], "ingest": {"kind": "roll_m", "window": ["none"], "once": True},
     },
     "pod_performance": {
         "kpi": "invalid_pod", "label": "LM POD performance (managers + admins)", "link": None,

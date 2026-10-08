@@ -20,6 +20,16 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-09",
+    title: "Invalid POD keeps the whole year",
+    type: "improved",
+    area: "Dashboard",
+    points: [
+      "KPI -> Invalid POD now keeps its history in the app: the current and the previous month with every tracking number, driver and reason, and the earlier months of the year as weekly and monthly counts per station and driver (no tracking numbers or reasons per driver for those).",
+      "The data is refreshed from Metabase every day (the last 7 days are re-read, so late validations are picked up).",
+    ],
+  },
+  {
     date: "2026-10-10",
     title: "Attendance: Ninjavan Shift for Hybrid drivers, and emails to whitelist",
     type: "new",

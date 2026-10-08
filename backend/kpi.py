@@ -341,6 +341,7 @@ async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
          "link_label": spec.get("link_label") if user.role in _uploader_roles(name) else None, "can_upload": user.role in _uploader_roles(name),
          "metabase": kd.is_metabase_feed(name), "daily": kd.is_daily_feeder(name), "updated_today": kd.uploaded_today(current.get(name, {}).get("uploaded_at")), **current.get(name, {})}
         for name, spec in kd.DATASETS.items()
+        if not spec.get("hidden")
     ]
 
 
@@ -356,6 +357,10 @@ class LostSyncError(RuntimeError):
 async def store_file(dataset: str, filename: str, data: bytes, email: str) -> str:
     """Parse + store one file for a dataset and run what that dataset needs afterwards; the confirmation text. Used by the upload endpoints below and by the Metabase
     pull (metabase_pull.py, 2026-10-08). Raises kd.UploadError for a file that does not fit, LostSyncError when the file was stored but the Lost Declared list could not follow."""
+    if (kd.DATASETS.get(dataset) or {}).get("ingest"):  # the POD store (pod_store.py) keeps its own tables instead of one current file
+        import pod_store
+
+        return await pod_store.ingest(dataset, data)
     info = await kd.save_upload(dataset, filename or "upload", data, email)
     if dataset == "region_list":
         await region_list.ensure_fresh(force=True)  # the new station list is in use at once

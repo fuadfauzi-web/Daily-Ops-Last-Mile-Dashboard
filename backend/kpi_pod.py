@@ -132,8 +132,17 @@ def build_pod(rows: list[dict]) -> dict:
 
 
 async def _pod():
-    got = await kd.load_compact("invalid_pod_raw")
-    return got  # (meta, data) or None
+    import pod_store
+
+    return await pod_store.get()  # (meta, data) or None -- built from the POD store tables (pod_store.py), not from one file
+
+
+def _roll_cells(data: dict, rng: dict):
+    """The weekly / monthly per-driver counts of days that are older than the day-detail window, for the week / month being viewed ([] for a day view)."""
+    roll = data.get("roll") or {}
+    key = rng["from"] or ""
+    cells = roll.get("W", {}).get(key) if rng["view"] == "weekly" else roll.get("M", {}).get(key) if rng["view"] == "monthly" else None
+    return list((cells or {}).items())
 
 
 # ------------------------------------------------------------------------------------------------ the page (Overview tab)
@@ -160,6 +169,14 @@ def _main_view(data: dict, user: CurrentUser, rng: dict) -> dict:
         if vis.get(ck) and _in(rng, day):
             rk = (ck, reason)
             reasons[rk] = reasons.get(rk, 0) + n
+    for (ck, courier), (t, i) in _roll_cells(data, rng):  # days older than the detail window (counts only)
+        if vis.get(ck):
+            h = hubs.setdefault(ck, [0, 0])
+            h[0] += t
+            h[1] += i
+            c = couriers.setdefault((ck, courier), [0, 0])
+            c[0] += t
+            c[1] += i
     out = {
         "hubs": [{**data["meta"][ck], "total": v[0], "invalid": v[1]} for ck, v in hubs.items()],
         "reasons": [{"code": ck, "reason": reason, "count": n} for (ck, reason), n in reasons.items()],
@@ -196,13 +213,14 @@ async def kpi_invalid_pod_tns(
     _meta, data = got
     rng = _range(data, view, period)
     vis = _visible(data, user)
-    out = []
-    for ck, raw_hub, cn, tn, failure_reason, rs, att, val, validator, day in data["tns"]:
-        if not vis.get(ck) or (hub and ck != hub) or not _in(rng, day) or (reason and rs != reason) or (courier and cn != courier):
-            continue
-        out.append({"tracking_id": tn, "hub": raw_hub, "courier": cn, "failure_reason": failure_reason, "invalid_reason": rs, "attempted": att, "validated": val, "validator": validator})
-        if len(out) >= TN_ROWS_CAP:
-            break
+    import pod_store
+
+    raws = [r for r, ck in data["raw"].items() if vis.get(ck) and (not hub or ck == hub)]
+    found = await pod_store.tracking_numbers(raws, rng["from"] or None, rng["to"] or None, reason, courier, TN_ROWS_CAP)
+    out = [
+        {"tracking_id": tn, "hub": raw_hub, "courier": cn, "failure_reason": failure_reason, "invalid_reason": rs, "attempted": att, "validated": val, "validator": validator}
+        for raw_hub, cn, tn, failure_reason, rs, att, val, validator, _day in found
+    ]
     return {"rows": out, "capped": len(out) >= TN_ROWS_CAP}
 
 
@@ -223,6 +241,11 @@ async def kpi_invalid_pod_drivers(
     agg: dict[tuple, list] = {}
     for (ck, day, courier), (t, i) in data["cd"].items():
         if ok(ck) and _in(rng, day):
+            a = agg.setdefault((ck, courier), [0, 0])
+            a[0] += t
+            a[1] += i
+    for (ck, courier), (t, i) in _roll_cells(data, rng):  # days older than the detail window (counts only, no reasons)
+        if ok(ck):
             a = agg.setdefault((ck, courier), [0, 0])
             a[0] += t
             a[1] += i
@@ -298,6 +321,23 @@ async def kpi_invalid_pod_trend(
         a = all_day.setdefault(b, [0, 0])
         a[0] += t
         a[1] += i
+    if grain in ("week", "month"):  # weeks / months older than the detail window come from the rolled-up counts
+        for period, cells in (data.get("roll") or {}).get("W" if grain == "week" else "M", {}).items():
+            b = period if grain == "week" else period[:7]
+            for (ck, courier), (t, i) in cells.items():
+                if not ok(ck) or (level == "driver" and courier == NO_COURIER):
+                    continue
+                key, label = entity(ck, courier)
+                labels[key] = label
+                d = per_day.setdefault(key, {}).setdefault(b, [0, 0])
+                d[0] += t
+                d[1] += i
+                tt = totals.setdefault(key, [0, 0])
+                tt[0] += t
+                tt[1] += i
+                a = all_day.setdefault(b, [0, 0])
+                a[0] += t
+                a[1] += i
     days = sorted(all_day)
     short, names = kp.trend_labels(grain, days, [d for d in data["days"] if d != UNKNOWN_DAY])
     ranked = sorted(totals.items(), key=lambda kv: (-kv[1][1], -kv[1][0], kv[0]))

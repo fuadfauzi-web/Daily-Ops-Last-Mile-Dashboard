@@ -38,7 +38,7 @@ _NO_MONDAY = {"lost_declared", "lost_current_status"}  # Lost Declared: Tuesday 
 # A dataset too big for one Metabase question is fed by several: the first is the question set on Documents, these follow and are joined to it (same columns by name, a Count column for
 # the rows Metabase already counted). Invalid POD: 127660 = invalid attempts row by row (30 days), 127663 = valid attempts counted per hub / courier / day (30 days), 127664 = counts per hub /
 # day for the rest of the year.
-EXTRA_QUESTIONS: dict[str, list[int]] = {"invalid_pod_raw": [127663, 127664]}
+EXTRA_QUESTIONS: dict[str, list[int]] = {}
 
 
 def join_csvs(parts: list[bytes]) -> bytes:
@@ -204,7 +204,8 @@ async def ensure_rows() -> None:
         return
     _rows_ensured = True
     for name in feed_names():
-        await db.execute("INSERT IGNORE INTO metabase_feeds (dataset, weekdays) VALUES (%s, %s)", (name, _default_days(name)))
+        once = bool(((kd.DATASETS.get(name) or {}).get("ingest") or {}).get("once"))  # one-time backfills start switched off: pulled by hand, once
+        await db.execute("INSERT IGNORE INTO metabase_feeds (dataset, weekdays, mode) VALUES (%s, %s, %s)", (name, _default_days(name), "off" if once else "daily"))
 
 
 def _row(r) -> dict:
