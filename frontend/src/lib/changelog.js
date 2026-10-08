@@ -20,6 +20,16 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-09",
+    title: "Feedback is now a conversation",
+    type: "improved",
+    area: "System",
+    points: [
+      "Help -> Feedback is a compact list of your cases. Click one to open its conversation: every message with who sent it and when. You can reply after the admin replies, as many times as you like, and so can the admin -- the case stays open until the admin closes it (a closed case stays readable but takes no more messages).",
+      "Your earlier feedback and the replies you already got are all still there, shown as a conversation. A screenshot or PDF can be attached to any message.",
+    ],
+  },
+  {
     date: "2026-10-10",
     title: "Hybrid flags from the route data: no route, not clocked in, leave without proof",
     type: "new",

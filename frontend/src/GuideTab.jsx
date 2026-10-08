@@ -778,7 +778,7 @@ const SECTIONS = [
             <>
               <strong>Help → Feedback</strong>: send a complaint, bug report, question or idea to the admin team, with an optional screenshot or PDF
               (up to 20 MB). Only you{rank >= 3 ? " (and every other admin)" : " and the admins"} can see it.{" "}
-              {rank >= 3 ? "As an admin you can reply, close and reopen it. " : "Admins reply here, and a bell badge appears on Help. "}
+              Each feedback is a conversation -- click a case in the list to open it. {rank >= 3 ? "As an admin you can reply as often as needed (a reply never closes the case, and a new message from the sender rings the bell on Help), then press Close case when it is sorted; a closed case stays readable but takes no more messages, and you can reopen it. " : "The admin replies there (a bell badge appears on Help) and you can reply back as many times as you like until the admin closes the case. "}
               You can delete your own feedback at any time (it disappears for the admins too), and closed feedback is deleted automatically a
               week after it's closed.
             </>,

@@ -3837,6 +3837,351 @@
         ]
       }
     },
+    "/api/feedback": {
+      "post": {
+        "summary": "Submits app feedback/complaints from any signed-in user to the admin team.",
+        "description": "Start a case: the first message of a new conversation (optionally with one image / PDF).",
+        "operationId": "submit_feedback_api_feedback_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submit_feedback_api_feedback_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/feedback__OkResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      },
+      "get": {
+        "summary": "Lists all submitted app feedback. Admin only.",
+        "description": "The compact case list: the Superadmin gets every case, anyone else only their own. (Opening a case, not the list, marks it read.)",
+        "operationId": "list_feedback_api_feedback_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CaseRow"
+                  },
+                  "title": "Response List Feedback Api Feedback Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
+    "/api/feedback/{feedback_id}": {
+      "get": {
+        "summary": "One case with its whole conversation, oldest first.",
+        "description": "One case with its whole conversation, oldest first. Opening it marks it read for the person opening it.",
+        "operationId": "get_feedback_api_feedback__feedback_id__get",
+        "parameters": [
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Feedback Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      },
+      "patch": {
+        "summary": "Admin only: reply to a feedback item and / or change its status.",
+        "description": "Superadmin: close or reopen a case. (A reply never closes it.)",
+        "operationId": "update_feedback_api_feedback__feedback_id__patch",
+        "parameters": [
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Feedback Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/feedback__OkResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      },
+      "delete": {
+        "summary": "Delete a feedback item.",
+        "description": "The sender removes their own case -- it disappears for the Superadmin too, whatever its status, attachments included.",
+        "operationId": "delete_feedback_api_feedback__feedback_id__delete",
+        "parameters": [
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Feedback Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/feedback__OkResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
+    "/api/feedback/{feedback_id}/messages": {
+      "post": {
+        "summary": "Add a message to an OPEN case: the sender (follow-up) or the Superadmin (reply).",
+        "description": "Add a message to an OPEN case: the sender (follow-up) or the Superadmin (reply). A closed case takes no more messages.",
+        "operationId": "reply_feedback_api_feedback__feedback_id__messages_post",
+        "parameters": [
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Feedback Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_reply_feedback_api_feedback__feedback_id__messages_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/feedback__OkResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
+    "/api/feedback/messages/{message_id}/attachment": {
+      "get": {
+        "summary": "Message Attachment",
+        "operationId": "message_attachment_api_feedback_messages__message_id__attachment_get",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
+    "/api/feedback/{feedback_id}/attachment": {
+      "get": {
+        "summary": "Download a feedback item's attachment (its author or an admin).",
+        "description": "The first attachment of a case (kept for older links).",
+        "operationId": "feedback_attachment_api_feedback__feedback_id__attachment_get",
+        "parameters": [
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Feedback Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
     "/api/departments": {
       "get": {
         "summary": "Get Departments",
@@ -9719,214 +10064,6 @@
         ]
       }
     },
-    "/api/feedback": {
-      "post": {
-        "summary": "Submits app feedback/complaints from any signed-in user to the admin team.",
-        "operationId": "submit_feedback_api_feedback_post",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_submit_feedback_api_feedback_post"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Feedback"
-        ]
-      },
-      "get": {
-        "summary": "Lists all submitted app feedback. Admin only.",
-        "description": "Admins get everyone's feedback; anyone else gets only their own. Opening the\nlist as the sender clears the \"new reply\" flag (drives the header bell).",
-        "operationId": "list_feedback_api_feedback_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/FeedbackRow"
-                  },
-                  "title": "Response List Feedback Api Feedback Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Feedback"
-        ]
-      }
-    },
-    "/api/feedback/{feedback_id}/attachment": {
-      "get": {
-        "summary": "Download a feedback item's attachment (its author or an admin).",
-        "operationId": "feedback_attachment_api_feedback__feedback_id__attachment_get",
-        "parameters": [
-          {
-            "name": "feedback_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Feedback Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Feedback"
-        ]
-      }
-    },
-    "/api/feedback/{feedback_id}": {
-      "patch": {
-        "summary": "Admin only: reply to a feedback item and / or change its status.",
-        "operationId": "update_feedback_api_feedback__feedback_id__patch",
-        "parameters": [
-          {
-            "name": "feedback_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Feedback Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FeedbackUpdate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Feedback"
-        ]
-      },
-      "delete": {
-        "summary": "Delete a feedback item.",
-        "description": "The sender removes their own feedback -- it disappears for the admins too,\nwhatever its status (2026-09-25 feedback), attachment included.",
-        "operationId": "delete_feedback_api_feedback__feedback_id__delete",
-        "parameters": [
-          {
-            "name": "feedback_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Feedback Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkResult"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Feedback"
-        ]
-      }
-    },
     "/api/urgent-tn/items": {
       "get": {
         "summary": "The Urgent TN rows the caller added or was assigned, with each tracking number's health details.",
@@ -9976,7 +10113,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10008,7 +10145,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10108,7 +10245,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10148,7 +10285,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10190,7 +10327,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10222,7 +10359,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10326,7 +10463,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10400,7 +10537,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10493,7 +10630,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10533,7 +10670,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -10747,7 +10884,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OkResult"
+                  "$ref": "#/components/schemas/main__OkResult"
                 }
               }
             }
@@ -11282,6 +11419,31 @@
         ],
         "title": "Body_kpi_upload_many_api_kpi_upload_many_post"
       },
+      "Body_reply_feedback_api_feedback__feedback_id__messages_post": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "Body_reply_feedback_api_feedback__feedback_id__messages_post"
+      },
       "Body_submit_feedback_api_feedback_post": {
         "properties": {
           "message": {
@@ -11602,6 +11764,125 @@
         ],
         "title": "CapacityRow"
       },
+      "CaseDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type"
+          },
+          "scope_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Value"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reply_count": {
+            "type": "integer",
+            "title": "Reply Count"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "last_message_at": {
+            "type": "string",
+            "title": "Last Message At"
+          },
+          "last_sender_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sender Role"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "delete_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delete After"
+          },
+          "unread": {
+            "type": "boolean",
+            "title": "Unread"
+          },
+          "is_mine": {
+            "type": "boolean",
+            "title": "Is Mine"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "role",
+          "scope_type",
+          "scope_value",
+          "title",
+          "status",
+          "reply_count",
+          "created_at",
+          "last_message_at",
+          "last_sender_role",
+          "closed_at",
+          "delete_after",
+          "unread",
+          "is_mine",
+          "messages"
+        ],
+        "title": "CaseDetail"
+      },
       "CasePatch": {
         "properties": {
           "fields": {
@@ -11646,6 +11927,117 @@
         },
         "type": "object",
         "title": "CasePatch"
+      },
+      "CaseRow": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "scope_type": {
+            "type": "string",
+            "title": "Scope Type"
+          },
+          "scope_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Value"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reply_count": {
+            "type": "integer",
+            "title": "Reply Count"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "last_message_at": {
+            "type": "string",
+            "title": "Last Message At"
+          },
+          "last_sender_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sender Role"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "delete_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delete After"
+          },
+          "unread": {
+            "type": "boolean",
+            "title": "Unread"
+          },
+          "is_mine": {
+            "type": "boolean",
+            "title": "Is Mine"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "role",
+          "scope_type",
+          "scope_value",
+          "title",
+          "status",
+          "reply_count",
+          "created_at",
+          "last_message_at",
+          "last_sender_role",
+          "closed_at",
+          "delete_after",
+          "unread",
+          "is_mine"
+        ],
+        "title": "CaseRow"
       },
       "CellIn": {
         "properties": {
@@ -12967,173 +13359,8 @@
         ],
         "title": "FeedOut"
       },
-      "FeedbackRow": {
-        "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "email": {
-            "type": "string",
-            "title": "Email"
-          },
-          "role": {
-            "type": "string",
-            "title": "Role"
-          },
-          "scope_type": {
-            "type": "string",
-            "title": "Scope Type"
-          },
-          "scope_value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scope Value"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "reply": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reply"
-          },
-          "replied_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Replied By"
-          },
-          "replied_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Replied At"
-          },
-          "closed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Closed At"
-          },
-          "delete_after": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delete After"
-          },
-          "reply_unread": {
-            "type": "boolean",
-            "title": "Reply Unread"
-          },
-          "has_attachment": {
-            "type": "boolean",
-            "title": "Has Attachment"
-          },
-          "attachment_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attachment Name"
-          },
-          "attachment_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attachment Type"
-          },
-          "is_mine": {
-            "type": "boolean",
-            "title": "Is Mine"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "email",
-          "role",
-          "scope_type",
-          "scope_value",
-          "message",
-          "created_at",
-          "status",
-          "reply",
-          "replied_by",
-          "replied_at",
-          "closed_at",
-          "delete_after",
-          "reply_unread",
-          "has_attachment",
-          "attachment_name",
-          "attachment_type",
-          "is_mine"
-        ],
-        "title": "FeedbackRow"
-      },
       "FeedbackUpdate": {
         "properties": {
-          "reply": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reply"
-          },
           "status": {
             "anyOf": [
               {
@@ -13144,6 +13371,17 @@
               }
             ],
             "title": "Status"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply"
           }
         },
         "type": "object",
@@ -15042,6 +15280,73 @@
         ],
         "title": "Me"
       },
+      "MessageOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sender_email": {
+            "type": "string",
+            "title": "Sender Email"
+          },
+          "sender_role": {
+            "type": "string",
+            "title": "Sender Role"
+          },
+          "is_mine": {
+            "type": "boolean",
+            "title": "Is Mine"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "has_attachment": {
+            "type": "boolean",
+            "title": "Has Attachment"
+          },
+          "attachment_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Name"
+          },
+          "attachment_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachment Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sender_email",
+          "sender_role",
+          "is_mine",
+          "message",
+          "created_at",
+          "has_attachment",
+          "attachment_name",
+          "attachment_type"
+        ],
+        "title": "MessageOut"
+      },
       "MetricLogicResponse": {
         "properties": {
           "how": {
@@ -15715,30 +16020,6 @@
           "ok"
         ],
         "title": "Ok"
-      },
-      "OkResult": {
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "title": "Ok"
-          },
-          "detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Detail"
-          }
-        },
-        "type": "object",
-        "required": [
-          "ok"
-        ],
-        "title": "OkResult"
       },
       "OldRouteDriverRow": {
         "properties": {
@@ -22684,6 +22965,41 @@
         "type": "object",
         "title": "OkOut"
       },
+      "feedback__OkResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "OkResult"
+      },
       "hybrid_attendance__FlagAction": {
         "properties": {
           "driver_id": {
@@ -22750,6 +23066,30 @@
         },
         "type": "object",
         "title": "SettingsIn"
+      },
+      "main__OkResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "OkResult"
       },
       "main__StationRow": {
         "properties": {
