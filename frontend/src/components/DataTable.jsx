@@ -38,6 +38,9 @@ export default function DataTable({
   // groupStart (a divider on the column's left edge), align "right", and `dense` here trims the cell padding so more columns fit.
   groupHeaders,
   dense = false,
+  // Optional: size the table to its content instead of stretching it to the full width (Action Board -- with only a few metrics the
+  // columns used to sit far apart, and a screenshot of the table came out as wide as the page).
+  fit = false,
 }) {
   const [scrolled, setScrolled] = useState(false);
   const [shown, setShown] = useState(pageSize || Infinity);
@@ -56,7 +59,7 @@ export default function DataTable({
   // pinned in place -- easy to miss on a phone with no scrollbar to look at.
   const stickyShadow = scrolled ? "shadow-[4px_0_6px_-2px_rgba(0,0,0,0.15)]" : "";
   const alignClass = (a) => (a === "center" ? "text-center tabular-nums" : a === "right" ? "text-right tabular-nums" : "");
-  const padX = dense ? "px-1.5" : "px-4";
+  const padX = dense ? "px-1.5" : fit ? "px-3" : "px-4";
 
   const renderTh = (c, rowSpan) => {
     const sortable = c.sortable !== false && !!onSort;
@@ -107,7 +110,7 @@ export default function DataTable({
         style={maxHeight ? { maxHeight } : undefined}
         onScroll={(e) => setScrolled(e.currentTarget.scrollLeft > 0)}
       >
-        <table className={`w-full ${dense ? "" : "text-sm"}`}>
+        <table className={`${fit ? "w-max min-w-0" : "w-full"} ${dense ? "" : "text-sm"}`}>
           <thead className={`${dark ? "sticky top-0 z-20" : ""} text-left ${headBg}`}>
             {groupHeaders && (
               <tr>

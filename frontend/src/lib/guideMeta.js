@@ -1,6 +1,6 @@
 // Help pages -- the category every Guide section and What's new entry belongs to (the same six categories as the menu), plus a one-line blurb for each
-// Guide card. A section with no entry here lands in "Monitor" without a blurb, so a new section never disappears from the Guide.
-export const HELP_AREAS = ["Getting started", "Act", "Monitor", "Recovery", "Dashboard", "People", "System"];
+// Guide card. A section with no entry here lands in "Last Mile Ops" without a blurb, so a new section never disappears from the Guide.
+export const HELP_AREAS = ["Getting started", "Act", "Last Mile Ops", "Recovery", "Dashboard", "People", "System"];
 
 // "Getting started" has no menu category; it borrows the Act colour (dark) in sideNav's palette -- see areaColor below.
 export const GUIDE_AREA = {
@@ -9,17 +9,18 @@ export const GUIDE_AREA = {
   action: "Act",
   urgent: "Act",
   tasklist: "Act",
-  health: "Monitor",
-  dailyKpi: "Monitor",
-  shipment: "Monitor",
-  routed: "Monitor",
-  aging: "Monitor",
-  rpu: "Monitor",
-  shipper: "Monitor",
-  coldchain: "Monitor",
-  restock: "Monitor",
+  health: "Last Mile Ops",
+  dailyKpi: "Last Mile Ops",
+  shipment: "Last Mile Ops",
+  routed: "Last Mile Ops",
+  aging: "Last Mile Ops",
+  rpu: "Last Mile Ops",
+  shipper: "Last Mile Ops",
+  coldchain: "Last Mile Ops",
+  restock: "Last Mile Ops",
   recovery: "Recovery",
   management: "Dashboard",
+  managerDash: "Dashboard",
   dod: "Dashboard",
   kpi: "Dashboard",
   processingTime: "Dashboard",
@@ -47,6 +48,7 @@ export const GUIDE_BLURB = {
   restock: "Restock bundles, on-hold and incomplete lists, and B2B document compliance.",
   recovery: "Missing, lost, PDCNR, damaged and no-label parcels, and who is chasing them.",
   management: "Operation health, capacity and backlog for managers.",
+  managerDash: "Your region's station capacity and driver strength, plus your own links and notes.",
   dod: "Station Health day by day: this week against last week.",
   kpi: "Weekly, monthly and daily KPI results with the reasons behind them.",
   processingTime: "When work lands at each station, hour by hour, over the past 7 days.",
@@ -62,14 +64,14 @@ const AREA_RULES = [
   [/Attendance|Schedule|PTWH|Staff|Org chart|Headcount|Fleet Admin|Premises|Vehicles/i, "People"],
   [/Recovery|PDCNR|Missing|Lost Declared|Damage/i, "Recovery"],
   [/Settings|Admin\b|Users|Feedback|Guide|bell for What|What's new|Role Tester|Roles|Superadmin|Data Refresh|Data upload|station list|Refresh every/i, "System"],
-  [/Daily KPI|Station Health|Shipment|Route Monitoring|Aging|Cold Chain|Shipper|Restock|RPU|Timing|Completion Summary|Terminal|Filters|Column notes|Nationwide/i, "Monitor"],
+  [/Daily KPI|Station Health|Shipment|Route Monitoring|Aging|Cold Chain|Shipper|Restock|RPU|Timing|Completion Summary|Terminal|Filters|Column notes|Nationwide/i, "Last Mile Ops"],
   [/KPI|DoD|Management View|Processing Time/i, "Dashboard"],
   [/Action Board|Urgent TN|Task List|PIC|Summary cards/i, "Act"],
 ];
 export function changelogArea(entry) {
   if (entry.area) return entry.area;
   for (const [re, area] of AREA_RULES) if (re.test(entry.title)) return area;
-  return "Monitor";
+  return "Last Mile Ops";
 }
 
 // What's new: is the entry something New, an Improvement or a Fix? An entry can say `type` ("new" | "improved" | "fixed"); otherwise it is read from the title.
@@ -91,7 +93,7 @@ export function changelogType(entry) {
 export const AREA_DOT = {
   "Getting started": "bg-[#231F20]",
   Act: "bg-[#231F20]",
-  Monitor: "bg-[#2563EB]",
+  "Last Mile Ops": "bg-[#2563EB]",
   Recovery: "bg-[#0D9488]",
   Dashboard: "bg-[#7C3AED]",
   People: "bg-[#C026D3]",

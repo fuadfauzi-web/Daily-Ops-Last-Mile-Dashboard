@@ -24,6 +24,9 @@ Current status  (sheet: the hidden "Lost Declared Current Status" tab, pasted by
   Metabase question 127204 gives the current granular status of every TN declared lost in the last 26 weeks; an admin / manager uploads its CSV whenever the status should
   be refreshed and both tabs show it (lost_current_status -> {tracking number: status}).
 
+Liable party "Recovered" (Fleet Manager, 2026-10-08): a TN whose current status is anything but Cancelled (Completed, Returned to Sender ...) is shown with the liable party
+Recovered, set by the app and not editable; one without a status on file keeps what was typed. It is worked out when the tab is read, so the answer the region typed is not lost.
+
 Only Last Mile stations are shown: the all-regions question also returns tickets investigated at hubs that are not stations (Intl - Singapore, DP, MM-MM, PUDO ...). They stay
 in the table but are hidden from every view; someone who sees everything is told how many.
 """
@@ -46,6 +49,7 @@ MYT = timezone(timedelta(hours=8))
 YES_NO = ["Yes", "No", "Waiting confirmation"]
 LIABLE = ["Hub", "Driver", "PDCNR", "Ship In", "Ship Out"]
 LIABLE_LOST = LIABLE + ["TTDI Initiative"]
+RECOVERED = "Recovered"  # set by the app, never typed: a lost-declared TN whose current status is anything but Cancelled has come back (2026-10-08)
 TICKET_UPDATED = ["Done", "Not Done"]
 AM_CHOICES = {"ticket_updated": TICKET_UPDATED, "parcel_found": YES_NO, "contacted_customer": YES_NO, "customer_received": YES_NO, "liable_party": LIABLE}
 AM_TEXT = ("remarks", "checked_by")
@@ -439,6 +443,11 @@ async def lost_view(user: CurrentUser, view: str, week: str | None) -> dict:
         if not _in_scope_named(user, region, zone, name):
             continue
         d.update({"station_code": code, "station_name": name, "zone": zone, "region": region, "current_status": status_map.get(d["tracking_number"])})
+        cs = (d["current_status"] or "").strip().lower()
+        d["liable_auto"] = bool(cs) and not cs.startswith("cancel")  # no status on file (not in the 26-week file) = unknown, left as typed
+        if d["liable_auto"]:
+            d["liable_entered"] = d["liable_party"]  # what the region typed stays in the table; it shows again if the status ever goes back to Cancelled
+            d["liable_party"] = RECOVERED
         d["resolution_date"] = _iso(_as_date(d["resolution_date"]))
         for k in ("updated_at", "added_at", "moved_at"):
             d[k] = _iso(d[k])
@@ -465,7 +474,7 @@ async def lost_view(user: CurrentUser, view: str, week: str | None) -> dict:
         "weeks": week_list, "week": chosen, "can_edit": user.role in LOST_EDIT_ROLES, "upload": up, "status_upload": uploads.get("lost_current_status") if user.role == "admin" else None,
         "not_shown": {"count": sum(hidden.values()), "hubs": [h for h, _n in top_hidden[:4]]} if user.scope_type == "all" and hidden else None,
         "can_upload": user.role == "admin",
-        "options": {"customer_received": YES_NO, "liable_party": LIABLE_LOST},
+        "options": {"customer_received": YES_NO, "liable_party": LIABLE_LOST}, "liable_auto": RECOVERED,
         "move": {"weekday": "Monday", "hour": MOVE_HOUR},
     }
 

@@ -90,6 +90,53 @@ async def refresh_rules() -> None:
         log.exception("could not read the Attendance launch dates")
 
 
+# ---------------------------------------------------------------- clearing the test run
+
+async def _clear_station(station: str, launch: date) -> int | None:
+    """Delete everything keyed for this station BEFORE its launch date (the test run): PTWH / Staff / Hybrid attendance, PTWH corrections and emergency QR codes, and the PTWH selfies.
+    NOT touched: the people and lists themselves (PTWH roster, Hybrid drivers, Staff & Org Chart), the Schedule, the station's shift hours. Returns how many rows went, or None when a
+    selfie couldn't be deleted (try again next time, the marker is not set)."""
+    import ptwh_app  # late import: ptwh_app imports this module
+
+    rows = await db.fetch_all(
+        "SELECT a.id, a.in_selfie, a.out_selfie FROM ptwh_attendance a WHERE a.work_date < %s AND a.worker_id IN (SELECT id FROM ptwh_workers WHERE station = %s)", (launch, station))
+    if await ptwh_app._delete_selfies(rows) < len(rows):
+        return None
+    n = 0
+    for sql, params in (
+        ("DELETE FROM ptwh_corrections WHERE work_date < %s AND worker_id IN (SELECT id FROM ptwh_workers WHERE station = %s)", (launch, station)),
+        ("DELETE FROM ptwh_attendance WHERE work_date < %s AND worker_id IN (SELECT id FROM ptwh_workers WHERE station = %s)", (launch, station)),
+        ("DELETE FROM ptwh_qr_codes WHERE station = %s AND issued_at < %s", (station, launch)),
+        ("DELETE FROM staff_attendance WHERE work_date < %s AND station = %s", (launch, station)),
+        ("DELETE FROM hybrid_attendance WHERE work_date < %s AND driver_id IN (SELECT id FROM hybrid_drivers WHERE station = %s)", (launch, station)),
+    ):
+        n += await db.execute_rowcount(sql, params)
+    return n
+
+
+async def clear_test_entries() -> None:
+    """Once a station reaches its launch date, wipe what was keyed during the test run (everything dated before the launch date). Done ONCE per station -- a marker row is kept in
+    attendance_launch_cleared -- so moving a date later can never delete real attendance. Safe to run on every pod and every 30 s; never raises."""
+    try:
+        today = _today()
+        done = {r[0] for r in await db.fetch_all("SELECT station FROM attendance_launch_cleared")}
+        for station in sorted(_stations()):
+            if station in done:
+                continue
+            d, _src = launch_date(station)
+            if d is None or today < d:
+                continue
+            n = await _clear_station(station, d)
+            if n is None:
+                log.warning("Launch %s: test entries not cleared yet (a selfie could not be deleted); will retry", station)
+                continue
+            if not await db.fetch_one("SELECT station FROM attendance_launch_cleared WHERE station = %s", (station,)):
+                await db.execute("INSERT INTO attendance_launch_cleared (station, launch_date, cleared_at, rows_removed) VALUES (%s,%s,%s,%s)", (station, d, datetime.now(_MYT).replace(tzinfo=None), n))
+            log.info("Launch %s (%s): test-run entries cleared, %d rows removed", station, d, n)
+    except Exception:  # noqa: BLE001 -- must never take the loop down
+        log.exception("clearing the Attendance test-run entries failed")
+
+
 # ---------------------------------------------------------------- Settings -> Launch Timeline
 
 def _require_setter(user: CurrentUser) -> None:

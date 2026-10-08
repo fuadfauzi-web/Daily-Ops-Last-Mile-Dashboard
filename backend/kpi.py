@@ -327,6 +327,9 @@ class UploadInfo(BaseModel):
     uploaded_by: str | None = None
     uploaded_at: str | None = None
     can_upload: bool = False  # whether the caller may upload / remove this file
+    daily: bool = False  # a Metabase file that is meant to be refreshed every day (Documents page)
+    updated_today: bool = False  # ...and whether it was uploaded today (Malaysia date)
+    metabase: bool = False  # pulled from Metabase by the app on a schedule (metabase_pull.py) -- not uploaded by hand
 
 
 @router.get("/api/kpi/uploads", response_model=list[UploadInfo])
@@ -335,7 +338,8 @@ async def kpi_uploads(user: CurrentUser = Depends(get_current_user)):
     current = await kd.list_uploads()
     return [
         {"dataset": name, "kpi": spec["kpi"], "label": spec["label"], "hint": spec["hint"] if user.role in _uploader_roles(name) else "", "link": spec.get("link") if user.role in _uploader_roles(name) else None,  # who cannot upload a file does not need to know where it comes from
-         "link_label": spec.get("link_label") if user.role in _uploader_roles(name) else None, "can_upload": user.role in _uploader_roles(name), **current.get(name, {})}
+         "link_label": spec.get("link_label") if user.role in _uploader_roles(name) else None, "can_upload": user.role in _uploader_roles(name),
+         "metabase": kd.is_metabase_feed(name), "daily": kd.is_daily_feeder(name), "updated_today": kd.uploaded_today(current.get(name, {}).get("uploaded_at")), **current.get(name, {})}
         for name, spec in kd.DATASETS.items()
     ]
 
@@ -345,15 +349,14 @@ class UploadResult(BaseModel):
     detail: str
 
 
-async def _store_upload(dataset: str, filename: str, data: bytes, user: CurrentUser) -> str:
-    """Parse + store one file for a dataset and run what that dataset needs afterwards; the confirmation text, or an HTTPException."""
-    try:
-        info = await kd.save_upload(dataset, filename or "upload", data, user.email)
-    except kd.UploadError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:  # noqa: BLE001
-        log.exception("KPI upload failed")
-        raise HTTPException(status_code=503, detail="Couldn't store the file right now -- try again")
+class LostSyncError(RuntimeError):
+    pass
+
+
+async def store_file(dataset: str, filename: str, data: bytes, email: str) -> str:
+    """Parse + store one file for a dataset and run what that dataset needs afterwards; the confirmation text. Used by the upload endpoints below and by the Metabase
+    pull (metabase_pull.py, 2026-10-08). Raises kd.UploadError for a file that does not fit, LostSyncError when the file was stored but the Lost Declared list could not follow."""
+    info = await kd.save_upload(dataset, filename or "upload", data, email)
     if dataset == "region_list":
         await region_list.ensure_fresh(force=True)  # the new station list is in use at once
     detail = f"{kd.DATASETS[dataset]['label']}: {info['row_count']:,} rows loaded"
@@ -362,10 +365,23 @@ async def _store_upload(dataset: str, filename: str, data: bytes, user: CurrentU
             r = await recovery_lost.sync_lost_upload()
             detail += f" -- Lost Declared This Week: {r['added']} new, {r['updated']} refreshed, {r['removed']} removed" + (
                 f", {r['kept_previous_week']} from an earlier week kept for the Monday move" if r["kept_previous_week"] else "")
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             log.exception("Lost declared sync failed")
-            raise HTTPException(status_code=503, detail="The file was stored but Lost Declared This Week could not be updated -- try again")
+            raise LostSyncError("The file was stored but Lost Declared This Week could not be updated") from exc
     return detail
+
+
+async def _store_upload(dataset: str, filename: str, data: bytes, user: CurrentUser) -> str:
+    """store_file for an uploaded file: the confirmation text, or an HTTPException."""
+    try:
+        return await store_file(dataset, filename, data, user.email)
+    except kd.UploadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except LostSyncError as exc:
+        raise HTTPException(status_code=503, detail=f"{exc} -- try again")
+    except Exception:  # noqa: BLE001
+        log.exception("KPI upload failed")
+        raise HTTPException(status_code=503, detail="Couldn't store the file right now -- try again")
 
 
 @router.post("/api/kpi/uploads/{dataset}", response_model=UploadResult)

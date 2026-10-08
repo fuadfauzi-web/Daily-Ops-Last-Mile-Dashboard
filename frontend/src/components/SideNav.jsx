@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
+import { SIDE_GROUPS, SIDE_GROUP_COLORS, sideGroupLabel } from "../lib/sideNav";
 
 // Grouped left sidebar (staging trial, FEATURES.sidebarNav). `items` is already filtered to what this person may open:
 // [{ id, label, group, beta, code, active, badge, dot }]. 224px wide, or 72px with two-letter codes when collapsed.
@@ -80,7 +80,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
                 (q ? (
                   <div className="flex items-center gap-1.5 px-2.5 pb-1 font-display text-[10px] font-bold uppercase tracking-wider text-subtle">
                     <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
-                    {g}
+                    {sideGroupLabel(g)}
                   </div>
                 ) : (
                   <button
@@ -90,7 +90,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
                     className="flex min-h-[36px] w-full items-center gap-1.5 rounded-lg px-2.5 font-display text-[11px] font-bold uppercase tracking-wider text-subtle hover:bg-canvas"
                   >
                     <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
-                    <span className="flex-1 text-left">{g}</span>
+                    <span className="flex-1 text-left">{sideGroupLabel(g)}</span>
                     {open !== g && g === activeGroup && <span className="h-1.5 w-1.5 rounded-full bg-brand" title="Current page is in here" />}
                     {open !== g && inGroup.reduce((n, i) => n + (i.badge || 0), 0) > 0 && (
                       <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-bold leading-none text-white">

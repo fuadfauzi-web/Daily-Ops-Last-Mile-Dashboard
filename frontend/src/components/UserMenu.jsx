@@ -72,8 +72,8 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
               <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Menu layout</div>
               <div className="flex overflow-hidden rounded-lg border border-slate-200 font-display text-[11px] font-semibold">
                 {[
-                  ["tabs", "Top tabs"],
                   ["sidebar", "Sidebar"],
+                  ["tabs", "Top tabs"],
                 ].map(([k, label]) => (
                   <button
                     key={k}

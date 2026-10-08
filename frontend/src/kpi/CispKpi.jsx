@@ -195,7 +195,7 @@ export default function CispKpi({ me, kpi }) {
           <div className="font-display text-base font-semibold text-ink">No {label} data {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">{NOTE[kpi]}</p>
           <p className="mt-2">
-            {canUpload && "The data comes from a small Metabase file: open the question from the upload panel below, download the results as CSV, and upload it here. "}The official {label} number is on the{" "}
+            {canUpload && "The data is pulled from Metabase automatically -- the data source panel below shows when (Superadmin -> Documents sets the schedule). "}The official {label} number is on the{" "}
             <strong>Dashboard → OPEX</strong> page.
           </p>
         </div>
@@ -268,7 +268,7 @@ export default function CispKpi({ me, kpi }) {
         {loading && <span className="text-xs text-slate-400">Loading…</span>}
         {canUpload && (
           <button onClick={() => setShowUpload((v) => !v)} className="ml-auto h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {showUpload ? "Hide data upload" : "Data upload"}
+            {showUpload ? "Hide data source" : "Data source"}
           </button>
         )}
       </div>

@@ -5,6 +5,7 @@ import { exportCsv } from "./lib/csv";
 import DataTable from "./components/DataTable";
 import SegmentedControl from "./components/SegmentedControl";
 import PicInput from "./components/PicInput";
+import MultiPicInput from "./components/MultiPicInput";
 
 // Parses a paste of tracking numbers separated by newlines, commas, semicolons
 // or whitespace -- however the user copies them out of a sheet or chat message.
@@ -60,6 +61,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const [input, setInput] = useState("");
   const [assignee, setAssignee] = useState("");
   const [note, setNote] = useState("");
+  const [ccList, setCcList] = useState([]); // CC (2026-10-08): told about it and can see it, but don't act on it
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
@@ -136,11 +138,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
     const tns = parseTns(input);
     if (!tns.length) return;
     const ok = await run(() =>
-      api.urgentTn.create({ tracking_numbers: tns, assignee_email: assignee.trim() || null, note: note.trim() || null })
+      api.urgentTn.create({ tracking_numbers: tns, assignee_email: assignee.trim() || null, note: note.trim() || null, cc_emails: ccList })
     );
     if (ok) {
       setInput("");
       setNote("");
+      setCcList([]);
     }
   };
 
@@ -148,6 +151,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const ackOwnerReminder = () => run(() => api.urgentTn.reminderAck());
   // No "are you sure?" pop-up (2026-09-25 feedback): Close / remove deletes it straight away.
   const closeOrRemove = (item) => run(() => api.urgentTn.remove(item.id), `Removed ${item.tracking_number}`);
+  // Not found = no status in the active data (already completed or added to a shipment): clear every one of mine in one click (2026-10-08 feedback).
+  const notFoundMine = (items || []).filter((i) => !i.found && i.created_by_me);
+  const clearNotFound = async () => {
+    const ids = notFoundMine.map((i) => i.id);
+    if (!ids.length) return;
+    const ok = await run(() => api.urgentTn.removeMany(ids), `Cleared ${ids.length} not found`);
+    if (ok) setSelected(new Set());
+  };
   const removeSelected = async () => {
     const ids = [...selected];
     if (!ids.length) return;
@@ -234,20 +245,23 @@ export default function UrgentTnTab({ me, refreshTick }) {
   const counts = useMemo(() => {
     const list = items || [];
     return {
-      open: list.filter((i) => i.status === "in_progress").length,
+      open: list.filter((i) => i.status === "in_progress" && !i.cc_me).length,
       mine: list.filter((i) => i.assigned_to_me && !i.created_by_me).length,
-      closed: list.filter((i) => i.status === "closed").length,
+      closed: list.filter((i) => i.status === "closed" && !i.cc_me).length,
+      cc: list.filter((i) => i.cc_me).length,
     };
   }, [items]);
 
   const rows = useMemo(() => {
     const list = items || [];
     const base =
-      view === "closed"
-        ? list.filter((i) => i.status === "closed")
-        : view === "mine"
-          ? list.filter((i) => i.assigned_to_me && !i.created_by_me)
-          : list.filter((i) => i.status === "in_progress");
+      view === "cc"
+        ? list.filter((i) => i.cc_me)
+        : view === "closed"
+          ? list.filter((i) => i.status === "closed" && !i.cc_me)
+          : view === "mine"
+            ? list.filter((i) => i.assigned_to_me && !i.created_by_me)
+            : list.filter((i) => i.status === "in_progress" && !i.cc_me);
     if (sortKey == null) {
       // Default order: one tracking number's rows sit together (the original assignment first, then the extra PICs).
       const newest = new Map();
@@ -476,6 +490,14 @@ export default function UrgentTnTab({ me, refreshTick }) {
     { key: "attempts", label: "Attempt", render: (r) => r.attempts ?? "—" },
     { key: "cod", label: "COD", render: (r) => r.cod ?? "—" },
     {
+      key: "cc",
+      label: "CC",
+      sortable: false,
+      align: "left",
+      render: (r) => (r.cc?.length ? <div className="max-w-[200px] whitespace-normal break-words text-left">{r.cc.map((c) => (c.email.toLowerCase() === me?.email?.toLowerCase() ? "You" : c.name || c.email)).join(", ")}</div> : "—"),
+      className: () => "text-xs text-slate-600",
+    },
+    {
       key: "created_by",
       label: "Added by",
       render: (r) => (r.created_by_me ? "You" : r.created_by),
@@ -581,6 +603,12 @@ export default function UrgentTnTab({ me, refreshTick }) {
             />
           </label>
         </div>
+        <div className="text-xs text-slate-500">
+          CC (optional) — they are told about it and can see it, but don't act on it
+          <div className="mt-1">
+            <MultiPicInput value={ccList} onChange={setCcList} placeholder="Type a name, email or station…" />
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={addTns}
@@ -606,6 +634,16 @@ export default function UrgentTnTab({ me, refreshTick }) {
               className="min-h-[44px] rounded-lg border border-slate-300 px-4 py-1.5 font-display text-xs font-medium text-slate-600"
             >
               Default order
+            </button>
+          )}
+          {notFoundMine.length > 0 && (
+            <button
+              onClick={clearNotFound}
+              disabled={busy}
+              title="Removes every tracking number of yours that is Not found (already settled), from your list and its PIC's"
+              className="min-h-[44px] rounded-lg border border-status-critical px-4 py-1.5 font-display text-xs font-semibold text-status-critical hover:bg-status-critical/5 disabled:opacity-40"
+            >
+              Clear all not found ({notFoundMine.length})
             </button>
           )}
           {selected.size > 0 && (
@@ -789,7 +827,7 @@ export default function UrgentTnTab({ me, refreshTick }) {
               {rows.length} tracking number{rows.length === 1 ? "" : "s"} · you see the ones you added and the ones assigned
               to you. A tracking number on several rows (one per PIC) is kept together and shares a colour. Double-click a Note to edit / re-send it, and a PIC Reply to answer it. A PIC picks In progress (quiets the tab's bell for an hour; it rings hourly from 8am to 8pm) or Closed (bell off; it stays on their list
               marked closed) and can reply. When the person who added it closes or removes it, it disappears for both of you.
-              Parcel details come from the same query 78 data Station Health uses (refreshed every 15 minutes), not a live
+              Parcel details come from the same query 78 data Station Health uses (refreshed every 10 minutes), not a live
               search; "Not found" means the parcel is already completed or added to a shipment.
             </>
           }

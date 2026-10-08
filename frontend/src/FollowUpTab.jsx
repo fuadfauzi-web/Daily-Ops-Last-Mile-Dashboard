@@ -5,6 +5,7 @@ import { exportCsv } from "./lib/csv";
 import { DueInput, dueCell, dueClass, notifyChanged, sortRows, useAction, useSort } from "./lib/taskUi";
 import DataTable from "./components/DataTable";
 import PicInput from "./components/PicInput";
+import MultiPicInput from "./components/MultiPicInput";
 import SegmentedControl from "./components/SegmentedControl";
 
 const CHANNEL_LABEL = { email: "Email", gchat: "Gchat" };
@@ -15,7 +16,7 @@ const CHANNEL_LABEL = { email: "Email", gchat: "Gchat" };
 export default function FollowUpTab({ me, refreshTick }) {
   const [items, setItems] = useState(null);
   const [view, setView] = useState("open");
-  const [form, setForm] = useState({ channel: "email", subject: "", contact: "", link: "", due_date: "", due_time: "", note: "", helper: "" });
+  const [form, setForm] = useState({ channel: "email", subject: "", contact: "", link: "", due_date: "", due_time: "", note: "", helper: "", cc: [] });
   const [editing, setEditing] = useState(null);
   const [edit, setEdit] = useState({});
   const [replying, setReplying] = useState(null);
@@ -58,9 +59,10 @@ export default function FollowUpTab({ me, refreshTick }) {
         due_date: form.due_date || null,
         due_time: form.due_time || null,
         helper_email: form.helper.trim() || null,
+        cc_emails: form.cc,
       })
     );
-    if (ok) setForm({ channel: form.channel, subject: "", contact: "", link: "", due_date: "", due_time: "", note: "", helper: "" });
+    if (ok) setForm({ channel: form.channel, subject: "", contact: "", link: "", due_date: "", due_time: "", note: "", helper: "", cc: [] });
   };
 
   const startEdit = (r) => {
@@ -89,7 +91,8 @@ export default function FollowUpTab({ me, refreshTick }) {
     return {
       open: l.filter((i) => i.created_by_me && i.status !== "done").length,
       helping: l.filter((i) => i.is_helper && i.status !== "done").length,
-      done: l.filter((i) => i.status === "done").length,
+      cc: l.filter((i) => i.cc_me && i.status !== "done").length,
+      done: l.filter((i) => i.status === "done" && !i.cc_me).length,
     };
   }, [items]);
 
@@ -106,7 +109,7 @@ export default function FollowUpTab({ me, refreshTick }) {
   const rows = useMemo(() => {
     const l = items || [];
     const base =
-      view === "done" ? l.filter((i) => i.status === "done") : view === "helping" ? l.filter((i) => i.is_helper && i.status !== "done") : l.filter((i) => i.created_by_me && i.status !== "done");
+      view === "cc" ? l.filter((i) => i.cc_me && i.status !== "done") : view === "done" ? l.filter((i) => i.status === "done" && !i.cc_me) : view === "helping" ? l.filter((i) => i.is_helper && i.status !== "done") : l.filter((i) => i.created_by_me && i.status !== "done");
     return sortRows(base, sortKey, sortDir, valueOf);
   }, [items, view, sortKey, sortDir]);
 
@@ -148,6 +151,14 @@ export default function FollowUpTab({ me, refreshTick }) {
           "—"
         ),
       className: () => "text-slate-700",
+    },
+    {
+      key: "cc",
+      label: "CC",
+      sortable: false,
+      align: "left",
+      render: (r) => (r.cc?.length ? <div className="max-w-[200px] whitespace-normal break-words text-left">{r.cc.map((c) => (c.email.toLowerCase() === me?.email?.toLowerCase() ? "You" : c.name || c.email)).join(", ")}</div> : "—"),
+      className: () => "text-xs text-slate-600",
     },
     {
       key: "helper_reply",
@@ -231,6 +242,12 @@ export default function FollowUpTab({ me, refreshTick }) {
             <PicInput className="mt-1" placeholder="Type a name, email or station…" value={form.helper} onChange={set("helper")} />
           </label>
         </div>
+        <div className="text-xs text-slate-500">
+          CC (optional) — they are told about it and can see it, but don't act on it
+          <div className="mt-1">
+            <MultiPicInput value={form.cc} onChange={(v) => setForm((f) => ({ ...f, cc: v }))} placeholder="Type a name, email or station…" />
+          </div>
+        </div>
         <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Note (optional)" value={form.note} onChange={(e) => set("note")(e.target.value)} maxLength={1000} />
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={add} disabled={busy || !form.subject.trim()} className="min-h-[44px] rounded-lg bg-brand px-4 py-1.5 font-display text-xs font-semibold text-white disabled:opacity-40">
@@ -286,6 +303,7 @@ export default function FollowUpTab({ me, refreshTick }) {
         options={[
           { key: "open", label: `My follow-ups (${counts.open})` },
           { key: "helping", label: `Assigned to me (${counts.helping})` },
+          { key: "cc", label: `CC'd to me (${counts.cc})` },
           { key: "done", label: `Done (${counts.done})` },
         ]}
         value={view}
@@ -304,7 +322,7 @@ export default function FollowUpTab({ me, refreshTick }) {
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={toggle}
-          emptyMessage={view === "helping" ? "No follow-up has been assigned to you." : view === "done" ? "Nothing done yet." : "Nothing to follow up -- add an email or Gchat above."}
+          emptyMessage={view === "cc" ? "Nothing has you in CC." : view === "helping" ? "No follow-up has been assigned to you." : view === "done" ? "Nothing done yet." : "Nothing to follow up -- add an email or Gchat above."}
           footer={
             <>
               {rows.length} follow-up{rows.length === 1 ? "" : "s"} · the Task List bell rings for follow-ups due today or overdue, for a reply from

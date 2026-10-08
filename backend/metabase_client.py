@@ -72,6 +72,62 @@ async def fetch_question(card_id: int) -> list[dict]:
     return data
 
 
+_COLLECTION_ID = int(os.getenv("METABASE_COLLECTION_ID", "18292") or 18292)  # Last Mile collection: every question the app reads lives here (2026-10-08)
+COLLECTION_URL = f"{METABASE_BASE_URL}/collection/{_COLLECTION_ID}-last-mile"
+
+
+def _check_status(resp: httpx.Response, what: str) -> None:
+    if resp.status_code in (401, 403):
+        raise MetabaseError(f"Metabase refused {what} (HTTP {resp.status_code}) -- check the API key and that its group can see the Last Mile collection")
+    if resp.status_code == 404:
+        raise MetabaseError(f"Metabase could not find {what}")
+    if resp.status_code >= 400:
+        raise MetabaseError(f"Metabase returned HTTP {resp.status_code} for {what}")
+
+
+async def fetch_question_csv(card_id: int) -> bytes:
+    """The file "Download results as .csv" gives for a saved question -- the same text the manual upload used to take, so every dataset parser keeps working unchanged."""
+    if not METABASE_API_KEY:
+        raise MetabaseError("METABASE_API_KEY is not set on this app")
+    url = f"{METABASE_BASE_URL}/api/card/{card_id}/query/csv"
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+            resp = await client.post(url, headers={"X-API-KEY": METABASE_API_KEY}, data={"parameters": "[]"})
+    except httpx.HTTPError as exc:
+        raise MetabaseError(f"Could not reach Metabase: {exc.__class__.__name__}") from exc
+    _check_status(resp, f"question {card_id}")
+    ctype = (resp.headers.get("content-type") or "").lower()
+    if "json" in ctype:  # a failed query comes back as {"error": "..."} instead of a file
+        try:
+            err = resp.json()
+            msg = str(err.get("error") or err)[:200] if isinstance(err, dict) else "unexpected answer"
+        except ValueError:
+            msg = "unexpected answer"
+        raise MetabaseError(f"Metabase question {card_id} failed: {msg}")
+    if "html" in ctype:
+        raise MetabaseError("Metabase answered with a web page (single sign-on in front of the API?) -- see the connection check")
+    return resp.content
+
+
+async def list_collection(collection_id: int | None = None) -> list[dict]:
+    """The saved questions inside the Last Mile collection: [{"id", "name"}], newest id last."""
+    if not METABASE_API_KEY:
+        raise MetabaseError("METABASE_API_KEY is not set on this app")
+    cid = collection_id or _COLLECTION_ID
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(f"{METABASE_BASE_URL}/api/collection/{cid}/items", headers={"X-API-KEY": METABASE_API_KEY}, params={"models": "card", "limit": 500})
+    except httpx.HTTPError as exc:
+        raise MetabaseError(f"Could not reach Metabase: {exc.__class__.__name__}") from exc
+    _check_status(resp, f"collection {cid}")
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise MetabaseError("Metabase did not return JSON for the collection") from exc
+    items = data.get("data", []) if isinstance(data, dict) else data
+    return sorted(({"id": int(i["id"]), "name": str(i.get("name") or "")} for i in items if i.get("model", "card") in ("card", "dataset", "metric") and i.get("id") is not None), key=lambda q: q["id"])
+
+
 def _verdict(out: dict) -> str:
     if not out["key_present"]:
         return "METABASE_API_KEY is empty on this app. Set the secret in the portal (Secrets) and press Redeploy -- secrets are only read when the app starts."

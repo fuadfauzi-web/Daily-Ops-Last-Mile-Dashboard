@@ -1065,6 +1065,8 @@ SHIPPER_WATCH_KEYS = (
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_pieces", "restock_potential_breach", "restock_breach",
     "shipper_sla_warning", "shipper_sla_breach",
+    "shipper_sla_warning_ovfd", "shipper_sla_warning_aash", "shipper_sla_breach_ovfd", "shipper_sla_breach_aash",
+    "aging_delivery_gt3", "aging_ats_gt7", "rpu_aging_gt5", "missing_to_answer", "lost_to_answer",
     "cold_chain_zero_attempt", "cold_chain_aging",
 )
 
@@ -1074,6 +1076,8 @@ SHIPPER_DRILLDOWN_METRICS = (
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
     "shipper_sla_warning", "shipper_sla_breach",
+    "shipper_sla_warning_ovfd", "shipper_sla_warning_aash", "shipper_sla_breach_ovfd", "shipper_sla_breach_aash",
+    "aging_delivery_gt3", "aging_ats_gt7", "rpu_aging_gt5", "missing_to_answer", "lost_to_answer",
     "cold_chain_zero_attempt", "cold_chain_aging",
 )
 
@@ -1212,7 +1216,9 @@ def build_shipper_watch(
     return by_station, tn_details
 
 
-# Action Board "Shipper SLA" (2026-09-26): Amway, Watson, Orca and Cold Chain parcels still with a station. Older than
+# Action Board "Shipper SLA" (2026-09-26): Amway, Watson, Orca and Cold Chain parcels still with a station (2026-10-08: plus Soda Express and Zalora NXD;
+# Zitron and Ceva follow once they are on Shipper Radar). Each warning / breach count is also split by status: ..._ovfd (On Vehicle for Delivery) and
+# ..._aash (Arrived at Sorting Hub, with the parcels in any other status listed but not counted); En-route counts as OVFD. Older than
 # SHIPPER_SLA_WARN_DAYS days = warning, older than SHIPPER_SLA_BREACH_DAYS days = breach (each parcel counts once: a parcel
 # that is already a breach is not also counted as a warning). Age = days since the parcel's first sweep at its current hub
 # (query 78's days_since_current_hub_first_sweep, the same age the rest of the app uses). A parcel still on its way to the
@@ -1224,14 +1230,18 @@ _SHIPPER_SLA_EXCLUDED_STATUSES: set[str] = set()  # no status is left out any mo
 
 
 def apply_shipper_sla(
-    by_station: dict[str, dict], tn_details: dict[str, dict], health_v3_rows: list[dict], cold_chain_tns: set[str]
+    by_station: dict[str, dict], tn_details: dict[str, dict], health_v3_rows: list[dict], cold_chain_tns: set[str],
+    zalora_nxd_tns: set[str] | None = None,
 ) -> None:
     """Adds, to the Shipper Watch rows in place:
       * Action Board's shipper_sla_warning / shipper_sla_breach (Amway, Watson, Orca and Cold Chain parcels by age), and
+      * Action Board's aging_delivery_gt3 (Aging Delivery older than 3 days) and aging_ats_gt7 (Aging ATS older than 7 days), the same rules as
+        Aging Details' Delivery and ATS views, and
       * Shipper Radar's Cold Chain columns cold_chain_zero_attempt / cold_chain_aging (2026-09-26: the same 0-Attempt and
         Aging >D0 rule as Amway and Watson -- Arrived at Sorting Hub, 0 attempts; aging = older than 0 days).
     Cold Chain parcels are recognised by tracking number (query 1410); only the 143 stations are counted here -- parcels sitting
     at CC-* hubs are in the Cold Chain sub-tab."""
+    zalora_nxd_tns = zalora_nxd_tns or set()
     for r in health_v3_rows:
         hub = r.get("last_scan_hub_name")
         row = by_station.get(hub)
@@ -1244,6 +1254,13 @@ def apply_shipper_sla(
             age = int(r.get("days_since_current_hub_first_sweep") or 0)
         except (TypeError, ValueError):
             age = 0
+        hub_match = hub == r.get("dest_hub")
+        if status == "Arrived at Sorting Hub" and hub_match and age > 3:
+            row["aging_delivery_gt3"] += 1
+            tn_details[hub]["aging_delivery_gt3"].append(tn)
+        if not hub_match and age > 7:
+            row["aging_ats_gt7"] += 1
+            tn_details[hub]["aging_ats_gt7"].append(tn)
         if is_cold and status == "Arrived at Sorting Hub" and (r.get("delivery_attempts") or 0) == 0:
             row["cold_chain_zero_attempt"] += 1
             tn_details[hub]["cold_chain_zero_attempt"].append(tn)
@@ -1252,7 +1269,13 @@ def apply_shipper_sla(
                 tn_details[hub]["cold_chain_aging"].append(tn)
         if status in _SHIPPER_SLA_EXCLUDED_STATUSES:
             continue
-        if not (is_cold or _ORCA_PATTERN.search(tn or "") or _classify_shipper(tn) in ("Amway", "Watson")):
+        if not (
+            is_cold
+            or _ORCA_PATTERN.search(tn or "")
+            or _SODAXPRESS_PATTERN.search(tn or "")
+            or tn in zalora_nxd_tns
+            or _classify_shipper(tn) in ("Amway", "Watson")
+        ):
             continue
         if age > SHIPPER_SLA_BREACH_DAYS:
             key = "shipper_sla_breach"
@@ -1262,6 +1285,33 @@ def apply_shipper_sla(
             continue
         row[key] += 1
         tn_details[hub][key].append(tn)
+        # The Action Board shows only the four split metrics (2026-10-08): OVFD = On Vehicle for Delivery + En-route to Sorting Hub;
+        # AASH = Arrived at Sorting Hub. A parcel in any other status is listed under AASH's tracking numbers but NOT counted in its total.
+        # tn_details[hub]["_status"] keeps each parcel's status so the tracking-number list can show a Status column.
+        counted = True
+        if status in ("On Vehicle for Delivery", "En-route to Sorting Hub"):
+            split = "ovfd"
+        else:
+            split = "aash"
+            counted = status == "Arrived at Sorting Hub"
+        if counted:
+            row[f"{key}_{split}"] += 1
+        tn_details[hub][f"{key}_{split}"].append(tn)
+        tn_details[hub].setdefault("_status", {})[tn] = status
+
+
+RPU_AGING_DAYS = 5
+
+
+def apply_rpu_aging(by_station: dict[str, dict], tn_details: dict[str, dict], rpu_rows: list[dict]) -> None:
+    """Action Board's rpu_aging_gt5: RPU parcels (any stage) older than RPU_AGING_DAYS days since their scheduled pickup date, at their pickup hub."""
+    for r in rpu_rows:
+        hub = r.get("station_code")
+        row = by_station.get(hub)
+        if row is None or (r.get("age") or 0) <= RPU_AGING_DAYS:
+            continue
+        row["rpu_aging_gt5"] += 1
+        tn_details[hub]["rpu_aging_gt5"].append(r.get("tracking_number"))
 
 
 def rollup_shipper_watch(station_rows: list[dict], group_key: str) -> list[dict]:
@@ -1710,6 +1760,8 @@ def build_rdo_compliance(rows: list[dict]) -> tuple[dict[str, dict], list[dict],
             "bundle_last_sweep_at": r.get("bundle_last_sweep_timestamp"),
             "bundle_delivered_at": r.get("bundle_delivery_success_datetime"),
             "bundle_last_sweep_hub": r.get("bundle_last_sweep_hub"),
+            "rdo_route_driver": r.get("rdo_route_driver"),
+            "bundle_delivery_driver": r.get("bundle_delivery_driver"),
         })
     return by_station, tn_rows, sorted(doc_types_seen)
 
@@ -1870,6 +1922,8 @@ def build_restock_bundles(restock_rows: list[dict], attempts_by_tn: dict[str, in
                 aging = max(aging, int(r.get("days_aging_excl_sunday") or 0))
             except (TypeError, ValueError):
                 pass
+        # Query 1585's ticket_type per piece (DAMAGED / MISSING / PARCEL ON HOLD / SHIPPER ISSUE): the reason the piece is on hold.
+        ticket_types = sorted({str(r["ticket_type"]).strip().title() for r in rows if r.get("ticket_type")})
         hold_details = next(
             (r.get(k) for r in rows for k in ("parcel_on_hold_details", "ticket_notes", "first_comment") if r.get(k)), None
         )
@@ -1882,6 +1936,7 @@ def build_restock_bundles(restock_rows: list[dict], attempts_by_tn: dict[str, in
             "on_hold_pieces": on_hold,
             "statuses": ", ".join(f"{s} ×{n}" for s, n in sorted(statuses.items(), key=lambda kv: -kv[1])),
             "days_group": first.get("days_group"), "aging_days": aging,
+            "ticket_type": ", ".join(ticket_types) or None,
             "hold_details": (hold_details or "").strip() or None,
             "bundle_class": klass,
             "tracking_numbers": piece_tns[:100],

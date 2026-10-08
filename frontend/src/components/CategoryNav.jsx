@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { SIDE_GROUPS, SIDE_GROUP_COLORS } from "../lib/sideNav";
+import { SIDE_GROUPS, SIDE_GROUP_COLORS, sideGroupLabel } from "../lib/sideNav";
 
 // Categorised top navigation (staging trial, FEATURES.sidebarNav -- the "Top tabs" choice): the same groups as the sidebar (Act / Monitor / Recovery /
 // Dashboard / People / System) as buttons that sit in the header beside the user menu. Each opens a vertical dropdown of its pages; only one is open at a
@@ -74,7 +74,7 @@ export default function CategoryNav({ items, onSelect }) {
               }`}
             >
               <span className={`h-2 w-2 rounded-full ${SIDE_GROUP_COLORS[g.name].dot}`} />
-              {g.name}
+              {sideGroupLabel(g.name)}
               {!isOpen && bell > 0 && (
                 <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-bold leading-none text-white">{bell}</span>
               )}

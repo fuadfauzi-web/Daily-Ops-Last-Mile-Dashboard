@@ -286,7 +286,7 @@
         ]
       },
       "post": {
-        "summary": "Add a Hybrid driver (name, driver ID, phone, vehicle, joined / end date) to a station the caller may key for.",
+        "summary": "Manager / Superadmin only: add a Hybrid driver by hand (the list normally comes from Metabase every morning).",
         "operationId": "add_driver_api_attendance_hybrid_drivers_post",
         "requestBody": {
           "required": true,
@@ -323,9 +323,39 @@
         ]
       }
     },
+    "/api/attendance/hybrid/drivers/refresh": {
+      "post": {
+        "summary": "Manager / Superadmin: pull the Metabase question Active Driver Details now and sync the Hybrid drivers (it also runs every morning at 06:30).",
+        "description": "Pull the Active Driver Details question from Metabase now (it also runs every morning at 06:30).",
+        "operationId": "refresh_drivers_api_attendance_hybrid_drivers_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
     "/api/attendance/hybrid/drivers/{driver_id}": {
       "patch": {
-        "summary": "Edit or switch off a Hybrid driver; a name change follows onto the Schedule and an end date in the past switches them off.",
+        "summary": "Manager / Superadmin only: edit or switch off a Hybrid driver; a name change follows onto the Schedule and an end date in the past switches them off.",
         "description": "Edit a driver's details. Only the fields sent change (\"\" clears one). A name change follows the driver onto the Schedule. Ending or switching a driver off keeps their history.",
         "operationId": "edit_driver_api_attendance_hybrid_drivers__driver_id__patch",
         "parameters": [
@@ -735,6 +765,76 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FixIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/flags": {
+      "get": {
+        "summary": "Staff (Station Head / Fleet Assistant) who didn't clock in or out as scheduled in the last three days: not clocked in 30 min after the shift start, late, no clock-out an hour after the shift ended, short day (<8 h); worked out live from the Schedule, the station's shift hours and the clock records.",
+        "description": "Staff who didn't clock in / out as scheduled today and in the last two days (not clocked in 30 min after the shift starts, late, no clock-out, short day).",
+        "operationId": "list_flags_api_attendance_staff_flags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Attendance"
+        ]
+      }
+    },
+    "/api/attendance/staff/flags/action": {
+      "post": {
+        "summary": "Region Head / RFS / HOD / Manager marks a staff flag as handled with a note.",
+        "description": "A Region Head / RFS / HOD / Manager marks a flag as handled, with what was done (called, on MC, fixed the time ...).",
+        "operationId": "act_on_flag_api_attendance_staff_flags_action_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlagAction"
               }
             }
           }
@@ -2462,7 +2562,7 @@
     },
     "/api/attendance/schedule/shift-times": {
       "put": {
-        "summary": "Write down (or clear) a station's own hours for its AM, Middle or PM shift; Station Heads, Region Heads, Managers and the Superadmin for stations in scope.",
+        "summary": "Write down (or clear) a station's own hours, and optional break window, for its AM, Middle or PM shift; Station Heads, Region Heads, Managers and the Superadmin for stations in scope.",
         "description": "Write down (or clear) this station's own hours for its AM, Middle or PM shift. Same people who can edit the schedule.",
         "operationId": "set_shift_time_api_attendance_schedule_shift_times_put",
         "requestBody": {
@@ -2576,6 +2676,445 @@
         },
         "tags": [
           "Attendance"
+        ]
+      }
+    },
+    "/api/admin/role-access": {
+      "get": {
+        "summary": "Get Role Access",
+        "operationId": "get_role_access_api_admin_role_access_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleAccessOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "put": {
+        "summary": "Save Role Access",
+        "operationId": "save_role_access_api_admin_role_access_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/role_access__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/feeds": {
+      "get": {
+        "summary": "Get Feeds",
+        "operationId": "get_feeds_api_admin_metabase_feeds_get",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/feeds/{dataset}": {
+      "put": {
+        "summary": "Save Feed",
+        "operationId": "save_feed_api_admin_metabase_feeds__dataset__put",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/metabase_pull__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/feeds/{dataset}/pull": {
+      "post": {
+        "summary": "Pull Now",
+        "operationId": "pull_now_api_admin_metabase_feeds__dataset__pull_post",
+        "parameters": [
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/metabase_pull__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/pull-all": {
+      "post": {
+        "summary": "Pull every feed that is not switched off, one after the other, in the background (the page shows each as it finishes).",
+        "description": "Pull every feed that is not switched off, one after the other, in the background (the page shows each as it finishes).",
+        "operationId": "pull_all_api_admin_metabase_pull_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/metabase_pull__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/metabase/check": {
+      "get": {
+        "summary": "What Metabase answers to this app's API key (never returns the key).",
+        "description": "What Metabase answers to this app's API key (never returns the key).",
+        "operationId": "check_api_admin_metabase_check_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/departments": {
+      "get": {
+        "summary": "Get Departments",
+        "operationId": "get_departments_api_departments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DepartmentOut"
+                  },
+                  "title": "Response Get Departments Api Departments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/admin/departments": {
+      "post": {
+        "summary": "Add Department",
+        "operationId": "add_department_api_admin_departments_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/departments__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/departments/{old_name}": {
+      "put": {
+        "summary": "Edit Department",
+        "operationId": "edit_department_api_admin_departments__old_name__put",
+        "parameters": [
+          {
+            "name": "old_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Old Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/departments__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/departments/{name}": {
+      "delete": {
+        "summary": "Delete Department",
+        "operationId": "delete_department_api_admin_departments__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/departments__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -3176,7 +3715,7 @@
         ]
       },
       "post": {
-        "summary": "Add a person to the staff list (posting = access to start with). Fleet Admin team and Superadmin only.",
+        "summary": "Add a person to the staff list (posting = access to start with). Fleet Admin Team Lead and Superadmin only.",
         "operationId": "add_staff_api_staff_post",
         "requestBody": {
           "required": true,
@@ -3499,6 +4038,205 @@
         ]
       }
     },
+    "/api/station-profile": {
+      "get": {
+        "summary": "Station Profile picker: every Last Mile station (code, zone, region), the station to open first for the caller and whether they can edit. Every signed-in role.",
+        "description": "The stations for the picker (region > zone > station) and the one to open first.",
+        "operationId": "station_list_api_station_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-profile/{station}": {
+      "get": {
+        "summary": "One station's profile like the Fleet Management sheet's Station tab: IDs, zone, opened-for, chat space, address, Region Head / Supervisor with their office, the station team, workmail groups, managers on duty, business hours, station totals per region and covered postcodes. Every signed-in role.",
+        "operationId": "station_profile_api_station_profile__station__get",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "patch": {
+        "summary": "Set a station's Warehouse ID. Fleet Admin Team Lead and Superadmin only.",
+        "description": "The Warehouse ID of a station (the sheet's control tab); \"\" clears it.",
+        "operationId": "set_warehouse_api_station_profile__station__patch",
+        "parameters": [
+          {
+            "name": "station",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-profile-info": {
+      "put": {
+        "summary": "Replace the workmail groups, managers on duty and business hours shown on every Station Profile. Fleet Admin Team Lead and Superadmin only.",
+        "description": "The three boxes that are the same for every station (only the ones sent are replaced).",
+        "operationId": "set_info_api_station_profile_info_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InfoIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/station-postcodes/upload": {
+      "post": {
+        "summary": "Load the postcodes each station covers from a CSV / Excel file with Postcode and Station columns (stations in the file are replaced). Fleet Admin Team Lead and Superadmin only.",
+        "description": "The postcodes each station covers, from the [MY] Master Postcodes sheet (a regional tab, or all of them, saved as CSV / Excel). The file needs a 'Postcode'\nand a 'Station' column; every station found in the file gets its list replaced, stations not in the file are left as they were.",
+        "operationId": "upload_postcodes_api_station_postcodes_upload_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_postcodes_api_station_postcodes_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/premises": {
       "get": {
         "summary": "Fleet Admin -> Premises: every station's address, size, launch date, business licence and tenancy dates (days left worked out), rent, deposit and document links; stations with no record yet come back blank. HQ staff and above.",
@@ -3599,6 +4337,324 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/stations": {
+      "get": {
+        "summary": "Stations",
+        "operationId": "stations_api_manager_dashboard_stations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StationsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/plan/{station_code}": {
+      "put": {
+        "summary": "Save one station's plan figures (null clears a figure).",
+        "description": "Save one station's plan figures (null clears a figure). Only for stations inside the person's own scope.",
+        "operationId": "put_plan_api_manager_dashboard_plan__station_code__put",
+        "parameters": [
+          {
+            "name": "station_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Station Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/links": {
+      "get": {
+        "summary": "List Links",
+        "operationId": "list_links_api_manager_dashboard_links_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LinkOut"
+                  },
+                  "title": "Response List Links Api Manager Dashboard Links Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "post": {
+        "summary": "Add Link",
+        "operationId": "add_link_api_manager_dashboard_links_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/links/{link_id}": {
+      "put": {
+        "summary": "Edit Link",
+        "operationId": "edit_link_api_manager_dashboard_links__link_id__put",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "delete": {
+        "summary": "Delete Link",
+        "operationId": "delete_link_api_manager_dashboard_links__link_id__delete",
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Link Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/manager-dashboard/notes": {
+      "get": {
+        "summary": "Get Notes",
+        "operationId": "get_notes_api_manager_dashboard_notes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      },
+      "put": {
+        "summary": "Put Notes",
+        "operationId": "put_notes_api_manager_dashboard_notes_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotesIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotesOut"
+                }
               }
             }
           },
@@ -9295,6 +10351,20 @@
         ],
         "title": "Body_upload_driver_details_api_admin_driver_details_upload_post"
       },
+      "Body_upload_postcodes_api_station_postcodes_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_postcodes_api_station_postcodes_upload_post"
+      },
       "BulkIn": {
         "properties": {
           "rows": {
@@ -10109,7 +11179,7 @@
           },
           "stations": {
             "items": {
-              "$ref": "#/components/schemas/StationRow"
+              "$ref": "#/components/schemas/main__StationRow"
             },
             "type": "array",
             "title": "Stations"
@@ -10141,7 +11211,7 @@
           },
           "previous_stations": {
             "items": {
-              "$ref": "#/components/schemas/StationRow"
+              "$ref": "#/components/schemas/main__StationRow"
             },
             "type": "array",
             "title": "Previous Stations",
@@ -10160,7 +11230,7 @@
           },
           "yesterday_stations": {
             "items": {
-              "$ref": "#/components/schemas/StationRow"
+              "$ref": "#/components/schemas/main__StationRow"
             },
             "type": "array",
             "title": "Yesterday Stations",
@@ -10199,6 +11269,53 @@
           "decision"
         ],
         "title": "DecisionIn"
+      },
+      "DepartmentIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DepartmentIn"
+      },
+      "DepartmentOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "users": {
+            "type": "integer",
+            "title": "Users",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "roles"
+        ],
+        "title": "DepartmentOut"
       },
       "DisableIn": {
         "properties": {
@@ -10450,17 +11567,6 @@
             ],
             "title": "Vehicle Type"
           },
-          "vehicle_plate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vehicle Plate"
-          },
           "joined_date": {
             "anyOf": [
               {
@@ -10548,17 +11654,6 @@
             ],
             "title": "Vehicle Type"
           },
-          "vehicle_plate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vehicle Plate"
-          },
           "joined_date": {
             "anyOf": [
               {
@@ -10606,6 +11701,247 @@
         },
         "type": "object",
         "title": "DriverPatch"
+      },
+      "FeedIn": {
+        "properties": {
+          "question_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Id"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "run_time": {
+            "type": "string",
+            "title": "Run Time",
+            "default": "06:00"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "default": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          "month_day": {
+            "type": "integer",
+            "title": "Month Day",
+            "default": 1
+          },
+          "every_hours": {
+            "type": "integer",
+            "title": "Every Hours",
+            "default": 4
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "FeedIn"
+      },
+      "FeedOut": {
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "title": "Dataset"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kpi": {
+            "type": "string",
+            "title": "Kpi"
+          },
+          "default_question_id": {
+            "type": "integer",
+            "title": "Default Question Id"
+          },
+          "question_id": {
+            "type": "integer",
+            "title": "Question Id"
+          },
+          "question_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Name"
+          },
+          "in_collection": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Collection"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "run_time": {
+            "type": "string",
+            "title": "Run Time"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays"
+          },
+          "month_day": {
+            "type": "integer",
+            "title": "Month Day"
+          },
+          "every_hours": {
+            "type": "integer",
+            "title": "Every Hours"
+          },
+          "schedule": {
+            "type": "string",
+            "title": "Schedule"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_ok_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ok At"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "last_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message"
+          },
+          "last_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rows"
+          },
+          "last_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seconds"
+          },
+          "last_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last By"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running",
+            "default": false
+          },
+          "problem": {
+            "type": "boolean",
+            "title": "Problem",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset",
+          "label",
+          "kpi",
+          "default_question_id",
+          "question_id",
+          "mode",
+          "run_time",
+          "weekdays",
+          "month_day",
+          "every_hours",
+          "schedule"
+        ],
+        "title": "FeedOut"
       },
       "FeedbackRow": {
         "properties": {
@@ -10789,6 +12125,61 @@
         "type": "object",
         "title": "FeedbackUpdate"
       },
+      "FeedsOut": {
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "collection_url": {
+            "type": "string",
+            "title": "Collection Url"
+          },
+          "collection_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Error"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOut"
+            },
+            "type": "array",
+            "title": "Questions",
+            "default": []
+          },
+          "feeds": {
+            "items": {
+              "$ref": "#/components/schemas/FeedOut"
+            },
+            "type": "array",
+            "title": "Feeds"
+          },
+          "pull_all_running": {
+            "type": "boolean",
+            "title": "Pull All Running",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "configured",
+          "base_url",
+          "collection_url",
+          "feeds"
+        ],
+        "title": "FeedsOut"
+      },
       "FixIn": {
         "properties": {
           "email": {
@@ -10827,6 +12218,34 @@
           "reason"
         ],
         "title": "FixIn"
+      },
+      "FlagAction": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "date",
+          "kind",
+          "note"
+        ],
+        "title": "FlagAction"
       },
       "FlagIn": {
         "properties": {
@@ -10989,6 +12408,20 @@
             ],
             "title": "Helper Replied At"
           },
+          "cc": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cc",
+            "default": []
+          },
+          "cc_me": {
+            "type": "boolean",
+            "title": "Cc Me",
+            "default": false
+          },
           "owner_unseen": {
             "type": "boolean",
             "title": "Owner Unseen"
@@ -11125,6 +12558,14 @@
               }
             ],
             "title": "Helper Email"
+          },
+          "cc_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Emails",
+            "default": []
           }
         },
         "type": "object",
@@ -11440,6 +12881,54 @@
           "csv"
         ],
         "title": "ImportIn"
+      },
+      "InfoIn": {
+        "properties": {
+          "workmail_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workmail Groups"
+          },
+          "managers_on_duty": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managers On Duty"
+          },
+          "business_hours": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Hours"
+          }
+        },
+        "type": "object",
+        "title": "InfoIn"
       },
       "InventoryIn": {
         "properties": {
@@ -11769,6 +13258,67 @@
         ],
         "title": "LhTripsResponse"
       },
+      "LinkIn": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": ""
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "default": ""
+          },
+          "due_text": {
+            "type": "string",
+            "title": "Due Text",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "LinkIn"
+      },
+      "LinkOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "due_text": {
+            "type": "string",
+            "title": "Due Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "title",
+          "url",
+          "due_text"
+        ],
+        "title": "LinkOut"
+      },
       "LoginCreate": {
         "properties": {
           "username": {
@@ -11945,6 +13495,12 @@
               }
             ],
             "title": "Position"
+          },
+          "access": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Access",
+            "default": {}
           }
         },
         "type": "object",
@@ -12224,6 +13780,29 @@
         ],
         "title": "MissingDetailsTnRow"
       },
+      "ModuleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "group"
+        ],
+        "title": "ModuleOut"
+      },
       "NewCase": {
         "properties": {
           "tracking_number": {
@@ -12375,6 +13954,41 @@
         "type": "object",
         "title": "NoteIn"
       },
+      "NotesIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "NotesIn"
+      },
+      "NotesOut": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "NotesOut"
+      },
       "Notifications": {
         "properties": {
           "urgent_notify": {
@@ -12435,6 +14049,16 @@
           "ptwh_review": {
             "type": "integer",
             "title": "Ptwh Review",
+            "default": 0
+          },
+          "staff_flags": {
+            "type": "integer",
+            "title": "Staff Flags",
+            "default": 0
+          },
+          "documents_stale": {
+            "type": "integer",
+            "title": "Documents Stale",
             "default": 0
           }
         },
@@ -13037,6 +14661,106 @@
         ],
         "title": "PicSuggestion"
       },
+      "Plan": {
+        "properties": {
+          "headcount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headcount"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          },
+          "drivers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drivers"
+          },
+          "riders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riders"
+          }
+        },
+        "type": "object",
+        "title": "Plan"
+      },
+      "PlanIn": {
+        "properties": {
+          "headcount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headcount"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          },
+          "drivers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drivers"
+          },
+          "riders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riders"
+          }
+        },
+        "type": "object",
+        "title": "PlanIn"
+      },
       "PremisesBulkIn": {
         "properties": {
           "rows": {
@@ -13569,6 +15293,17 @@
             ],
             "title": "Fetched At"
           },
+          "redash_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redash At"
+          },
           "url": {
             "anyOf": [
               {
@@ -13588,6 +15323,24 @@
           "fetched_at"
         ],
         "title": "QueryFetchStatus"
+      },
+      "QuestionOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "QuestionOut"
       },
       "RdoComplianceResponse": {
         "properties": {
@@ -14225,6 +15978,11 @@
             "type": "boolean",
             "title": "Can Refresh",
             "default": false
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "title": "Interval Seconds",
+            "default": 0
           }
         },
         "type": "object",
@@ -14553,6 +16311,61 @@
           "missing_pieces_total"
         ],
         "title": "RestockStationRow"
+      },
+      "RoleAccessOut": {
+        "properties": {
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleOut"
+            },
+            "type": "array",
+            "title": "Modules"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleOut"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleOut"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "modules",
+          "roles",
+          "rules"
+        ],
+        "title": "RoleAccessOut"
+      },
+      "RoleOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "tier"
+        ],
+        "title": "RoleOut"
       },
       "RoutedDriverRow": {
         "properties": {
@@ -15327,6 +17140,90 @@
         ],
         "title": "RpuStationRow"
       },
+      "RuleIn": {
+        "properties": {
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "scope_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Type"
+          },
+          "scope_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "module",
+          "level"
+        ],
+        "title": "RuleIn"
+      },
+      "RuleOut": {
+        "properties": {
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "scope_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Type"
+          },
+          "scope_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Values",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "module",
+          "level"
+        ],
+        "title": "RuleOut"
+      },
       "SeatIn": {
         "properties": {
           "station": {
@@ -15421,6 +17318,28 @@
               }
             ],
             "title": "End"
+          },
+          "break_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Break Start"
+          },
+          "break_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Break End"
           }
         },
         "type": "object",
@@ -15779,6 +17698,20 @@
               }
             ],
             "title": "As Of"
+          },
+          "statuses": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statuses"
           }
         },
         "type": "object",
@@ -15861,6 +17794,51 @@
           "shipper_sla_breach": {
             "type": "integer",
             "title": "Shipper Sla Breach",
+            "default": 0
+          },
+          "shipper_sla_warning_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Ovfd",
+            "default": 0
+          },
+          "shipper_sla_warning_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Aash",
+            "default": 0
+          },
+          "shipper_sla_breach_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Ovfd",
+            "default": 0
+          },
+          "shipper_sla_breach_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Aash",
+            "default": 0
+          },
+          "aging_delivery_gt3": {
+            "type": "integer",
+            "title": "Aging Delivery Gt3",
+            "default": 0
+          },
+          "aging_ats_gt7": {
+            "type": "integer",
+            "title": "Aging Ats Gt7",
+            "default": 0
+          },
+          "rpu_aging_gt5": {
+            "type": "integer",
+            "title": "Rpu Aging Gt5",
+            "default": 0
+          },
+          "missing_to_answer": {
+            "type": "integer",
+            "title": "Missing To Answer",
+            "default": 0
+          },
+          "lost_to_answer": {
+            "type": "integer",
+            "title": "Lost To Answer",
             "default": 0
           },
           "cold_chain_zero_attempt": {
@@ -15979,6 +17957,51 @@
           "shipper_sla_breach": {
             "type": "integer",
             "title": "Shipper Sla Breach",
+            "default": 0
+          },
+          "shipper_sla_warning_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Ovfd",
+            "default": 0
+          },
+          "shipper_sla_warning_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Warning Aash",
+            "default": 0
+          },
+          "shipper_sla_breach_ovfd": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Ovfd",
+            "default": 0
+          },
+          "shipper_sla_breach_aash": {
+            "type": "integer",
+            "title": "Shipper Sla Breach Aash",
+            "default": 0
+          },
+          "aging_delivery_gt3": {
+            "type": "integer",
+            "title": "Aging Delivery Gt3",
+            "default": 0
+          },
+          "aging_ats_gt7": {
+            "type": "integer",
+            "title": "Aging Ats Gt7",
+            "default": 0
+          },
+          "rpu_aging_gt5": {
+            "type": "integer",
+            "title": "Rpu Aging Gt5",
+            "default": 0
+          },
+          "missing_to_answer": {
+            "type": "integer",
+            "title": "Missing To Answer",
+            "default": 0
+          },
+          "lost_to_answer": {
+            "type": "integer",
+            "title": "Lost To Answer",
             "default": 0
           },
           "cold_chain_zero_attempt": {
@@ -16348,158 +18371,67 @@
         ],
         "title": "StationNote"
       },
-      "StationRow": {
+      "StationsResponse": {
         "properties": {
-          "total_in_hub": {
-            "type": "integer",
-            "title": "Total In Hub"
-          },
-          "zero_attempt_total": {
-            "type": "integer",
-            "title": "Zero Attempt Total"
-          },
-          "zero_attempt": {
-            "type": "integer",
-            "title": "Zero Attempt"
-          },
-          "zero_attempt_gt_d0": {
-            "type": "integer",
-            "title": "Zero Attempt Gt D0"
-          },
-          "on_hold": {
-            "type": "integer",
-            "title": "On Hold"
-          },
-          "pending_ats_zero_attempt": {
-            "type": "integer",
-            "title": "Pending Ats Zero Attempt"
-          },
-          "pending_ats_attempted": {
-            "type": "integer",
-            "title": "Pending Ats Attempted"
-          },
-          "missing_open": {
-            "type": "integer",
-            "title": "Missing Open"
-          },
-          "missing_hub": {
-            "type": "integer",
-            "title": "Missing Hub"
-          },
-          "missing_driver_rider": {
-            "type": "integer",
-            "title": "Missing Driver Rider"
-          },
-          "missing_ship_in": {
-            "type": "integer",
-            "title": "Missing Ship In"
-          },
-          "total_fresh": {
-            "type": "integer",
-            "title": "Total Fresh"
-          },
-          "age_gt3": {
-            "type": "integer",
-            "title": "Age Gt3"
-          },
-          "reschedule": {
-            "type": "integer",
-            "title": "Reschedule"
-          },
-          "still_ovfd": {
-            "type": "integer",
-            "title": "Still Ovfd"
-          },
-          "prior_d0": {
-            "type": "integer",
-            "title": "Prior D0"
-          },
-          "prior_gt_d0": {
-            "type": "integer",
-            "title": "Prior Gt D0"
-          },
-          "unsweep_document": {
-            "type": "integer",
-            "title": "Unsweep Document"
-          },
-          "unsweep_parcel": {
-            "type": "integer",
-            "title": "Unsweep Parcel"
-          },
-          "cod_pct_hub": {
-            "type": "number",
-            "title": "Cod Pct Hub"
-          },
-          "total_routed": {
-            "type": "integer",
-            "title": "Total Routed"
-          },
-          "routed_pct": {
-            "type": "number",
-            "title": "Routed Pct"
-          },
-          "attendance": {
-            "type": "integer",
-            "title": "Attendance"
-          },
-          "cod_pct_routed": {
-            "type": "number",
-            "title": "Cod Pct Routed"
-          },
-          "attendance_rescue": {
-            "type": "integer",
-            "title": "Attendance Rescue",
-            "default": 0
-          },
-          "station_code": {
+          "scope": {
             "type": "string",
-            "title": "Station Code"
+            "title": "Scope"
           },
-          "station_name": {
-            "type": "string",
-            "title": "Station Name"
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
           },
-          "zone": {
-            "type": "string",
-            "title": "Zone"
+          "scope_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note"
           },
-          "region": {
+          "can_edit_plan": {
+            "type": "boolean",
+            "title": "Can Edit Plan",
+            "default": true
+          },
+          "sources": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Sources"
+          },
+          "today": {
             "type": "string",
-            "title": "Region"
+            "title": "Today"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/manager_dashboard__StationRow"
+            },
+            "type": "array",
+            "title": "Rows"
           }
         },
         "type": "object",
         "required": [
-          "total_in_hub",
-          "zero_attempt_total",
-          "zero_attempt",
-          "zero_attempt_gt_d0",
-          "on_hold",
-          "pending_ats_zero_attempt",
-          "pending_ats_attempted",
-          "missing_open",
-          "missing_hub",
-          "missing_driver_rider",
-          "missing_ship_in",
-          "total_fresh",
-          "age_gt3",
-          "reschedule",
-          "still_ovfd",
-          "prior_d0",
-          "prior_gt_d0",
-          "unsweep_document",
-          "unsweep_parcel",
-          "cod_pct_hub",
-          "total_routed",
-          "routed_pct",
-          "attendance",
-          "cod_pct_routed",
-          "station_code",
-          "station_name",
-          "zone",
-          "region"
+          "scope",
+          "locked",
+          "sources",
+          "today",
+          "rows"
         ],
-        "title": "StationRow"
+        "title": "StationsResponse"
       },
       "TargetIn": {
         "properties": {
@@ -16642,6 +18574,20 @@
             ],
             "title": "Assignee Replied At"
           },
+          "cc": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cc",
+            "default": []
+          },
+          "cc_me": {
+            "type": "boolean",
+            "title": "Cc Me",
+            "default": false
+          },
           "is_new": {
             "type": "boolean",
             "title": "Is New"
@@ -16722,6 +18668,14 @@
             },
             "type": "array",
             "title": "Assignee Emails",
+            "default": []
+          },
+          "cc_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Emails",
             "default": []
           },
           "title": {
@@ -16850,6 +18804,20 @@
             "type": "boolean",
             "title": "Reopen",
             "default": false
+          },
+          "cc_emails": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cc Emails"
           }
         },
         "type": "object",
@@ -16891,6 +18859,28 @@
               }
             ],
             "title": "Percent Of"
+          },
+          "min_count_warning": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Count Warning"
+          },
+          "min_count_critical": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Count Critical"
           },
           "changed_by": {
             "anyOf": [
@@ -17258,6 +19248,21 @@
             "type": "boolean",
             "title": "Can Upload",
             "default": false
+          },
+          "daily": {
+            "type": "boolean",
+            "title": "Daily",
+            "default": false
+          },
+          "updated_today": {
+            "type": "boolean",
+            "title": "Updated Today",
+            "default": false
+          },
+          "metabase": {
+            "type": "boolean",
+            "title": "Metabase",
+            "default": false
           }
         },
         "type": "object",
@@ -17506,6 +19511,20 @@
             ],
             "title": "No Status Hours Left"
           },
+          "cc": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cc",
+            "default": []
+          },
+          "cc_me": {
+            "type": "boolean",
+            "title": "Cc Me",
+            "default": false
+          },
           "created_by_me": {
             "type": "boolean",
             "title": "Created By Me"
@@ -17646,6 +19665,14 @@
               }
             ],
             "title": "Note"
+          },
+          "cc_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Emails",
+            "default": []
           }
         },
         "type": "object",
@@ -17930,6 +19957,17 @@
               }
             ],
             "title": "Display Name"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
           }
         },
         "type": "object",
@@ -17986,6 +20024,17 @@
               }
             ],
             "title": "Last Seen At"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
           }
         },
         "type": "object",
@@ -18676,6 +20725,19 @@
         ],
         "title": "VehicleRow"
       },
+      "WarehouseIn": {
+        "properties": {
+          "warehouse_id": {
+            "type": "string",
+            "title": "Warehouse Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "warehouse_id"
+        ],
+        "title": "WarehouseIn"
+      },
       "WorkerIn": {
         "properties": {
           "name": {
@@ -18753,6 +20815,443 @@
           "station"
         ],
         "title": "WorkerIn"
+      },
+      "departments__OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
+      },
+      "main__StationRow": {
+        "properties": {
+          "total_in_hub": {
+            "type": "integer",
+            "title": "Total In Hub"
+          },
+          "zero_attempt_total": {
+            "type": "integer",
+            "title": "Zero Attempt Total"
+          },
+          "zero_attempt": {
+            "type": "integer",
+            "title": "Zero Attempt"
+          },
+          "zero_attempt_gt_d0": {
+            "type": "integer",
+            "title": "Zero Attempt Gt D0"
+          },
+          "on_hold": {
+            "type": "integer",
+            "title": "On Hold"
+          },
+          "pending_ats_zero_attempt": {
+            "type": "integer",
+            "title": "Pending Ats Zero Attempt"
+          },
+          "pending_ats_attempted": {
+            "type": "integer",
+            "title": "Pending Ats Attempted"
+          },
+          "missing_open": {
+            "type": "integer",
+            "title": "Missing Open"
+          },
+          "missing_hub": {
+            "type": "integer",
+            "title": "Missing Hub"
+          },
+          "missing_driver_rider": {
+            "type": "integer",
+            "title": "Missing Driver Rider"
+          },
+          "missing_ship_in": {
+            "type": "integer",
+            "title": "Missing Ship In"
+          },
+          "total_fresh": {
+            "type": "integer",
+            "title": "Total Fresh"
+          },
+          "age_gt3": {
+            "type": "integer",
+            "title": "Age Gt3"
+          },
+          "reschedule": {
+            "type": "integer",
+            "title": "Reschedule"
+          },
+          "still_ovfd": {
+            "type": "integer",
+            "title": "Still Ovfd"
+          },
+          "prior_d0": {
+            "type": "integer",
+            "title": "Prior D0"
+          },
+          "prior_gt_d0": {
+            "type": "integer",
+            "title": "Prior Gt D0"
+          },
+          "unsweep_document": {
+            "type": "integer",
+            "title": "Unsweep Document"
+          },
+          "unsweep_parcel": {
+            "type": "integer",
+            "title": "Unsweep Parcel"
+          },
+          "cod_pct_hub": {
+            "type": "number",
+            "title": "Cod Pct Hub"
+          },
+          "total_routed": {
+            "type": "integer",
+            "title": "Total Routed"
+          },
+          "routed_pct": {
+            "type": "number",
+            "title": "Routed Pct"
+          },
+          "attendance": {
+            "type": "integer",
+            "title": "Attendance"
+          },
+          "cod_pct_routed": {
+            "type": "number",
+            "title": "Cod Pct Routed"
+          },
+          "attendance_rescue": {
+            "type": "integer",
+            "title": "Attendance Rescue",
+            "default": 0
+          },
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_in_hub",
+          "zero_attempt_total",
+          "zero_attempt",
+          "zero_attempt_gt_d0",
+          "on_hold",
+          "pending_ats_zero_attempt",
+          "pending_ats_attempted",
+          "missing_open",
+          "missing_hub",
+          "missing_driver_rider",
+          "missing_ship_in",
+          "total_fresh",
+          "age_gt3",
+          "reschedule",
+          "still_ovfd",
+          "prior_d0",
+          "prior_gt_d0",
+          "unsweep_document",
+          "unsweep_parcel",
+          "cod_pct_hub",
+          "total_routed",
+          "routed_pct",
+          "attendance",
+          "cod_pct_routed",
+          "station_code",
+          "station_name",
+          "zone",
+          "region"
+        ],
+        "title": "StationRow"
+      },
+      "manager_dashboard__StationRow": {
+        "properties": {
+          "station_code": {
+            "type": "string",
+            "title": "Station Code"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "plan_updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Updated By"
+          },
+          "staff_filled": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Filled"
+          },
+          "staff_tba": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staff Tba"
+          },
+          "hd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hd"
+          },
+          "hr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hr"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "ir": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ir"
+          },
+          "resigned_w1": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resigned W1"
+          },
+          "resigned_w2": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resigned W2"
+          },
+          "resigned_w4": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resigned W4"
+          },
+          "active_2w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active 2W"
+          },
+          "active_4w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active 4W"
+          },
+          "attendance_today": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance Today"
+          },
+          "routed_today": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routed Today"
+          },
+          "week_days": {
+            "type": "integer",
+            "title": "Week Days",
+            "default": 0
+          },
+          "avg_fresh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Fresh"
+          },
+          "avg_routed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Routed"
+          },
+          "avg_attendance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Attendance"
+          },
+          "success_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Pct"
+          },
+          "productivity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productivity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_code",
+          "station_name",
+          "zone",
+          "region",
+          "plan"
+        ],
+        "title": "StationRow"
+      },
+      "metabase_pull__OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
+      },
+      "role_access__OkOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "OkOut"
       }
     }
   }

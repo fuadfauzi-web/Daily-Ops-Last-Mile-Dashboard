@@ -4,6 +4,7 @@ Reads REDASH_BASE_URL / REDASH_API_KEY from the environment (declared in
 backend/.env.example, set as real values in the Substrait portal after deploy).
 """
 import asyncio
+import time
 import logging
 import os
 
@@ -40,6 +41,15 @@ class RedashError(RuntimeError):
     pass
 
 
+# 2026-10-08: the API key is view / download-only, so Redash answers every "run this query" request with 403 -- 13 wasted calls per refresh. After the
+# first refusal the app stops asking for a while (it tries again later, in case the key is upgraded) and just reads what Redash last computed.
+_REFRESH_BLOCKED_UNTIL = 0.0
+_REFRESH_RETRY_AFTER_SECONDS = 6 * 3600
+# When Redash itself computed each query's result (its own retrieved_at) -- shown on Superadmin / Settings -> Data Refresh, so it is visible
+# whether polling faster than Redash recomputes can bring anything new.
+RETRIEVED_AT: dict[int, str | None] = {}
+
+
 async def _trigger_refresh(client: httpx.AsyncClient, query_id: int, headers: dict) -> None:
     """Best-effort: ask Redash to actually re-run the query against live data,
     instead of just reading whatever it last happened to compute. Previously
@@ -50,12 +60,16 @@ async def _trigger_refresh(client: httpx.AsyncClient, query_id: int, headers: di
     Silently no-ops on a 401/403 (some Redash API keys are view/download-only
     and can't trigger a run) or a request failure -- the caller then just gets
     Redash's last cached result, same as before this existed."""
+    global _REFRESH_BLOCKED_UNTIL
+    if time.time() < _REFRESH_BLOCKED_UNTIL:
+        return
     try:
         resp = await client.post(f"{REDASH_BASE_URL}/api/queries/{query_id}/refresh", headers=headers)
     except httpx.HTTPError:
         log.warning("Could not reach Redash to refresh query %d", query_id)
         return
     if resp.status_code in (401, 403):
+        _REFRESH_BLOCKED_UNTIL = time.time() + _REFRESH_RETRY_AFTER_SECONDS
         log.warning(
             "Redash query %d refresh forbidden (HTTP %d) -- the API key looks view/download-only; "
             "the dashboard will keep showing whatever Redash last computed on its own schedule",
@@ -103,6 +117,10 @@ async def fetch_query_results(query_id: int, force_refresh: bool = True) -> list
         resp = await client.get(f"{REDASH_BASE_URL}/api/queries/{query_id}/results.json", headers=headers)
         resp.raise_for_status()
         data = resp.json()
+    try:
+        RETRIEVED_AT[query_id] = data["query_result"].get("retrieved_at")
+    except (KeyError, TypeError, AttributeError):
+        pass
     try:
         return data["query_result"]["data"]["rows"]
     except (KeyError, TypeError) as exc:

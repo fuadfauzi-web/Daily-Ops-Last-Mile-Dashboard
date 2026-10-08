@@ -22,11 +22,13 @@ export default function AttendanceTab({ me }) {
   const [review, setReview] = useState(0);
   const [approvals, setApprovals] = useState(0);
   const [corrections, setCorrections] = useState(0);
+  const [staffFlags, setStaffFlags] = useState(0);
   const [test, setTest] = useState([]); // stations in the test-run day before their launch date
+  const [goStaff, setGoStaff] = useState(null); // {view, n} -- asks the Staff tab to show its Flags view
   const [goView, setGoView] = useState(null); // {view, n} -- asks the PTWH tab to show its Audit / Workers view
 
   const loadReview = useCallback(() => {
-    api.notifications().then((n) => { setReview(n.ptwh_review || 0); setApprovals(n.ptwh_approvals || 0); setCorrections(n.ptwh_corrections || 0); }).catch(() => {});
+    api.notifications().then((n) => { setReview(n.ptwh_review || 0); setApprovals(n.ptwh_approvals || 0); setCorrections(n.ptwh_corrections || 0); setStaffFlags(n.staff_flags || 0); }).catch(() => {});
   }, []);
   useEffect(() => { api.launchMe().then((l) => setTest(l.test || [])).catch(() => {}); }, []);
   useEffect(() => {
@@ -40,13 +42,19 @@ export default function AttendanceTab({ me }) {
       {test.length > 0 && (
         <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
           <strong>Test run.</strong> Attendance goes live for {test.length === 1 ? test[0].station : `${test.length} of your stations`} on <strong>{test[0].date}</strong>
-          {test.length > 1 && new Set(test.map((t) => t.date)).size > 1 ? " (dates differ by station)" : ""}. You can start early and try it out until then.
+          {test.length > 1 && new Set(test.map((t) => t.date)).size > 1 ? " (dates differ by station)" : ""}. You can start early and try it out until then -- what you key in now is cleared when the station goes live.
         </div>
       )}
       {approvals > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-sky-50 p-3 text-sm text-sky-900 ring-1 ring-sky-200">
           <span><strong>{approvals} new PTWH hire{approvals === 1 ? "" : "s"} waiting for your approval.</strong> They can't work, be scheduled or get an app login until the Region Head and then a Manager approve.</span>
           <button onClick={() => { setSub("ptwh"); setGoView({ view: "workers", n: Date.now() }); }} className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-semibold text-white">Open Workers</button>
+        </div>
+      )}
+      {staffFlags > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-red-200">
+          <span><strong>{staffFlags} staff {staffFlags === 1 ? "hasn't" : "haven't"} clocked in or out as scheduled.</strong> A Station Head or Fleet Assistant who is {staffFlags === 1 ? "30+ minutes past their shift start with no clock-in, or has no clock-out after the shift ended" : "30+ minutes past their shift start with no clock-in, or without a clock-out after the shift ended"} needs action.</span>
+          <button onClick={() => { setSub("staff"); setGoStaff({ view: "flags", n: Date.now() }); }} className="rounded-md bg-red-700 px-3 py-1.5 text-sm font-semibold text-white">Open Flags</button>
         </div>
       )}
       {corrections > 0 && (
@@ -68,7 +76,7 @@ export default function AttendanceTab({ me }) {
       {sub === "ptwh" ? (
         <PtwhAttendance me={me} requestView={goView} />
       ) : sub === "staff" ? (
-        <StaffAttendance />
+        <StaffAttendance requestView={goStaff} />
       ) : sub === "hybrid" ? (
         <HybridAttendance />
       ) : sub === "schedule" ? (

@@ -16,7 +16,9 @@ export const FEATURES = {
   managementView: false, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
   processingTime: false, // "Processing Time" tab (Beta, staging-only for now): the past 7 days of hour-of-day timelines per station
   dailyKpi: true, // "Daily KPI" tab (Beta -- numbers not 100% accurate yet, says so in-app): today's FIFO D0 / Prior / Completion D0, how many parcels left to attempt or deliver
-  attendance: false, // "Attendance" page (Beta, staging-only for now): PTWH clock in / out, month sheet and payable first; Staff and Hybrid attendance come later
+  attendance: true, // "Attendance" page (Beta, staging-only for now): PTWH clock in / out, month sheet and payable first; Staff and Hybrid attendance come later
+  managerDashboard: true, // "Manager Dashboard" tab (Beta, HOD + Fleet Manager only): Station Capacity + Driver Strength of their region (plan figures typed in), and a private workspace (links, due dates, notes)
+  stationProfile: false, // "Station profile" view inside Staff & Org Chart (staging-only for now, OFF in production): one station's IDs, address, people, boxes and postcodes, like the Fleet Management sheet's Station tab
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + To Do List + Task Assigned
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
@@ -32,7 +34,6 @@ export const FEATURES = {
   alertTidy: true, // staging-only trial (2026-10-02 design review D11): "Beta" becomes small text instead of an amber pill, and the bell badge is an ink count badge instead of red. NOT approved for production yet.
   phoneTnSheet: true, // staging-only trial (2026-10-02 design review D10): on a phone (<768px) the tracking-number lists open as a full-screen sheet with a sticky top bar, 56px rows and a Copy list / CSV bottom bar. NOT approved for production yet.
   chartStyle: true, // staging-only trial (2026-10-02 design review D13): charts use ink for the main series and grey for comparison (brand red stays chrome-only), paler gridlines, and a dashed target line where a chart is given one. NOT approved for production yet.
-  copyImage: true, // staging-only trial (2026-10-02 design review D12): a "Copy as image" button in the header copies the current page (with its title, filters and "Data as of") as a PNG for Gchat. NOT approved for production yet.
   headlineCards: true, // staging-only trial (2026-10-03 design review D7): Station Health opens with a strip of headline cards (Fresh, Routed, 0 Attempt, In Hub, Age >3) with the change since yesterday. NOT approved for production yet.
   stagingBanner: false, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
   // Production release 2026-10-04, step 1 (UI + System first). The People / Recovery-Beta modules are built but held back; flip each to true (and

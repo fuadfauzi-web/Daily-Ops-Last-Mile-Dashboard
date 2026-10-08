@@ -208,6 +208,9 @@ export function ActiveMissingView(props) {
 
 // ------------------------------------------------------------------------------------------------ Lost Declared (This Week + Summary)
 const LD_KEYS = ["customer_received", "liable_party", "remarks", "driver_name"];
+// "Recovered" (liable party set by the app, status not Cancelled) is neither answered nor waiting for an answer -- it is counted as Recovered (Fleet Manager, 2026-10-08)
+const answeredLd = (r) => !r.liable_auto && answered(r, LD_KEYS);
+const toAnswerLd = (r) => !r.liable_auto && !answered(r, LD_KEYS);
 
 export function LostDeclaredView({ view, me, ...props }) {
   const { refreshTick } = props;
@@ -239,16 +242,16 @@ export function LostDeclaredView({ view, me, ...props }) {
 
   const inScope = useMemo(() => rows.filter((r) => inFilters(r, props)), [rows, props.regionFilter, props.zoneFilter, props.search, props.excludeEastMalaysia]); // eslint-disable-line react-hooks/exhaustive-deps
   const stationOptions = useMemo(() => [...new Set(inScope.map((r) => r.station_name))].sort().map((v) => ({ value: v, label: v })), [inScope]);
-  const list = useMemo(() => inScope.filter((r) => (!stations.length || stations.includes(r.station_name)) && (!toAnswerOnly || !answered(r, LD_KEYS))), [inScope, stations, toAnswerOnly]);
+  const list = useMemo(() => inScope.filter((r) => (!stations.length || stations.includes(r.station_name)) && (!toAnswerOnly || toAnswerLd(r))), [inScope, stations, toAnswerOnly]);
   const outcomes = useMemo(() => [...new Set(inScope.map((r) => r.outcome).filter(Boolean))].sort(), [inScope]);
-  const liableList = data?.options?.liable_party || [];
+  const liableList = [...(data?.options?.liable_party || []), ...(data?.liable_auto ? [data.liable_auto] : [])]; // Recovered is set by the app (current status not Cancelled), so it only gets a summary column
   const byStation = useMemo(() => {
     const m = new Map();
     inScope.forEach((r) => {
       if (!m.has(r.station_code)) m.set(r.station_code, { station_code: r.station_code, station_name: r.station_name, zone: r.zone, region: r.region, total: 0, answered: 0, notset: 0, out: {}, liable: {} });
       const s = m.get(r.station_code);
       s.total += 1;
-      if (answered(r, LD_KEYS)) s.answered += 1;
+      if (answeredLd(r)) s.answered += 1;
       s.out[r.outcome || "?"] = (s.out[r.outcome || "?"] || 0) + 1;
       if (r.liable_party) s.liable[r.liable_party] = (s.liable[r.liable_party] || 0) + 1;
       else s.notset += 1;
@@ -281,7 +284,9 @@ export function LostDeclaredView({ view, me, ...props }) {
   };
   const opt = data.options;
   const total = inScope.length;
-  const done = inScope.filter((r) => answered(r, LD_KEYS)).length;
+  const done = inScope.filter((r) => answeredLd(r)).length;
+  const recovered = inScope.filter((r) => r.liable_auto).length;
+  const toAnswer = inScope.filter((r) => toAnswerLd(r)).length;
 
   const columns = [
     { key: "station_name", label: "Station", sticky: true, align: "left", text: true },
@@ -297,7 +302,7 @@ export function LostDeclaredView({ view, me, ...props }) {
     { key: "items", label: "Items", sortable: false, render: (r) => <span title={items(r.items)} className="block max-w-[12rem] text-left text-xs">{clip(items(r.items), 60) || "—"}</span> },
     { key: "delivery_instructions", label: "Delivery instructions", sortable: false, render: (r) => <span title={r.delivery_instructions || ""} className="block max-w-[12rem] text-left text-xs text-slate-500">{clip(r.delivery_instructions, 50) || "—"}</span> },
     { key: "customer_received", label: "Customer already received?", render: (r) => <SelectCell value={r.customer_received} options={opt.customer_received} disabled={!canEdit} onSave={(v) => save(r, { customer_received: v })} /> },
-    { key: "liable_party", label: "Liable party", render: (r) => <SelectCell value={r.liable_party} options={opt.liable_party} disabled={!canEdit} onSave={(v) => save(r, { liable_party: v })} /> },
+    { key: "liable_party", label: "Liable party", render: (r) => (r.liable_auto ? <span className="whitespace-nowrap text-xs font-semibold text-status-good" title={r.liable_entered ? `Current status is ${r.current_status}, not Cancelled. Entered earlier: ${r.liable_entered}` : `Current status is ${r.current_status}, not Cancelled`}>{r.liable_party}</span> : <SelectCell value={r.liable_party} options={opt.liable_party} disabled={!canEdit} onSave={(v) => save(r, { liable_party: v })} />) },
     { key: "remarks", label: "Remarks (explain the current situation) -- RH / RFS", sortable: false, render: (r) => <TextCell value={r.remarks} rows={2} width="w-64" disabled={!canEdit} onSave={(v) => save(r, { remarks: v })} /> },
     { key: "driver_name", label: "If under driver: driver display name", render: (r) => <TextCell value={r.driver_name} disabled={!canEdit} width="w-44" onSave={(v) => save(r, { driver_name: v })} /> },
     { key: "checked_by", label: "Check by", render: (r) => <TextCell value={r.checked_by} disabled={!canEdit} onSave={(v) => save(r, { checked_by: v })} /> },
@@ -336,14 +341,14 @@ export function LostDeclaredView({ view, me, ...props }) {
         </div>
         {data.can_upload && (
           <button onClick={() => setShowUpload((v) => !v)} className="h-9 shrink-0 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {showUpload ? "Hide data upload" : "Data upload"}
+            {showUpload ? "Hide data source" : "Data source"}
           </button>
         )}
       </div>
 
       {data.can_upload && showUpload && (
         <div className="space-y-2">
-          <KpiUploadPanel kpi="recovery" me={me} title="Data upload -- the Metabase CSVs" onChanged={() => setReload((n) => n + 1)} />
+          <KpiUploadPanel kpi="recovery" me={me} title="Data source -- pulled from Metabase" onChanged={() => setReload((n) => n + 1)} />
           {!isSummary && (
             <div className="flex justify-end">
               <button onClick={move} className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
@@ -375,11 +380,12 @@ export function LostDeclaredView({ view, me, ...props }) {
           </label>
         )}
         <Cards
-          cols="sm:grid-cols-3 flex-1"
+          cols="sm:grid-cols-4 flex-1"
           items={[
             [isSummary ? `Lost declared${weekLabel ? ` · week ${weekLabel.week}` : ""}` : "Lost declared this week", total.toLocaleString()],
-            ["Answered", done.toLocaleString(), total ? `${Math.round((done / total) * 100)}%` : ""],
-            ["To answer", (total - done).toLocaleString()],
+            ["Recovered", recovered.toLocaleString(), total ? `${Math.round((recovered / total) * 100)}%` : ""],
+            ["Answered", done.toLocaleString(), total - recovered ? `${Math.round((done / (total - recovered)) * 100)}% of the rest` : ""],
+            ["To answer", toAnswer.toLocaleString()],
           ]}
         />
       </div>

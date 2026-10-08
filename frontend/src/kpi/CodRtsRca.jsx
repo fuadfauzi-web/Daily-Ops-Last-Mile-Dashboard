@@ -72,7 +72,7 @@ export default function CodRtsRca({ me }) {
         <div className="rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
           <div className="font-display text-base font-semibold text-ink">No COD RTS data {canUpload ? "uploaded" : "loaded"} yet</div>
           <p className="mt-2">
-            {canUpload ? "Download the COD RTS Rate (and RTS Overall) results from Metabase -- links in the upload panel -- or use the RTS Analysis file (the whole workbook is fine). " : ""}
+            {canUpload ? "The COD RTS Rate and RTS Overall files are pulled from Metabase automatically -- the data source panel below shows when. " : ""}
             This page then shows why COD parcels are returned.
           </p>
         </div>
@@ -129,7 +129,7 @@ export default function CodRtsRca({ me }) {
         {loading && <span className="text-xs text-slate-400">Loading…</span>}
         {canUpload && (
           <button onClick={() => setShowUpload((v) => !v)} className="ml-auto h-9 rounded-lg border border-slate-300 px-3 font-display text-xs font-medium text-slate-600 hover:bg-slate-50">
-            {showUpload ? "Hide data upload" : "Data upload"}
+            {showUpload ? "Hide data source" : "Data source"}
           </button>
         )}
       </div>

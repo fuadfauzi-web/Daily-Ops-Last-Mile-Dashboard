@@ -161,6 +161,14 @@ export const api = {
     remove: (email) =>
       request(`/api/admin/users/${encodeURIComponent(email)}`, { method: "DELETE" }),
   },
+  roleAccess: () => request("/api/admin/role-access"),
+  roleAccessSave: (payload) => request("/api/admin/role-access", { method: "PUT", body: JSON.stringify(payload) }),
+  departments: {
+    list: () => request("/api/departments"),
+    add: (payload) => request("/api/admin/departments", { method: "POST", body: JSON.stringify(payload) }),
+    update: (name, payload) => request(`/api/admin/departments/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(payload) }),
+    remove: (name) => request(`/api/admin/departments/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  },
   refresh: {
     trigger: () => request("/api/admin/refresh", { method: "POST" }),
     status: () => request("/api/admin/refresh-status"),
@@ -284,6 +292,8 @@ export const api = {
   staffDay: (date) => request(`/api/attendance/staff/day?date=${encodeURIComponent(date)}`),
   staffMonth: (month) => request(`/api/attendance/staff/month?month=${encodeURIComponent(month)}`),
   staffFix: (payload) => request("/api/attendance/staff/fix", { method: "POST", body: JSON.stringify(payload) }),
+  staffFlags: () => request("/api/attendance/staff/flags"),
+  staffFlagAction: (payload) => request("/api/attendance/staff/flags/action", { method: "POST", body: JSON.stringify(payload) }),
   ptwhRehire: (id, station) => request(`/api/attendance/ptwh/workers/${id}/rehire`, { method: "POST", body: JSON.stringify({ station }) }),
   ptwhQr: (station, workerId) => request(`/api/attendance/ptwh/station/${encodeURIComponent(station)}/qr`, { method: "POST", body: JSON.stringify({ worker_id: workerId }) }),
   // The month in the HR sheet's layout (text, not JSON) -- csv to download, tsv to copy into the sheet.
@@ -320,6 +330,7 @@ export const api = {
   hybridDay: (date) => request(`/api/attendance/hybrid/day?date=${encodeURIComponent(date)}`),
   hybridMonth: (month) => request(`/api/attendance/hybrid/month?month=${encodeURIComponent(month)}`),
   hybridSave: (payload) => request("/api/attendance/hybrid/record", { method: "PUT", body: JSON.stringify(payload) }),
+  hybridDriversRefresh: () => request("/api/attendance/hybrid/drivers/refresh", { method: "POST" }),
   hybridClear: (driverId, date) => request(`/api/attendance/hybrid/record?driver_id=${driverId}&work_date=${encodeURIComponent(date)}`, { method: "DELETE" }),
   scheduleShiftTime: (payload) => request("/api/attendance/schedule/shift-times", { method: "PUT", body: JSON.stringify(payload) }),
   scheduleCell: (payload) => request("/api/attendance/schedule/cell", { method: "PUT", body: JSON.stringify(payload) }),
@@ -328,6 +339,15 @@ export const api = {
   managementNotes: () => request("/api/management-view/notes"),
   managementNoteSave: (stationCode, payload) =>
     request(`/api/management-view/notes/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
+  managerStations: () => request("/api/manager-dashboard/stations"),
+  managerPlanSave: (stationCode, payload) =>
+    request(`/api/manager-dashboard/plan/${encodeURIComponent(stationCode)}`, { method: "PUT", body: JSON.stringify(payload) }),
+  managerLinks: () => request("/api/manager-dashboard/links"),
+  managerLinkAdd: (payload) => request("/api/manager-dashboard/links", { method: "POST", body: JSON.stringify(payload) }),
+  managerLinkEdit: (id, payload) => request(`/api/manager-dashboard/links/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  managerLinkDelete: (id) => request(`/api/manager-dashboard/links/${id}`, { method: "DELETE" }),
+  managerNotes: () => request("/api/manager-dashboard/notes"),
+  managerNotesSave: (payload) => request("/api/manager-dashboard/notes", { method: "PUT", body: JSON.stringify(payload) }),
   kpiMetabaseCheck: () => request("/api/kpi/metabase-check"),
   kpiWeekly: () => request("/api/kpi/weekly"),
   kpiInvalidPod: (q = {}) => request(`/api/kpi/invalid-pod?${qs(q)}`),

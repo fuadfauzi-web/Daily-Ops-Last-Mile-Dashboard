@@ -34,18 +34,24 @@ from kpi_cod import router as kpi_cod_router
 import kpi_data
 import kpi_targets
 import management_view
+import manager_dashboard
 import attendance
 import attendance_corrections
 import staff_attendance
 import attendance_launch
 import hybrid_attendance
+import hybrid_roster
 import ptwh_app
 import work_schedule as schedule_mod
+import departments
+import metabase_pull
+import role_access
 import headcount
 import premises
 import vehicles
 import assets
 import asset_lists
+import station_profile
 import staff
 import recovery_cases
 import recovery_lost
@@ -54,7 +60,10 @@ from kpi_targets import router as kpi_targets_router
 from kpi_pod import router as kpi_pod_router
 from kpi_rca import router as kpi_rca_router
 from tasklist import (
+    cc_list as tasklist_cc_list,
+    cc_store as tasklist_cc_store,
     next_owner_slot_label as tasklist_next_owner_slot,
+    resolve_cc as tasklist_resolve_cc,
     notification_counts as tasklist_counts,
     router as tasklist_router,
     urgent_owner_ack as tasklist_urgent_owner_ack,
@@ -70,11 +79,12 @@ from aggregate import (
     build_missing_details, build_old_route, build_pending_yesterday_route, build_rdo_compliance, build_routed_view, RDO_COMPLIANCE_KEYS, RDO_STATUS_COLUMNS,
     RDO_BREACH_KEYS, flatten_rdo_station,
     build_rpu, build_shipment_details, build_shipper_watch, build_station_metrics, compute_tenure,
-    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla,
+    build_cold_chain, build_restock_bundles, OTHER_HUBS_LABEL, apply_shipper_sla, apply_rpu_aging,
     merge_routed_into_station_metrics, build_daily_kpi, rollup_daily_kpi, DAILY_KPI_KEYS,
     rollup, rollup_aging, rollup_missing_details, rollup_old_route, rollup_rdo_compliance, rollup_routed,
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
+import board_counts  # Action Board's 'to answer' counts (reads the Recovery tables)
 from auth import POSITIONS, CurrentUser, data_scope, get_current_user, parse_scope_values, tier_of
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
@@ -88,7 +98,7 @@ _MYT = timezone(timedelta(hours=8))
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("dashboard")
 
-REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
+REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "600"))  # every 10 minutes (was 15; 2026-10-08) -- set REFRESH_INTERVAL_SECONDS to change it without a release
 # 2026-09-22 incident: the backend OOM-killed (exit 137) on every restart --
 # root cause was fetching all 11 Redash queries concurrently, holding every
 # raw nationwide payload in memory at once; that happens on EVERY pod start
@@ -98,6 +108,7 @@ REFRESH_INTERVAL_SECONDS = 15 * 60  # every 15 minutes
 # refresh_metrics) -- the interval itself was never the actual cause.
 _refresh_task: asyncio.Task | None = None
 _warm_task: asyncio.Task | None = None
+_pull_task: asyncio.Task | None = None  # metabase_pull.scheduler_loop
 # 2026-09-23 incident: /api/admin/refresh (Settings page's manual Refresh
 # button) called refresh_metrics() with nothing stopping it from overlapping
 # the scheduler's own 15-minute call -- two concurrent refreshes each hold
@@ -355,6 +366,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             restock_rows,
             {r['tracking_id']: r.get('delivery_attempts') for r in health_rows if r.get('tracking_id') in restock_piece_tns},
         )
+        zalora_nxd_tns = {r.get("tracking_id") for r in zalora_rows if r.get("tracking_id")}  # Action Board's Shipper SLA counts these too
         del zalora_rows, restock_rows
 
         aging_by_type_station, aging_by_type_rows = build_aging_details(health_rows)
@@ -374,7 +386,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         except Exception:  # noqa: BLE001
             log.exception("Cold Chain refresh failed -- keeping the previous data")
         try:
-            apply_shipper_sla(shipper_by_station, shipper_tn_details, health_rows, cc_tns_for_sla)
+            apply_shipper_sla(shipper_by_station, shipper_tn_details, health_rows, cc_tns_for_sla, zalora_nxd_tns)
         except Exception:  # noqa: BLE001 - Action Board's Shipper SLA is isolated from the rest of the refresh
             log.exception("Shipper SLA failed -- its counts stay at 0 this cycle")
 
@@ -385,6 +397,15 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
         rpu_raw_rows = await _fetch(QUERY_RPU)
         rpu_by_station, rpu_rows_flat = build_rpu(rpu_raw_rows)
         del rpu_raw_rows
+        # Action Board's RPU aging and the two "to answer" counts ride on the Shipper Watch snapshot; each is isolated so it can't fail the refresh.
+        try:
+            apply_rpu_aging(shipper_by_station, shipper_tn_details, rpu_rows_flat)
+        except Exception:  # noqa: BLE001
+            log.exception("RPU aging failed -- its count stays at 0 this cycle")
+        try:
+            await board_counts.apply_answer_counts(shipper_by_station, shipper_tn_details, missing_details_tn_rows)
+        except Exception:  # noqa: BLE001
+            log.exception("Active Missing / Lost Declared 'to answer' counts failed -- they stay at 0 this cycle")
 
         rdo_raw_rows = await _fetch(QUERY_RDO_PUSH_OFF)
         rdo_by_station, rdo_tn_rows, rdo_document_types = build_rdo_compliance(rdo_raw_rows)
@@ -588,7 +609,7 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             "UPDATE refresh_log SET finished_at=%s, status='ok', stations_count=%s WHERE id=%s",
             (datetime.now(timezone.utc), len(params), log_id),
         )
-        log.info("Refresh ok: %d stations", len(params))
+        log.info("Refresh ok: %d stations in %.1fs", len(params), (datetime.now(timezone.utc) - started_at).total_seconds())
         return {"ok": True, "stations": len(params), "captured_at": captured_at.isoformat()}
     except (RedashError, Exception) as exc:  # noqa: BLE001 - log and keep the app alive
         log.exception("Refresh failed")
@@ -615,7 +636,7 @@ _SINGLE_SNAPSHOT_TABLES = (
 async def _sync_urgent_no_status(now: datetime) -> None:
     """After a refresh: start the 3-day clock on Urgent TN items whose tracking number has no
     status, stop it for ones that have one again, and delete the ones that stayed status-less
-    for 1 day (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
+    for URGENT_NO_STATUS_TTL (3 hours) (from both the owner's and the PIC's list). See URGENT_NO_STATUS_TTL."""
     rows = await db.fetch_all("SELECT id, tracking_number, no_status_since FROM urgent_tn_items")
     cutoff = now - URGENT_NO_STATUS_TTL
     for item_id, tn, since in rows:
@@ -701,6 +722,7 @@ async def _hourly_refresh_loop() -> None:
         await ptwh_app.purge_old_selfies()  # PTWH selfies are kept 14 days (never raises)
         await ptwh_app.housekeeping_workers()  # PTWH end dates, 30-day inactivity, 60-day clean-up (never raises)
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+        await hybrid_attendance.housekeeping_drivers()  # Hybrid drivers past their end date: off at once, removed a month later (never raises)
 
 
 _launch_task: asyncio.Task | None = None
@@ -711,18 +733,23 @@ async def _launch_refresh_loop() -> None:
     while True:
         await asyncio.sleep(attendance_launch.REFRESH_SECONDS)
         await attendance_launch.refresh_rules()
+        await attendance_launch.clear_test_entries()  # a station that has reached its launch date starts clean (once)
+        await hybrid_roster.tick()  # the Hybrid driver list from Metabase, once a day after 06:30 (never raises)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _refresh_task, _warm_task, _launch_task
+    global _refresh_task, _warm_task, _launch_task, _pull_task
     await db.init_pool()
     if os.getenv("DATABASE_URL"):
         await attendance_launch.refresh_rules()
         _launch_task = asyncio.create_task(_launch_refresh_loop())
         _refresh_task = asyncio.create_task(_hourly_refresh_loop())
         _warm_task = asyncio.create_task(kpi_data.warm_compacts())  # the KPI pages' big uploads are ready before anyone asks
+        _pull_task = asyncio.create_task(metabase_pull.scheduler_loop())  # the Metabase feeder files are pulled on the Superadmin's schedule (06:00 by default)
     yield
+    if _pull_task is not None:
+        _pull_task.cancel()
     if _refresh_task is not None:
         _refresh_task.cancel()
     if _warm_task is not None:
@@ -748,10 +775,15 @@ app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthl
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
 app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
+app.include_router(role_access.router)  # Superadmin -> Role Access: none / view / edit per role and module, enforced in auth.get_current_user (role_access.py)
+app.include_router(metabase_pull.router)  # Superadmin -> Documents: the Metabase API pulls and their schedule (metabase_pull.py)
+app.include_router(departments.router)  # Superadmin -> Departments + the Users page's department list (departments.py)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Label from Hub: rows keyed by Recovery or the hub, answered by the other side (recovery_cases.py)
 app.include_router(staff.router)  # Staff & Org Chart: who is posted where, kept by the Fleet Admin team (staff.py)
+app.include_router(station_profile.router)  # Station Profile tab: one station's IDs, address, people, boxes, postcodes (station_profile.py)
 app.include_router(premises.router)  # Fleet Admin -> Premises: address, licence + tenancy dates, rent per station (premises.py)
+app.include_router(manager_dashboard.router)  # Manager Dashboard: Station Capacity + Driver Strength of the manager's region, private workspace (manager_dashboard.py)
 app.include_router(management_view.router)  # Management View: Capacity (uploaded hub size / staff) + Backlog radar notes (management_view.py)
 app.include_router(recovery_lost.router)  # Recovery: Lost Declared This Week / Summary (recovery_lost.py)
 app.include_router(vehicles.router)  # Fleet Admin -> Vehicles: the Master Vehicle Inventory per plate (vehicles.py)
@@ -794,6 +826,8 @@ class Me(BaseModel):
     real_role: str | None = None
     # The stored job position ('rfs', 'opex' ...); `role` above is its access tier (see auth.POSITIONS).
     position: str | None = None
+    # Superadmin -> Role Access: the overrides of this position, module -> {level: none|view, scope_type, scope_values}; empty = nothing restricted. The menu hides 'none' pages, 'view' pages say so.
+    access: dict = {}
 
 
 @app.get("/api/me", response_model=Me)
@@ -827,19 +861,19 @@ async def me(
         return {
             "email": target[0], "provisioned": True, "role": tier_of(target[1]), "scope_type": st,
             "scope_values": sv, "display_name": target[4],
-            "is_impersonating": True, "real_role": real_role, "position": target[1],
+            "is_impersonating": True, "real_role": real_role, "position": target[1], "access": await role_access.access_for(target[1]),
         }
     if real_role == "admin" and x_view_as_role:
         st, sv = data_scope(tier_of(x_view_as_role), x_view_as_scope_type or "all", [v for v in (x_view_as_scope_values or "").split(",") if v])
         return {
             "email": row[0], "provisioned": True, "role": tier_of(x_view_as_role), "position": x_view_as_role,
             "scope_type": st, "scope_values": sv,
-            "display_name": row[4], "is_impersonating": True, "real_role": real_role,
+            "display_name": row[4], "is_impersonating": True, "real_role": real_role, "access": await role_access.access_for(x_view_as_role),
         }
     st, sv = data_scope(real_role, row[2], parse_scope_values(row[3]))
     return {
         "email": row[0], "provisioned": True, "role": real_role, "scope_type": st,
-        "scope_values": sv, "display_name": row[4], "real_role": real_role, "position": row[1],
+        "scope_values": sv, "display_name": row[4], "real_role": real_role, "position": row[1], "access": await role_access.access_for(row[1]),
     }
 
 
@@ -1563,6 +1597,15 @@ class ShipperFields(BaseModel):
     restock_breach: int
     shipper_sla_warning: int = 0
     shipper_sla_breach: int = 0
+    shipper_sla_warning_ovfd: int = 0
+    shipper_sla_warning_aash: int = 0
+    shipper_sla_breach_ovfd: int = 0
+    shipper_sla_breach_aash: int = 0
+    aging_delivery_gt3: int = 0
+    aging_ats_gt7: int = 0
+    rpu_aging_gt5: int = 0
+    missing_to_answer: int = 0
+    lost_to_answer: int = 0
     cold_chain_zero_attempt: int = 0
     cold_chain_aging: int = 0
 
@@ -1632,6 +1675,7 @@ class ShipperDrilldownResponse(BaseModel):
     metric: str
     tracking_numbers: list[str]
     as_of: str | None
+    statuses: dict[str, str] | None = None  # tracking number -> parcel status, for the four Shipper SLA split metrics
 
 
 @app.get("/api/shipper-drilldown", response_model=ShipperDrilldownResponse)
@@ -1648,9 +1692,13 @@ async def shipper_drilldown(station_code: str, metric: str, user: CurrentUser = 
     if not in_scope:
         raise HTTPException(status_code=403, detail="That station isn't in your scope")
     tracking_numbers = [t for t in _shipper_tn_cache.get(station_code, {}).get(metric, []) if t]
+    statuses = None
+    if metric.startswith("shipper_sla_"):
+        known = _shipper_tn_cache.get(station_code, {}).get("_status", {})
+        statuses = {t: known[t] for t in tracking_numbers if known.get(t)}
     return {
         "station_code": station_code, "station_name": name, "metric": metric,
-        "tracking_numbers": tracking_numbers, "as_of": _shipper_tn_cache_captured_at,
+        "tracking_numbers": tracking_numbers, "as_of": _shipper_tn_cache_captured_at, "statuses": statuses,
     }
 
 
@@ -2901,13 +2949,14 @@ URGENT_STATUSES = ("in_progress", "closed")
 # completed / added to a shipment) isn't urgent -- nothing to chase. It is never assigned to a
 # PIC, and if it still has no status 1 day after we first noticed, it is removed automatically
 # (see _sync_urgent_no_status, run after every refresh) unless its owner removed it sooner.
-URGENT_NO_STATUS_TTL = timedelta(days=1)
+URGENT_NO_STATUS_TTL = timedelta(hours=3)  # was 1 day; 3 hours since 2026-10-08
 
 
 class UrgentItemCreate(BaseModel):
     tracking_numbers: list[str]
     assignee_email: str | None = None
     note: str | None = None
+    cc_emails: list[str] = []  # told about it and can see it, like an email CC (2026-10-08)
 
 
 class UrgentItemUpdate(BaseModel):
@@ -2938,6 +2987,8 @@ class UrgentItem(BaseModel):
     owner_reply: str | None = None
     owner_replied_at: str | None = None
     no_status_hours_left: int | None = None
+    cc: list[dict] = []  # [{email, name}]
+    cc_me: bool = False  # I am CC'd (read-only for me)
     created_by_me: bool
     assigned_to_me: bool
     is_new: bool
@@ -2966,7 +3017,7 @@ def _iso(value) -> str | None:
 _URGENT_COLUMNS = (
     "id, tracking_number, created_by, assignee_email, note, status, created_at, updated_at, closed_at, closed_by, "
     "assignee_seen_at, pic_reply, pic_replied_at, assignee_ack_at, owner_unseen, no_status_since, "
-    "note_sent_at, owner_reply, owner_replied_at"
+    "note_sent_at, owner_reply, owner_replied_at, cc_emails"
 )
 
 
@@ -2979,11 +3030,11 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     me = user.email.lower()
     rows = await db.fetch_all(
         f"""SELECT {_URGENT_COLUMNS} FROM urgent_tn_items
-            WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s
+            WHERE LOWER(created_by) = %s OR LOWER(assignee_email) = %s OR LOWER(cc_emails) LIKE %s
             ORDER BY (status = 'closed'), created_at DESC""",
-        (me, me),
+        (me, me, f"%,{me},%"),
     )
-    assignee_emails = {r[3] for r in rows if r[3]}
+    assignee_emails = {r[3] for r in rows if r[3]} | {e for r in rows for e in tasklist_cc_list(r[19])}
     names: dict[str, str | None] = {}
     for email in assignee_emails:
         u = await db.fetch_one("SELECT display_name FROM users WHERE LOWER(email) = %s", (email.lower(),))
@@ -2992,7 +3043,8 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
     items = []
     for r in rows:
         (item_id, tn, created_by, assignee, note, status, created_at, updated_at, closed_at, closed_by,
-         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since, note_sent_at, owner_reply, owner_replied_at) = r
+         seen_at, pic_reply, pic_replied_at, ack_at, owner_unseen, no_status_since, note_sent_at, owner_reply, owner_replied_at, cc_stored) = r
+        cc = tasklist_cc_list(cc_stored)
         found = _health_v3_by_tn.get(tn)
         created_by_me = created_by.lower() == me
         assigned_to_me = bool(assignee) and assignee.lower() == me
@@ -3005,6 +3057,7 @@ async def _urgent_items_for(user: CurrentUser) -> list[dict]:
             hours_left = max(0, int(-(-left.total_seconds() // 3600)))
         items.append({
             "no_status_hours_left": hours_left,
+            "cc": [{"email": e, "name": names.get(e)} for e in cc], "cc_me": me in cc,
             "id": item_id, "tracking_number": tn, "created_by": created_by, "assignee_email": assignee,
             "assignee_name": names.get(assignee) if assignee else None, "note": note, "status": status,
             "created_at": _iso(created_at), "updated_at": _iso(updated_at), "closed_at": _iso(closed_at),
@@ -3158,6 +3211,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
     if note and len(note) > 500:
         raise HTTPException(status_code=422, detail="Note is too long (max 500 characters)")
     assignee = await _resolve_assignee(payload.assignee_email)
+    cc_stored = tasklist_cc_store(await tasklist_resolve_cc(payload.cc_emails, user.email, [assignee] if assignee else []))
 
     if _health_v3_by_tn_captured_at is None:
         # Right after a restart nothing looks "found" yet -- don't judge (or refuse to assign) on that.
@@ -3190,11 +3244,11 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         await db.execute(
             """INSERT INTO urgent_tn_items
                (tracking_number, created_by, assignee_email, note, status, created_at, updated_at,
-                assignee_seen_at, assignee_ack_at, owner_unseen, no_status_since)
-               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0, %s)""",
+                assignee_seen_at, assignee_ack_at, owner_unseen, no_status_since, cc_emails)
+               VALUES (%s, %s, %s, %s, 'in_progress', %s, %s, %s, %s, 0, %s, %s)""",
             (
                 tn, user.email, tn_assignee, note, now, now,
-                now if self_or_none else None, now if self_or_none else None, None if has_status else now,
+                now if self_or_none else None, now if self_or_none else None, None if has_status else now, cc_stored,
             ),
         )
         added += 1
@@ -3205,7 +3259,7 @@ async def urgent_tn_create(payload: UrgentItemCreate, user: CurrentUser = Depend
         detail += (
             f". {no_status} {'has' if no_status == 1 else 'have'} no status (not found)"
             + (f", so {'it was' if not_assigned == 1 else f'{not_assigned} were'} not assigned to the PIC" if not_assigned else "")
-            + " -- kept on your list and removed automatically after 1 day unless you remove it first"
+            + " -- kept on your list and removed automatically after 3 hours unless you remove it first"
         )
     return {"ok": True, "detail": detail}
 
@@ -3379,6 +3433,17 @@ class Notifications(BaseModel):
     ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
     attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
+    staff_flags: int = 0  # Station Heads / Fleet Assistants who should have clocked in / out and did not (not yet handled) -- only for a Region Head / RFS / HOD / Manager
+    documents_stale: int = 0  # Superadmin only: Metabase pulls that failed or are overdue (the bell on Superadmin -> Documents)
+
+
+async def _documents_stale_count(user: CurrentUser) -> int:
+    if user.role != "admin" or user.is_impersonating:
+        return 0
+    try:
+        return await metabase_pull.problem_count()  # feeds whose last Metabase pull failed or is overdue
+    except Exception:  # noqa: BLE001 -- a bell is never worth failing the notifications call
+        return 0
 
 
 @app.get("/api/notifications", response_model=Notifications)
@@ -3417,7 +3482,9 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "ptwh_review": await ptwh_app.review_count(user),
         "ptwh_approvals": await attendance.approvals_count(user),
         "ptwh_corrections": await attendance_corrections.pending_count(user),
+        "staff_flags": await staff_attendance.pending_flag_count(user),
         "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
+        "documents_stale": await _documents_stale_count(user),
         **await tasklist_counts(user),
     }
 
@@ -3522,6 +3589,7 @@ class UserOut(BaseModel):
     display_name: str | None
     created_at: str
     last_seen_at: str | None
+    department: str | None = None
 
 
 class UserIn(BaseModel):
@@ -3530,6 +3598,7 @@ class UserIn(BaseModel):
     scope_type: str  # 'all' | 'hq' | 'region' | 'zone' | 'station'
     scope_values: list[str] = []
     display_name: str | None = None
+    department: str | None = None  # departments.py -- the roles a department offers; None leaves the person without one (an update that omits it keeps the current one)
 
 
 # Only the app owner can grant the Superadmin (stored as "admin") role -- not just any existing admin.
@@ -3637,6 +3706,7 @@ def _row_to_user_out(r) -> dict:
     return {
         "email": r[0], "role": r[1], "scope_type": r[2], "scope_values": parse_scope_values(r[3]),
         "display_name": r[4], "created_at": str(r[5]), "last_seen_at": str(r[6]) if r[6] else None,
+        "department": r[7] if len(r) > 7 else None,
     }
 
 
@@ -3644,7 +3714,7 @@ def _row_to_user_out(r) -> dict:
 async def list_users(user: CurrentUser = Depends(get_current_user)):
     _require_can_add_users(user)
     rows = await db.fetch_all(
-        "SELECT email, role, scope_type, scope_values, display_name, created_at, last_seen_at FROM users ORDER BY created_at"
+        "SELECT email, role, scope_type, scope_values, display_name, created_at, last_seen_at, department FROM users ORDER BY created_at"
     )
     out = [_row_to_user_out(r) for r in rows]
     # Same view mirrors what each role can manage (see _require_can_manage_target) --
@@ -3725,13 +3795,14 @@ async def add_user(payload: UserIn, user: CurrentUser = Depends(get_current_user
     existing = await db.fetch_one("SELECT id FROM users WHERE email=%s", (payload.email,))
     if existing:
         raise HTTPException(status_code=409, detail="That email is already set up")
+    department = await departments.check_user_department(payload.department, payload.role)
     await db.execute(
-        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",  # a new person's posting starts out the same as their access
+        """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, department)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",  # a new person's posting starts out the same as their access
         (payload.email, payload.role, payload.scope_type, _scope_values_json(payload.scope_values),
          payload.scope_type, _scope_values_json(payload.scope_values),
          (payload.display_name or "").strip() or _auto_display_name(payload.email, payload.role, payload.scope_type, payload.scope_values),
-         user.email),
+         user.email, department),
     )
     if payload.scope_type == "station":
         await headcount.consume_seat(payload.scope_values, payload.role)  # a TBA seat is used up by the real person
@@ -3763,6 +3834,7 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             _validate_user_in(row)
             _validate_grant_limits(user, row)
             _require_can_grant_role(user, row.role)
+            row_department = await departments.check_user_department(row.department, row.role)
         except HTTPException as exc:
             errors.append(f"{email}: {exc.detail}")
             continue
@@ -3771,10 +3843,10 @@ async def bulk_add_users(payload: BulkUserIn, user: CurrentUser = Depends(get_cu
             skipped.append(email)
             continue
         await db.execute(
-            """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            """INSERT INTO users (email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, invited_by, department)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (email, row.role, row.scope_type, _scope_values_json(row.scope_values), row.scope_type, _scope_values_json(row.scope_values),
-             (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email),
+             (row.display_name or "").strip() or _auto_display_name(email, row.role, row.scope_type, row.scope_values), user.email, row_department),
         )
         if row.scope_type == "station":
             await headcount.consume_seat(row.scope_values, row.role)
@@ -3797,11 +3869,14 @@ async def update_user(email: str, payload: UserIn, user: CurrentUser = Depends(g
     _validate_user_in(payload)
     _validate_grant_limits(user, payload)
     _require_can_grant_role(user, payload.role)
+    department = await departments.check_user_department(payload.department, payload.role) if "department" in payload.model_fields_set else None
     await db.execute(
         """UPDATE users SET role=%s, scope_type=%s, scope_values=%s, display_name=COALESCE(%s, display_name)
            WHERE email=%s""",  # a form that sends no name keeps the one on file (it used to blank it)
         (payload.role, payload.scope_type, _scope_values_json(payload.scope_values), (payload.display_name or "").strip() or None, email),
     )
+    if "department" in payload.model_fields_set:  # only a form that sends the department changes it
+        await db.execute("UPDATE users SET department=%s WHERE email=%s", (department, email))
     return {"ok": True}
 
 
@@ -3867,6 +3942,7 @@ class QueryFetchStatus(BaseModel):
     query_id: int
     label: str
     fetched_at: str | None
+    redash_at: str | None = None  # when Redash itself last computed the query (its retrieved_at)
     url: str | None = None  # the Redash page of the query -- only sent to the Superadmin
 
 
@@ -3880,6 +3956,7 @@ class RefreshStatus(BaseModel):
     triggered_by: str | None
     queries: list[QueryFetchStatus]
     can_refresh: bool = False  # only the Superadmin may press Refresh now
+    interval_seconds: int = 0  # how often the scheduler refreshes
 
 
 @app.post("/api/admin/refresh", response_model=RefreshStatus)
@@ -3915,14 +3992,22 @@ async def refresh_status(user: CurrentUser = Depends(get_current_user)):
     return out
 
 
+def _redash_retrieved_at(query_id: int):
+    import redash_client as _rc
+
+    return _rc.RETRIEVED_AT.get(query_id)
+
+
 def _refresh_row_to_dict(row) -> dict:
     return {
         "id": row[0], "started_at": str(row[1]), "finished_at": str(row[2]) if row[2] else None,
         "status": row[3], "stations_count": row[4], "error_message": row[5], "triggered_by": row[6],
+        "interval_seconds": REFRESH_INTERVAL_SECONDS,
         "queries": [
             {
                 "query_id": qid, "label": label,
                 "fetched_at": _query_fetched_at[qid].isoformat() if qid in _query_fetched_at else None,
+                "redash_at": _redash_retrieved_at(qid),
             }
             for qid, label in _QUERY_LABELS.items()
         ],
@@ -3948,6 +4033,8 @@ _SLA_METRIC_KEYS = (
     # plus Routed View's Productivity (Admin -> SLA Targets only, not Action Board).
     "old_route_tn", "zalora_zero_attempt", "zalora_ovfd", "routed_current_ovfd", "fresh_unscan", "productivity_pct",
     "shipper_sla_warning", "shipper_sla_breach",
+    "shipper_sla_warning_ovfd", "shipper_sla_warning_aash", "shipper_sla_breach_ovfd", "shipper_sla_breach_aash",
+    "aging_delivery_gt3", "aging_ats_gt7", "rpu_aging_gt5", "missing_to_answer", "lost_to_answer",
 )
 _SLA_DIRECTIONS = {"higher-is-worse", "lower-is-worse"}
 # Productivity is scored per driver position instead of per region -- these are
@@ -3964,6 +4051,8 @@ class ThresholdRow(BaseModel):
     warning_at: float
     critical_at: float
     percent_of: str | None = None  # score as % of this other metric_key on the same row, if set
+    min_count_warning: int | None = None  # a warning also needs at least this many parcels (Age >3: 5% AND 15 parcels)
+    min_count_critical: int | None = None  # ...and a critical at least this many
     changed_by: str | None = None
     changed_at: str | None = None
 
@@ -3975,14 +4064,14 @@ class ThresholdsIn(BaseModel):
 @app.get("/api/thresholds", response_model=list[ThresholdRow])
 async def get_thresholds(user: CurrentUser = Depends(get_current_user)):
     rows = await db.fetch_all(
-        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at "
-        "FROM sla_thresholds"
+        "SELECT metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at, "
+        "min_count_warning, min_count_critical FROM sla_thresholds"
     )
     return [
         {
             "metric_key": r[0], "scope": r[1], "scored": bool(r[2]), "direction": r[3],
             "warning_at": r[4], "critical_at": r[5], "percent_of": r[6], "changed_by": r[7],
-            "changed_at": str(r[8]) if r[8] else None,
+            "changed_at": str(r[8]) if r[8] else None, "min_count_warning": r[9], "min_count_critical": r[10],
         }
         for r in rows
     ]
@@ -4037,7 +4126,7 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
             )
         params.append((
             row.metric_key, row.scope, int(row.scored), row.direction, row.warning_at, row.critical_at,
-            row.percent_of, user.email, now,
+            row.percent_of, user.email, now, row.min_count_warning, row.min_count_critical,
         ))
     # ON DUPLICATE KEY UPDATE references VALUES(col) rather than its own %s
     # placeholders -- asyncmy's executemany bulk-rewrites a batch of INSERTs
@@ -4045,11 +4134,13 @@ async def put_thresholds(payload: ThresholdsIn, user: CurrentUser = Depends(get_
     # (...) tuple it repeats per row; extra %s in the trailing clause raised
     # "not all arguments converted during string formatting".
     await db.execute_many(
-        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO sla_thresholds (metric_key, scope, scored, direction, warning_at, critical_at, percent_of, changed_by, changed_at,
+             min_count_warning, min_count_critical)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
            ON DUPLICATE KEY UPDATE scored=VALUES(scored), direction=VALUES(direction),
              warning_at=VALUES(warning_at), critical_at=VALUES(critical_at), percent_of=VALUES(percent_of),
-             changed_by=VALUES(changed_by), changed_at=VALUES(changed_at)""",
+             changed_by=VALUES(changed_by), changed_at=VALUES(changed_at),
+             min_count_warning=VALUES(min_count_warning), min_count_critical=VALUES(min_count_critical)""",
         params,
     )
     return {"ok": True}

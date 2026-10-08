@@ -20,6 +20,128 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-08",
+    title: "New: Manager Dashboard (HOD and Fleet Manager)",
+    feature: "managerDashboard",
+    minRank: 2,
+    type: "new",
+    area: "Dashboard",
+    points: [
+      "A new Manager Dashboard page in the Dashboard (Last Mile) group, built from the South Management sheet. Only HOD and Fleet Manager see it; a Fleet Manager sees their own region, an HOD every region.",
+      "Station Capacity: plan headcount and plan volume per station (typed in the page, no more sheet), staff posted, average fresh / routed per day, success rate, productivity and today's attendance.",
+      "Driver Strength: drivers and riders required (typed in), drivers by type HD / HR / ID / IR, fill and how many to hire, active in the last 2 / 4 weeks, resignations, attendance against strength.",
+      "My Workspace: your own links with due dates and a notes page -- private to you.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Superadmin -> Role Access: control what each role can open and change",
+    type: "new",
+    area: "System",
+    minRank: 3,
+    points: [
+      "A new Role Access tab: every module against every role, each set to Edit, View (read only) or None (hidden and refused). An optional scope limits the data a role sees in a module to a region, zones or stations.",
+      "It is enforced for every page at once, so the Superadmin's choices apply to all of them; a role with View only sees a \"View only\" note on the page and gets a clear message if it tries to change something.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Action Board: every metric by default, copy as an image, new metrics",
+    feature: "boardViews",
+    type: "improved",
+    points: [
+      "The Action Board now opens with every metric instead of three. Remove the ones you don't need, or pick them again with + Add metric.",
+      "Copy image (next to Export CSV) puts the table on the clipboard as a picture, exactly as you arranged it, to paste straight into a chat. The table is now only as wide as its columns.",
+      "My views can be renamed (✎) and put in your own order (‹ › or drag).",
+      "Shipper SLA is now four columns -- Warning OVFD, Warning AASH, Breach OVFD, Breach AASH -- and the old Warning / Breach totals are gone. It also counts Soda Express and Zalora NXD parcels. OVFD includes parcels still en-route to the station; AASH counts only Arrived at Sorting Hub. A parcel in any other status is listed in AASH's tracking numbers (the list shows each parcel's status) but is not counted in its total.",
+      "New metrics: Aging Delivery >3 days, Aging ATS >7 days, RPU Aging >5 days, Active Missing to Answer and Lost Declared to Answer (cases the station has not answered yet).",
+      "Age >3 is now a warning at 5% of In Hub with at least 15 parcels, and critical at 5% with at least 30 parcels. Settings -> Station Metric Targets has two new columns for the minimum number of parcels.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Task List: CC on Urgent TN, Email / Gchat and Task Assigned; Clear all not found; 3-hour auto-clear",
+    feature: "taskList",
+    type: "improved",
+    points: [
+      "Urgent TN, Email / Gchat and Task Assigned all have a CC box like an email: the people you CC see the item under CC'd to me (view only), so other related PICs are kept in the loop. On Task Assigned you can change the CC list when you edit the task.",
+      "Urgent TN has a Clear all not found button that removes every Not found tracking number of yours in one click.",
+      "A Not found tracking number is now removed automatically after 3 hours (it used to be 1 day).",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Metabase files are pulled automatically",
+    type: "new",
+    area: "System",
+    minRank: 3,
+    points: [
+      "The KPI and Recovery files that used to be downloaded from Metabase and uploaded by hand (Prior, Completion, Terminal, FIFO, COD RTS, POD validation, Hybrid, Lost Declared, line-haul trips) are now pulled by the app through the Metabase API. The upload boxes on the KPI pages are gone -- each page has a Data source panel showing when its files were last pulled.",
+      "Superadmin -> Documents: every file has a schedule (every day at a time, every few hours, weekly or monthly -- Malaysia time), a Pull now button and a status. The default is every day at 06:00 (Metabase refreshes then); Lost Declared Tuesday to Sunday. The questions must sit in the Metabase Last Mile collection.",
+      "A failed or overdue pull puts a bell on Documents; the old data stays in use until the next successful pull.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "DoD: LH Timing sorts, category bands, Copy image",
+    feature: "dod",
+    type: "improved",
+    area: "Dashboard",
+    points: [
+      "In the DoD Daily View, click the LH Timing header to sort by the latest line-haul arrival of the day (stations with no trip stay at the bottom).",
+      "The columns now sit under category bands -- Location, Shipment Details, Station Health, Route Monitoring -- like the Station Health tab.",
+      "New Copy image button: puts the table as you see it (sort, rows, change vs the day before) on your clipboard as a picture, to paste straight into a chat.",
+      "The Dashboard group in the side menu is now called Dashboard (Last Mile).",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Lost Declared: liable party shows Recovered once the parcel is back",
+    points: [
+      "In Recovery -> Lost Declared (This Week and Summary), a tracking number whose current status is anything other than Cancelled (Completed, Returned to Sender ...) now shows Recovered as its liable party, set by the app. It cannot be changed by hand; if the status is Cancelled, or there is no status on file yet, the liable party stays what the region picked. A Recovered tracking number counts as Recovered -- neither answered nor waiting for an answer: there is a Recovered card on top and a Recovered column in the by-station table, and 'to answer only' leaves them out.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Users: Department, and a region / zone filter",
+    type: "new",
+    area: "System",
+    minRank: 1,
+    points: [
+      "Every person now has a Department (Last Mile, Restock, Recovery). Pick the department when you add someone and the role list shows only that department's roles. People already set up were placed in their department.",
+      "The user list has Department, Region and Zone filters: pick East Coast and you see everyone whose access covers a station of East Coast (its region users, zone users and station users). Tick \"Include HQ / nationwide\" to add the people who see everything.",
+      "The Superadmin keeps the department list (and each department's roles) under Superadmin -> Departments.",
+    ],
+  },
+  {
+    date: "2026-10-09",
+    title: "Attendance (Beta, staging only): staff clock-in flags, break times, Hybrid clean-up, frozen table headers",
+    feature: "attendance",
+    points: [
+      "Staff flags: a Station Head or Fleet Assistant scheduled for an AM / Middle / PM shift who hasn't clocked in 30 minutes after the station's shift start, or hasn't clocked out an hour after the shift ended, is flagged. Region Heads, RFS and Managers get an alert on the Attendance tab and mark each flag handled with a note (Staff -> Flags). Late clock-ins and staff days under 8 hours show too.",
+      "Staff Today and Month sheet now have Region / Zone / Station filters for Region Heads and Managers (a station only sees its own hub), and the table headers stay put while you scroll. The Hybrid tables got the same.",
+      "Schedule: the order is now Staff, Hybrid, PTWH. Each shift can have its own break time (Shift times box). A Hybrid driver has no shift -- mark the day Working (with the time they clock in), Off or Leave.",
+      "Hybrid: the driver list now comes from the Metabase question Active Driver Details every morning, so stations no longer add drivers by hand. A driver past their end date (update it in Ninja Van Operator -> Driver Strength) is switched off the next morning, kept for a month, then removed for good with their attendance.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "Attendance (Beta, staging only): test-run entries are cleared at launch",
+    feature: "attendance",
+    points: [
+      "What a station keys in during the test run (attendance, corrections, photos) is cleared once, when the station reaches its launch date, so it starts clean. The PTWH, drivers, schedule and shift hours stay.",
+    ],
+  },
+  {
+    date: "2026-10-08",
+    title: "New Station profile in Staff & Org Chart, and the Staff list is now for the Fleet Admin team, HOD and Managers (staging only)",
+    points: [
+      "Station profile (inside Staff & Org Chart): pick a station and see its zone, Station ID, Warehouse ID, how long it has been open, Google Chat space, address, its Fleet Manager, Region Head and Region Supervisor (with the station they are based at), its team, workmail groups, managers on duty, business hours, how many Last Mile stations each region has, and the postcodes it covers. Every role can open it.",
+      "The Staff list and Headcount tabs inside Staff & Org Chart are for the Fleet Admin team, the HOD, the Managers and the Superadmin (Headcount: HOD, Manager and Fleet Admin). The Org chart and its Details list stay open to every role.",
+      "Only the Fleet Admin Team Lead (and the Superadmin) edits the staff list, the people on the chart who have no dashboard access, the Warehouse ID, the Station Profile boxes and the postcodes. Operation Support (LM) and Admin (LM) can read.",
+    ],
+  },
+  {
     date: "2026-10-04",
     title: "Staff & Org Chart: the org chart now looks like the org picture, with details on click (staging only)",
     points: [

@@ -29,9 +29,9 @@ _HOME_TYPES = {"hq", "region", "zone", "station"}
 
 
 def _can_view(user: CurrentUser) -> bool:
-    """The Staff list and the org chart are for everyone who is signed in (2026-10-03, the Fleet Manager) -- they say who looks after what, which is what
-    anyone needs to find the right PIC. Editing stays with the Fleet Admin role. Held back on production until released (release.py)."""
-    return release.STAFF_DIRECTORY
+    """The Staff LIST (names, positions, employee IDs, access) is for the Fleet Admin team, the HOD, the Managers and the Superadmin (2026-10-07, the Fleet
+    Manager). The org chart and its details list are open to everyone signed in -- they say who looks after what, which is what anyone needs to find the right PIC."""
+    return release.STAFF_DIRECTORY and (user.role == "admin" or user.position in ("fleet_admin", "hod", "manager"))
 
 
 def _hq_view(user: CurrentUser) -> bool:
@@ -44,13 +44,31 @@ def _is_test_account(email: str) -> bool:
     return email.lower().endswith(".invalid")
 
 
-def _can_edit(user: CurrentUser) -> bool:
-    return user.role == "admin" or user.position == "fleet_admin"
+def fleet_admin_group(job_title: str | None) -> str:
+    """The Fleet Admin role is four groups, told apart by the title on the chart (V73): team_lead | operation_support | admin | intern."""
+    t = (job_title or "").lower()
+    return "team_lead" if t.startswith("team lead") else "operation_support" if t.startswith("operation support") else "intern" if "intern" in t else "admin"
 
 
-def _require_editor(user: CurrentUser) -> None:
-    if not _can_edit(user):
-        raise HTTPException(status_code=403, detail="Only the Fleet Admin team can edit the staff list")
+async def _can_edit(user: CurrentUser) -> bool:
+    """Only the Fleet Admin Team Lead (and the Superadmin) edits the staff list and the chart-only people (2026-10-07). The rest of the Fleet Admin team --
+    Operation Support (LM), Admin (LM) -- read it. (The Interns are on the chart only: they have no dashboard login.)"""
+    if user.role == "admin":
+        return True
+    if user.position != "fleet_admin":
+        return False
+    row = await db.fetch_one("SELECT job_title FROM users WHERE LOWER(email) = %s", (user.email.lower(),))
+    return bool(row) and fleet_admin_group(row[0]) == "team_lead"
+
+
+async def _require_editor(user: CurrentUser) -> None:
+    if not await _can_edit(user):
+        raise HTTPException(status_code=403, detail="Only the Fleet Admin Team Lead can edit the staff list")
+
+
+def _require_list_viewer(user: CurrentUser) -> None:
+    if not _can_view(user):
+        raise HTTPException(status_code=403, detail="The staff list is for the Fleet Admin team, the HOD and the Managers. The org chart is open to everyone.")
 
 
 def compose_display_name(name: str, role: str, scope_type: str, scope_values: list[str]) -> str:
@@ -164,6 +182,7 @@ async def _target(email: str):
 
 @router.get("/api/staff")
 async def list_staff(user: CurrentUser = Depends(get_current_user)):
+    _require_list_viewer(user)
     rows = await db.fetch_all(
         "SELECT email, role, scope_type, scope_values, home_scope_type, home_scope_values, display_name, last_seen_at, phone, employee_id, job_title, based_station FROM users ORDER BY display_name, email"
     )
@@ -182,8 +201,9 @@ async def list_staff(user: CurrentUser = Depends(get_current_user)):
             "custom_access": hq and _norm(*access) != _norm(home_st, home_sv),
             "last_seen_at": (str(r[7]) if r[7] else None) if hq else None,
             "phone": r[8] or "", "employee_id": r[9] or "", "job_title": r[10] or "", "based_station": r[11] or "",
+            "fleet_group": fleet_admin_group(r[10]) if r[1] == "fleet_admin" else None,
         })
-    return {"people": out, "vacant": await headcount.vacant_seats(), "can_edit": _can_edit(user), "hq_view": hq}
+    return {"people": out, "vacant": await headcount.vacant_seats(), "can_edit": await _can_edit(user), "hq_view": hq}
 
 
 async def _insert(payload: StaffIn, email: str, actor: CurrentUser) -> None:
@@ -242,7 +262,7 @@ async def _apply_update(row, payload: StaffIn) -> bool:
 
 @router.post("/api/staff")
 async def add_staff(payload: StaffIn, user: CurrentUser = Depends(get_current_user)):
-    _require_editor(user)
+    await _require_editor(user)
     _validate(payload)
     email = payload.email.strip()
     if "@" not in email:
@@ -255,7 +275,7 @@ async def add_staff(payload: StaffIn, user: CurrentUser = Depends(get_current_us
 
 @router.patch("/api/staff/{email}")
 async def update_staff(email: str, payload: StaffIn, user: CurrentUser = Depends(get_current_user)):
-    _require_editor(user)
+    await _require_editor(user)
     row = await _target(email)
     _validate(payload)
     return {"ok": True, "custom_access": await _apply_update(row, payload)}
@@ -270,7 +290,7 @@ class StaffBulkIn(BaseModel):
 async def bulk_staff(payload: StaffBulkIn, user: CurrentUser = Depends(get_current_user)):
     """Paste-in of many people at once (the Staff & Org Chart tab parses the pasted sheet rows). One row failing never stops the
     others; each row comes back as added / updated / skipped / error with the reason."""
-    _require_editor(user)
+    await _require_editor(user)
     if not payload.rows:
         raise HTTPException(status_code=422, detail="No rows given")
     if len(payload.rows) > 500:
@@ -305,7 +325,7 @@ async def bulk_staff(payload: StaffBulkIn, user: CurrentUser = Depends(get_curre
 
 @router.delete("/api/staff/{email}")
 async def delete_staff(email: str, user: CurrentUser = Depends(get_current_user)):
-    _require_editor(user)
+    await _require_editor(user)
     if email.strip().lower() == user.email.lower():
         raise HTTPException(status_code=400, detail="You can't remove your own access")
     row = await _target(email)
@@ -428,7 +448,7 @@ async def org_chart(user: CurrentUser = Depends(get_current_user)):
             })
         regions.append({"name": region, "managers": by_region.get(region, []), "zones": zones, "station_count": stations_in_region})
     return {
-        "hq": hq, "hq_vacant_fleet_admin": tba.get((headcount.HQ_PLACE, "fleet_admin"), 0), "regions": regions, "can_edit": _can_edit(user),
+        "hq": hq, "hq_vacant_fleet_admin": tba.get((headcount.HQ_PLACE, "fleet_admin"), 0), "regions": regions, "can_edit": await _can_edit(user),
         "top": {"hoo": top["hoo"], "hod": top["hod"], "strategist": top["strategist"], "admin_lead": lead, "admin_members": members},
     }
 
@@ -466,7 +486,7 @@ def _org_clean(p: OrgPersonIn) -> tuple:
 @router.post("/api/org-people")
 async def add_org_person(payload: OrgPersonIn, user: CurrentUser = Depends(get_current_user)):
     """People who are on the org chart but have no dashboard access (HOO, HOD, Fleet Strategist, the Fleet Manager of a region, Admin & Support interns)."""
-    _require_editor(user)
+    await _require_editor(user)
     c = _org_clean(payload)
     await db.execute(
         "INSERT INTO org_people (name, title, email, phone, employee_id, branch, region, sort_no, updated_by, updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -477,7 +497,7 @@ async def add_org_person(payload: OrgPersonIn, user: CurrentUser = Depends(get_c
 
 @router.patch("/api/org-people/{pid}")
 async def update_org_person(pid: int, payload: OrgPersonIn, user: CurrentUser = Depends(get_current_user)):
-    _require_editor(user)
+    await _require_editor(user)
     if not await db.fetch_one("SELECT id FROM org_people WHERE id = %s", (pid,)):
         raise HTTPException(status_code=404, detail="Not found")
     c = _org_clean(payload)
@@ -490,7 +510,7 @@ async def update_org_person(pid: int, payload: OrgPersonIn, user: CurrentUser = 
 
 @router.delete("/api/org-people/{pid}")
 async def delete_org_person(pid: int, user: CurrentUser = Depends(get_current_user)):
-    _require_editor(user)
+    await _require_editor(user)
     if not await db.fetch_one("SELECT id FROM org_people WHERE id = %s", (pid,)):
         raise HTTPException(status_code=404, detail="Not found")
     await db.execute("DELETE FROM org_people WHERE id = %s", (pid,))

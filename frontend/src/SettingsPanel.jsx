@@ -6,7 +6,9 @@ import TabBar from "./components/TabBar";
 import FeedbackPanel from "./FeedbackPanel";
 import GuideTab from "./GuideTab";
 import KpiTargetsPanel from "./KpiTargetsPanel";
-import RegionListPanel from "./RegionListPanel";
+import DocumentsPage from "./DocumentsPage";
+import DepartmentsPanel from "./DepartmentsPanel";
+import RoleAccessPanel from "./RoleAccessPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
@@ -23,7 +25,7 @@ const ADMIN_METRICS = [...BOARD_COLUMNS, { key: "productivity_pct", label: "Prod
 // just with a driver position label as the scope string instead of a region name.
 const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Driver", "Independent Rider"];
 
-const emptyForm = { email: "", role: "fleet_assistant", scope_type: "station", scope_values: [] };
+const emptyForm = { email: "", role: "fleet_assistant", scope_type: "station", scope_values: [], department: "Last Mile" };
 // Roles are job positions (lib/roles.js): HQ staff, Region staff, Station staff. The old 'region' / 'station' titles are still
 // shown for people who have none yet, but no longer offered.
 const ROLE_LABELS = Object.fromEntries(Object.entries(POSITIONS).map(([k, v]) => [k, v.label]));
@@ -59,19 +61,19 @@ function canManageTarget(me, targetRole) {
 
 // scope_values within one CSV cell is semicolon-separated, e.g. "Southern;Northern".
 function bulkTemplateFor(me) {
-  const lines = ["email,role,scope_type,scope_values"];
+  const lines = ["email,role,scope_type,scope_values,department"];
   if (me.role === "region") {
-    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,station_head,station,Segambut;Larkin");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin,Last Mile", "name2@ninjavan.co,station_head,station,Segambut;Larkin,Last Mile");
   } else if (me.role === "manager") {
-    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin", "name2@ninjavan.co,rfs,zone,South 1", "name3@ninjavan.co,region_head,region,Southern;Northern", "name4@ninjavan.co,opex,hq,");
+    lines.push("name1@ninjavan.co,fleet_assistant,station,Larkin,Last Mile", "name2@ninjavan.co,rfs,zone,South 1,Last Mile", "name3@ninjavan.co,region_head,region,Southern;Northern,Last Mile", "name4@ninjavan.co,recovery,hq,,Recovery");
   } else {
     lines.push(
-      "name1@ninjavan.co,fleet_assistant,station,Larkin",
-      "name2@ninjavan.co,rfs,zone,South 1",
-      "name3@ninjavan.co,region_head,region,Southern;Northern",
-      "name4@ninjavan.co,opex,hq,"
+      "name1@ninjavan.co,fleet_assistant,station,Larkin,Last Mile",
+      "name2@ninjavan.co,rfs,zone,South 1,Last Mile",
+      "name3@ninjavan.co,region_head,region,Southern;Northern,Last Mile",
+      "name4@ninjavan.co,recovery,hq,,Recovery"
     );
-    if (me.email === OWNER_EMAIL) lines.push("name5@ninjavan.co,admin,all,");
+    if (me.email === OWNER_EMAIL) lines.push("name5@ninjavan.co,admin,all,,");
   }
   return lines.join("\n");
 }
@@ -103,7 +105,7 @@ function parseBulkRows(text) {
     .filter(Boolean)
     .filter((l) => !/^email\s*,\s*role\s*,\s*scope_type/i.test(l));
   return lines.map((line) => {
-    const [email, role, scope_type, scopeValuesCell] = line.split(",").map((p) => (p ?? "").trim());
+    const [email, role, scope_type, scopeValuesCell, department] = line.split(",").map((p) => (p ?? "").trim());
     const scope_values =
       !scope_type || scope_type === "all" || scope_type === "hq"
         ? []
@@ -113,6 +115,7 @@ function parseBulkRows(text) {
       role: role || "fleet_assistant",
       scope_type: scope_type || "station",
       scope_values,
+      department: department || null, // optional 5th column: the department's name, e.g. Last Mile
     };
   });
 }
@@ -174,6 +177,8 @@ function SlaTargetsPanel({ regions, me }) {
         warning_at: Number(draft[c.key].warning_at) || 0,
         critical_at: Number(draft[c.key].critical_at) || 0,
         percent_of: draft[c.key].percent_of || null,
+        min_count_warning: draft[c.key].min_count_warning === "" || draft[c.key].min_count_warning == null ? null : Number(draft[c.key].min_count_warning),
+        min_count_critical: draft[c.key].min_count_critical === "" || draft[c.key].min_count_critical == null ? null : Number(draft[c.key].min_count_critical),
       }));
       await api.thresholds.save(payload);
       setSaved(true);
@@ -226,7 +231,7 @@ function SlaTargetsPanel({ regions, me }) {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-slate-400">Applies at the next 15-minute refresh</span>
+          <span className="text-xs text-slate-400">Applies at the next refresh</span>
           <button
             onClick={save}
             disabled={saving || !mayEdit(scope)}
@@ -261,6 +266,8 @@ function SlaTargetsPanel({ regions, me }) {
                 <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Warning at</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium">Critical at</th>
                 <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Score as % of</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium" title="Optional: a warning / critical also needs at least this many parcels">Warning also needs ≥ parcels</th>
+                <th className="whitespace-nowrap px-4 py-2 text-right font-display font-medium" title="Optional: a warning / critical also needs at least this many parcels">Critical also needs ≥ parcels</th>
                 <th className="whitespace-nowrap px-4 py-2 font-display font-medium">Last changed</th>
               </tr>
             </thead>
@@ -323,6 +330,19 @@ function SlaTargetsPanel({ regions, me }) {
                         ))}
                       </select>
                     </td>
+                    {["min_count_warning", "min_count_critical"].map((f) => (
+                      <td key={f} className="px-4 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="—"
+                          disabled={!d.scored || !mayEdit(scope)}
+                          className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums disabled:bg-slate-100 disabled:text-slate-400"
+                          value={d[f] ?? ""}
+                          onChange={(e) => updateField(c.key, f, e.target.value)}
+                        />
+                      </td>
+                    ))}
                     <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">
                       {d.changed_by ? `${formatTime(d.changed_at)} · ${d.changed_by}` : "—"}
                     </td>
@@ -459,7 +479,7 @@ function RecoverySettingsPanel({ me }) {
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">
             {settings.changed_by ? `Last changed ${formatTime(settings.changed_at)} · ${settings.changed_by}` : "Never changed"}
-            {" · applies at the next 15-minute refresh"}
+            {" · applies at the next refresh"}
           </span>
           <button
             onClick={save}
@@ -592,7 +612,8 @@ const SETTINGS_TABS = [
   { key: "faq", label: "Common Questions", area: "help", visible: () => true },
   { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "stationlist", label: "Station List", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "departments", label: "Departments", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "roleaccess", label: "Role Access", area: "admin", visible: (me) => me.role === "admin" },
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
@@ -607,7 +628,9 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const visibleSettingsTabs = useMemo(
     () =>
       SETTINGS_TABS.filter((t) => t.area === mode && t.visible(me)).map((t) =>
-        t.key === "feedback"
+        t.key === "documents"
+          ? { ...t, badge: notifCounts?.documents_stale || 0 }
+          : t.key === "feedback"
           ? { ...t, badge: notifCounts?.feedback_replies_unread || 0 }
           : t.key === "whatsnew"
             ? { ...t, badge: whatsNewUnread }
@@ -615,11 +638,31 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       ),
     [me, mode, notifCounts, whatsNewUnread]
   );
-  const [adminTab, setAdminTab] = useState(() => SETTINGS_TABS.find((t) => t.area === mode && t.visible(me))?.key);
+  // The tab you were on (e.g. Help -> Guide) comes back after a refresh / reopen, per person and page.
+  const tabKey = `settings-tab:${me.email}:${mode}`;
+  const [adminTab, setAdminTabRaw] = useState(() => {
+    const first = SETTINGS_TABS.find((t) => t.area === mode && t.visible(me))?.key;
+    try {
+      const saved = localStorage.getItem(tabKey);
+      if (saved && SETTINGS_TABS.some((t) => t.key === saved && t.area === mode && t.visible(me))) return saved;
+    } catch {
+      /* storage blocked */
+    }
+    return first;
+  });
+  const setAdminTab = (k) => {
+    setAdminTabRaw(k);
+    try {
+      localStorage.setItem(tabKey, k);
+    } catch {
+      /* storage blocked */
+    }
+  };
 
   const [users, setUsers] = useState(null);
   const [stations, setStations] = useState([]);
   const [regions, setRegions] = useState([]);
+  const [departments, setDepartments] = useState([]); // [{name, roles, users}] -- Superadmin -> Departments
   const [form, setForm] = useState({ ...emptyForm, role: myAllowedRoles.includes("fleet_assistant") ? "fleet_assistant" : myAllowedRoles[0], scope_type: myAllowedScopeTypes[0] });
   const [editingEmail, setEditingEmail] = useState(null);
   // 2026-09-25 feedback: Edit jumps up to the form (it sits above a long list), and
@@ -634,6 +677,11 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   const [scopeTypeFilter, setScopeTypeFilter] = useState("all"); // all | all-scope ("Everything") | region | zone | station
   const [scopeValuesFilter, setScopeValuesFilter] = useState([]); // searchable pick of specific regions / zones / stations
   const [neverOpenedOnly, setNeverOpenedOnly] = useState(false);
+  const [deptFilter, setDeptFilter] = useState("all");
+  // 2026-10-08: region / zone filter on the user list -- picking East Coast lists everyone whose access covers any station of East Coast (a region user, one of its zones, one of its stations).
+  const [placeRegion, setPlaceRegion] = useState("all");
+  const [placeZone, setPlaceZone] = useState("all");
+  const [includeHq, setIncludeHq] = useState(false); // HQ / nationwide people cover every region -- left out of a region / zone filter unless asked for
   const [error, setError] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -648,6 +696,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   useEffect(() => {
     api.stations().then(setStations).catch(() => {});
     api.regions().then(setRegions).catch(() => {});
+    api.departments.list().then(setDepartments).catch(() => {});
     if (canManageUsers && mode === "users") loadUsers();
     if (isFullAdmin) {
       loadRefreshStatus();
@@ -676,6 +725,37 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     [users, scopeTypeFilter]
   );
 
+  // Which regions / zones a user's access covers (a region user covers all its zones; a station user covers that station's zone and region).
+  const placesOf = useMemo(() => {
+    const stationByName = new Map(stations.map((s) => [s.station_name, s]));
+    const regionOfZone = new Map(regions.flatMap((r) => r.zones.map((z) => [z, r.region])));
+    const zonesOfRegion = new Map(regions.map((r) => [r.region, r.zones]));
+    return (u) => {
+      const regs = new Set();
+      const zs = new Set();
+      for (const v of u.scope_values || []) {
+        if (u.scope_type === "region") {
+          regs.add(v);
+          (zonesOfRegion.get(v) || []).forEach((z) => zs.add(z));
+        } else if (u.scope_type === "zone") {
+          zs.add(v);
+          if (regionOfZone.get(v)) regs.add(regionOfZone.get(v));
+        } else if (u.scope_type === "station") {
+          const s = stationByName.get(v);
+          if (s) {
+            zs.add(s.zone);
+            regs.add(s.region);
+          }
+        }
+      }
+      return { regs, zs };
+    };
+  }, [stations, regions]);
+  const zoneChoices = useMemo(
+    () => (placeRegion === "all" ? regions.flatMap((r) => r.zones).sort() : regions.find((r) => r.region === placeRegion)?.zones || []),
+    [regions, placeRegion]
+  );
+
   const scopeText = (u) => (u.scope_type === "all" ? "Everything" : u.scope_type === "hq" ? "HQ" : (u.scope_values || []).join(", "));
 
   const filteredUsers = useMemo(() => {
@@ -683,12 +763,20 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     let list = users || [];
     if (q) {
       list = list.filter((u) =>
-        [u.email, u.display_name, ROLE_LABELS[u.role] || u.role, u.scope_type, ...(u.scope_values || [])]
+        [u.email, u.display_name, u.department, ROLE_LABELS[u.role] || u.role, u.scope_type, ...(u.scope_values || [])]
           .filter(Boolean)
           .some((s) => String(s).toLowerCase().includes(q))
       );
     }
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter);
+    if (deptFilter !== "all") list = list.filter((u) => (deptFilter === "none" ? !u.department : u.department === deptFilter));
+    if (placeRegion !== "all" || placeZone !== "all") {
+      list = list.filter((u) => {
+        if (u.scope_type === "all" || u.scope_type === "hq") return includeHq;
+        const { regs, zs } = placesOf(u);
+        return (placeRegion === "all" || regs.has(placeRegion)) && (placeZone === "all" || zs.has(placeZone));
+      });
+    }
     if (scopeTypeFilter === "everything") list = list.filter((u) => u.scope_type === "all" || u.scope_type === "hq");
     else if (scopeTypeFilter !== "all") list = list.filter((u) => u.scope_type === scopeTypeFilter);
     if (scopeValuesFilter.length) list = list.filter((u) => (u.scope_values || []).some((v) => scopeValuesFilter.includes(v)));
@@ -697,6 +785,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     const dir = userSortDir === "asc" ? 1 : -1;
     const value = (u) => {
       if (userSortKey === "role") return ROLE_LABELS[u.role] || u.role;
+      if (userSortKey === "department") return u.department || "";
       if (userSortKey === "scope") return scopeText(u);
       if (userSortKey === "last_seen_at") return u.last_seen_at ? new Date(u.last_seen_at.endsWith("Z") ? u.last_seen_at : u.last_seen_at + "Z").getTime() : -1;
       return u.email;
@@ -708,7 +797,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
       return cmp * dir || a.email.localeCompare(b.email);
     });
-  }, [users, userSearch, roleFilter, scopeTypeFilter, scopeValuesFilter, neverOpenedOnly, userSortKey, userSortDir]);
+  }, [users, userSearch, roleFilter, deptFilter, placeRegion, placeZone, includeHq, placesOf, scopeTypeFilter, scopeValuesFilter, neverOpenedOnly, userSortKey, userSortDir]);
 
   const toggleUserSort = (key) => {
     if (key === userSortKey) setUserSortDir(userSortDir === "asc" ? "desc" : "asc");
@@ -720,9 +809,35 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
   const startEdit = (u) => {
     setEditingEmail(u.email);
-    setForm({ email: u.email, role: u.role, scope_type: u.scope_type, scope_values: u.scope_values || [] });
+    setForm({ email: u.email, role: u.role, scope_type: u.scope_type, scope_values: u.scope_values || [], department: u.department || "" });
     setError(null);
     formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // A new role moves the scope with it: HQ staff have no dedicated place (scope HQ); everyone else needs a station / zone / region.
+  const applyRole = (f, role) => {
+    const hq = isHqTier(role);
+    const placeless = ["all", "hq"].includes(f.scope_type);
+    return {
+      ...f,
+      role,
+      ...(hq && !placeless
+        ? { scope_type: "hq", scope_values: [] }
+        : !hq && placeless && myAllowedScopeTypes.includes("station")
+          ? { scope_type: "station", scope_values: [] }
+          : {}),
+    };
+  };
+  const deptRoles = (name) => departments.find((d) => d.name === name)?.roles || [];
+  // Picking a department narrows the role list; the current role is swapped for the department's first role you may grant when it does not belong.
+  const changeDepartment = (name) => {
+    const roles = deptRoles(name);
+    let next = { ...form, department: name };
+    if (roles.length && !roles.includes(form.role)) {
+      const pick = roles.find((r) => myAllowedRoles.includes(r));
+      if (pick) next = applyRole(next, pick);
+    }
+    setForm(next);
   };
 
   const cancelEdit = () => {
@@ -834,14 +949,11 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       {adminTab === "whatsnew" && <GuideTab me={me} only="new" />}
       {adminTab === "faq" && <GuideTab me={me} only="faq" />}
 
-      {adminTab === "documents" && (
-        <div className="space-y-3">
-          <DocumentsPanel />
-          <KpiUploadPanel kpi="recovery" me={me} title="Recovery -- Lost Declared This Week (upload once a day)" />
-        </div>
-      )}
+      {adminTab === "documents" && <DocumentsPage me={me} driverDetails={<DocumentsPanel />} />}
 
-      {adminTab === "stationlist" && isFullAdmin && <RegionListPanel me={me} />}
+      {adminTab === "departments" && <DepartmentsPanel />}
+
+      {adminTab === "roleaccess" && <RoleAccessPanel />}
 
       {adminTab === "refresh" && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
@@ -873,7 +985,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
             )}
           </div>
           <p className="mt-2 text-xs text-slate-400">
-            Runs automatically every 15 minutes, and now asks Redash to re-run each query first (best-effort — if
+            Runs automatically every {Math.round((refreshStatus?.interval_seconds || 600) / 60)} minutes, and asks Redash to re-run each query first (best-effort — if
             the API key can't trigger that, it falls back to whatever Redash last computed on its own).
           </p>
 
@@ -884,6 +996,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                   <tr>
                     <th className="px-3 py-2 font-medium">Redash query</th>
                     <th className="px-3 py-2 font-medium">Feeds</th>
+                    <th className="px-3 py-2 font-medium">Redash computed</th>
                     <th className="px-3 py-2 font-medium">Last pulled</th>
                   </tr>
                 </thead>
@@ -900,6 +1013,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                         )}
                       </td>
                       <td className="px-3 py-1.5 text-slate-700">{q.label}</td>
+                      <td className="px-3 py-1.5 text-slate-600">{q.redash_at ? formatTime(q.redash_at) : "—"}</td>
                       <td className="px-3 py-1.5 text-slate-600">{formatTime(q.fetched_at)}</td>
                     </tr>
                   ))}
@@ -949,7 +1063,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
         </div>
 
         {(editingEmail || addMode === "one") && (
-          <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <form onSubmit={submit} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <input
               required
               type="email"
@@ -960,27 +1074,29 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
             <select
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              value={form.department || ""}
+              onChange={(e) => changeDepartment(e.target.value)}
+              aria-label="Department"
+            >
+              <option value="">No department</option>
+              {departments.map((d) => (
+                <option key={d.name} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
+              {form.department && !departments.some((d) => d.name === form.department) && <option value={form.department}>{form.department}</option>}
+            </select>
+            <select
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-500"
               value={form.role}
-              onChange={(e) => {
-                // HQ staff have no dedicated place (scope HQ); everyone else needs a station / zone / region.
-                const hq = isHqTier(e.target.value);
-                const placeless = ["all", "hq"].includes(form.scope_type);
-                setForm({
-                  ...form,
-                  role: e.target.value,
-                  ...(hq && !placeless
-                    ? { scope_type: "hq", scope_values: [] }
-                    : !hq && placeless && myAllowedScopeTypes.includes("station")
-                      ? { scope_type: "station", scope_values: [] }
-                      : {}),
-                });
-              }}
+              onChange={(e) => setForm(applyRole(form, e.target.value))}
               disabled={editingEmail === OWNER_EMAIL}
               title={editingEmail === OWNER_EMAIL ? "The app owner's role can't be changed" : undefined}
             >
               {GROUPS.map((g) => {
-                const opts = g.positions.filter((p) => myAllowedRoles.includes(p) || p === form.role);
+                const inDept = deptRoles(form.department);
+                const opts = g.positions.filter((p) => (myAllowedRoles.includes(p) && (!inDept.length || inDept.includes(p))) || p === form.role);
                 return opts.length === 0 ? null : (
                   <optgroup key={g.key} label={g.label}>
                     {opts.map((r) => (
@@ -1055,7 +1171,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               </label>
               {bulkFileName && <span className="text-xs text-slate-500">{bulkFileName}</span>}
               <span className="text-xs text-slate-400">
-                Columns: email, role, scope_type, scope_values (semicolon-separated for more than one, e.g.
+                Columns: email, role, scope_type, scope_values, department (optional; semicolon-separated scope values for more than one, e.g.
                 "Southern;Northern"). Edit the downloaded file in Excel/Sheets, then upload it back (Save As → CSV if
                 your editor changes the format).
               </span>
@@ -1135,6 +1251,45 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
                   <option value="station">Station staff</option>
                 </optgroup>
               </select>
+              <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} aria-label="Filter by department" className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700">
+                <option value="all">All departments</option>
+                {departments.map((d) => (
+                  <option key={d.name} value={d.name}>
+                    {d.name}
+                  </option>
+                ))}
+                <option value="none">No department</option>
+              </select>
+              <select
+                value={placeRegion}
+                onChange={(e) => {
+                  setPlaceRegion(e.target.value);
+                  setPlaceZone("all");
+                }}
+                aria-label="Filter by region"
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+              >
+                <option value="all">All regions</option>
+                {regions.map((r) => (
+                  <option key={r.region} value={r.region}>
+                    {r.region}
+                  </option>
+                ))}
+              </select>
+              <select value={placeZone} onChange={(e) => setPlaceZone(e.target.value)} aria-label="Filter by zone" className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700">
+                <option value="all">All zones</option>
+                {zoneChoices.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
+              {(placeRegion !== "all" || placeZone !== "all") && (
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600" title="HQ and nationwide staff cover every region and zone">
+                  <input type="checkbox" checked={includeHq} onChange={(e) => setIncludeHq(e.target.checked)} />
+                  Include HQ / nationwide
+                </label>
+              )}
               <select
                 value={scopeTypeFilter}
                 onChange={(e) => {
@@ -1177,6 +1332,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               <tr>
                 {[
                   { key: "email", label: "Email" },
+                  { key: "department", label: "Department" },
                   { key: "role", label: "Role" },
                   { key: "scope", label: "Scope" },
                   { key: "last_seen_at", label: "Last opened" },
@@ -1198,6 +1354,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               {filteredUsers.map((u) => (
                 <tr key={u.email} className={`border-t border-slate-100 ${editingEmail === u.email ? "bg-blue-50/50" : ""}`}>
                   <td className="px-4 py-2">{u.email}</td>
+                  <td className="px-4 py-2 text-slate-600">{u.department || <span className="text-slate-300">—</span>}</td>
                   <td className="px-4 py-2">{ROLE_LABELS[u.role] || u.role}</td>
                   <td className="px-4 py-2 text-slate-500">
                     {u.scope_type === "all" ? "Everything" : u.scope_type === "hq" ? "HQ" : `${(u.scope_values || []).join(", ")} (${u.scope_type})`}
@@ -1219,8 +1376,8 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
               ))}
               {(users || []).length > 0 && filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">
-                    No user matches "{userSearch}".
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">
+                    No user matches{userSearch ? ` "${userSearch}"` : " these filters"}.
                   </td>
                 </tr>
               )}

@@ -21,7 +21,7 @@ import re
 import sys
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import xlsx_fast
 from starlette.concurrency import run_in_threadpool
@@ -180,6 +180,22 @@ DATASETS: dict[str, dict] = {
         "sheet": None, "required": ["desthubname", "primarydrivername", "actualarrivaldatetime", "totalorders"],
         "keep": ["desthubname", "primarydrivername", "actualarrivaldatetime", "totalorders", "vehiclenumber"],
     },
+    # Manager Dashboard (2026-10-08): Driver Strength per station. Pulled from Metabase by the app (metabase_pull.py); all three live in the Last Mile collection.
+    "mgr_drivers": {
+        "kpi": "manager_dashboard", "label": "Manager Dashboard -- drivers per hub and type", "link": "https://metabase.ninjavan.co/question/127638",
+        "hint": "Metabase question 127638 (Mgr Dashboard: Drivers per hub x type) -- Download results as .csv: how many HD / HR / ID / IR drivers each hub has (empty End Date = still employed) and who resigned in the last 35 days",
+        "sheet": None, "required": ["hubname", "drivertype", "drivers"],
+    },
+    "mgr_active_2w": {
+        "kpi": "manager_dashboard", "label": "Manager Dashboard -- active drivers, past 2 weeks", "link": "https://metabase.ninjavan.co/question/127639",
+        "hint": "Metabase question 127639 (Mgr Dashboard: Active drivers per hub, past 2 weeks) -- Download results as .csv",
+        "sheet": None, "required": ["driversenrichedhubname", "activedrivers"], "needs_name": "2 weeks",  # same columns as the 4 weeks file -- the file name tells them apart
+    },
+    "mgr_active_4w": {
+        "kpi": "manager_dashboard", "label": "Manager Dashboard -- active drivers, past 4 weeks", "link": "https://metabase.ninjavan.co/question/127640",
+        "hint": "Metabase question 127640 (Mgr Dashboard: Active drivers per hub, past 4 weeks) -- Download results as .csv",
+        "sheet": None, "required": ["driversenrichedhubname", "activedrivers"], "needs_name": "4 weeks",
+    },
     "opex_result": {
         "kpi": "opex", "label": "OPEX dashboard result", "link": "https://last-mile-dashboard.ninjavan.apps.substrait.build/",
         "hint": "the OPEX Last Mile Performance dashboard: pick the region / area and the dates, press Download CSV, then upload that file (any other table is shown as it is)",
@@ -187,6 +203,40 @@ DATASETS: dict[str, dict] = {
     },
 }
 KPI_DATASETS = {k: [d for d, v in DATASETS.items() if v["kpi"] == k] for k in {v["kpi"] for v in DATASETS.values()}}
+
+# Documents page (2026-10-04): the Metabase files are meant to be refreshed every day. Every dataset downloaded from a Metabase question counts, except
+# the optional RTS overall file; the sheets / workbooks / OPEX download are uploaded when they change. A daily file that was not uploaded today
+# (Malaysia date) is "stale": it puts a bell on the Superadmin's Documents tab until it is.
+_NOT_DAILY = {"cod_rts_overall"}
+
+
+def is_metabase_feed(name: str) -> bool:
+    """A dataset that is a Metabase question (its link): pulled by the app through the Metabase API on a schedule (metabase_pull.py), no longer uploaded by hand."""
+    return "metabase.ninjavan.co/question/" in ((DATASETS.get(name) or {}).get("link") or "")
+
+
+def is_daily_feeder(name: str) -> bool:
+    link = (DATASETS.get(name) or {}).get("link") or ""
+    return "metabase.ninjavan.co/question" in link and name not in _NOT_DAILY
+
+
+def uploaded_today(uploaded_at) -> bool:
+    """Whether an upload's timestamp (stored UTC) falls on today's Malaysia date."""
+    if not uploaded_at:
+        return False
+    try:
+        when = datetime.fromisoformat(str(uploaded_at))
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    myt = timezone(timedelta(hours=8))
+    return when.astimezone(myt).date() == datetime.now(myt).date()
+
+
+async def stale_daily_feeders() -> list[str]:
+    current = await list_uploads()
+    return [n for n in DATASETS if is_daily_feeder(n) and not uploaded_today((current.get(n) or {}).get("uploaded_at"))]
 
 
 class UploadError(ValueError):

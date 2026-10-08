@@ -123,7 +123,7 @@ export default function LaunchTimelinePanel() {
         </table>
       </div>
       <p className="text-xs text-slate-500">
-        A date set on a region or zone applies to every station in it that has no date of its own. Clear a date to take Attendance away from those stations again. Anything keyed in during the test-run day stays in the system.
+        A date set on a region or zone applies to every station in it that has no date of its own. Clear a date to take Attendance away from those stations again. Anything keyed in during the test run (dated before the launch date) is <b>cleared when the station reaches its launch date</b> -- attendance, corrections and photos; the people, drivers and schedule stay. This happens once per station.
       </p>
     </div>
   );

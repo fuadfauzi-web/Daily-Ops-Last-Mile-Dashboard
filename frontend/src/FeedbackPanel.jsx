@@ -14,7 +14,7 @@ function formatTime(iso) {
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
-  const [reply, setReply] = useState(r.reply || "");
+  const [reply, setReply] = useState(""); // starts empty: the reply already sent is shown above, not copied back into the box
   const [busy, setBusy] = useState(false);
 
   const act = async (payload) => {
@@ -22,6 +22,7 @@ function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
     setError(null);
     try {
       await api.feedback.update(r.id, payload);
+      if (payload.reply !== undefined) setReply("");
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -119,7 +120,7 @@ function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
           <textarea
             className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
             rows={2}
-            placeholder={r.reply ? "Edit your reply…" : "Write a reply…"}
+            placeholder={r.reply ? "Write a new reply (it replaces the one above)…" : "Write a reply…"}
             value={reply}
             onChange={(e) => setReply(e.target.value)}
           />
@@ -129,8 +130,13 @@ function FeedbackItem({ r, isFullAdmin, onChanged, setError }) {
               disabled={busy || !reply.trim() || reply.trim() === (r.reply || "")}
               className="rounded-lg bg-brand px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
             >
-              {r.reply ? "Update reply" : "Send reply"}
+              {r.reply ? "Send new reply" : "Send reply"}
             </button>
+            {r.reply && !reply && (
+              <button onClick={() => setReply(r.reply)} className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600">
+                Edit the sent reply
+              </button>
+            )}
             {r.status === "open" ? (
               <button
                 onClick={() => act({ status: "closed" })}

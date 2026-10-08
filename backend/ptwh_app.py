@@ -453,7 +453,7 @@ async def app_schedule(s=Depends(_session)):
     w, _cred = s
     times = await work_schedule.station_times(w[4])
     return {"station": w[4], "days": await work_schedule.ptwh_upcoming(w[0], 14, w[4]),
-            "shifts": {c: {"label": v[0], "hours": work_schedule.hours_text(times, c)} for c, v in work_schedule.SHIFTS.items()}}
+            "shifts": {c: {"label": v[0], "hours": work_schedule.hours_text(times, c), "break": work_schedule.break_text(times, c)} for c, v in work_schedule.SHIFTS.items()}}
 
 
 class ChangePassword(BaseModel):
