@@ -13,17 +13,17 @@ export const FEATURES = {
   restockBundles: true, // Restock bundle list, Restock On Hold Details, B2B Document Compliance (RDO)
   kpiDashboard: true, // "KPI" page (Beta -- preview only, not to be used until the green light): weekly results, OPEX result, RCA for Hybrid / Invalid POD / COD RTS
   dod: true, // "DoD" tab (Beta): Station Health day by day for this week + last week; every role, limited to its own scope
-  managementView: false, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
-  processingTime: false, // "Processing Time" tab (Beta, staging-only for now): the past 7 days of hour-of-day timelines per station
+  managementView: true, // "Management View" tab (Beta, staging-only for now): higher-level rollup for managers/admins -- Overall health, Capacity, Backlog radar
+  managerDashboard: true, // "Manager Dashboard" tab (Beta, HOD + Fleet Manager only): Station Capacity + Driver Strength of their region (plan figures typed in), and a private workspace (links, due dates, notes)
+  processingTime: true, // "Processing Time" tab (Beta, staging-only for now): the past 7 days of hour-of-day timelines per station
   dailyKpi: true, // "Daily KPI" tab (Beta -- numbers not 100% accurate yet, says so in-app): today's FIFO D0 / Prior / Completion D0, how many parcels left to attempt or deliver
   attendance: true, // "Attendance" page (Beta, staging-only for now): PTWH clock in / out, month sheet and payable first; Staff and Hybrid attendance come later
-  managerDashboard: true, // "Manager Dashboard" tab (Beta, HOD + Fleet Manager only): Station Capacity + Driver Strength of their region (plan figures typed in), and a private workspace (links, due dates, notes)
-  stationProfile: false, // "Station profile" view inside Staff & Org Chart (staging-only for now, OFF in production): one station's IDs, address, people, boxes and postcodes, like the Fleet Management sheet's Station tab
+  stationProfile: true, // "Station profile" view inside Staff & Org Chart (staging-only for now, OFF in production): one station's IDs, address, people, boxes and postcodes, like the Fleet Management sheet's Station tab
   // People / tools
   taskList: true, // "Task List" tab: Urgent TN + Email / Gchat + To Do List + Task Assigned
   hideSummaryCards: true, // the Region / Zone / TOTAL LAST MILE summary cards above the filters are removed
-  roleTester: false, // admin Role Tester in the header (preview a role / scope)
-  roleTesterUser: false, // ...and view as one specific user
+  roleTester: true, // admin Role Tester in the header (preview a role / scope)
+  roleTesterUser: true, // ...and view as one specific user
   headerTidy: true, // staging-only trial (2026-10-02 design review): header fits one row at 1280px -- title/freshness/density hide at narrower widths, user block + Role Tester become one menu. NOT approved for production yet.
   healthTable: true, // staging-only trial (2026-10-02 design review D5): Station Health under 9 column-group headers with short labels, a target line per column, tinted severity cells, column-group chooser. NOT approved for production yet.
   boardViews: true, // staging-only trial (2026-10-02 design review D9): Action Board searchable grouped metric picker, numbered chips, "My views" saved per person in the browser, tinted badges only on breaching cells. NOT approved for production yet.
@@ -35,10 +35,5 @@ export const FEATURES = {
   phoneTnSheet: true, // staging-only trial (2026-10-02 design review D10): on a phone (<768px) the tracking-number lists open as a full-screen sheet with a sticky top bar, 56px rows and a Copy list / CSV bottom bar. NOT approved for production yet.
   chartStyle: true, // staging-only trial (2026-10-02 design review D13): charts use ink for the main series and grey for comparison (brand red stays chrome-only), paler gridlines, and a dashed target line where a chart is given one. NOT approved for production yet.
   headlineCards: true, // staging-only trial (2026-10-03 design review D7): Station Health opens with a strip of headline cards (Fresh, Routed, 0 Attempt, In Hub, Age >3) with the change since yesterday. NOT approved for production yet.
-  stagingBanner: false, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
-  // Production release 2026-10-04, step 1 (UI + System first). The People / Recovery-Beta modules are built but held back; flip each to true (and
-  // backend/release.py to match) to release it, in this order: staffDirectory, attendance, fleetAdmin, recoveryBeta.
-  staffDirectory: false, // Staff & Org Chart tab (also gates /api/staff, /api/org-chart in backend/release.py)
-  fleetAdmin: true, // Fleet Admin tab (premises / vehicles / assets / headcount)
-  recoveryBeta: false, // Recovery PDCNR / Damage / No Label from Hub lists (Beta)
+  stagingBanner: true, // a sticky orange "STAGING" strip above the header -- staging-only forever, never turn on in production (it IS the this-is-staging signal)
 };

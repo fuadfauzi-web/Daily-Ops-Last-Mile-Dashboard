@@ -7,4 +7,10 @@ ALTER TABLE headcount_seats
 -- The vacant seats the Fleet Management sheet shows: the three Regional Fleet Supervisor seats marked TBA (South 1, South 2, Zone B), and for the
 -- Fleet Admin team the two Admin (LM) interns who are not in the app yet plus the one seat marked '*Vacant'. They count in the headcount until
 -- the Fleet Admin team adds the real person (which uses the seat up).
--- (data statement left out of the production release: it loads staging people / test data)
+INSERT INTO headcount_seats (station, place_type, designation, note, status, requested_by, requested_at, decided_by, decided_at) VALUES
+  ('South 1', 'zone', 'rfs', 'Regional Fleet Supervisor South 1 (TBA in the sheet)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('South 2', 'zone', 'rfs', 'Regional Fleet Supervisor South 2 (TBA in the sheet)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('Zone B', 'zone', 'rfs', 'Regional Fleet Supervisor Zone B (TBA in the sheet)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('HQ', 'hq', 'fleet_admin', 'Aqilla Najwa, Admin (LM) intern (not in the app yet)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('HQ', 'hq', 'fleet_admin', 'Haris Sahir, Admin (LM) intern (not in the app yet)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('HQ', 'hq', 'fleet_admin', 'Vacant: Admin (LM) intern', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW());

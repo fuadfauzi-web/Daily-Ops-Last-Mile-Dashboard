@@ -16,4 +16,8 @@ CREATE TABLE headcount_seats (
 );
 
 -- The people on the Fleet Management sheet whose email is still TBA (and one vacant seat): headcount, as the Fleet Manager said.
--- (data statement left out of the production release: it loads staging people / test data)
+INSERT INTO headcount_seats (station, designation, note, status, requested_by, requested_at, decided_by, decided_at) VALUES
+  ('Kuching', 'fleet_assistant', 'Mohammad Syafiq Bin Sulaiman (email TBA)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('Setia Alam', 'fleet_assistant', 'Muhamad Asyraf Bin Muhamed Suzeli (email TBA)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('Kepong', 'fleet_assistant', 'Muhammad Ryan Merannto Bin Abdullah (email TBA)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW()),
+  ('Chow Kit', 'fleet_assistant', 'Vacant (TBA)', 'approved', 'fuad.mawardi@ninjavan.co', NOW(), 'fuad.mawardi@ninjavan.co', NOW());

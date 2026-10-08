@@ -260,9 +260,9 @@ export default function App() {
   // Manager Dashboard (2026-10-08): HOD and Fleet Manager only (the Superadmin too); a Manager sees their own region.
   const canSeeManagerDash = FEATURES.managerDashboard && (me.role === "manager" || me.role === "admin");
   // The Fleet Admin team's own tab (2026-10-02, staging): keeps the staff list and org chart. Admin and managers can open it too.
-  const canSeeStaff = !!FEATURES.staffDirectory; // the Staff list and org chart are for everyone signed in (2026-10-03); only the Fleet Admin role edits
+  const canSeeStaff = true; // the Staff list and org chart are for everyone signed in (2026-10-03); only the Fleet Admin role edits
   // Fleet Admin (2026-10-02, staging): the lists the Fleet Admin team keeps (premises first). HQ staff and above can read; only the Fleet Admin team edits.
-  const canSeeFleetAdmin = !!FEATURES.fleetAdmin && ["admin", "manager", "hq_staff"].includes(me.role);
+  const canSeeFleetAdmin = ["admin", "manager", "hq_staff"].includes(me.role);
   const navTabs = [
     "dashboard",
     // Launch Timeline: a station without a launch date (or more than a day before it) has no Attendance. Until the first notification count arrives only Managers / Superadmin see it.
@@ -294,7 +294,7 @@ export default function App() {
   const catActive = !!FEATURES.sidebarNav && navMode === "tabs" && wide;
   const externalNav = sidebarActive || catActive;
   // PDCNR / Damage / No Label from Hub are Beta (2026-10-04): only the Superadmin, Manager / HOD and Recovery see them.
-  const canSeeRecLists = !!FEATURES.recoveryBeta && (me.role === "admin" || me.role === "manager" || me.position === "recovery");
+  const canSeeRecLists = me.role === "admin" || me.role === "manager" || me.position === "recovery";
   const sideItems = SIDE_ITEMS.filter((i) => (!i.recLists || canSeeRecLists) && access[i.id]?.level !== "none" && (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
     const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
     return {

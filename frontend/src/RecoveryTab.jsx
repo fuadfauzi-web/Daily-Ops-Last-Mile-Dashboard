@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { exportCsv } from "./lib/csv";
-import { FEATURES } from "./lib/features";
 import { columnsToDetailRows } from "./lib/detailRows";
 import DataTable from "./components/DataTable";
 import GroupTable from "./components/GroupTable";
@@ -39,7 +38,7 @@ const SUB_TABS = {
 };
 const CASE_GROUPS = ["pdcnr", "damage", "nolabel"];
 // Beta (2026-10-04): the three lists are not final with the Recovery team -- only the Superadmin, Manager / HOD and Recovery see them (the backend says no to anyone else).
-const canUseCaseLists = (me) => !!FEATURES.recoveryBeta && (me?.role === "admin" || me?.role === "manager" || me?.position === "recovery");
+const canUseCaseLists = (me) => me?.role === "admin" || me?.role === "manager" || me?.position === "recovery";
 const groupOptions = (me) =>
   GROUPS.filter((g) => !CASE_GROUPS.includes(g.key) || canUseCaseLists(me)).map((g) =>
     CASE_GROUPS.includes(g.key) ? { ...g, label: <span className="inline-flex items-center gap-1.5">{g.label}<BetaTag /></span> } : g,

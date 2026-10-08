@@ -40,7 +40,8 @@ CREATE TABLE hybrid_drivers (
   KEY idx_hybrid_station (station, active)
 );
 
--- (data statement left out of the production release: it loads staging people / test data)
+INSERT INTO hybrid_drivers (station, name, active, created_by, created_at)
+  SELECT station, person_ref, 1, added_by, added_at FROM schedule_people WHERE person_type = 'hybrid';
 
 CREATE TABLE hybrid_attendance (
   id          BIGINT        NOT NULL AUTO_INCREMENT,

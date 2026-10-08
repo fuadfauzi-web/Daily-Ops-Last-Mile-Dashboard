@@ -16,7 +16,6 @@ from pydantic import BaseModel
 
 import db
 import headcount
-import release
 from auth import POSITIONS, CurrentUser, get_current_user, parse_scope_values, tier_of
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 from tasklist import on_user_deleted as tasklist_user_deleted
@@ -31,7 +30,7 @@ _HOME_TYPES = {"hq", "region", "zone", "station"}
 def _can_view(user: CurrentUser) -> bool:
     """The Staff LIST (names, positions, employee IDs, access) is for the Fleet Admin team, the HOD, the Managers and the Superadmin (2026-10-07, the Fleet
     Manager). The org chart and its details list are open to everyone signed in -- they say who looks after what, which is what anyone needs to find the right PIC."""
-    return release.STAFF_DIRECTORY and (user.role == "admin" or user.position in ("fleet_admin", "hod", "manager"))
+    return user.role == "admin" or user.position in ("fleet_admin", "hod", "manager")
 
 
 def _hq_view(user: CurrentUser) -> bool:

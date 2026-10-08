@@ -35,7 +35,6 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 import db
-import release
 import storage
 from auth import CurrentUser, get_current_user
 from recovery_lost import _in_scope_named, weeknum2
@@ -158,7 +157,7 @@ def _can_edit_field(user: CurrentUser, field: dict, code: str) -> bool:
 def can_use_lists(user: CurrentUser) -> bool:
     """Beta (2026-10-04): the three lists are not final with the Recovery team yet, so only the Superadmin, the Manager / HOD tier and the
     Recovery position see or use them -- everyone else (station, region, other HQ roles) gets a 403 and no menu entry."""
-    return release.RECOVERY_BETA and (user.role in ("admin", "manager") or user.position == "recovery")
+    return user.role in ("admin", "manager") or user.position == "recovery"
 
 
 def _spec(case_type: str, user: CurrentUser) -> dict:
