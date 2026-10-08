@@ -16641,6 +16641,28 @@
               }
             ],
             "title": "Bundle Delivered At"
+          },
+          "rdo_route_driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rdo Route Driver"
+          },
+          "bundle_delivery_driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Delivery Driver"
           }
         },
         "type": "object",
@@ -17041,6 +17063,17 @@
               }
             ],
             "title": "Hold Details"
+          },
+          "ticket_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Type"
           },
           "bundle_class": {
             "type": "string",
