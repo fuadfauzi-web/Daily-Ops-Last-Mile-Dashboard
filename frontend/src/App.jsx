@@ -70,6 +70,22 @@ export default function App() {
       /* storage blocked -- keep the default */
     }
   }, [me?.email]);
+  // Auto-hide the sidebar once a page is chosen (default on; a personal choice in the user menu)
+  const [sideAutoHide, setSideAutoHideRaw] = useState(() => {
+    try {
+      return localStorage.getItem("side-autohide") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setSideAutoHide = (on) => {
+    setSideAutoHideRaw(on);
+    try {
+      localStorage.setItem("side-autohide", on ? "1" : "0");
+    } catch {
+      /* storage blocked */
+    }
+  };
   const [sideCollapsed, setSideCollapsed] = useState(() => {
     try {
       return localStorage.getItem("side-collapsed") === "1";
@@ -405,6 +421,8 @@ export default function App() {
                 onRoleChanged={onRoleChanged}
                 navMode={FEATURES.sidebarNav ? navMode : undefined}
                 setNavMode={setNavMode}
+                sideAutoHide={sideAutoHide}
+                setSideAutoHide={setSideAutoHide}
               />
             ) : (
               <>
@@ -507,7 +525,7 @@ export default function App() {
         />
       )}
       <div className={sidebarActive ? "flex" : ""}>
-      {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} />}
+      {sidebarActive && <SideNav items={sideItems} onSelect={selectSide} collapsed={sideCollapsed} onToggle={toggleSide} top={stickyH} autoHide={sideAutoHide} />}
       <main className={sidebarActive ? "min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-6" : "mx-auto max-w-[1920px] px-4 py-4 sm:px-6 sm:py-6"}>
         {viewOnly && (
           <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 ring-1 ring-amber-200">

@@ -6,7 +6,7 @@ import { positionLabel } from "../lib/roles";
 // Header tidy-up (2026-10-02, staging only, FEATURES.headerTidy): the user block becomes one button that opens a
 // small menu, so the header fits on one row at 1280px. The Role Tester lives in here instead of beside the nav,
 // and below 1200px the freshness line and the density toggle move in here too.
-export default function UserMenu({ me, initials, freshness, stationsInScope, showFreshness, density, setDensity, onRoleChanged, navMode, setNavMode }) {
+export default function UserMenu({ me, initials, freshness, stationsInScope, showFreshness, density, setDensity, onRoleChanged, navMode, setNavMode, sideAutoHide, setSideAutoHide }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -84,6 +84,12 @@ export default function UserMenu({ me, initials, freshness, stationsInScope, sho
                   </button>
                 ))}
               </div>
+              {navMode === "sidebar" && setSideAutoHide && (
+                <label className="mt-2 flex min-h-[32px] cursor-pointer items-center gap-2 text-[12px] text-slate-600">
+                  <input type="checkbox" checked={!!sideAutoHide} onChange={(e) => setSideAutoHide(e.target.checked)} />
+                  Auto-hide the sidebar after I pick a page
+                </label>
+              )}
             </div>
           )}
 

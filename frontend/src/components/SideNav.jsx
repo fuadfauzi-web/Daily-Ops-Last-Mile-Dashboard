@@ -3,8 +3,30 @@ import { SIDE_GROUPS, SIDE_GROUP_COLORS, sideGroupLabel } from "../lib/sideNav";
 
 // Grouped left sidebar (staging trial, FEATURES.sidebarNav). `items` is already filtered to what this person may open:
 // [{ id, label, group, beta, code, active, badge, dot }]. 224px wide, or 72px with two-letter codes when collapsed.
-export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
+export default function SideNav({ items, onSelect, collapsed, onToggle, top, autoHide = true }) {
   const [query, setQuery] = useState("");
+  // Auto-hide (2026-10-08): once a page is chosen the sidebar folds to the narrow rail, and moving the mouse onto the rail floats the full sidebar back over the page (it does not push the page
+  // around). The « / » button keeps it open until the next choice. Turned off in the user menu, the sidebar then stays as it was.
+  const [rested, setRested] = useState(false);
+  const [hover, setHover] = useState(false);
+  const justPicked = useRef(false); // after a pick the mouse is still on the rail: the sidebar stays folded until the mouse has left it once
+  const rail = collapsed || (autoHide && rested); // the narrow rail is what takes room
+  const peek = rail && hover; // ...with the full sidebar floating over the page while the mouse (or keyboard focus) is on it
+  const showCollapsed = rail && !peek;
+  const pick = (id) => {
+    onSelect(id);
+    if (autoHide) {
+      setRested(true);
+      setHover(false);
+      justPicked.current = true;
+    }
+  };
+  const keepOpen = () => {
+    setRested(false);
+    setHover(false);
+    if (collapsed) onToggle();
+    else if (!rail) onToggle(); // « : fold it for good (until » is pressed)
+  };
   const searchRef = useRef(null);
   // Categories fold like the top tabs do: one open at a time, click an open one to close it, and the one holding the current page opens by itself
   // whenever the page changes. Searching shows every match regardless, and the narrow (collapsed) sidebar keeps every page code visible.
@@ -20,27 +42,41 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
     </svg>
   );
   return (
+    <div
+      style={{ top, height: `calc(100vh - ${top}px)` }}
+      className={`sticky shrink-0 self-start ${rail ? "w-[72px]" : "w-56"}`}
+      onMouseMove={() => {
+        if (!justPicked.current) setHover(true);
+      }}
+      onMouseLeave={() => {
+        justPicked.current = false;
+        setHover(false);
+      }}
+      onFocus={() => setHover(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setHover(false);
+      }}
+    >
     <aside
       aria-label="Main navigation"
-      style={{ top, height: `calc(100vh - ${top}px)` }}
-      className={`sticky shrink-0 self-start overflow-y-auto border-r border-line bg-white pb-3 ${collapsed ? "w-[72px]" : "w-56"}`}
+      className={`absolute inset-y-0 left-0 z-30 overflow-y-auto border-r border-line bg-white pb-3 ${showCollapsed ? "w-[72px]" : "w-56"} ${peek ? "shadow-xl" : ""}`}
     >
       {/* The collapse + search row stays put while the pages scroll underneath it. */}
-      <div className={`sticky top-0 z-10 mb-1 flex items-center gap-1.5 border-b border-line/60 bg-white px-2 pb-2 pt-3 ${collapsed ? "flex-col" : ""}`}>
+      <div className={`sticky top-0 z-10 mb-1 flex items-center gap-1.5 border-b border-line/60 bg-white px-2 pb-2 pt-3 ${showCollapsed ? "flex-col" : ""}`}>
         <button
           type="button"
-          onClick={onToggle}
-          aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
-          title={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+          onClick={keepOpen}
+          aria-label={rail ? "Expand the sidebar" : "Collapse the sidebar"}
+          title={rail ? "Expand the sidebar" : "Collapse the sidebar"}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-display text-sm font-bold text-muted hover:bg-canvas"
         >
-          {collapsed ? "»" : "«"}
+          {rail ? "»" : "«"}
         </button>
-        {collapsed ? (
+        {showCollapsed ? (
           <button
             type="button"
             onClick={() => {
-              onToggle();
+              keepOpen();
               setTimeout(() => searchRef.current?.focus(), 50);
             }}
             aria-label="Search the menu"
@@ -59,7 +95,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
               onKeyDown={(e) => {
                 if (e.key === "Escape") setQuery("");
                 if (e.key === "Enter" && shown[0]) {
-                  onSelect(shown[0].id);
+                  pick(shown[0].id);
                   setQuery("");
                 }
               }}
@@ -76,7 +112,7 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
           if (!inGroup.length) return null;
           return (
             <div key={g}>
-              {!collapsed &&
+              {!showCollapsed &&
                 (q ? (
                   <div className="flex items-center gap-1.5 px-2.5 pb-1 font-display text-[10px] font-bold uppercase tracking-wider text-subtle">
                     <span className={`h-1.5 w-1.5 rounded-full ${SIDE_GROUP_COLORS[g].dot}`} />
@@ -100,23 +136,23 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
                     <span className="text-[10px]">{open === g ? "▾" : "▸"}</span>
                   </button>
                 ))}
-              {collapsed && <div className="mx-2 mb-1 border-t border-line first:hidden" />}
-              {(collapsed || q || open === g) && inGroup.map((i) => (
+              {showCollapsed && <div className="mx-2 mb-1 border-t border-line first:hidden" />}
+              {(showCollapsed || q || open === g) && inGroup.map((i) => (
                 <button
                   key={i.id}
                   type="button"
-                  onClick={() => onSelect(i.id)}
-                  title={collapsed ? i.label + (i.beta ? " (Beta)" : "") : undefined}
+                  onClick={() => pick(i.id)}
+                  title={showCollapsed ? i.label + (i.beta ? " (Beta)" : "") : undefined}
                   aria-current={i.active ? "page" : undefined}
                   className={`relative flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2.5 text-left font-display text-[13px] ${
-                    collapsed
+                    showCollapsed
                       ? "justify-center hover:bg-canvas"
                       : i.active
                         ? "bg-brand-tint font-bold text-brand-dark"
                         : "font-semibold text-ink-2 hover:bg-canvas"
                   }`}
                 >
-                  {collapsed ? (
+                  {showCollapsed ? (
                     <span className={`flex h-8 w-9 items-center justify-center rounded-md text-xs ${SIDE_GROUP_COLORS[i.group].chip} ${i.active ? "ring-2 ring-brand" : ""}`}>{i.code}</span>
                   ) : (
                     <>
@@ -127,13 +163,13 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
                   {i.badge > 0 && (
                     <span
                       className={`flex h-4 min-w-[16px] items-center justify-center rounded-full bg-ink px-1 text-[10px] font-bold leading-none text-white ${
-                        collapsed ? "absolute right-1 top-1" : ""
+                        showCollapsed ? "absolute right-1 top-1" : ""
                       }`}
                     >
                       {i.badge}
                     </span>
                   )}
-                  {!i.badge && i.dot > 0 && <span className={`h-2 w-2 rounded-full bg-ink ${collapsed ? "absolute right-2 top-2" : ""}`} aria-label="Due soon" />}
+                  {!i.badge && i.dot > 0 && <span className={`h-2 w-2 rounded-full bg-ink ${showCollapsed ? "absolute right-2 top-2" : ""}`} aria-label="Due soon" />}
                 </button>
               ))}
             </div>
@@ -141,5 +177,6 @@ export default function SideNav({ items, onSelect, collapsed, onToggle, top }) {
         })}
       </nav>
     </aside>
+    </div>
   );
 }
