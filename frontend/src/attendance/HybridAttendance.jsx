@@ -227,8 +227,8 @@ function DriversView({ setError }) {
   const [showOff, setShowOff] = useState(false);
   const load = useCallback(() => { api.hybridDrivers().then(setData).catch((e) => setError(e.message)); }, [setError]);
   useEffect(load, [load]);
+  const { rows: inScope, controls } = useScopeFilter(data?.drivers || []); // a hook: it must run on every render, before the early return below
   if (!data) return <Skeleton rows={4} />;
-  const { rows: inScope, controls } = useScopeFilter(data.drivers);
   const rows = inScope.filter((d) => showOff || d.active);
   const src = data.source || {};
   const refresh = async () => {
