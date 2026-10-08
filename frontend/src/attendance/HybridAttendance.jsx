@@ -11,7 +11,7 @@ import { btnCls, Field, hhmm, inputCls, localDay, localMonth, Modal, useScopeFil
 //   Month    -- a grid of the month
 //   Drivers  -- the list with details: name, driver ID, phone, vehicle, joined / end date
 
-const VIEWS = [{ key: "today", label: "Today" }, { key: "month", label: "Month sheet" }, { key: "drivers", label: "Drivers" }];
+const VIEWS = [{ key: "today", label: "Today" }, { key: "flags", label: "Flags" }, { key: "month", label: "Month sheet" }, { key: "drivers", label: "Drivers" }];
 const STATUS = {
   present: ["Present", "bg-emerald-100 text-emerald-800", "bg-emerald-600 text-white"],
   absent: ["Absent", "bg-red-100 text-red-700", "bg-red-600 text-white"],
@@ -66,6 +66,7 @@ function DayRow({ row, date, canEdit, onSaved, setError }) {
       <td className="px-3 py-2 text-slate-600">{row.station}</td>
       <td className="px-3 py-2"><div className="font-medium text-ink">{row.name}</div><div className="text-[11px] text-slate-400">{row.driver_id}</div></td>
       <td className="px-3 py-2 text-xs">{row.scheduled ? <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-600">{row.scheduled === "WK" ? "Working" : row.scheduled === "OFF" ? "Off" : "Leave"}</span> : <span className="text-slate-300">—</span>}</td>
+      <td className="px-3 py-2 text-xs">{row.has_route == null ? <span className="text-slate-300">—</span> : row.has_route ? <span className="font-semibold text-emerald-700">route</span> : <span className="font-semibold text-red-600">no route</span>}</td>
       <td className="px-3 py-2">
         {canEdit ? (
           <div className="flex gap-1">
@@ -85,10 +86,10 @@ function DayRow({ row, date, canEdit, onSaved, setError }) {
         ) : <span className="tabular-nums">{rec?.clock_in ? `${hhmm(rec.clock_in)} – ${hhmm(rec.clock_out) || "…"}` : ""}</span>}
       </td>
       <td className="px-3 py-2">
-        {canEdit ? <input className={`${inputCls} w-full min-w-[140px]`} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" /> : <span className="text-xs text-slate-600">{rec?.note}</span>}
+        {canEdit ? <input className={`${inputCls} w-full min-w-[140px]`} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder={status === "leave" ? "Proof of leave (MC no., approved by)" : "Note (optional)"} /> : <span className="text-xs text-slate-600">{rec?.note}</span>}
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
-        {canEdit && dirty && status && <button disabled={busy} onClick={save} className={`${btnCls} bg-brand py-1 text-white disabled:opacity-50`}>Save</button>}
+        {canEdit && dirty && status && <button disabled={busy || (status === "leave" && note.trim().length < 3)} title={status === "leave" && note.trim().length < 3 ? "Leave needs its proof in the note (MC number, who approved it)" : undefined} onClick={save} className={`${btnCls} bg-brand py-1 text-white disabled:opacity-50`}>Save</button>}
         {canEdit && !dirty && rec && <button onClick={clear} className="text-xs text-slate-400 underline">Clear</button>}
         {rec?.source === "app" && !dirty && (
           <div className="text-[10px]">
@@ -123,10 +124,10 @@ function TodayView({ setError }) {
         <div className="max-h-[70vh] overflow-auto rounded-xl bg-white ring-1 ring-slate-200">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-20 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Driver</th><th className="px-3 py-2">Schedule</th><th className="px-3 py-2">Attendance</th><th className="px-3 py-2">In – Out (optional)</th><th className="px-3 py-2">Note</th><th className="px-3 py-2" /></tr>
+              <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Driver</th><th className="px-3 py-2">Schedule</th><th className="px-3 py-2">Attendance</th><th className="px-3 py-2" title="A route under the driver's name in route monitoring today">Route</th><th className="px-3 py-2">In – Out (optional)</th><th className="px-3 py-2">Note</th><th className="px-3 py-2" /></tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">No Hybrid driver on the list for this day -- the list comes from Metabase every morning (see the Drivers view).</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No Hybrid driver on the list for this day -- the list comes from Metabase every morning (see the Drivers view).</td></tr>}
               {rows.map((r) => <DayRow key={`${r.id}-${date}`} row={r} date={date} canEdit={data.can_edit} onSaved={load} setError={setError} />)}
             </tbody>
           </table>
@@ -134,6 +135,70 @@ function TodayView({ setError }) {
       )}
       <p className="text-xs text-slate-500">
         Keyed in by hand for now: choose Present, Absent or Leave and press Save (times are optional). {data?.can_edit ? `You can key or change the last ${data?.window_days || 35} days; each entry shows who keyed it.` : "You can read this; station and region staff and Managers key it in."}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Flags: attendance that does not match the schedule / the route data
+
+const FLAG_CLS = { not_in: "bg-red-100 text-red-700", no_route: "bg-red-100 text-red-700", leave_routed: "bg-red-100 text-red-700", leave_no_proof: "bg-slate-200 text-slate-700" };
+
+function FlagsView({ setError }) {
+  const [data, setData] = useState(null);
+  const [showDone, setShowDone] = useState(false);
+  const load = useCallback(() => { api.hybridFlags().then(setData).catch((e) => setError(e.message)); }, [setError]);
+  useEffect(() => { load(); }, [load]);
+  const { rows, controls } = useScopeFilter(data?.flags || []);
+  if (!data) return <Skeleton rows={4} />;
+  const shown = rows.filter((f) => showDone || !f.handled);
+  const handle = async (f) => {
+    const note = window.prompt(`What was done about ${f.name} (${f.label.toLowerCase()})? e.g. called, on MC, route being planned`);
+    if (!note || note.trim().length < 3) return;
+    try {
+      await api.hybridFlagAction({ driver_id: f.driver_id, kind: f.kind, note });
+      load();
+      window.dispatchEvent(new Event("ptwh-review-changed"));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3">
+        {controls}
+        <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Show handled</label>
+      </div>
+      {!data.route_data && (
+        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600 ring-1 ring-slate-200">
+          {data.waiting_for_route_check ? `The route check starts at ${data.route_check_hour}:00 -- before that only clock-in times and leave are checked.` : "Today's route data isn't available right now, so only clock-in times and leave are checked."}
+        </div>
+      )}
+      <div className="max-h-[70vh] overflow-auto rounded-xl bg-white ring-1 ring-slate-200">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 z-20 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Driver</th><th className="px-3 py-2">Flag</th><th className="px-3 py-2">What happened</th><th className="px-3 py-2">Handled</th><th className="px-3 py-2" /></tr>
+          </thead>
+          <tbody>
+            {shown.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">Nothing to chase right now.</td></tr>}
+            {shown.map((f) => (
+              <tr key={`${f.driver_id}-${f.kind}`} className="border-t border-slate-100 align-top">
+                <td className="px-3 py-2 text-slate-600">{f.station}</td>
+                <td className="px-3 py-2 font-medium text-ink">{f.name}</td>
+                <td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${FLAG_CLS[f.kind]}`}>{f.label}</span></td>
+                <td className="max-w-[380px] px-3 py-2 text-xs text-slate-600">{f.detail}</td>
+                <td className="max-w-[220px] px-3 py-2 text-xs text-slate-600">{f.handled ? <><span className="text-emerald-700">✓ {f.handled.by.split("@")[0]}</span><div className="text-slate-400">{f.handled.note}</div></> : <span className="text-slate-300">—</span>}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right">
+                  {data.can_act && f.alert && <button onClick={() => handle(f)} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700">{f.handled ? "Edit note" : "Mark handled"}</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-slate-500">
+        Cross-checked with the route monitoring data. After {data.route_check_hour}:00 a driver scheduled to work with <b>no route under their name</b> is flagged, whether or not they clocked in. Also flagged: not clocked in {data.late_minutes}+ minutes after the
+        clock-in time on the schedule, a driver marked on <b>leave who has a route</b>, and leave without proof in the note. Region Heads, RFS and Managers are alerted and mark each flag handled with a note.
       </p>
     </div>
   );
@@ -352,8 +417,9 @@ function DriversView({ setError }) {
   );
 }
 
-export default function HybridAttendance() {
+export default function HybridAttendance({ requestView }) {
   const [view, setView] = useState("today");
+  useEffect(() => { if (requestView?.view) setView(requestView.view); }, [requestView]);
   const [error, setError] = useState(null);
   return (
     <div className="space-y-3">
@@ -367,7 +433,7 @@ export default function HybridAttendance() {
         <SegmentedControl options={VIEWS} value={view} onChange={setView} />
         <p className="text-xs text-slate-500">Beta · keyed in by station staff for now; the driver-app sign-in will replace this later.</p>
       </div>
-      {view === "today" ? <TodayView setError={setError} /> : view === "month" ? <MonthView setError={setError} /> : <DriversView setError={setError} />}
+      {view === "today" ? <TodayView setError={setError} /> : view === "flags" ? <FlagsView setError={setError} /> : view === "month" ? <MonthView setError={setError} /> : <DriversView setError={setError} />}
     </div>
   );
 }

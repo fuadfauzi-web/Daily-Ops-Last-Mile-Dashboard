@@ -204,6 +204,8 @@ async def save_record(p: RecordIn, user: CurrentUser = Depends(get_current_user)
     _check_day(day)
     if p.status not in STATUSES:
         raise HTTPException(status_code=422, detail="Status is present, absent or leave")
+    if p.status == "leave" and len(_clean(p.note, 300) or "") < 3:
+        raise HTTPException(status_code=422, detail="Leave needs its proof in the note (e.g. MC number, who approved it)")
     if r[7] and day < date.fromisoformat(str(r[7])[:10]):
         raise HTTPException(status_code=422, detail="That day is before the driver joined")
     cin = cout = None
@@ -259,6 +261,7 @@ async def day_view(date_: str | None = Query(default=None, alias="date"), user: 
     drivers = [r for r in await db.fetch_all(f"SELECT {_COLS} FROM hybrid_drivers ORDER BY station, name") if r[1] in stations]
     recs = {r[0]: r for r in await db.fetch_all("SELECT driver_id, work_date, status, clock_in, clock_out, note, recorded_by, edited_by, id, source, in_selfie, in_dist FROM hybrid_attendance WHERE work_date = %s", (d,))}
     shifts = {r[0]: r[1] for r in await db.fetch_all("SELECT person_ref, shift FROM schedule_entries WHERE person_type = 'hybrid' AND work_date = %s", (d,))}
+    routed = routed_names() if d == today else None  # the route monitoring data is today's
     rows = []
     for r in drivers:
         joined, end = _d(r[7]), _d(r[8])
@@ -266,7 +269,7 @@ async def day_view(date_: str | None = Query(default=None, alias="date"), user: 
         if not on_list or (joined and str(d) < joined) or (end and str(d) > end and r[0] not in recs):
             continue
         rec = recs.get(r[0])
-        rows.append({**_driver_json(r), "scheduled": shifts.get(r[2]), "record": _rec_json((r[0], d, *rec[2:])) if rec else None})
+        rows.append({**_driver_json(r), "scheduled": shifts.get(r[2]), "has_route": (None if routed is None else _norm(r[2]) in routed[0]), "record": _rec_json((r[0], d, *rec[2:])) if rec else None})
     return {"date": str(d), "rows": rows, "stations": sorted(stations), "can_edit": _can_edit(user), "window_days": WINDOW_DAYS}
 
 
@@ -318,3 +321,128 @@ async def housekeeping_drivers() -> None:
         await hybrid_app.purge_selfies()  # clock-in selfies are kept 14 days
     except Exception:  # noqa: BLE001 -- housekeeping must never take the loop down
         log.exception("Hybrid housekeeping failed")
+
+
+# ---------------------------------------------------------------- flags: attendance that does not match the route data (route monitoring)
+# A Hybrid driver's day is cross-checked against the route monitoring data (the routes the dashboard already reads every refresh -- a route under the driver's name means they are
+# delivering today). After ROUTE_CHECK_HOUR (14:00, Malaysia time) a driver SCHEDULED to work who has no route today is flagged -- whether or not they clocked in ("clocked in but no route" /
+# "not clocked in and no route"). Also: scheduled with a clock-in time and 30 minutes late with no clock-in; marked Leave but with a route today; Leave without its proof written in the note.
+# Region Heads, RFS, HOD, Managers are alerted for the first three kinds and mark each flag handled with a note.
+
+ROUTE_CHECK_HOUR = 14
+LATE_MINUTES = 30
+ALERT_KINDS = ("not_in", "no_route", "leave_routed")
+ALERT_POSITIONS = ("region_head", "rfs", "hod", "manager", "admin")
+KIND_LABEL = {"not_in": "Not clocked in", "no_route": "No route", "leave_routed": "On leave but has a route", "leave_no_proof": "Leave without proof"}
+
+
+def _norm(name: str | None) -> str:
+    return " ".join((name or "").split()).upper()
+
+
+def routed_names() -> tuple[set[str], str | None] | None:
+    """(the drivers who have a route in the latest route monitoring refresh, when it was captured), or None while that data isn't there or isn't from today."""
+    try:
+        import main  # late import: main imports this module
+
+        drivers, captured = list(getattr(main, "_routed_drivers", []) or []), getattr(main, "_routed_drivers_captured_at", None)
+    except Exception:  # noqa: BLE001
+        return None
+    if not drivers or not captured:
+        return None
+    try:
+        if datetime.fromisoformat(str(captured)).date() != _now().date():
+            return None
+    except ValueError:
+        return None
+    return {_norm(d.get("driver_name")) for d in drivers}, str(captured)
+
+
+def _alert_recipient(user: CurrentUser) -> bool:
+    return user.position in ALERT_POSITIONS
+
+
+async def compute_flags(user: CurrentUser) -> tuple[list[dict], dict]:
+    """(today's flags for the Hybrid drivers in the caller's scope, info about the data used)."""
+    now = _now()
+    today = now.date()
+    stations = _visible_stations(user)
+    drivers = [r for r in await db.fetch_all(f"SELECT {_COLS} FROM hybrid_drivers ORDER BY station, name") if r[1] in stations and r[9]]
+    ids = {r[0] for r in drivers}
+    recs = {r[0]: r for r in await db.fetch_all("SELECT driver_id, status, clock_in, note FROM hybrid_attendance WHERE work_date = %s", (today,)) if r[0] in ids}
+    sched = {(r[0], r[1]): r[2] for r in await db.fetch_all("SELECT station, person_ref, shift FROM schedule_entries WHERE person_type = 'hybrid' AND work_date = %s", (today,))}
+    acts = {(r[0], r[1]): r for r in await db.fetch_all("SELECT person_ref, kind, note, acted_by, acted_at FROM attendance_flag_actions WHERE person_type = 'hybrid' AND work_date = %s", (today,))}
+    routes = routed_names() if now.hour >= ROUTE_CHECK_HOUR else None
+    info = {"route_data": routes is not None, "route_captured_at": routes[1] if routes else None, "route_check_hour": ROUTE_CHECK_HOUR, "late_minutes": LATE_MINUTES,
+            "waiting_for_route_check": now.hour < ROUTE_CHECK_HOUR}
+    flags = []
+
+    def add(d, kind, detail):
+        a = acts.get((str(d[0]), kind))
+        zone, region = _zone_region(d[1])
+        flags.append({"driver_id": d[0], "name": d[2], "station": d[1], "zone": zone, "region": region, "date": str(today), "kind": kind, "label": KIND_LABEL[kind], "detail": detail,
+                      "alert": kind in ALERT_KINDS, "handled": {"note": a[2], "by": a[3], "at": _iso(a[4])} if a else None})
+
+    for d in drivers:
+        joined = _d(d[7])
+        if joined and joined > str(today):
+            continue
+        rec = recs.get(d[0])
+        v = sched.get((d[1], d[2]))
+        working = v == "WK" or bool(v and re.match(r"^\d\d:\d\d$", v))
+        status = rec[1] if rec else None
+        has_route = (routes is not None and _norm(d[2]) in routes[0])
+        if status == "leave":
+            if len((rec[3] or "").strip()) < 3:
+                add(d, "leave_no_proof", "Marked on leave, but no proof is written in the note.")
+            if has_route:
+                add(d, "leave_routed", "Marked on leave, but they have a route today.")
+            continue
+        if working and v != "WK" and status != "present" and now >= datetime.combine(today, datetime.strptime(v, "%H:%M").time()) + timedelta(minutes=LATE_MINUTES):
+            add(d, "not_in", f"Scheduled to clock in at {v}; no clock-in {LATE_MINUTES}+ minutes later.")
+        if routes is not None and working and not has_route:
+            add(d, "no_route", ("Clocked in" + (f" at {rec[2].strftime('%H:%M')}" if rec and rec[2] else " (keyed present)") + ", but there is no route under their name today.")
+                if status == "present" else f"Scheduled to work, not clocked in, and no route under their name today (checked after {ROUTE_CHECK_HOUR}:00).")
+    flags.sort(key=lambda f: (f["handled"] is not None, not f["alert"], f["station"], f["name"]))
+    return flags, info
+
+
+async def pending_flag_count(user: CurrentUser) -> int:
+    """The number in the Attendance alert for Hybrid: today's unhandled flags a Region Head / RFS / HOD / Manager has to act on."""
+    if not _alert_recipient(user):
+        return 0
+    flags, _ = await compute_flags(user)
+    return sum(1 for f in flags if f["alert"] and not f["handled"])
+
+
+@router.get("/api/attendance/hybrid/flags")
+async def list_flags(user: CurrentUser = Depends(get_current_user)):
+    flags, info = await compute_flags(user)
+    return {"flags": flags, "can_act": _alert_recipient(user), **info}
+
+
+class FlagAction(BaseModel):
+    driver_id: int
+    kind: str
+    note: str
+
+
+@router.post("/api/attendance/hybrid/flags/action")
+async def act_on_flag(p: FlagAction, user: CurrentUser = Depends(get_current_user)):
+    """A Region Head / RFS / HOD / Manager marks today's flag as handled, with what was done."""
+    if not _alert_recipient(user):
+        raise HTTPException(status_code=403, detail="Only a Region Head, RFS, HOD or Manager can handle a flag")
+    if p.kind not in KIND_LABEL:
+        raise HTTPException(status_code=422, detail="Unknown flag")
+    if len(p.note.strip()) < 3:
+        raise HTTPException(status_code=422, detail="Write what was done (a few words)")
+    d = await db.fetch_one(f"SELECT {_COLS} FROM hybrid_drivers WHERE id = %s", (p.driver_id,))
+    if d is None or d[1] not in _visible_stations(user):
+        raise HTTPException(status_code=403, detail="That driver is not in your scope")
+    today, now = _now().date(), _now()
+    existing = await db.fetch_one("SELECT id FROM attendance_flag_actions WHERE person_type = 'hybrid' AND person_ref = %s AND work_date = %s AND kind = %s", (str(p.driver_id), today, p.kind))
+    if existing:
+        await db.execute("UPDATE attendance_flag_actions SET note = %s, acted_by = %s, acted_at = %s WHERE id = %s", (p.note.strip()[:300], user.email, now, existing[0]))
+    else:
+        await db.execute("INSERT INTO attendance_flag_actions (person_type, person_ref, work_date, kind, note, acted_by, acted_at) VALUES ('hybrid',%s,%s,%s,%s,%s,%s)", (str(p.driver_id), today, p.kind, p.note.strip()[:300], user.email, now))
+    return {"ok": True}

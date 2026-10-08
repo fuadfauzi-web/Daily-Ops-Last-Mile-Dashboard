@@ -362,6 +362,12 @@ const SECTIONS = [
           schedule and attendance. A Hybrid driver <strong>never clocks out</strong> -- their day ends with their route data (built later). The station can open the clock-in selfie in <em>Today</em>; selfies are kept 14 days.
         </p>
         <p>
+          <strong>Hybrid flags</strong> -- <em>Attendance → Hybrid → Flags</em> cross-checks every Hybrid driver with the <strong>route monitoring data</strong> (a route under the driver's name means they are delivering today).
+          After <strong>2pm</strong>, a driver <strong>scheduled to work with no route</strong> is flagged -- whether they clocked in ("clocked in but no route") or not. Also flagged: not clocked in <strong>30 minutes</strong> after the
+          clock-in time on the schedule, a driver on <strong>leave who has a route</strong>, and <strong>leave without proof</strong> (a Leave day needs its proof in the note: MC number, who approved it). Region Heads, RFS and Managers
+          are alerted on the Attendance tab and press <em>Mark handled</em> with a note. <em>Today</em> has a Route column showing who has a route.
+        </p>
+        <p>
           <strong>Hybrid attendance</strong> -- <em>manual for now</em>: the Hybrid drivers are <strong>not typed in</strong>: the list is pulled from the Metabase question <em>Active Driver Details</em> every morning (name, driver ID, station, vehicle, joined / end date). A driver who resigned or was terminated stays on the list until the station updates their <strong>employment end date in Ninja Van Operator → Driver Strength</strong>; the next morning they turn inactive, are kept for a month, then removed for good with their attendance. Station staff then key each day in
           <em> Today</em>: choose <em>Present</em>, <em>Absent</em> or <em>Leave</em> (times and a note are optional) and press Save; <em>Month sheet</em> shows the grid. You can key or change the last 35 days and each
           entry shows who keyed it. The Schedule's Hybrid list comes from these drivers. When Hybrid drivers can sign in with their driver-app login, this changes.
