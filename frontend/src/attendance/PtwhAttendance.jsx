@@ -590,7 +590,7 @@ function CorrectionsView({ setError }) {
 
 // ---------------------------------------------------------------- Workers
 
-const EMPTY = { name: "", station: "", ic_no: "", phone: "", daily_rate: 50, joined_date: "", end_date: "", category: null };
+const EMPTY = { name: "", station: "", ic_no: "", phone: "", email: "", daily_rate: 50, joined_date: "", end_date: "", category: null };
 
 function WorkersView({ setError, me }) {
   const [data, setData] = useState(null);
@@ -629,7 +629,7 @@ function WorkersView({ setError, me }) {
   const used = [...new Set(data.workers.map((w) => w.station))].sort();
 
   const save = async () => {
-    const body = { name: form.name, station: form.station, ic_no: form.ic_no || null, phone: form.phone || null, daily_rate: Number(form.daily_rate), joined_date: form.joined_date || null, end_date: form.end_date || null, category: form.category || null };
+    const body = { name: form.name, station: form.station, ic_no: form.ic_no || null, phone: form.phone || null, email: (form.email || "").trim() || null, daily_rate: Number(form.daily_rate), joined_date: form.joined_date || null, end_date: form.end_date || null, category: form.category || null };
     try {
       if (form.id) await api.ptwhWorkerSave(form.id, body);
       else setNotice((await api.ptwhWorkerAdd(body)).message);
@@ -689,10 +689,10 @@ function WorkersView({ setError, me }) {
       <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Station</th><th className="px-3 py-2">IC</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Category</th><th className="px-3 py-2 text-right">Daily rate</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">End date</th><th className="px-3 py-2">App login</th><th className="px-3 py-2" /></tr>
+            <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Station</th><th className="px-3 py-2">IC</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Category</th><th className="px-3 py-2 text-right">Daily rate</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">End date</th><th className="px-3 py-2">App login</th><th className="px-3 py-2" /></tr>
           </thead>
           <tbody>
-            {workers.length === 0 && <tr><td colSpan={10} className="px-3 py-6 text-center text-slate-500">No PTWH yet.{data.can_edit ? " Add one with Add PTWH -- a new hire needs the Region Head's, then a Manager's approval." : ""}</td></tr>}
+            {workers.length === 0 && <tr><td colSpan={11} className="px-3 py-6 text-center text-slate-500">No PTWH yet.{data.can_edit ? " Add one with Add PTWH -- a new hire needs the Region Head's, then a Manager's approval." : ""}</td></tr>}
             {workers.map((w) => (
               <tr key={w.id} className={`border-t border-slate-100 ${w.active ? "" : "text-slate-400"}`}>
                 <td className="px-3 py-2 font-medium">{w.name}
@@ -705,6 +705,7 @@ function WorkersView({ setError, me }) {
                 <td className="px-3 py-2">{w.station}</td>
                 <td className="px-3 py-2 tabular-nums">{w.ic_no || "—"}</td>
                 <td className="px-3 py-2">{w.phone || "—"}</td>
+                <td className="px-3 py-2 text-xs">{w.email || <span className="text-amber-600" title="Needed so the PTWH can open the Ninjavan Shift app (it is added to the access list)">missing</span>}</td>
                 <td className="px-3 py-2"><CatChip code={w.category} categories={data.categories} /></td>
                 <td className="px-3 py-2 text-right tabular-nums">{rm(w.daily_rate)}</td>
                 <td className="px-3 py-2">{w.joined_date || "—"}</td>
@@ -719,7 +720,7 @@ function WorkersView({ setError, me }) {
                   ) : <span className="text-slate-400">—</span>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
-                  {data.can_edit && <button onClick={() => setForm({ ...w, ic_no: w.ic_no || "", phone: w.phone || "", joined_date: w.joined_date || "", end_date: w.end_date || "" })} className="text-xs text-slate-500 underline">Edit</button>}
+                  {data.can_edit && <button onClick={() => setForm({ ...w, ic_no: w.ic_no || "", phone: w.phone || "", email: w.email || "", joined_date: w.joined_date || "", end_date: w.end_date || "" })} className="text-xs text-slate-500 underline">Edit</button>}
                   {data.can_edit && !w.working && (w.approval === "approved" || w.approval === "rejected") && <button onClick={() => setRehire(w)} className="ml-2 text-xs font-semibold text-sky-700 underline">Re-hire</button>}
                 </td>
               </tr>
@@ -747,6 +748,7 @@ function WorkersView({ setError, me }) {
             <div className="grid grid-cols-2 gap-3">
               <Field label="IC number"><input className={`${inputCls} w-full`} value={form.ic_no} onChange={(e) => setForm({ ...form, ic_no: e.target.value })} placeholder="123456-12-1234" /></Field>
               <Field label="Phone"><input className={`${inputCls} w-full`} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+              <div className="col-span-2"><Field label="Email (the Google email they will open the Ninjavan Shift app with)"><input type="email" className={`${inputCls} w-full`} value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@gmail.com" /></Field></div>
               <Field label="Default category"><CategorySelect className={`${inputCls} w-full`} value={form.category} categories={data.categories} allowNone onChange={(v) => setForm({ ...form, category: v })} /></Field>
               <Field label="Daily rate (RM)"><input type="number" min="1" step="1" className={`${inputCls} w-full`} value={form.daily_rate} onChange={(e) => setForm({ ...form, daily_rate: e.target.value })} /></Field>
               <Field label="Joined"><input type="date" className={`${inputCls} w-full`} value={form.joined_date} onChange={(e) => setForm({ ...form, joined_date: e.target.value })} /></Field>

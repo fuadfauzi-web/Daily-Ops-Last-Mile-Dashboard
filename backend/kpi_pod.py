@@ -76,6 +76,17 @@ def _picker(data: dict, user: CurrentUser, region: str, zone: str, hub: str | No
 
 # ------------------------------------------------------------------------------------------------ compact structure: POD validation
 
+NO_COURIER = "(no courier)"
+
+
+def _weight(v) -> int:
+    """How many attempts a row stands for: 1 for a row per attempt, the Count column for the rows Metabase already counted (the valid attempts, and everything older than 30 days)."""
+    try:
+        return max(1, int(float(str(v).replace(",", "")))) if v not in (None, "") else 1
+    except ValueError:
+        return 1
+
+
 def build_pod(rows: list[dict]) -> dict:
     keys = {kd.norm(k): k for k in (rows[0] if rows else {})}
 
@@ -103,18 +114,20 @@ def build_pod(rows: list[dict]) -> dict:
         val = _s(g(r, "validationdatetime"))
         day = kd.to_iso_day(att) or kd.to_iso_day(val) or UNKNOWN_DAY
         days.add(day)
-        courier = sys.intern(_s(g(r, "couriername")) or "(no courier)")
+        courier = sys.intern(_s(g(r, "couriername")) or NO_COURIER)
         k = (ck, day, courier)
         cell = cd.get(k)
         if cell is None:
             cell = cd[k] = [0, 0]
-        cell[0] += 1
+        n = _weight(g(r, "count"))
+        cell[0] += n
         if result == "FAILURE":
-            cell[1] += 1
+            cell[1] += n
             reason = sys.intern(_s(g(r, "invalidpodreason")) or "(no reason given)")
             rk = (ck, day, courier, reason)
-            cdr[rk] = cdr.get(rk, 0) + 1
-            tns.append((ck, raw_hub, courier, _s(g(r, "trackingid")), sys.intern(_s(g(r, "transactionfailurereason"))), reason, att, val, sys.intern(_s(g(r, "validationusername"))), day))
+            cdr[rk] = cdr.get(rk, 0) + n
+            if _s(g(r, "trackingid")):  # the rows Metabase already counted (older than 30 days) have no tracking numbers
+                tns.append((ck, raw_hub, courier, _s(g(r, "trackingid")), sys.intern(_s(g(r, "transactionfailurereason"))), reason, att, val, sys.intern(_s(g(r, "validationusername"))), day))
     return {"cd": cd, "cdr": cdr, "tns": tns, "meta": meta, "real": real, "days": sorted(days), "vis": {}, "main": {}}
 
 
@@ -150,7 +163,7 @@ def _main_view(data: dict, user: CurrentUser, rng: dict) -> dict:
     out = {
         "hubs": [{**data["meta"][ck], "total": v[0], "invalid": v[1]} for ck, v in hubs.items()],
         "reasons": [{"code": ck, "reason": reason, "count": n} for (ck, reason), n in reasons.items()],
-        "couriers": [{"code": ck, "courier": courier, "total": v[0], "invalid": v[1]} for (ck, courier), v in couriers.items() if v[1] > 0],
+        "couriers": [{"code": ck, "courier": courier, "total": v[0], "invalid": v[1]} for (ck, courier), v in couriers.items() if v[1] > 0 and courier != NO_COURIER],
     }
     if len(data["main"]) > 64:
         data["main"].clear()
@@ -220,7 +233,7 @@ async def kpi_invalid_pod_drivers(
             d[reason] = d.get(reason, 0) + n
     rows = []
     for (ck, courier), (t, i) in agg.items():
-        if i < max(1, min_invalid):
+        if i < max(1, min_invalid) or courier == NO_COURIER:  # NO_COURIER = the day / station counts older than 30 days, which are not per driver
             continue
         ranked = sorted(reasons.get((ck, courier), {}).items(), key=lambda kv: (-kv[1], kv[0]))
         m = data["meta"][ck]
@@ -271,7 +284,7 @@ async def kpi_invalid_pod_trend(
     labels: dict[str, str] = {}
     all_day: dict[str, list] = {}
     for (ck, day, courier), (t, i) in data["cd"].items():
-        if day == UNKNOWN_DAY or not ok(ck) or (grain == "day" and not _in(rng, day)):
+        if day == UNKNOWN_DAY or not ok(ck) or (grain == "day" and not _in(rng, day)) or (level == "driver" and courier == NO_COURIER):
             continue
         b = bucket(day)
         key, label = entity(ck, courier)

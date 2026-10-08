@@ -102,6 +102,15 @@ async def _clear_station(station: str, launch: date) -> int | None:
         "SELECT a.id, a.in_selfie, a.out_selfie FROM ptwh_attendance a WHERE a.work_date < %s AND a.worker_id IN (SELECT id FROM ptwh_workers WHERE station = %s)", (launch, station))
     if await ptwh_app._delete_selfies(rows) < len(rows):
         return None
+    from fastapi.concurrency import run_in_threadpool
+    import storage
+
+    for key in [r[0] for r in await db.fetch_all(
+            "SELECT in_selfie FROM hybrid_attendance WHERE in_selfie IS NOT NULL AND work_date < %s AND driver_id IN (SELECT id FROM hybrid_drivers WHERE station = %s)", (launch, station))]:
+        try:
+            await run_in_threadpool(storage.delete, key)
+        except Exception:  # noqa: BLE001 -- retried next time (the marker is not set)
+            return None
     n = 0
     for sql, params in (
         ("DELETE FROM ptwh_corrections WHERE work_date < %s AND worker_id IN (SELECT id FROM ptwh_workers WHERE station = %s)", (launch, station)),

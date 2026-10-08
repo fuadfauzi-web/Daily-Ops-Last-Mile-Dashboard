@@ -91,8 +91,12 @@ def _unb64(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def _sign_token(worker_id: int, version: int, now_ts: float | None = None) -> str:
-    body = _b64(json.dumps({"w": worker_id, "v": version, "exp": int((now_ts or time.time()) + TOKEN_DAYS * 86400)}, separators=(",", ":")).encode())
+def _sign_token(worker_id: int, version: int, now_ts: float | None = None, kind: str = "p") -> str:
+    """kind: "p" = a PTWH (worker id), "h" = a Hybrid driver (driver id, hybrid_app.py). A PTWH call refuses a "h" token and the other way round."""
+    payload = {"w": worker_id, "v": version, "exp": int((now_ts or time.time()) + TOKEN_DAYS * 86400)}
+    if kind == "h":
+        payload["k"] = "h"
+    body = _b64(json.dumps(payload, separators=(",", ":")).encode())
     return f"{body}.{_b64(hmac.new(_secret(), body.encode(), hashlib.sha256).digest())}"
 
 
@@ -231,7 +235,7 @@ async def _session(authorization: str | None = Header(default=None), lang: str =
     """The PTWH behind this call: (worker row, credentials row). 401 for anything that is not a live session -- a changed password kills old sessions."""
     token = (authorization or "").removeprefix("Bearer ").strip()
     data = _read_token(token) if token else None
-    if not data:
+    if not data or data.get("k") == "h":  # a Hybrid driver's token is not a PTWH's
         raise _err(401, "relogin", lang)
     cred = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE worker_id = %s", (data["w"],))
     if cred is None or cred[9] or cred[4] != data["v"]:
@@ -264,6 +268,12 @@ class LoginIn(BaseModel):
 @router.post("/api/ptwh-app/login")
 async def app_login(p: LoginIn, lang: str = Depends(_lang), _k: None = Depends(_require_app_key)):
     row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
+    if row is None:  # not a PTWH: maybe a Hybrid driver (same app, same login page)
+        import hybrid_app
+
+        hy = await hybrid_app.login(p.username, p.password, lang)
+        if hy is not None:
+            return hy
     if row is None or row[9]:
         log.warning("PTWH login refused: %s", "no such username" if row is None else f"login for worker {row[0]} is switched off")
         raise _err(401, "bad_login", lang)
@@ -281,7 +291,7 @@ async def app_login(p: LoginIn, lang: str = Depends(_lang), _k: None = Depends(_
     if attendance_launch.station_state(w[4]) == "off":
         raise _err(403, "not_launched", lang)
     await db.execute("UPDATE ptwh_credentials SET failed_attempts=0, locked_until=NULL, last_login_at=%s WHERE worker_id=%s", (_now(), row[0]))
-    return {"token": _sign_token(row[0], row[4]), "name": w[1], "station": w[4], "needs_password_change": row[5] == "station"}
+    return {"token": _sign_token(row[0], row[4]), "name": w[1], "station": w[4], "needs_password_change": row[5] == "station", "kind": "ptwh"}
 
 
 def _record_row(r) -> dict | None:
@@ -495,6 +505,12 @@ class Recover(BaseModel):
 async def app_recover(p: Recover, lang: str = Depends(_lang), _k: None = Depends(_require_app_key)):
     """Forgot the password: the recovery code (given when the login was made) sets a new one, and a fresh recovery code replaces the used one."""
     row = await db.fetch_one(f"SELECT {_CRED_COLS} FROM ptwh_credentials WHERE username = %s", (p.username.strip().lower(),))
+    if row is None:
+        import hybrid_app
+
+        hy = await hybrid_app.recover(p.username, p.recovery_code, p.new_password, lang)
+        if hy is not None:
+            return hy
     if row is None or row[9]:
         raise _err(401, "bad_recover", lang)
     if (e := _locked(row[7], lang)) is not None:
@@ -550,7 +566,7 @@ async def create_login(worker_id: int, p: LoginCreate, user: CurrentUser = Depen
         raise HTTPException(status_code=422, detail="Username: 3-30 letters, numbers, dot, dash or underscore, starting with a letter or number")
     if await db.fetch_one("SELECT worker_id FROM ptwh_credentials WHERE worker_id=%s", (worker_id,)):
         raise HTTPException(status_code=409, detail="This PTWH already has a login")
-    if await db.fetch_one("SELECT worker_id FROM ptwh_credentials WHERE username=%s", (username,)):
+    if await db.fetch_one("SELECT worker_id FROM ptwh_credentials WHERE username=%s", (username,)) or await db.fetch_one("SELECT driver_id FROM hybrid_credentials WHERE username=%s", (username,)):
         raise HTTPException(status_code=409, detail="That username is taken -- try another")
     pw, code = _random_password(), _random_recovery()
     now = _now()

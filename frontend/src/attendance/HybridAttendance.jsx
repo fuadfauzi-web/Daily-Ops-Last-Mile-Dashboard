@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import Skeleton from "../components/Skeleton";
 import SegmentedControl from "../components/SegmentedControl";
+import LoginModal from "./PtwhLogin";
 import { btnCls, Field, hhmm, inputCls, localDay, localMonth, Modal, useScopeFilter } from "./ui";
 
 // Attendance -> Hybrid (2026-10-04, staging): MANUAL for now. Station staff key in the Hybrid drivers' details and each day's attendance; once Hybrid drivers can sign in
@@ -89,6 +90,12 @@ function DayRow({ row, date, canEdit, onSaved, setError }) {
       <td className="whitespace-nowrap px-3 py-2 text-right">
         {canEdit && dirty && status && <button disabled={busy} onClick={save} className={`${btnCls} bg-brand py-1 text-white disabled:opacity-50`}>Save</button>}
         {canEdit && !dirty && rec && <button onClick={clear} className="text-xs text-slate-400 underline">Clear</button>}
+        {rec?.source === "app" && !dirty && (
+          <div className="text-[10px]">
+            <span className="rounded bg-emerald-50 px-1 py-0.5 text-emerald-700" title={`Clocked in the app, ${rec.in_dist ?? "?"} m from the station`}>app · {rec.in_dist ?? "?"} m</span>
+            {rec.id && rec.has_photo && <a className="ml-1 text-slate-500 underline" target="_blank" rel="noreferrer" href={`/api/attendance/hybrid/photo/${rec.id}`}>photo</a>}
+          </div>
+        )}
         {rec && !dirty && <div className="mt-0.5 text-[10px] text-slate-400" title={`Keyed by ${rec.recorded_by}${rec.edited_by ? `, changed by ${rec.edited_by}` : ""}`}>{(rec.edited_by || rec.recorded_by || "").split("@")[0]}</div>}
       </td>
     </tr>
@@ -220,15 +227,48 @@ function DriverModal({ driver, stations, onClose, onSaved, setError }) {
   );
 }
 
+function EmailModal({ driver, onClose, onSaved, setError }) {
+  const [email, setEmail] = useState(driver.email || "");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.hybridDriverEdit(driver.id, { email });
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal title={`Email · ${driver.name}`} onClose={onClose}>
+      <Field label="The Google email the driver will open the Ninjavan Shift app with">
+        <input type="email" autoFocus className={`${inputCls} w-full`} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@gmail.com" />
+      </Field>
+      <p className="mt-2 text-xs text-slate-500">Head Office adds this email to the app's access list. Leave it empty to remove it.</p>
+      <div className="mt-3 flex justify-end gap-2">
+        <button onClick={onClose} className={`${btnCls} text-slate-600`}>Cancel</button>
+        <button disabled={saving} onClick={save} className={`${btnCls} bg-brand text-white disabled:opacity-50`}>Save</button>
+      </div>
+    </Modal>
+  );
+}
+
 function DriversView({ setError }) {
   const [data, setData] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [logins, setLogins] = useState({ logins: {}, app_url: null });
+  const [loginFor, setLoginFor] = useState(null);
+  const [emailFor, setEmailFor] = useState(null);
   const [editing, setEditing] = useState(null); // {} = new, driver = edit
   const [showOff, setShowOff] = useState(false);
-  const load = useCallback(() => { api.hybridDrivers().then(setData).catch((e) => setError(e.message)); }, [setError]);
+  const load = useCallback(() => {
+    api.hybridDrivers().then(setData).catch((e) => setError(e.message));
+    api.hybridLogins().then(setLogins).catch(() => {});
+  }, [setError]);
   useEffect(load, [load]);
+  const { rows: inScope, controls } = useScopeFilter(data?.drivers || []); // a hook: it must run on every render, before the early return below
   if (!data) return <Skeleton rows={4} />;
-  const { rows: inScope, controls } = useScopeFilter(data.drivers);
   const rows = inScope.filter((d) => showOff || d.active);
   const src = data.source || {};
   const refresh = async () => {
@@ -270,22 +310,31 @@ function DriversView({ setError }) {
       <div className="max-h-[70vh] overflow-auto rounded-xl bg-white ring-1 ring-slate-200">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Driver ID</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Vehicle type</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">End</th><th className="px-3 py-2" /></tr>
+            <tr><th className="px-3 py-2">Station</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Driver ID</th><th className="px-3 py-2">Phone</th><th className="px-3 py-2">Email</th><th className="px-3 py-2">Vehicle type</th><th className="px-3 py-2">Joined</th><th className="px-3 py-2">End</th><th className="px-3 py-2" /></tr>
           </thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">No Hybrid driver yet -- the list fills from Metabase every morning.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-slate-500">No Hybrid driver yet -- the list fills from Metabase every morning.</td></tr>}
             {rows.map((d) => (
               <tr key={d.id} className={`border-t border-slate-100 ${d.active ? "" : "text-slate-400"}`}>
                 <td className="px-3 py-2">{d.station}</td>
                 <td className="px-3 py-2 font-medium">{d.name}{!d.active && <span className="ml-1 text-[10px]">(inactive)</span>}</td>
                 <td className="px-3 py-2">{d.driver_id}</td>
                 <td className="px-3 py-2">{d.phone}</td>
+                <td className="px-3 py-2 text-xs">
+                  {d.email ? <span>{d.email}</span> : <span className="text-amber-600" title="Needed so the driver can open the Ninjavan Shift app (it is added to the access list)">missing</span>}
+                  {data.can_edit && d.active && <button onClick={() => setEmailFor(d)} className="ml-2 text-[11px] text-slate-500 underline">{d.email ? "change" : "add"}</button>}
+                </td>
                 <td className="px-3 py-2">{d.vehicle_type}</td>
                 <td className="px-3 py-2 tabular-nums">{d.joined_date}</td>
                 <td className="px-3 py-2 tabular-nums">{d.end_date}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
+                  {data.can_edit && d.active && (
+                    <button onClick={() => setLoginFor(d)} className={`mr-3 text-xs underline ${logins.logins[d.id]?.disabled ? "text-red-600" : logins.logins[d.id] ? "text-emerald-700" : "text-slate-500"}`}>
+                      {logins.logins[d.id] ? `${logins.logins[d.id].username}${logins.logins[d.id].disabled ? " (off)" : ""}` : "Create login"}
+                    </button>
+                  )}
                   {data.can_manage && (
-                    <span className="flex justify-end gap-3 text-xs">
+                    <span className="inline-flex justify-end gap-3 text-xs">
                       <button onClick={() => setEditing(d)} className="text-slate-500 underline">Edit</button>
                       <button onClick={() => toggle(d)} className="text-slate-500 underline">{d.active ? "Switch off" : "Switch on"}</button>
                     </span>
@@ -296,6 +345,8 @@ function DriversView({ setError }) {
           </tbody>
         </table>
       </div>
+      {loginFor && <LoginModal kind="hybrid" worker={loginFor} login={logins.logins[loginFor.id]} appUrl={logins.app_url} onClose={() => setLoginFor(null)} onChanged={load} setError={setError} />}
+      {emailFor && <EmailModal driver={emailFor} onClose={() => setEmailFor(null)} onSaved={() => { setEmailFor(null); load(); }} setError={setError} />}
       {editing && <DriverModal driver={editing.id ? editing : null} stations={data.stations} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} setError={setError} />}
     </div>
   );

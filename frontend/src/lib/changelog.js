@@ -20,6 +20,17 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-10",
+    title: "Attendance: Ninjavan Shift for Hybrid drivers, and emails to whitelist",
+    type: "new",
+    area: "People",
+    feature: "attendance",
+    points: [
+      "The clock-in app is now called Ninjavan Shift and Hybrid drivers / riders use it too: the station creates their login (Attendance -> Hybrid -> Drivers -> Create login), they clock in with their phone's location and a selfie, and see their schedule (Working with the time to clock in, Off, Leave) and their attendance. There is no clock-out -- their day ends with their route data. The station can open the selfie from the Today view.",
+      "PTWH and Hybrid drivers now have an email (PTWH -> Workers; Hybrid -> Drivers -> add). It is the Google email they open the app with. The new Emails tab (Superadmin, HOD and Managers) lists everyone with their station and has Copy buttons, so the emails can be pasted straight into the access whitelist.",
+    ],
+  },
+  {
     date: "2026-10-09",
     title: "Header stays at the screen edges when you zoom out",
     type: "fixed",
