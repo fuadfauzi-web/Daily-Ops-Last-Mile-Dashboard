@@ -64,6 +64,17 @@ export const CHANGELOG = [
   },
   {
     date: "2026-10-08",
+    title: "Restock has its own tab; Document Compliance shows the drivers",
+    feature: "restockBundles",
+    type: "improved",
+    points: [
+      "Restock is no longer inside Shipper Radar. It has its own group in the sidebar (and its own header tabs): Restock NXD, with the sub-tabs Restock NXD and Restock NXD On Hold Details, and Document Compliance.",
+      "Restock NXD On Hold Details has a new Damage / Missing Type column (Damaged, Missing, Parcel On Hold, Shipper Issue), also in its CSV.",
+      "B2B Document Compliance is now called Document Compliance. Its tracking-number list (and the list behind each count) shows the Document Route Driver and the Bundle Delivery Driver.",
+    ],
+  },
+  {
+    date: "2026-10-08",
     title: "New: Manager Dashboard (HOD and Fleet Manager)",
     feature: "managerDashboard",
     minRank: 2,

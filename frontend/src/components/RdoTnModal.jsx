@@ -30,6 +30,8 @@ const COLUMNS = [
   { label: "Bundle Status", text: bundleStatusText, sort: (r) => r.bundle_delivered_at || r.bundle_status },
   { label: "Bundle Last Sweep Hub", text: (r) => r.bundle_last_sweep_hub ?? "", sort: (r) => r.bundle_last_sweep_hub },
   { label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at), sort: (r) => r.bundle_last_sweep_at },
+  { label: "Document Route Driver", text: (r) => r.rdo_route_driver ?? "", sort: (r) => r.rdo_route_driver },
+  { label: "Bundle Delivery Driver", text: (r) => r.bundle_delivery_driver ?? "", sort: (r) => r.bundle_delivery_driver },
 ];
 
 export default function RdoTnModal({ state, onClose }) {

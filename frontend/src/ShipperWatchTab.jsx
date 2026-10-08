@@ -7,23 +7,19 @@ import TnModal from "./components/TnModal";
 import DetailPanel from "./components/DetailPanel";
 import SegmentedControl from "./components/SegmentedControl";
 import Skeleton from "./components/Skeleton";
-import RestockTab from "./RestockTab";
 import AgingDetailsTab from "./AgingDetailsTab";
 import HighValueView from "./HighValueView";
 
 // 2026-09-24 feedback: renamed Shipper Watch -> Shipper Radar, restructured
-// as two sub-tabs -- the original per-shipper SLA table below (now "Shipper
-// SLA") plus Restock (previously its own top-level tab, unchanged, just
-// relocated here since it's the same kind of watch-list).
+// as sub-tabs -- the original per-shipper SLA table below (now "Summary View").
 // 2026-10-08 feedback: renamed Hypercare Shippers, with Summary View (the old Shipper SLA table), Cold Chain, Special Handling Shippers (Orca,
-// Soda Express + their guideline) and High-Value Shippers (Zalora NXD, Amway, Watson, Zitron, Ceva: tracking-number level + SLA). Restock stays as
-// the last sub-tab -- it was not in the list of four, but dropping it would take B2B Document Compliance away, so it is kept until told otherwise.
+// Soda Express + their guideline) and High-Value Shippers (Zalora NXD, Amway, Watson, Zitron, Ceva: tracking-number level + SLA). Restock moved out to
+// its own Restock tab (2026-10-08, with Document Compliance).
 const RADAR_SUB_TABS = [
   { key: "sla", label: "Summary View" },
   { key: "cold", label: "Cold Chain" }, // 2026-09-25: lives here only (its own top-level tab was removed)
   { key: "special", label: "Special Handling Shippers" },
   { key: "highvalue", label: "High-Value Shippers" },
-  { key: "restock", label: "Restock" },
 ];
 
 // Amway/Watson SLA: attempt on day 0, succeed delivery before day 3 -- so 0-Attempt
@@ -356,13 +352,8 @@ export default function ShipperWatchTab({ regionFilter, zoneFilter, search, me, 
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
-      ) : subTab === "highvalue" ? (
-        <HighValueView
-          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
-        />
       ) : (
-        <RestockTab
+        <HighValueView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />

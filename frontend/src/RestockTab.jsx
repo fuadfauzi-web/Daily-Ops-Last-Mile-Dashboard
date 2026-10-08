@@ -22,10 +22,10 @@ const RESTOCK_COLUMNS = [
   { key: "restock_breach", label: "Restock Breach", clickable: true },
 ];
 
+// Restock NXD is one header tab with these two sub-tabs; Document Compliance is a header tab of its own (2026-10-08).
 const SUB_TABS = [
   { key: "nxd", label: "Restock NXD" },
-  { key: "onhold", label: "Restock On Hold Details" },
-  { key: "compliance", label: "B2B Document Compliance" },
+  { key: "onhold", label: "Restock NXD On Hold Details" },
 ];
 
 function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
@@ -176,6 +176,8 @@ const RDO_TN_COLUMNS = [
   { key: "bundle_tracking_number", label: "Bundle Tracking Number", text: (r) => r.bundle_tracking_number ?? "—" },
   { key: "bundle_delivered_at", label: "Bundle Status", text: bundleStatusText },
   { key: "bundle_last_sweep_at", label: "Bundle Last Sweep", text: (r) => formatLocalDateTime(r.bundle_last_sweep_at) },
+  { key: "document_route_driver", label: "Document Route Driver", text: (r) => r.rdo_route_driver ?? "—" },
+  { key: "bundle_delivery_driver", label: "Bundle Delivery Driver", text: (r) => r.bundle_delivery_driver ?? "—" },
 ];
 
 // Station-table breakdown of Total TN by status (backend/aggregate.py's
@@ -358,12 +360,12 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
             rows={detailRow ? columnsToDetailRows(stationColumns, detailRow) : []}
           />
           <DataTable
-            title="B2B Document Compliance — by station"
+            title="Document Compliance — by station"
             titleExtra={
               <button
                 onClick={() =>
                   exportCsv(
-                    `daily-ops-b2b-compliance-stations-${new Date().toISOString().slice(0, 10)}.csv`,
+                    `daily-ops-document-compliance-stations-${new Date().toISOString().slice(0, 10)}.csv`,
                     ["Region", "Zone", "Station", "Total TN", ...RDO_STATUS_COLUMNS.map((c) => c.label), ...RDO_BREACH_COLUMNS.map((c) => c.label)],
                     filteredStations.map((r) => [
                       r.region, r.zone, r.station_name, r.total_tn,
@@ -403,7 +405,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
                 <button
                   onClick={() =>
                     exportCsv(
-                      `daily-ops-b2b-compliance-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                      `daily-ops-document-compliance-tns-${new Date().toISOString().slice(0, 10)}.csv`,
                       ["Station", ...RDO_TN_COLUMNS.map((c) => c.label)],
                       filteredTnRows.map((r) => [r.station_name, ...RDO_TN_COLUMNS.map((c) => c.text(r))])
                     )
@@ -442,6 +444,7 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
   );
 }
 
+// Header tab "Restock NXD": the NXD station table plus its On Hold Details, as two sub-tabs.
 export default function RestockTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick }) {
   const [subTab, setSubTab] = useState("nxd");
 
@@ -454,18 +457,18 @@ export default function RestockTab({ regionFilter, zoneFilter, search, me, exclu
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
-      ) : subTab === "onhold" ? (
+      ) : (
         <RestockBundlesView
           view="attention"
-          regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
-          excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
-        />
-      ) : (
-        <RdoComplianceView
           regionFilter={regionFilter} zoneFilter={zoneFilter} search={search} me={me}
           excludeEastMalaysia={excludeEastMalaysia} refreshTick={refreshTick}
         />
       )}
     </div>
   );
+}
+
+// Header tab "Document Compliance" (was B2B Document Compliance, a Restock sub-tab).
+export function DocumentComplianceTab(props) {
+  return <RdoComplianceView {...props} />;
 }
