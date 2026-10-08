@@ -301,7 +301,7 @@ export default function App() {
       ...i,
       label: i.id === "urgent" && FEATURES.taskList ? i.taskListLabel : i.label,
       active: i.dash ? tab === "dashboard" && dashTab === (i.dashKey || i.id) && (!i.recGroup || recGroup === i.recGroup) : tab === i.id,
-      badge: i.id === "admin" ? notifCounts?.documents_stale || 0 : i.id === "help" ? (notifCounts?.feedback_replies_unread || 0) + whatsNewUnread : i.id === "attendance" ? (notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) + (notifCounts?.staff_flags || 0) : bells.badge,
+      badge: i.id === "admin" ? notifCounts?.documents_stale || 0 : i.id === "help" ? (notifCounts?.feedback_replies_unread || 0) + whatsNewUnread : i.id === "attendance" ? (notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) + (notifCounts?.staff_flags || 0) + (notifCounts?.hybrid_flags || 0) : bells.badge,
       dot: bells.dot,
     };
   });
@@ -389,7 +389,7 @@ export default function App() {
                       title="A reply to your feedback, or updates in What's new you haven't read"
                     />
                   )}
-                  {t === "attendance" && <BellBadge count={(notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) + (notifCounts?.staff_flags || 0)} title="PTWH clocks by QR code to review, and new PTWH hires waiting for your approval" />}
+                  {t === "attendance" && <BellBadge count={(notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) + (notifCounts?.staff_flags || 0) + (notifCounts?.hybrid_flags || 0)} title="PTWH clocks by QR code to review, and new PTWH hires waiting for your approval" />}
                 </button>
               ))}
             </nav>
@@ -495,7 +495,7 @@ export default function App() {
                       title="A reply to your feedback, or updates in What's new you haven't read"
                     />
                   )}
-                  {t === "attendance" && <BellBadge count={(notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) + (notifCounts?.staff_flags || 0)} title="PTWH clocks by QR code to review, and new PTWH hires waiting for your approval" />}
+                  {t === "attendance" && <BellBadge count={(notifCounts?.ptwh_review || 0) + (notifCounts?.ptwh_approvals || 0) + (notifCounts?.ptwh_corrections || 0) + (notifCounts?.staff_flags || 0) + (notifCounts?.hybrid_flags || 0)} title="PTWH clocks by QR code to review, and new PTWH hires waiting for your approval" />}
                 </button>
               ))}
             </nav>

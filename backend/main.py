@@ -3503,6 +3503,7 @@ class Notifications(BaseModel):
     tasks_due_soon: int
     ptwh_approvals: int = 0  # new PTWH hires waiting for MY approval (Region Head: step 1, Manager / HOD: step 2) -- attendance.approvals_count
     ptwh_corrections: int = 0  # PTWH clock corrections waiting for MY approval (Region Head / RFS / Manager) -- attendance_corrections.pending_count
+    hybrid_flags: int = 0  # Hybrid drivers whose attendance does not match the route data / schedule today (not yet handled) -- only for a Region Head / RFS / HOD / Manager
     attendance_visible: bool = True  # False = none of my stations has reached its Attendance launch date (minus the test-run day), so the tab is hidden
     ptwh_review: int = 0  # PTWH QR (emergency) clocks waiting for review in my stations -- only for Station Heads / Region Heads / Managers (ptwh_app.review_count)
     staff_flags: int = 0  # Station Heads / Fleet Assistants who should have clocked in / out and did not (not yet handled) -- only for a Region Head / RFS / HOD / Manager
@@ -3555,6 +3556,7 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
         "ptwh_approvals": await attendance.approvals_count(user),
         "ptwh_corrections": await attendance_corrections.pending_count(user),
         "staff_flags": await staff_attendance.pending_flag_count(user),
+        "hybrid_flags": await hybrid_attendance.pending_flag_count(user),
         "attendance_visible": attendance_launch.sees_everything(user) or bool(attendance._visible_stations(user)),
         "documents_stale": await _documents_stale_count(user),
         **await tasklist_counts(user),

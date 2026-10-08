@@ -25,12 +25,14 @@ export default function AttendanceTab({ me }) {
   const [approvals, setApprovals] = useState(0);
   const [corrections, setCorrections] = useState(0);
   const [staffFlags, setStaffFlags] = useState(0);
+  const [hybridFlags, setHybridFlags] = useState(0);
+  const [goHybrid, setGoHybrid] = useState(null); // {view, n} -- asks the Hybrid tab to show its Flags view
   const [test, setTest] = useState([]); // stations in the test-run day before their launch date
   const [goStaff, setGoStaff] = useState(null); // {view, n} -- asks the Staff tab to show its Flags view
   const [goView, setGoView] = useState(null); // {view, n} -- asks the PTWH tab to show its Audit / Workers view
 
   const loadReview = useCallback(() => {
-    api.notifications().then((n) => { setReview(n.ptwh_review || 0); setApprovals(n.ptwh_approvals || 0); setCorrections(n.ptwh_corrections || 0); setStaffFlags(n.staff_flags || 0); }).catch(() => {});
+    api.notifications().then((n) => { setReview(n.ptwh_review || 0); setApprovals(n.ptwh_approvals || 0); setCorrections(n.ptwh_corrections || 0); setStaffFlags(n.staff_flags || 0); setHybridFlags(n.hybrid_flags || 0); }).catch(() => {});
   }, []);
   useEffect(() => { api.launchMe().then((l) => setTest(l.test || [])).catch(() => {}); }, []);
   useEffect(() => {
@@ -59,6 +61,12 @@ export default function AttendanceTab({ me }) {
           <button onClick={() => { setSub("staff"); setGoStaff({ view: "flags", n: Date.now() }); }} className="rounded-md bg-red-700 px-3 py-1.5 text-sm font-semibold text-white">Open Flags</button>
         </div>
       )}
+      {hybridFlags > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-900 ring-1 ring-red-200">
+          <span><strong>{hybridFlags} Hybrid driver{hybridFlags === 1 ? "" : "s"} {hybridFlags === 1 ? "doesn't" : "don't"} match the schedule or route data today.</strong> No route after 2pm, not clocked in on time, or on leave with a route -- needs action.</span>
+          <button onClick={() => { setSub("hybrid"); setGoHybrid({ view: "flags", n: Date.now() }); }} className="rounded-md bg-red-700 px-3 py-1.5 text-sm font-semibold text-white">Open Hybrid Flags</button>
+        </div>
+      )}
       {corrections > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-violet-50 p-3 text-sm text-violet-900 ring-1 ring-violet-200">
           <span><strong>{corrections} PTWH clock correction{corrections === 1 ? "" : "s"} waiting for your approval.</strong> The pay for {corrections === 1 ? "that day is" : "those days is"} on hold until you approve or reject {corrections === 1 ? "it" : "them"}.</span>
@@ -82,7 +90,7 @@ export default function AttendanceTab({ me }) {
       ) : sub === "emails" ? (
         <EmailsView />
       ) : sub === "hybrid" ? (
-        <HybridAttendance />
+        <HybridAttendance requestView={goHybrid} />
       ) : sub === "schedule" ? (
         <ScheduleViewWrapper />
       ) : null}

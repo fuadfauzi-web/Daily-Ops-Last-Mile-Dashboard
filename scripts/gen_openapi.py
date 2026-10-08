@@ -76,6 +76,8 @@ SUMMARIES = {
     ("post", "/api/attendance/hybrid/drivers"): "Manager / Superadmin only: add a Hybrid driver by hand (the list normally comes from Metabase every morning).",
     ("patch", "/api/attendance/hybrid/drivers/{driver_id}"): "Manager / Superadmin only: edit or switch off a Hybrid driver; a name change follows onto the Schedule and an end date in the past switches them off.",
     ("get", "/api/attendance/emails"): "The emails of every active PTWH and Hybrid driver (group, station, zone, region, name, email) to paste into the Ninjavan Shift access whitelist; Superadmin / HOD / Managers only.",
+    ("get", "/api/attendance/hybrid/flags"): "Hybrid drivers whose attendance does not match the schedule or route monitoring data today: no route after 2pm, not clocked in on time, leave with a route, leave without proof.",
+    ("post", "/api/attendance/hybrid/flags/action"): "Region Head / RFS / HOD / Manager marks a Hybrid flag as handled with a note.",
     ("get", "/api/attendance/hybrid/logins"): "Which Hybrid drivers in scope have a Ninjavan Shift login (username only, never the password).",
     ("post", "/api/attendance/hybrid/drivers/{driver_id}/login"): "Create a Hybrid driver's app login: a username, with a generated temporary password and recovery code returned once.",
     ("post", "/api/attendance/hybrid/drivers/{driver_id}/login/reset"): "Reset a Hybrid driver's password: a new temporary password and recovery code are returned once and old sessions end.",

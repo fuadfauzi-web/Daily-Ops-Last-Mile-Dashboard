@@ -20,6 +20,17 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-10",
+    title: "Hybrid flags from the route data: no route, not clocked in, leave without proof",
+    type: "new",
+    area: "People",
+    feature: "attendance",
+    points: [
+      "Attendance -> Hybrid -> Flags cross-checks each Hybrid driver with the route monitoring data. After 2pm a driver scheduled to work with no route under their name is flagged (clocked in or not), and so is a driver marked on leave who has a route. Not clocking in 30 minutes after the clock-in time on the schedule is flagged too. Region Heads, RFS and Managers are alerted and mark each flag handled with a note. Today also shows who has a route.",
+      "A day marked Leave now needs its proof in the note (MC number, who approved it).",
+    ],
+  },
+  {
     date: "2026-10-09",
     title: "Invalid POD keeps the whole year",
     type: "improved",

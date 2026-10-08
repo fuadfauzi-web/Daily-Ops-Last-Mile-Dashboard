@@ -344,6 +344,8 @@ export const api = {
   hybridLoginReset: (id) => request(`/api/attendance/hybrid/drivers/${id}/login/reset`, { method: "POST" }),
   hybridLoginDisable: (id, disabled) => request(`/api/attendance/hybrid/drivers/${id}/login/disable`, { method: "POST", body: JSON.stringify({ disabled }) }),
   attendanceEmails: () => request("/api/attendance/emails"),
+  hybridFlags: () => request("/api/attendance/hybrid/flags"),
+  hybridFlagAction: (payload) => request("/api/attendance/hybrid/flags/action", { method: "POST", body: JSON.stringify(payload) }),
   hybridDriversRefresh: () => request("/api/attendance/hybrid/drivers/refresh", { method: "POST" }),
   hybridClear: (driverId, date) => request(`/api/attendance/hybrid/record?driver_id=${driverId}&work_date=${encodeURIComponent(date)}`, { method: "DELETE" }),
   scheduleShiftTime: (payload) => request("/api/attendance/schedule/shift-times", { method: "PUT", body: JSON.stringify(payload) }),
