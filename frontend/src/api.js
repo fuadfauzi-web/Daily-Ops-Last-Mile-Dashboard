@@ -204,8 +204,27 @@ export const api = {
       return res.json();
     },
     list: () => request("/api/feedback"),
+    get: (id) => request(`/api/feedback/${id}`),
+    // a message in an open case (the sender's follow-up or the Superadmin's reply), optionally with one image / PDF
+    reply: async (id, message, file) => {
+      const formData = new FormData();
+      formData.append("message", message);
+      if (file) formData.append("file", file);
+      const res = await fetch(`/api/feedback/${id}/messages`, { method: "POST", body: formData, headers: viewAsHeaders() });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          detail = (await res.json()).detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      return res.json();
+    },
     update: (id, payload) => request(`/api/feedback/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     attachmentUrl: (id) => `/api/feedback/${id}/attachment`,
+    messageAttachmentUrl: (messageId) => `/api/feedback/messages/${messageId}/attachment`,
     remove: (id) => request(`/api/feedback/${id}`, { method: "DELETE" }),
   },
   // Urgent TN items live on the server now (assignable to a PIC) -- see backend

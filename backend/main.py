@@ -48,6 +48,7 @@ import hybrid_roster
 import ptwh_app
 import work_schedule as schedule_mod
 import departments
+import feedback
 import metabase_pull
 import role_access
 import headcount
@@ -667,7 +668,7 @@ async def _prune_old_snapshots(captured_at: datetime) -> None:
     await db.execute(
         "DELETE FROM refresh_log WHERE started_at < %s", (captured_at - timedelta(days=30),)
     )
-    await _prune_closed_feedback(captured_at)
+    await feedback.prune_closed(captured_at)
 
 
 async def _maybe_capture_pending_yesterday_route(health_v3_rows: list[dict]) -> None:
@@ -790,6 +791,7 @@ app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (k
 app.include_router(schedule_mod.router)  # Attendance -> Schedule: who works when (PTWH / Staff / Hybrid), edited by Station / Region Heads and Managers (schedule.py)
 app.include_router(role_access.router)  # Superadmin -> Role Access: none / view / edit per role and module, enforced in auth.get_current_user (role_access.py)
 app.include_router(metabase_pull.router)  # Superadmin -> Documents: the Metabase API pulls and their schedule (metabase_pull.py)
+app.include_router(feedback.router)  # Help -> Feedback: cases and their conversations (feedback.py)
 app.include_router(departments.router)  # Superadmin -> Departments + the Users page's department list (departments.py)
 app.include_router(headcount.router)  # Headcount seats (TBA): added / removed by Manager / HOD, read by Management View -> Capacity (headcount.py)
 app.include_router(recovery_cases.router)  # Recovery -> PDCNR / Damage / No Label from Hub: rows keyed by Recovery or the hub, answered by the other side (recovery_cases.py)
@@ -2788,211 +2790,7 @@ class OkResult(BaseModel):
     detail: str | None = None
 
 
-# 2026-09-25: feedback is now a small ticket workflow (V27 migration). The sender
-# can attach one image/PDF (<= 2 MB, stored on the row), sees ONLY their own
-# feedback plus the admin's reply, and an admin sees everyone's, replies and
-# closes it. A closed feedback (and its attachment) is deleted 7 days after it
-# was closed -- see _prune_closed_feedback, run from the refresh loop.
-FEEDBACK_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
-FEEDBACK_ATTACHMENT_TYPES = {
-    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-    ".webp": "image/webp", ".pdf": "application/pdf",
-}
-FEEDBACK_CLOSED_RETENTION_DAYS = 7
-
-
-class FeedbackRow(BaseModel):
-    id: int
-    email: str
-    role: str
-    scope_type: str
-    scope_value: str | None
-    message: str
-    created_at: str
-    status: str
-    reply: str | None
-    replied_by: str | None
-    replied_at: str | None
-    closed_at: str | None
-    delete_after: str | None
-    reply_unread: bool
-    has_attachment: bool
-    attachment_name: str | None
-    attachment_type: str | None
-    is_mine: bool
-
-
-class FeedbackUpdate(BaseModel):
-    reply: str | None = None
-    status: str | None = None  # 'open' | 'closed'
-
-
-@app.post("/api/feedback", response_model=OkResult)
-async def submit_feedback(
-    message: str = Form(...), file: UploadFile | None = File(None), user: CurrentUser = Depends(get_current_user)
-):
-    message = message.strip()
-    if not message:
-        raise HTTPException(status_code=422, detail="Feedback message can't be empty")
-    if len(message) > 4000:
-        raise HTTPException(status_code=422, detail="Feedback message is too long (max 4000 characters)")
-
-    attachment_name = attachment_type = attachment_data = None
-    if file is not None and file.filename:
-        ext = os.path.splitext(file.filename)[1].lower()
-        content_type = FEEDBACK_ATTACHMENT_TYPES.get(ext)
-        if content_type is None:
-            raise HTTPException(status_code=422, detail="Attach an image (png, jpg, gif, webp) or a PDF")
-        attachment_data = await file.read()
-        if len(attachment_data) > FEEDBACK_MAX_ATTACHMENT_BYTES:
-            raise HTTPException(status_code=422, detail="Attachment is too large (max 20 MB)")
-        if not attachment_data:
-            raise HTTPException(status_code=422, detail="The attachment is empty")
-        attachment_name, attachment_type = os.path.basename(file.filename)[:255], content_type
-
-    # Too big for a database row, so the file goes to object storage (the row keeps
-    # only its key) -- see storage.py. Upload first: if it fails nothing is saved.
-    attachment_key = None
-    if attachment_data:
-        attachment_key = storage.safe_key("feedback", f"{uuid.uuid4().hex}{os.path.splitext(attachment_name)[1].lower()}")
-        try:
-            await run_in_threadpool(storage.put_bytes, attachment_key, attachment_data, content_type=attachment_type)
-        except Exception:  # noqa: BLE001
-            log.exception("Feedback attachment upload failed")
-            raise HTTPException(status_code=503, detail="Couldn't store the attachment right now -- try again, or send without it")
-
-    await db.execute(
-        """INSERT INTO app_feedback
-           (email, role, scope_type, scope_value, message, created_at, attachment_name, attachment_type, attachment_key)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-        (
-            user.email, user.role, user.scope_type, ", ".join(user.scope_values) or None, message,
-            datetime.now(timezone.utc), attachment_name, attachment_type, attachment_key,
-        ),
-    )
-    return {"ok": True}
-
-
-_FEEDBACK_COLUMNS = (
-    "id, email, role, scope_type, scope_value, message, created_at, status, reply, replied_by, replied_at, "
-    "closed_at, reply_unread, attachment_name, attachment_type, (attachment_key IS NOT NULL)"
-)
-
-
-@app.get("/api/feedback", response_model=list[FeedbackRow])
-async def list_feedback(user: CurrentUser = Depends(get_current_user)):
-    """Admins get everyone's feedback; anyone else gets only their own. Opening the
-    list as the sender clears the "new reply" flag (drives the header bell)."""
-    is_admin = user.role == "admin"
-    if is_admin:
-        rows = await db.fetch_all(f"SELECT {_FEEDBACK_COLUMNS} FROM app_feedback ORDER BY created_at DESC")
-    else:
-        rows = await db.fetch_all(
-            f"SELECT {_FEEDBACK_COLUMNS} FROM app_feedback WHERE LOWER(email) = %s ORDER BY created_at DESC",
-            (user.email.lower(),),
-        )
-    out = []
-    for r in rows:
-        (fid, email, role, scope_type, scope_value, message, created_at, status, reply, replied_by, replied_at,
-         closed_at, reply_unread, att_name, att_type, has_att) = r
-        mine = email.lower() == user.email.lower()
-        out.append({
-            "id": fid, "email": email, "role": role, "scope_type": scope_type, "scope_value": scope_value,
-            "message": message, "created_at": _iso(created_at), "status": status, "reply": reply,
-            "replied_by": replied_by, "replied_at": _iso(replied_at), "closed_at": _iso(closed_at),
-            "delete_after": _iso(closed_at + timedelta(days=FEEDBACK_CLOSED_RETENTION_DAYS)) if closed_at else None,
-            "reply_unread": bool(reply_unread) and mine, "has_attachment": bool(has_att),
-            "attachment_name": att_name, "attachment_type": att_type, "is_mine": mine,
-        })
-    await db.execute("UPDATE app_feedback SET reply_unread = 0 WHERE LOWER(email) = %s AND reply_unread = 1", (user.email.lower(),))
-    return out
-
-
-@app.get("/api/feedback/{feedback_id}/attachment")
-async def feedback_attachment(feedback_id: int, user: CurrentUser = Depends(get_current_user)):
-    row = await db.fetch_one(
-        "SELECT email, attachment_name, attachment_type, attachment_key FROM app_feedback WHERE id = %s", (feedback_id,)
-    )
-    if row is None or row[3] is None or not (user.role == "admin" or row[0].lower() == user.email.lower()):
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    name = (row[1] or "attachment").replace('"', "")
-    disposition = "inline" if row[2].startswith("image/") else "attachment"
-    try:
-        content = await run_in_threadpool(storage.get_bytes, row[3])
-    except Exception:  # noqa: BLE001
-        log.exception("Feedback attachment read failed")
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    return Response(
-        content=content, media_type=row[2],
-        headers={"Content-Disposition": f'{disposition}; filename="{name}"', "X-Content-Type-Options": "nosniff"},
-    )
-
-
-@app.patch("/api/feedback/{feedback_id}", response_model=OkResult)
-async def update_feedback(feedback_id: int, payload: FeedbackUpdate, user: CurrentUser = Depends(get_current_user)):
-    _require_admin(user)
-    row = await db.fetch_one("SELECT id FROM app_feedback WHERE id = %s", (feedback_id,))
-    if row is None:
-        raise HTTPException(status_code=404, detail="Feedback not found")
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    sets, params = [], []
-    if payload.reply is not None:
-        reply = payload.reply.strip()
-        if not reply:
-            raise HTTPException(status_code=422, detail="Reply can't be empty")
-        if len(reply) > 4000:
-            raise HTTPException(status_code=422, detail="Reply is too long (max 4000 characters)")
-        sets += ["reply = %s", "replied_by = %s", "replied_at = %s", "reply_unread = 1"]
-        params += [reply, user.email, now]
-    if payload.status is not None:
-        if payload.status == "closed":
-            sets += ["status = 'closed'", "closed_at = %s"]
-            params.append(now)
-        elif payload.status == "open":
-            sets += ["status = 'open'", "closed_at = NULL"]
-        else:
-            raise HTTPException(status_code=422, detail="status must be 'open' or 'closed'")
-    if not sets:
-        raise HTTPException(status_code=422, detail="Nothing to update")
-    params.append(feedback_id)
-    await db.execute(f"UPDATE app_feedback SET {', '.join(sets)} WHERE id = %s", tuple(params))
-    return {"ok": True}
-
-
-async def _delete_feedback_files(keys: list[str]) -> None:
-    for key in keys:
-        if not key:
-            continue
-        try:
-            await run_in_threadpool(storage.delete, key)
-        except Exception:  # noqa: BLE001 - an orphaned file is harmless, the row is what matters
-            log.warning("Couldn't delete feedback attachment %s", key)
-
-
-@app.delete("/api/feedback/{feedback_id}", response_model=OkResult)
-async def delete_feedback(feedback_id: int, user: CurrentUser = Depends(get_current_user)):
-    """The sender removes their own feedback -- it disappears for the admins too,
-    whatever its status (2026-09-25 feedback), attachment included."""
-    row = await db.fetch_one("SELECT email, attachment_key FROM app_feedback WHERE id = %s", (feedback_id,))
-    if row is None or row[0].lower() != user.email.lower():
-        raise HTTPException(status_code=404, detail="Feedback not found")
-    await db.execute("DELETE FROM app_feedback WHERE id = %s", (feedback_id,))
-    await _delete_feedback_files([row[1]])
-    return {"ok": True}
-
-
-async def _prune_closed_feedback(now: datetime) -> None:
-    cutoff = now - timedelta(days=FEEDBACK_CLOSED_RETENTION_DAYS)
-    expired = await db.fetch_all(
-        "SELECT attachment_key FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s",
-        (cutoff,),
-    )
-    if not expired:
-        return
-    await db.execute(
-        "DELETE FROM app_feedback WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < %s", (cutoff,)
-    )
-    await _delete_feedback_files([r[0] for r in expired])
+# Feedback is a conversation (cases + messages) -- see feedback.py.
 
 
 # 2026-09-25: Urgent TN moved from a per-browser localStorage list to the
@@ -3544,8 +3342,10 @@ async def notifications(user: CurrentUser = Depends(get_current_user)):
     owner = await db.fetch_one(
         "SELECT COUNT(*) FROM urgent_tn_items WHERE LOWER(created_by) = %s AND owner_unseen = 1", (me,)
     )
+    # the bell on Help: a new reply on my own feedback; for the Superadmin also a new message on any open case (feedback.py)
     unread = await db.fetch_one(
-        "SELECT COUNT(*) FROM app_feedback WHERE LOWER(email) = %s AND reply_unread = 1", (me,)
+        "SELECT COUNT(*) FROM app_feedback WHERE (LOWER(email) = %s AND reply_unread = 1) OR (%s = 1 AND status = 'open' AND admin_unread = 1)",
+        (me, 1 if user.role == "admin" and not user.is_impersonating else 0),
     )
     return {
         "urgent_notify": notify,
