@@ -4,7 +4,7 @@
 // flag there (and keep the Guide's text for it up to date; see GuideTab.jsx).
 export const FEATURES = {
   // Dashboard
-  shipperRadar: true, // "Shipper Radar" (with Restock + Cold Chain sub-tabs) instead of "Shipper Watch" + a separate Restock tab
+  shipperRadar: true, // "Hypercare Shippers" (formerly Shipper Radar; Summary / Cold Chain / Special Handling / High-Value / Restock sub-tabs) instead of "Shipper Watch" + a separate Restock tab
   stationHealthCombined: true, // one expandable Region > Zone > Station table, no colour scale, CSV export
   completionSummary: true, // Route Monitoring -> Completion Summary
   bucketDetails: true, // Shipment Details buckets show % of Total Fresh and open their tracking numbers

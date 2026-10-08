@@ -42,6 +42,10 @@ METRIC_KEYS = (
     "total_fresh", "age_gt3", "reschedule", "still_ovfd",
     "prior_d0", "prior_gt_d0", "unsweep_document", "unsweep_parcel", "cod_pct_hub",
     "total_routed", "routed_pct", "attendance", "cod_pct_routed",
+    # 2026-10-08 feedback: Total Routed split into Total Route (valid routes) and Total OPS Route (OPS routes under
+    # OPS_ROUTE_MIN_SUCCESS successes -- invalid), Invalid OPS Attempt (those routes' parcels with no success, also
+    # added to total_in_hub) and Route Monitoring's Productivity. See merge_routed_into_station_metrics.
+    "total_ops_route", "invalid_ops_attempt", "productivity",
 )
 
 # Metrics with an actual tracking-number list behind them (for the UI's click-to-see-TNs
@@ -430,11 +434,18 @@ def merge_routed_into_station_metrics(by_station: dict[str, dict], routed_by_sta
         r = routed_by_station.get(hub)
         if r is None:
             continue
-        row["total_routed"] = r["total_routed"]
+        # Total Routed (Station Health) = parcels on VALID routes; the parcels on invalid OPS routes sit in Total OPS Route,
+        # and the ones on them with no success (Invalid OPS Attempt) were never really attempted, so they also count
+        # as In Hub. Route Monitoring itself still shows every route (the two columns add back up to its Total Routed).
+        row["total_ops_route"] = r["ops_invalid_parcels"]
+        row["invalid_ops_attempt"] = r["ops_invalid_attempt"]
+        row["total_routed"] = r["total_routed"] - r["ops_invalid_parcels"]
+        row["total_in_hub"] += r["ops_invalid_attempt"]
         row["attendance"] = r["attendance"]
         row["cod_pct_routed"] = r["cod_pct"]
-        denom = r["total_routed"] + row["total_in_hub"]
-        row["routed_pct"] = round(r["total_routed"] / denom * 100, 2) if denom else 0.0
+        row["productivity"] = r["success_rate"]  # Route Monitoring's Productivity (same number as its Success Rate)
+        denom = row["total_routed"] + row["total_in_hub"]
+        row["routed_pct"] = round(row["total_routed"] / denom * 100, 2) if denom else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -792,10 +803,19 @@ ROUTED_STATION_KEYS = (
 )
 
 
+# 2026-10-08 feedback: an OPS route (a hub route, no real driver) only counts as a real route when it has at least this
+# many successes; with fewer it is invalid -- its parcels were routed but never really attempted.
+OPS_ROUTE_MIN_SUCCESS = 5
+# Kept off ROUTED_STATION_KEYS on purpose: these are only read by merge_routed_into_station_metrics (same refresh, in
+# memory), not stored in routed_stations, and Route Monitoring itself is unchanged.
+OPS_INVALID_KEYS = ("ops_invalid_routes", "ops_invalid_parcels", "ops_invalid_attempt")
+
+
 def _empty_routed_row(hub_code: str) -> dict:
     name, _full, zone, region = HUBS[hub_code]
     row = {"station_code": hub_code, "station_name": name, "zone": zone, "region": region}
     row.update({k: 0 for k in ROUTED_STATION_KEYS})
+    row.update({k: 0 for k in OPS_INVALID_KEYS})
     return row
 
 
@@ -837,6 +857,13 @@ def build_routed_view(routed_rows: list[dict]) -> tuple[dict[str, dict], list[di
         row["total_cod"] += r.get("Total COD") or 0
 
         parsed = _parse_driver(r.get("Driver") or "")
+        # Invalid OPS route (2026-10-08): an OPS route with fewer than OPS_ROUTE_MIN_SUCCESS successes. One query-512 row
+        # is one route, so the per-route success count is right here.
+        route_success = r.get("Current Total Success") or 0
+        if parsed["position"] == "OPS" and route_success < OPS_ROUTE_MIN_SUCCESS:
+            row["ops_invalid_routes"] += 1
+            row["ops_invalid_parcels"] += total_routed
+            row["ops_invalid_attempt"] += max(0, total_routed - route_success)
         # Attendance/HD/HR/ID/IR headcount is the ONLY place a driver's position
         # matters -- OPS and unparseable names still get a driver_row below, and
         # still count in every other total (already added above regardless).
@@ -983,21 +1010,29 @@ def rollup(station_rows: list[dict], group_key: str) -> list[dict]:
         groups[key] = _zero_group(group_key, key)
     cod_hub_num: dict[str, float] = {k: 0 for k in groups}
     cod_routed_num: dict[str, float] = {k: 0 for k in groups}
+    productivity_num: dict[str, float] = {k: 0 for k in groups}
+    routes_all: dict[str, float] = {k: 0 for k in groups}  # every route's parcels (valid + invalid OPS) -- the weight for the rates
     for row in station_rows:
         key = row[group_key]
         g = groups.setdefault(key, _zero_group(group_key, key))
         cod_hub_num.setdefault(key, 0)
         cod_routed_num.setdefault(key, 0)
+        productivity_num.setdefault(key, 0)
+        routes_all.setdefault(key, 0)
         for k in METRIC_KEYS:
-            if k in ("cod_pct_hub", "cod_pct_routed", "routed_pct"):
+            if k in ("cod_pct_hub", "cod_pct_routed", "routed_pct", "productivity"):
                 continue
             g[k] += row[k]
+        row_routes = row["total_routed"] + row["total_ops_route"]
+        routes_all[key] += row_routes
         cod_hub_num[key] += row["cod_pct_hub"] * row["total_in_hub"] / 100
-        cod_routed_num[key] += row["cod_pct_routed"] * row["total_routed"] / 100
+        cod_routed_num[key] += row["cod_pct_routed"] * row_routes / 100
+        productivity_num[key] += row["productivity"] * row_routes / 100
         g["station_count"] += 1
     for key, g in groups.items():
         g["cod_pct_hub"] = round(cod_hub_num[key] / g["total_in_hub"] * 100, 1) if g["total_in_hub"] else 0.0
-        g["cod_pct_routed"] = round(cod_routed_num[key] / g["total_routed"] * 100, 1) if g["total_routed"] else 0.0
+        g["cod_pct_routed"] = round(cod_routed_num[key] / routes_all[key] * 100, 1) if routes_all[key] else 0.0
+        g["productivity"] = round(productivity_num[key] / routes_all[key] * 100, 2) if routes_all[key] else 0.0
         # total_routed/total_in_hub are both plain summed counts above, so the
         # group's routed_pct is just their ratio -- no numerator reconstruction
         # needed (unlike the two cod_pct_* fields, which only store a percentage).
@@ -1042,6 +1077,22 @@ _ORCA_PATTERN = re.compile(r"ORCA", re.IGNORECASE)
 # watch as Orca -- identified by TN prefix SB2CX or SDEWM.
 _SODAXPRESS_PATTERN = re.compile(r"^(SB2CX|SDEWM)", re.IGNORECASE)
 
+# 2026-10-08: two more hypercare shippers with the same SLA rule as Amway -- Zitron (tracking numbers start ZTRON) and Ceva (start LSGMY).
+_ZITRON_PATTERN = re.compile(r"^ZTRON", re.IGNORECASE)
+_CEVA_PATTERN = re.compile(r"^LSGMY", re.IGNORECASE)
+
+
+def hypercare_sla_shipper(tn: str | None) -> str | None:
+    """amway / watson / zitron / ceva (the shippers sharing the 0 Attempt + Aging >D0 rule) for a tracking number, else None."""
+    if not tn:
+        return None
+    if _ZITRON_PATTERN.search(tn):
+        return "zitron"
+    if _CEVA_PATTERN.search(tn):
+        return "ceva"
+    kind = _classify_shipper(tn)
+    return {"Amway": "amway", "Watson": "watson"}.get(kind)
+
 
 def _classify_shipper(tn: str | None) -> str:
     if not tn or not isinstance(tn, str) or not tn.strip():
@@ -1060,6 +1111,8 @@ def _classify_shipper(tn: str | None) -> str:
 SHIPPER_WATCH_KEYS = (
     "amway_zero_attempt", "amway_aging",
     "watson_zero_attempt", "watson_aging",
+    "zitron_zero_attempt", "zitron_aging",
+    "ceva_zero_attempt", "ceva_aging",
     "orca_ovfd", "orca_other",
     "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
@@ -1072,6 +1125,7 @@ SHIPPER_WATCH_KEYS = (
 
 SHIPPER_DRILLDOWN_METRICS = (
     "amway_zero_attempt", "amway_aging", "watson_zero_attempt", "watson_aging",
+    "zitron_zero_attempt", "zitron_aging", "ceva_zero_attempt", "ceva_aging",
     "orca_ovfd", "orca_other", "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
@@ -1111,8 +1165,8 @@ def build_shipper_watch(
             continue
         is_orca = bool(_ORCA_PATTERN.search(tn or ""))
         is_sodaxpress = bool(_SODAXPRESS_PATTERN.search(tn or ""))
-        shipper = None if (is_orca or is_sodaxpress) else _classify_shipper(tn)
-        if not is_orca and not is_sodaxpress and shipper not in ("Amway", "Watson"):
+        shipper = None if (is_orca or is_sodaxpress) else hypercare_sla_shipper(tn)
+        if not is_orca and not is_sodaxpress and shipper is None:
             continue
         status = r.get("granular_status")
         attempts = r.get("delivery_attempts") or 0
@@ -1136,7 +1190,7 @@ def build_shipper_watch(
                 tn_details[hub]["sodaxpress_other"].append(tn)
             continue
 
-        prefix = "amway" if shipper == "Amway" else "watson"
+        prefix = shipper  # amway / watson / zitron / ceva -- same 0 Attempt and Aging >D0 rule
         if status == "Arrived at Sorting Hub" and attempts == 0:
             row[f"{prefix}_zero_attempt"] += 1
             tn_details[hub][f"{prefix}_zero_attempt"].append(tn)

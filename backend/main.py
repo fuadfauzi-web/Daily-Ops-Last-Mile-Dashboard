@@ -32,6 +32,8 @@ from kpi import router as kpi_router
 from kpi_cisp import router as kpi_cisp_router
 from kpi_cod import router as kpi_cod_router
 import kpi_data
+import hypercare
+import metric_logic
 import kpi_targets
 import management_view
 import manager_dashboard
@@ -385,6 +387,10 @@ async def _do_refresh_metrics(triggered_by: str | None = None) -> dict:
             cc_tns_for_sla = cc_tns
         except Exception:  # noqa: BLE001
             log.exception("Cold Chain refresh failed -- keeping the previous data")
+        try:
+            hypercare.refresh(health_rows, zalora_nxd_tns, datetime.now(timezone.utc))
+        except Exception:  # noqa: BLE001 - the High-Value Shippers tab is isolated from the rest of the refresh
+            log.exception("Hypercare High-Value refresh failed -- keeping the previous data")
         try:
             apply_shipper_sla(shipper_by_station, shipper_tn_details, health_rows, cc_tns_for_sla, zalora_nxd_tns)
         except Exception:  # noqa: BLE001 - Action Board's Shipper SLA is isolated from the rest of the refresh
@@ -772,6 +778,7 @@ app.include_router(attendance_corrections.router)  # Attendance -> PTWH: control
 app.include_router(attendance_launch.router)  # Settings -> Launch Timeline: Attendance goes live by batch (attendance_launch.py)
 app.include_router(hybrid_attendance.router)  # Attendance -> Hybrid: manual drivers + attendance (hybrid_attendance.py)
 app.include_router(staff_attendance.router)  # Attendance -> Staff: Station Heads / Fleet Assistants clock in by location (staff_attendance.py)
+app.include_router(hypercare.router)  # Hypercare Shippers: High-Value TN level, SLA + guideline settings (hypercare.py)
 app.include_router(attendance.router)  # Attendance: PTWH clock in / out, monthly sheet, payable (attendance.py, staging)
 app.include_router(ptwh_app.admin_router)  # Attendance -> PTWH: app logins, station QR + location, selfie audit (ptwh_app.py, staging)
 app.include_router(ptwh_app.router)  # the PTWH app's own API: NOT behind SSO (key + token); declare /api/ptwh-app SSO-exempt in the portal
@@ -907,6 +914,9 @@ class MetricFields(BaseModel):
     routed_pct: float
     attendance: int
     cod_pct_routed: float
+    total_ops_route: int = 0
+    invalid_ops_attempt: int = 0
+    productivity: float = 0.0
 
 
 class StationRow(MetricFields):
@@ -1141,6 +1151,30 @@ async def processing_time(user: CurrentUser = Depends(get_current_user)):
         })
     scoped = _scope_filter_stations(shaped, user)
     return {"today": today.isoformat(), "days": sorted({s["day"] for s in scoped}), "rows": scoped}
+
+
+class MetricLogicRow(BaseModel):
+    key: str
+    label: str
+    group: str
+    source: str
+    logic: list[str]
+    rollup: str
+    tn_list: bool
+    notes: list[str]
+
+
+class MetricLogicResponse(BaseModel):
+    how: list[str]
+    metrics: list[MetricLogicRow]
+
+
+@app.get("/api/admin/metric-logic", response_model=MetricLogicResponse)
+async def admin_metric_logic(user: CurrentUser = Depends(get_current_user)):
+    """Superadmin -> Metric Logic Summary: where each Station Health number comes from and the rule applied (2026-10-08).
+    Admin only, so the text stays out of the public bundle."""
+    _require_admin(user)
+    return metric_logic.summary()
 
 
 class TnLastScanRequest(BaseModel):
@@ -1503,7 +1537,9 @@ async def routed_view(driver_type: str | None = None, user: CurrentUser = Depend
     station_name_by_code: dict[str, str] = {}
     if health_latest and health_latest[0] is not None:
         for r in await db.fetch_all(
-            "SELECT station_code, station_name, zero_attempt_total, total_in_hub FROM station_metrics WHERE captured_at = %s",
+            # total_in_hub here minus Station Health's Invalid OPS Attempt (2026-10-08): Route Monitoring's own Total Routed
+            # already counts those parcels, so adding them to In Hub as well would count them twice in its Routed %.
+            "SELECT station_code, station_name, zero_attempt_total, total_in_hub - invalid_ops_attempt FROM station_metrics WHERE captured_at = %s",
             (health_latest[0],),
         ):
             station_name_by_code[r[0]] = r[1]
@@ -1606,6 +1642,10 @@ class ShipperFields(BaseModel):
     amway_aging: int
     watson_zero_attempt: int
     watson_aging: int
+    zitron_zero_attempt: int = 0
+    zitron_aging: int = 0
+    ceva_zero_attempt: int = 0
+    ceva_aging: int = 0
     orca_ovfd: int
     orca_other: int
     sodaxpress_ovfd: int
@@ -4049,6 +4089,7 @@ def _refresh_row_to_dict(row) -> dict:
 # fields (missing_open, cod_pct_routed) that never became a Station Health
 # column, so they have nothing to score.
 _SLA_METRIC_KEYS = (
+    "total_ops_route", "invalid_ops_attempt", "productivity",
     "total_fresh", "total_routed", "routed_pct", "attendance", "total_in_hub", "still_ovfd", "cod_pct_hub",
     "zero_attempt_total", "zero_attempt", "zero_attempt_gt_d0", "age_gt3", "on_hold", "reschedule", "prior_d0", "prior_gt_d0",
     "unsweep_document", "unsweep_parcel", "missing_hub", "missing_driver_rider", "missing_ship_in",

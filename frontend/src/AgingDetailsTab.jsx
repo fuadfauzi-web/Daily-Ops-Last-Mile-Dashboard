@@ -54,25 +54,32 @@ const AGE_BUCKET_COLUMNS = AGE_BUCKETS.map((b) => ({ key: b.key, label: b.label,
 const ageBucketKey = (age) => (age <= 0 ? "age_0" : age <= 3 ? `age_${age}` : age <= 5 ? "age_4_5" : age <= 7 ? "age_6_7" : "age_8_plus");
 const AGE_FILTER_OPTIONS = AGE_BUCKETS.map((b) => ({ value: b.key, label: b.label }));
 
-function localRollup(rows, groupKey) {
+function localRollup(rows, groupKey, extraKeys = []) {
   const groups = {};
   rows.forEach((r) => {
     const key = r[groupKey];
     if (!groups[key]) {
       groups[key] = { key, region: r.region, station_count: 0, total: 0 };
       AGE_BUCKETS.forEach((b) => (groups[key][b.key] = 0));
+      extraKeys.forEach((k) => (groups[key][k] = 0));
     }
     groups[key].station_count += 1;
     groups[key].total += r.total;
     AGE_BUCKETS.forEach((b) => (groups[key][b.key] += r[b.key]));
+    extraKeys.forEach((k) => (groups[key][k] += r[k] || 0));
   });
   return Object.values(groups);
 }
 
+// A response may add its own pivot columns (`extra_columns`, e.g. the SLA-breach counts of Hypercare's High-Value shippers) and its own
+// tracking-number columns (`tn_extra_columns`). A value of Breached / Due today is coloured.
+const TONE_CLASS = { Breached: "font-semibold text-status-critical", "Due today": "font-semibold text-status-warning" };
+
 // source="coldchain" (2026-09-25) reuses this whole view for the Cold Chain tab: the same
 // station x age-bucket pivot and TN table, but only for the tracking numbers in Redash
 // query 1410 (joined to query 78 by the backend) -- so no sub-view picker.
-export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, source = "aging" }) {
+export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, excludeEastMalaysia, refreshTick, source = "aging", shipper }) {
+  const isHc = source === "hypercare"; // Hypercare Shippers -> High-Value: one shipper's parcels, with its SLA columns
   const isCold = source === "coldchain";
   const [agingType, setAgingType] = useState("overall");
   const [data, setData] = useState(null);
@@ -96,12 +103,16 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
   // scroll position back to the top.
   useEffect(() => {
     setData(null);
-  }, [agingType, isCold]);
+  }, [agingType, isCold, isHc, shipper]);
   useEffect(() => {
-    (isCold ? api.coldChain() : api.agingDetails(agingType))
+    (isHc ? api.hypercareShipper(shipper) : isCold ? api.coldChain() : api.agingDetails(agingType))
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [agingType, refreshTick, isCold]);
+  }, [agingType, refreshTick, isCold, isHc, shipper]);
+
+  const extraCols = useMemo(() => data?.extra_columns || [], [data]);
+  const extraTnCols = useMemo(() => data?.tn_extra_columns || [], [data]);
+  const extraBucketCols = useMemo(() => extraCols.map((c) => ({ key: c.key, label: c.label, render: (r) => (r[c.key] || 0).toLocaleString() })), [extraCols]);
 
   const filteredStations = useMemo(() => {
     if (!data) return [];
@@ -153,8 +164,8 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
     });
   }, [baseTnRows, tnSortKey, tnSortDir, tnStationFilter, tnStatusFilter, tnAgeFilter]);
 
-  const zoneGroups = useMemo(() => localRollup(filteredStations, "zone"), [filteredStations]);
-  const regionGroups = useMemo(() => localRollup(filteredStations, "region"), [filteredStations]);
+  const zoneGroups = useMemo(() => localRollup(filteredStations, "zone", extraCols.map((c) => c.key)), [filteredStations, extraCols]);
+  const regionGroups = useMemo(() => localRollup(filteredStations, "region", extraCols.map((c) => c.key)), [filteredStations, extraCols]);
 
   const toggleSort = (key) => {
     if (key === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -180,6 +191,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
     { key: "station_name", label: "Station", sticky: true, align: "left" },
     { key: "total", label: "Total", render: (r) => r.total.toLocaleString() },
     ...AGE_BUCKET_COLUMNS,
+    ...extraBucketCols,
   ];
 
   const tnColumns = [
@@ -191,11 +203,18 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
       className: () => "font-mono text-xs",
       render: (r) => (c.format ? (r[c.key] ? c.format(r[c.key]) : "—") : r[c.key] ?? "—"),
     })),
+    ...extraTnCols.map((c) => ({
+      key: c.key,
+      label: c.label,
+      sortable: true,
+      className: (r) => TONE_CLASS[r[c.key]] || "text-slate-700",
+      render: (r) => r[c.key] ?? "—",
+    })),
   ];
 
   return (
     <div className="space-y-3">
-      {!isCold && <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />}
+      {!isCold && !isHc && <SegmentedControl options={AGING_TYPES} value={agingType} onChange={setAgingType} />}
 
       {!data && <Skeleton />}
 
@@ -209,13 +228,13 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
             title="By region (follows filters below)"
             groupLabel="Region"
             rows={regionGroups}
-            columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS]}
+            columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS, ...extraBucketCols]}
           />
           <GroupTable
             title="By zone (follows filters below)"
             groupLabel="Zone"
             rows={zoneGroups}
-            columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS]}
+            columns={[{ key: "total", label: "Total", render: (r) => r.total.toLocaleString() }, ...AGE_BUCKET_COLUMNS, ...extraBucketCols]}
           />
 
           <DetailPanel
@@ -232,9 +251,9 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
               <button
                 onClick={() =>
                   exportCsv(
-                    `daily-ops-${isCold ? "cold-chain" : `aging-${agingType}`}-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label)],
-                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key])])
+                    `daily-ops-${isHc ? `hypercare-${shipper}` : isCold ? "cold-chain" : `aging-${agingType}`}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Region", "Zone", "Station", "Total", ...AGE_BUCKETS.map((b) => b.label), ...extraCols.map((c) => c.label)],
+                    filteredStations.map((r) => [r.region, r.zone, r.station_name, r.total, ...AGE_BUCKETS.map((b) => r[b.key]), ...extraCols.map((c) => r[c.key] ?? "")])
                   )
                 }
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -269,9 +288,9 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                 <button
                 onClick={() =>
                   exportCsv(
-                    `daily-ops-${isCold ? "cold-chain" : `aging-${agingType}`}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ["Station", ...TN_COLUMNS.map((c) => c.label)],
-                    filteredTnRows.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? "")])
+                    `daily-ops-${isHc ? `hypercare-${shipper}` : isCold ? "cold-chain" : `aging-${agingType}`}-tns-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Station", ...TN_COLUMNS.map((c) => c.label), ...extraTnCols.map((c) => c.label)],
+                    filteredTnRows.map((r) => [r.station_name, ...TN_COLUMNS.map((c) => r[c.key] ?? ""), ...extraTnCols.map((c) => r[c.key] ?? "")])
                   )
                 }
                 className="rounded-lg border border-slate-300 px-3 py-1 font-display text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -298,6 +317,7 @@ export default function AgingDetailsTab({ regionFilter, zoneFilter, search, me, 
                     parcels sitting at a non-station hub such as CC-GLE appear as their own "Other hubs" rows
                   </>
                 )}
+                {data.footer_note && <> · {data.footer_note}</>}
                 {data.tn_rows_truncated && (
                   <span className="ml-1 font-medium text-status-critical">
                     · showing the oldest {AGING_TN_ROWS_CAP.toLocaleString()} of {data.tn_rows_total.toLocaleString()}{" "}

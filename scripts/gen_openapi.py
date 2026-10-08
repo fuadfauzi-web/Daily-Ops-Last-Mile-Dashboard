@@ -90,6 +90,7 @@ SUMMARIES = {
     ("get", "/api/attendance/ptwh/corrections"): "Corrections for the caller's stations (this month and last), filtered by status, with whether the caller may decide each one.",
     ("post", "/api/attendance/ptwh/corrections/{correction_id}/decision"): "Approve or reject a waiting correction (Region Head, RFS, HOD or Manager; never the person who asked, except the Superadmin); an approval applies the change, a rejection needs a note.",
     ("get", "/api/processing-time"): "Processing Time (staging): the last 7 days of hour-of-day timelines (shipment arrival, scan-in, 1st attempt, success, LH arrival) per station, limited to the caller's scope.",
+    ("get", "/api/admin/metric-logic"): "Superadmin only: where each Station Health metric comes from and the rule the backend applies to it.",
     ("post", "/api/tn-last-scan"): "Last scan date/time of each tracking number in a list (from the active-parcel data), for the sortable column in every tracking-number popup.",
     ("get", "/api/daily-kpi"): "Daily KPI (staging only): today's FIFO D0, Completion D0 and Prior raw counts per station, zone and region, limited to the caller's scope. Latlong parcels excluded; resets at midnight.",
     ("get", "/api/kpi/targets"): "KPI targets for every region (the defaults plus what an admin changed), and whether the caller may edit them.",

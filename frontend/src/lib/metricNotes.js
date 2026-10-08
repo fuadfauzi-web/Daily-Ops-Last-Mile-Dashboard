@@ -4,13 +4,16 @@
 // live in the table itself (2026-09-24 feedback).
 export const METRIC_NOTES = {
   total_fresh: "Total parcels expected in at this station today (query 653). Reference only -- not evaluated.",
-  total_routed: "Total parcels routed out to a driver/rider today (Route Monitoring's own total).",
+  total_routed: "Parcels routed out on VALID routes today (query 512, one row per route). An OPS route with fewer than 5 successes is not a valid route -- its parcels are in Total OPS Route instead. Route Monitoring still shows both together.",
+  total_ops_route: "Parcels routed on OPS routes (hub routes, no real driver) that have fewer than 5 successes -- invalid routes. An OPS route with 5 or more successes is a legit route and sits in Total Route.",
+  invalid_ops_attempt: "Parcels on those invalid OPS routes that have no success (routed - success). They were never really attempted, so they are also added to In Hub. Count only -- no tracking-number list behind it.",
+  productivity: "Route Monitoring's Productivity: successes ÷ parcels routed across every route at the station (valid and OPS), shown as a plain figure.",
   routed_pct: "Total Routed ÷ (Total Routed + In Hub) -- how much of what's sitting in-hub has actually gone out.",
   attendance: "Unique Hybrid/Independent drivers (HD/HR/ID/IR) who had a route today. OPS and unparsed names aren't counted here. In brackets: how many of them are rescue drivers (routing away from their home station), same as Route Monitoring.",
   zero_attempt_total: "At its own dest hub, status \"Arrived at Sorting Hub\", 0 delivery attempts, age known. Sum of 0 Attempt D0 + 0 Attempt >D0. Action: route to a driver/rider to attempt delivery.",
   zero_attempt: "Zero Attempt parcels aged D0 (today). Action: route today.",
   zero_attempt_gt_d0: "Zero Attempt parcels aged more than D0 -- already sitting past today. Action: prioritise, these are overdue.",
-  total_in_hub: "Parcels physically at their correct dest hub right now (not On Hold, not still On Vehicle). The base for several % metrics below.",
+  total_in_hub: "Parcels physically at their correct dest hub right now (not On Hold, not still On Vehicle), plus Invalid OPS Attempt (parcels routed on an OPS route with under 5 successes -- never really attempted). The base for several % metrics below. Its tracking-number list covers only the physical parcels.",
   age_gt3: "Parcels aged more than 3 days since their first sweep at the current hub. Scored as a % of In Hub (sorting this header ranks by that %, not the raw count). Action: investigate why it hasn't moved -- check for a hold, missing route, or recurring failure.",
   on_hold: "Parcels with status On Hold. Action: resolve whatever's blocking it (address issue, customer contact, etc.) before it can route.",
   reschedule: "In-hub parcels that have already been attempted at least once (attempts > 0). Action: reschedule/re-route for another attempt.",

@@ -9,6 +9,8 @@ import KpiTargetsPanel from "./KpiTargetsPanel";
 import DocumentsPage from "./DocumentsPage";
 import DepartmentsPanel from "./DepartmentsPanel";
 import RoleAccessPanel from "./RoleAccessPanel";
+import MetricLogicPanel from "./MetricLogicPanel";
+import HypercareSettingsPanel from "./HypercareSettingsPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
@@ -614,6 +616,8 @@ const SETTINGS_TABS = [
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
   { key: "departments", label: "Departments", area: "admin", visible: (me) => me.role === "admin" },
   { key: "roleaccess", label: "Role Access", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "metriclogic", label: "Metric Logic Summary", area: "admin", visible: (me) => me.role === "admin" }, // Superadmin only
+  { key: "hypercare", label: "Hypercare Settings", area: "admin", visible: (me) => me.role === "admin" }, // Superadmin only: High-Value SLAs + Special Handling guideline links
 ];
 
 export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
@@ -954,6 +958,9 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
       {adminTab === "departments" && <DepartmentsPanel />}
 
       {adminTab === "roleaccess" && <RoleAccessPanel />}
+      {adminTab === "metriclogic" && <MetricLogicPanel />}
+
+      {adminTab === "hypercare" && <HypercareSettingsPanel />}
 
       {adminTab === "refresh" && (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">

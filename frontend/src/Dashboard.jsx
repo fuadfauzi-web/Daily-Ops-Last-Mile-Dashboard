@@ -101,7 +101,7 @@ const TABS = [
   { key: "aging", label: "Aging Details" },
   { key: "rpu", label: "Return Pick Up (RPU)" },
   { key: "recovery", label: "Recovery" },
-  { key: "shipper", label: "Shipper Radar" },
+  { key: "shipper", label: "Hypercare Shippers" },
   ...(FEATURES.dod
     ? [
         {
@@ -129,6 +129,7 @@ function attendanceText(row) {
 
 function fmt(key, value) {
   if (key === "routed_pct") return `${value.toFixed(2)}%`;
+  if (key === "productivity") return value.toFixed(2); // Route Monitoring shows it as a plain figure, not a %
   if (PERCENT_METRICS.has(key)) return `${value.toFixed(1)}%`;
   return value.toLocaleString();
 }
@@ -160,7 +161,7 @@ function sumMetrics(rows) {
   const withPctNumerators = rows.reduce((acc, r) => {
     const next = { ...acc };
     METRIC_KEYS.forEach((k) => {
-      if (PERCENT_METRICS.has(k)) return;
+      if (PERCENT_METRICS.has(k) || k === "productivity") return;
       next[k] = acc[k] + (r[k] || 0);
     });
     return next;
@@ -169,6 +170,12 @@ function sumMetrics(rows) {
     const numerator = rows.reduce((sum, r) => sum + ((r[pctKey] || 0) / 100) * (r[denomKey] || 0), 0);
     withPctNumerators[pctKey] = withPctNumerators[denomKey] ? Math.round((numerator / withPctNumerators[denomKey]) * 1000) / 10 : 0;
   });
+  // Productivity (Route Monitoring's, = successes / parcels routed): weighted by every route's parcels -- valid ones plus the
+  // OPS-route ones Station Health splits out -- so a group's figure is still total successes / total routed.
+  const allRoutes = rows.reduce((sum, r) => sum + (r.total_routed || 0) + (r.total_ops_route || 0), 0);
+  withPctNumerators.productivity = allRoutes
+    ? Math.round(rows.reduce((sum, r) => sum + ((r.productivity || 0) * ((r.total_routed || 0) + (r.total_ops_route || 0))) / 100, 0) / allRoutes * 10000) / 100
+    : 0;
   const routedDenom = withPctNumerators.total_routed + withPctNumerators.total_in_hub;
   withPctNumerators.routed_pct = routedDenom ? Math.round((withPctNumerators.total_routed / routedDenom) * 10000) / 100 : 0;
   withPctNumerators.attendance_rescue = rows.reduce((sum, r) => sum + (r.attendance_rescue || 0), 0);

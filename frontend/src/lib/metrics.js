@@ -4,13 +4,16 @@
 // METRICS keys in sync with this list.
 export const ALL_COLUMNS = [
   { key: "total_fresh", label: "Total Fresh" },
-  { key: "total_routed", label: "Total Routed" },
+  { key: "total_routed", label: "Total Route" },
+  { key: "total_ops_route", label: "Total OPS Route" },
   { key: "routed_pct", label: "Routed %" },
+  { key: "productivity", label: "Productivity" },
   { key: "attendance", label: "Attendance" },
   { key: "zero_attempt_total", label: "Total 0 Attempt" },
   { key: "zero_attempt", label: "0 Attempt D0" },
   { key: "zero_attempt_gt_d0", label: "0 Attempt >D0" },
   { key: "total_in_hub", label: "In Hub" },
+  { key: "invalid_ops_attempt", label: "Invalid OPS Attempt" },
   { key: "age_gt3", label: "Age >3" },
   { key: "on_hold", label: "On Hold" },
   { key: "reschedule", label: "Reschedule" },
@@ -30,10 +33,10 @@ export const ALL_COLUMNS = [
 // Station Health's column groups + short sub-labels (staging trial, FEATURES.healthTable -- design review D5). The full label stays in
 // ALL_COLUMNS; short is what the narrow sub-header shows (full label goes in the tooltip). Every ALL_COLUMNS key appears exactly once.
 export const HEALTH_GROUPS = [
-  { key: "volume", label: "Volume", columns: [["total_fresh", "Fresh"], ["total_routed", "Routed"], ["routed_pct", "Routed %"]] },
+  { key: "volume", label: "Volume", columns: [["total_fresh", "Fresh"], ["total_routed", "Route"], ["total_ops_route", "OPS Route"], ["routed_pct", "Routed %"], ["productivity", "Productivity"]] },
   { key: "riders", label: "Attendance", columns: [["attendance", "Attendance"]] },
   { key: "zero", label: "0 Attempt", columns: [["zero_attempt_total", "Total"], ["zero_attempt", "D0"], ["zero_attempt_gt_d0", ">D0"]] },
-  { key: "hub", label: "In Hub", columns: [["total_in_hub", "In Hub"], ["age_gt3", "Age >3"], ["on_hold", "On Hold"], ["reschedule", "Resched."]] },
+  { key: "hub", label: "In Hub", columns: [["total_in_hub", "In Hub"], ["invalid_ops_attempt", "Invalid OPS"], ["age_gt3", "Age >3"], ["on_hold", "On Hold"], ["reschedule", "Resched."]] },
   { key: "ovfd", label: "OVFD & COD", columns: [["still_ovfd", "Still OVFD"], ["cod_pct_hub", "COD % Hub"]] },
   { key: "prior", label: "Prior", columns: [["prior_d0", "D0"], ["prior_gt_d0", ">D0"]] },
   { key: "unsweep", label: "Unswept", columns: [["unsweep_document", "Document"], ["unsweep_parcel", "Parcel"]] },
