@@ -769,7 +769,7 @@ function HybridProductivity({ me }) {
           {canUpload ? (
             <>
               <p className="mt-2">
-                The data is pulled from the Metabase Hybrid questions (Weekly, Monthly and Daily) automatically. The data source panel below shows when each was last pulled, and Superadmin -> Documents sets the schedule and the
+                The data is pulled from the Metabase Hybrid questions (Weekly, Monthly and Daily) automatically. The data source panel below shows when each was last pulled, and Superadmin &gt; Documents sets the schedule and the
                 question.
               </p>
               {data.error && <p className="mt-2 rounded-lg bg-red-50 p-2 text-status-critical">Metabase said: {data.error}</p>}
