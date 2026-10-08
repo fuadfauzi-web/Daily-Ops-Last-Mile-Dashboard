@@ -531,7 +531,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
       })
       .catch((e) => {
         // 2026-10-08: keep the last successful data visible after an automatic refresh failure.
-        if (data) {
+        if (refreshTick > 0) {
           onRefreshStatus?.(true);
         } else {
           setError(e.message);
