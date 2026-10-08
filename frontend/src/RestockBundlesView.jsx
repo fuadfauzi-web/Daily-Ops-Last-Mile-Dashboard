@@ -190,17 +190,18 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
         </span>
       ),
     },
+    { key: "ticket_type", label: "Damage / Missing Type", align: "left", className: () => "text-xs text-slate-700", render: (r) => r.ticket_type ?? "—" },
     { key: "hold_details", label: "Hold details", align: "left", className: () => "text-xs text-slate-500", render: (r) => <Clip text={r.hold_details} width="max-w-[140px]" /> },
   ];
 
   const csvHeaders = [
     "Station", "Bundle", "Shipper", "Pieces here", "Pieces total", "Missing", "Missing pieces", "On hold pieces", "Attempt",
-    "Piece statuses", "Aging (days)", "Days group", "Flag", "Hold details", "Piece tracking numbers",
+    "Piece statuses", "Aging (days)", "Days group", "Flag", "Damage / Missing Type", "Hold details", "Piece tracking numbers",
   ];
   const csvRow = (r) => [
     r.station_name, r.bundle_tracking_number, r.shipper_name ?? "", r.pieces_seen, r.piece_count, r.missing_count,
     r.missing_pieces ?? "", r.on_hold_pieces, r.attempts ?? "", r.statuses, r.aging_days, r.days_group ?? "", CLASS_LABEL[r.bundle_class],
-    r.hold_details ?? "", r.tracking_numbers.join(" "),
+    r.ticket_type ?? "", r.hold_details ?? "", r.tracking_numbers.join(" "),
   ];
 
   return (

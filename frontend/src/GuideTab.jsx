@@ -591,7 +591,7 @@ const SECTIONS = [
             The tabs are <strong>Summary View</strong> (the shipper SLA table above; Zitron -- tracking numbers starting ZTRON -- and Ceva -- starting LSGMY -- are in it too),
             {F.coldChain ? " " : ""}{F.coldChain && <><strong>Cold Chain</strong>, </>}
             <strong>Special Handling Shippers</strong> (Orca and Soda Express: the note and the slide deck on their special flow, then their numbers),
-            <strong>High-Value Shippers</strong> and <strong>Restock</strong>.
+            <strong>High-Value Shippers</strong>. Restock has its own tab (see Restock).
           </p>
         )}
         {F.shipperRadar && (
@@ -608,6 +608,7 @@ const SECTIONS = [
   {
     id: "restock",
     title: "Restock",
+    // Its own sidebar group with two header tabs: Restock NXD (sub-tabs Restock NXD / Restock NXD On Hold Details) and Document Compliance.
     body: () => (
       <div className="space-y-2 text-sm text-slate-700">
         <p>
@@ -617,19 +618,19 @@ const SECTIONS = [
         {F.restockBundles ? (
           <>
             <p>
-              <strong>Restock On Hold Details</strong>: bundles that are on hold and/or missing pieces, with a by-station table that has a
-              column for every flag. <em>MPS incomplete</em>: fewer pieces are here than the bundle's piece count (e.g. -001 and -002 arrived
+              <strong>Restock NXD On Hold Details</strong> (a sub-tab of Restock NXD): bundles that are on hold and/or missing pieces, with a by-station table that has a
+              column for every flag. The <em>Damage / Missing Type</em> column shows why the piece is on hold (Damaged, Missing, Parcel On Hold or Shipper Issue). <em>MPS incomplete</em>: fewer pieces are here than the bundle's piece count (e.g. -001 and -002 arrived
               but -003 didn't). <em>Complete but on hold</em>: every piece is here yet one is still On Hold, so the hold can be released.{" "}
               <em>On hold (single piece)</em>: a one-piece bundle on hold. This rule is provisional -- tell us if a bundle is flagged wrongly.
             </p>
             <p>
-              <strong>B2B Document Compliance</strong>: every document type Redash hands back (MYRDO / DO / GRN / PSO so far -- filter with
+              <strong>Document Compliance</strong> (its own tab next to Restock NXD): every document type Redash hands back (MYRDO / DO / GRN / PSO so far -- filter with
               <em> Document type</em> above the table, empty = every type) by station and status (Pending Pickup, Van En-route to Pickup,
               En-route to Sorting Hub, Pickup Fail), grouped by where the bundle last swept. Only the 143 stations are counted; every bundle
               status is included, completed or not. <strong>Normal / Potential Breach / Breach</strong> is Redash's own classification of
               Aging (days since the bundle's delivery was marked successful): 0 days Normal, 1 day Potential Breach, more than 1 day Breach --
               the "MPS completed but document still pending" rule the Fleet Manager's sheet used to compute by hand. Click a count for its
-              tracking numbers and a CSV with the bundle details.
+              tracking numbers and a CSV with the bundle details, including the <em>Document Route Driver</em> and the <em>Bundle Delivery Driver</em>.
             </p>
             <p>Restock views only include bundles sitting at one of the 143 stations.</p>
           </>

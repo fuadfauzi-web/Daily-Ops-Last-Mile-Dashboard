@@ -45,7 +45,7 @@ export const GUIDE_BLURB = {
   rpu: "Return pickups by status and by age, filterable by shipper.",
   shipper: "Hypercare for shippers with their own SLA: Zalora, Amway, Watson, Cold Chain and more.",
   coldchain: "Cold-chain parcels and how they are doing against their SLA.",
-  restock: "Restock bundles, on-hold and incomplete lists, and B2B document compliance.",
+  restock: "Restock bundles, on-hold and incomplete lists, and document compliance.",
   recovery: "Missing, lost, PDCNR, damaged and no-label parcels, and who is chasing them.",
   management: "Operation health, capacity and backlog for managers.",
   managerDash: "Your region's station capacity and driver strength, plus your own links and notes.",
