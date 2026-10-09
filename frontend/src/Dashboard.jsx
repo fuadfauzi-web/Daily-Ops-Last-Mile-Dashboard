@@ -346,6 +346,14 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
   // The station metrics (/api/dashboard) feed only these pages. Every other page (Restock, Shipment Details, Recovery ...) loads its own data, so it opens without them -- a role
   // that has Restock but not the Action Board never needs the Action Board's data (Access Setting, 2026-10-10).
   const needsData = DATA_TABS.includes(tab) && !isBlocked(tab);
+  // The role can change under an open Dashboard (View As, or the Superadmin editing the role): if the open page is no longer allowed, move to the first one that is -- never draw it from data
+  // the role cannot load.
+  const firstOpenTab = () => ["action", ...tabs.map((t) => t.key)].find((k) => tabs.some((t) => t.key === k) && !isBlocked(k));
+  useEffect(() => {
+    if (!isBlocked(tab)) return;
+    const next = firstOpenTab();
+    if (next && next !== tab) setTabState(next);
+  }, [me.access, tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTab = (key) => {
     setTabState(key);
     try {
@@ -726,6 +734,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
     setModal({ stationCode: row.station_code, stationName: row.station_name, metricKey: col.key, metricLabel: col.label });
   };
 
+  if (DATA_TABS.includes(tab) && !needsData)
+    return <div className="rounded-xl bg-white p-6 text-slate-600 ring-1 ring-slate-200">Your role has no access to this page -- pick another one from the menu.</div>;
   if (needsData) {
     if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
     if (!data) return <Skeleton />;
