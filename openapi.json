@@ -19720,6 +19720,16 @@
             "title": "Ceva Aging",
             "default": 0
           },
+          "fujifilm_zero_attempt": {
+            "type": "integer",
+            "title": "Fujifilm Zero Attempt",
+            "default": 0
+          },
+          "fujifilm_aging": {
+            "type": "integer",
+            "title": "Fujifilm Aging",
+            "default": 0
+          },
           "orca_ovfd": {
             "type": "integer",
             "title": "Orca Ovfd"
@@ -19901,6 +19911,16 @@
           "ceva_aging": {
             "type": "integer",
             "title": "Ceva Aging",
+            "default": 0
+          },
+          "fujifilm_zero_attempt": {
+            "type": "integer",
+            "title": "Fujifilm Zero Attempt",
+            "default": 0
+          },
+          "fujifilm_aging": {
+            "type": "integer",
+            "title": "Fujifilm Aging",
             "default": 0
           },
           "orca_ovfd": {

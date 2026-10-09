@@ -73,6 +73,15 @@ const SHIPPERS = [
     ],
   },
   {
+    // 2026-10-09: Fujifilm (TN prefix FUJIF) -- same 0 Attempt and Aging >D0 numbers as Amway.
+    key: "fujifilm",
+    label: "Fujifilm",
+    columns: [
+      { key: "fujifilm_zero_attempt", label: "Fujifilm 0 Attempt" },
+      { key: "fujifilm_aging", label: "Fujifilm Aging >D0" },
+    ],
+  },
+  {
     // 2026-09-26: same rule as Amway / Watson (0 Attempt, Aging >D0); parcels are picked by the Cold Chain tracking-number list.
     key: "coldchain",
     label: "Cold Chain",

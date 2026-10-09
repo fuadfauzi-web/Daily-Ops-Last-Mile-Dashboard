@@ -1080,16 +1080,20 @@ _SODAXPRESS_PATTERN = re.compile(r"^(SB2CX|SDEWM)", re.IGNORECASE)
 # 2026-10-08: two more hypercare shippers with the same SLA rule as Amway -- Zitron (tracking numbers start ZTRON) and Ceva (start LSGMY).
 _ZITRON_PATTERN = re.compile(r"^ZTRON", re.IGNORECASE)
 _CEVA_PATTERN = re.compile(r"^LSGMY", re.IGNORECASE)
+# 2026-10-09: Fujifilm -- tracking numbers start FUJIF (anchored prefix, any case). Same 0 Attempt + Aging >D0 numbers and the same configurable SLA as the others.
+_FUJIFILM_PATTERN = re.compile(r"^FUJIF", re.IGNORECASE)
 
 
 def hypercare_sla_shipper(tn: str | None) -> str | None:
-    """amway / watson / zitron / ceva (the shippers sharing the 0 Attempt + Aging >D0 rule) for a tracking number, else None."""
+    """amway / watson / zitron / ceva / fujifilm (the shippers sharing the 0 Attempt + Aging >D0 rule) for a tracking number, else None."""
     if not tn:
         return None
     if _ZITRON_PATTERN.search(tn):
         return "zitron"
     if _CEVA_PATTERN.search(tn):
         return "ceva"
+    if _FUJIFILM_PATTERN.search(tn):
+        return "fujifilm"
     kind = _classify_shipper(tn)
     return {"Amway": "amway", "Watson": "watson"}.get(kind)
 
@@ -1113,6 +1117,7 @@ SHIPPER_WATCH_KEYS = (
     "watson_zero_attempt", "watson_aging",
     "zitron_zero_attempt", "zitron_aging",
     "ceva_zero_attempt", "ceva_aging",
+    "fujifilm_zero_attempt", "fujifilm_aging",
     "orca_ovfd", "orca_other",
     "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
@@ -1126,6 +1131,7 @@ SHIPPER_WATCH_KEYS = (
 SHIPPER_DRILLDOWN_METRICS = (
     "amway_zero_attempt", "amway_aging", "watson_zero_attempt", "watson_aging",
     "zitron_zero_attempt", "zitron_aging", "ceva_zero_attempt", "ceva_aging",
+    "fujifilm_zero_attempt", "fujifilm_aging",
     "orca_ovfd", "orca_other", "sodaxpress_ovfd", "sodaxpress_other",
     "zalora_zero_attempt", "zalora_ovfd", "zalora_other",
     "restock_bundles", "restock_potential_breach", "restock_breach", "restock_pieces",
@@ -1190,7 +1196,7 @@ def build_shipper_watch(
                 tn_details[hub]["sodaxpress_other"].append(tn)
             continue
 
-        prefix = shipper  # amway / watson / zitron / ceva -- same 0 Attempt and Aging >D0 rule
+        prefix = shipper  # amway / watson / zitron / ceva / fujifilm -- same 0 Attempt and Aging >D0 rule
         if status == "Arrived at Sorting Hub" and attempts == 0:
             row[f"{prefix}_zero_attempt"] += 1
             tn_details[hub][f"{prefix}_zero_attempt"].append(tn)

@@ -4,7 +4,7 @@ import AgingDetailsTab from "./AgingDetailsTab";
 import DataTable from "./components/DataTable";
 import Skeleton from "./components/Skeleton";
 
-// Hypercare Shippers -> High-Value Shippers (2026-10-08 feedback): Zalora NXD, Amway, Watson, Zitron (TN prefix ZTRON) and Ceva (prefix LSGMY).
+// Hypercare Shippers -> High-Value Shippers (2026-10-08 feedback): Zalora NXD, Amway, Watson, Zitron (TN prefix ZTRON), Ceva (prefix LSGMY) and Fujifilm (prefix FUJIF).
 // A one-line summary per shipper (parcels and how many break its SLA), then the picked shipper's parcels the way Cold Chain shows them: a
 // station x age pivot and the tracking-number table (backend/hypercare.py), with the SLA columns. The SLAs -- Attempt (a valid attempt is
 // needed) and Delivery (the parcel must be delivered), each Same day / Next day / Within 2 days / Within 3 days -- are set by the Superadmin.

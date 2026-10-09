@@ -2,7 +2,7 @@
 those shippers is held to, and the guideline links of the Special Handling shippers.
 
 High-Value shippers: Zalora NXD (the tracking numbers of query 1296, matched into query 78 for age / last scan, same trick as
-Cold Chain with query 1410), Amway (AMNV), Watson (WATSN prefix), Zitron (ZTRON prefix) and Ceva (LSGMY prefix). Parcels are the
+Cold Chain with query 1410), Amway (AMNV), Watson (WATSN prefix), Zitron (ZTRON prefix), Ceva (LSGMY prefix) and Fujifilm (FUJIF prefix). Parcels are the
 active ones of query 78 at their last-scan hub, only the 151 stations -- the same ground every Station Health number uses.
 
 SLAs are set by the Superadmin (Superadmin -> Hypercare Settings): Attempt (the parcel needs a valid attempt) and Delivery (the parcel must be
@@ -43,6 +43,7 @@ HIGH_VALUE = {
     "watson": ("Watson", 0, 3),
     "zitron": ("Zitron", 0, 3),
     "ceva": ("Ceva", 0, 3),
+    "fujifilm": ("Fujifilm", 0, 3),  # 2026-10-09: no SLA was specified for Fujifilm, so it starts like the other prefix-matched shippers (same as Amway); the Superadmin changes it in Hypercare Settings
 }
 # key -> label. Their special flow is explained by a slide deck whose link the Superadmin pastes in (not given yet).
 SPECIAL = {"orca": "Orca", "sodaxpress": "Soda Express"}
