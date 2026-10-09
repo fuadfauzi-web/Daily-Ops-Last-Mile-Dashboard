@@ -5,7 +5,7 @@ import SideNav from "./components/SideNav";
 import CommandJump from "./components/CommandJump";
 import CategoryNav from "./components/CategoryNav";
 import BetaTag from "./components/BetaTag";
-import { SIDE_ITEMS, taskListBadges } from "./lib/sideNav";
+import { SIDE_ITEMS, sideLevel, taskListBadges } from "./lib/sideNav";
 import SettingsPanel from "./SettingsPanel";
 import Logo from "./components/Logo";
 import BellBadge from "./components/BellBadge";
@@ -137,10 +137,9 @@ export default function App() {
   useEffect(() => {
     const acc = me?.access || {};
     if (!dashTab || !Object.keys(acc).length) return;
-    const mod = dashTab === "recovery" ? `rec:${recGroup}` : dashTab === "restock" ? recGroup : dashTab;
-    if (acc[mod]?.level !== "none") return;
+    if ((dashTab === "recovery" ? acc[`rec:${recGroup}`]?.level : sideLevel(acc, dashTab)) !== "none") return;
     const recLists = me.role === "admin" || me.role === "manager" || me.position === "recovery";
-    const next = SIDE_ITEMS.find((i) => i.dash && DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) && acc[i.id]?.level !== "none" && (!i.recLists || recLists));
+    const next = SIDE_ITEMS.find((i) => i.dash && DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) && sideLevel(acc, i.id) !== "none" && (!i.recLists || recLists));
     if (!next) return;
     if (next.recGroup) setRecGroup(next.recGroup);
     setDashRequest({ key: next.dashKey || next.id, n: Date.now() });
@@ -299,7 +298,7 @@ export default function App() {
   const externalNav = sidebarActive || catActive;
   // PDCNR / Damage / No Label from Hub are Beta (2026-10-04): only the Superadmin, Manager / HOD and Recovery see them.
   const canSeeRecLists = !!FEATURES.recoveryBeta && (me.role === "admin" || me.role === "manager" || me.position === "recovery");
-  const sideItems = SIDE_ITEMS.filter((i) => (!i.recLists || canSeeRecLists) && access[i.id]?.level !== "none" && (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
+  const sideItems = SIDE_ITEMS.filter((i) => (!i.recLists || canSeeRecLists) && sideLevel(access, i.id) !== "none" && (i.dash ? DASHBOARD_TAB_KEYS.includes(i.dashKey || i.id) : navTabs.includes(i.id))).map((i) => {
     const bells = i.id === "urgent" ? taskListBadges(notifCounts, FEATURES.taskList) : { badge: 0, dot: 0 };
     return {
       ...i,
@@ -310,8 +309,8 @@ export default function App() {
     };
   });
   // the module the open page belongs to (lib/sideNav.js ids), for the "view only" note
-  const currentModule = tab !== "dashboard" ? tab : dashTab === "recovery" ? `rec:${recGroup}` : dashTab === "restock" ? recGroup : dashTab;
-  const viewOnly = access[currentModule]?.level === "view" ? SIDE_ITEMS.find((i) => i.id === currentModule)?.label || "this page" : null;
+  const currentModule = tab !== "dashboard" ? tab : dashTab === "recovery" ? `rec:${recGroup}` : dashTab;
+  const viewOnly = sideLevel(access, currentModule) === "view" ? SIDE_ITEMS.find((i) => i.id === currentModule)?.label || "this page" : null;
   const jumpToStation = (station) => {
     setTab("dashboard");
     setDashRequest({ key: "health", n: Date.now(), station });
