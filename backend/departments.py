@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import db
-from auth import POSITIONS, CurrentUser, get_current_user
+from auth import CurrentUser, get_current_user, is_position, position_label
 
 router = APIRouter()
 
@@ -56,7 +56,7 @@ async def check_user_department(department: str | None, position: str) -> str | 
         raise HTTPException(status_code=422, detail=f"Unknown department '{name}' -- the Superadmin adds departments under Superadmin -> Departments")
     roles = _roles(row[0])
     if roles and position not in roles:
-        label = POSITIONS.get(position, (position,))[0]
+        label = position_label(position)
         raise HTTPException(status_code=422, detail=f"{label} is not a role of the {name} department")
     return name
 
@@ -70,7 +70,7 @@ def _clean(payload: DepartmentIn) -> tuple[str, list[str]]:
     name = " ".join(payload.name.split())
     if not name or len(name) > 100:
         raise HTTPException(status_code=422, detail="Give the department a name (up to 100 characters)")
-    bad = [r for r in payload.roles if r not in POSITIONS]
+    bad = [r for r in payload.roles if not is_position(r)]
     if bad:
         raise HTTPException(status_code=422, detail=f"Unknown role(s): {', '.join(bad)}")
     seen: list[str] = []

@@ -72,9 +72,26 @@ POSITIONS: dict[str, tuple[str, str, str]] = {  # position -> (label, group, tie
 }
 
 
+# Custom roles (2026-10-10, Superadmin -> Access Setting): roles the Superadmin created, e.g. a department's own roles. Stored in table access_roles and loaded into this registry by
+# role_access.ensure_roles() (at start-up, on every change and every 30 seconds): position key -> (label, group, tier). A custom role works exactly like a built-in position of its tier.
+CUSTOM_POSITIONS: dict[str, tuple[str, str, str]] = {}
+
+
+def is_position(position: str | None) -> bool:
+    return bool(position) and (position in POSITIONS or position in CUSTOM_POSITIONS)
+
+
+def position_label(position: str | None) -> str:
+    return (POSITIONS.get(position or "") or CUSTOM_POSITIONS.get(position or "") or (position or "",))[0]
+
+
+def all_positions() -> dict[str, tuple[str, str, str]]:
+    return {**POSITIONS, **CUSTOM_POSITIONS}
+
+
 def tier_of(position: str) -> str:
     """Access tier of a stored position. An unknown value gets the lowest tier -- never more access than it was meant to have."""
-    return POSITIONS.get(position, ("", "", "station"))[2]
+    return (POSITIONS.get(position) or CUSTOM_POSITIONS.get(position) or ("", "", "station"))[2]
 
 
 def effective_scope(scope_type: str) -> str:
@@ -95,7 +112,6 @@ def _scope_fields(tier: str, scope_type: str, scope_values: list[str]) -> dict:
     return {"scope_type": st, "scope_values": sv}
 
 
-_VIEW_AS_ROLES = tuple(POSITIONS)
 
 
 async def _get_current_user_raw(
@@ -137,8 +153,8 @@ async def _get_current_user_raw(
             **_scope_fields(tier_of(target[1]), target[2], parse_scope_values(target[3])),
         )
     if real_role == "admin" and x_view_as_role:
-        if x_view_as_role not in _VIEW_AS_ROLES:
-            raise HTTPException(status_code=422, detail=f"view-as role must be one of {_VIEW_AS_ROLES}")
+        if not is_position(x_view_as_role):
+            raise HTTPException(status_code=422, detail=f"view-as role must be one of {sorted(all_positions())}")
         return CurrentUser(
             email=row[0],
             role=tier_of(x_view_as_role),
@@ -166,9 +182,10 @@ async def get_current_user(
     x_view_as_email: str | None = Header(default=None, alias="X-View-As-Email"),
 ) -> CurrentUser:
     """Who is asking, narrowed by Superadmin -> Role Access (role_access.py): a request for a module the person's role has no access to is refused here, once, for every endpoint."""
-    user = await _get_current_user_raw(x_forwarded_email, x_view_as_role, x_view_as_scope_type, x_view_as_scope_values, x_view_as_email)
     import role_access  # imported here: role_access itself imports this module
 
+    await role_access.ensure_roles()  # custom roles must be known before their tier is read below
+    user = await _get_current_user_raw(x_forwarded_email, x_view_as_role, x_view_as_scope_type, x_view_as_scope_values, x_view_as_email)
     await role_access.apply(request, user)
     return user
 

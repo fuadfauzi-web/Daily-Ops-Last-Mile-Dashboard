@@ -17,7 +17,7 @@ from pydantic import BaseModel
 import db
 import headcount
 import release
-from auth import POSITIONS, CurrentUser, get_current_user, parse_scope_values, tier_of
+from auth import POSITIONS, CurrentUser, get_current_user, is_position, parse_scope_values, position_label, tier_of
 from stations import HUBS, REGIONS, ZONES, ZONES_BY_REGION
 from tasklist import on_user_deleted as tasklist_user_deleted
 
@@ -73,7 +73,7 @@ def _require_list_viewer(user: CurrentUser) -> None:
 
 def compose_display_name(name: str, role: str, scope_type: str, scope_values: list[str]) -> str:
     """"Afnan Roslan (SH - Larkin)" -- the same label the PIC box shows."""
-    tag = _SHORT.get(role) or POSITIONS.get(role, (role,))[0]
+    tag = _SHORT.get(role) or position_label(role)
     where = "" if scope_type in ("all", "hq") else " - " + " & ".join(scope_values)
     return f"{name.strip()} ({tag}{where})"
 
@@ -141,7 +141,7 @@ def _text(value: str | None, label: str, limit: int) -> str | None | bool:
 
 
 def _validate(payload: StaffIn) -> None:
-    if payload.role not in POSITIONS or tier_of(payload.role) == "admin":
+    if not is_position(payload.role) or tier_of(payload.role) == "admin":
         raise HTTPException(status_code=422, detail="Pick a position (the Superadmin role is not set here)")
     if not payload.name.strip():
         raise HTTPException(status_code=422, detail="Type the person's name")
@@ -371,7 +371,7 @@ def _person(row, org: bool = False) -> dict:
             "employee_id": emp or "", "based_station": "", "posted": region or "HQ", "source": "org", "org_id": pid, "branch": branch,
         }
     email, role, name, phone, emp, job_title, based, home_type, home_values = row
-    label = POSITIONS.get(role, (role,))[0]
+    label = position_label(role)
     where = "HQ" if home_type in ("all", "hq") else ", ".join(home_values)
     return {
         "email": email, "position": role, "label": label, "title": job_title or label, "name": plain_name(name) or email, "phone": phone or "",

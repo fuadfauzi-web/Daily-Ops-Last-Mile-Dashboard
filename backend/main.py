@@ -90,7 +90,7 @@ from aggregate import (
     rollup_routed_by_driver_type, rollup_rpu, rollup_shipment_details, rollup_shipper_watch, rpu_station_pivot,
 )
 import board_counts  # Action Board's 'to answer' counts (reads the Recovery tables)
-from auth import POSITIONS, CurrentUser, data_scope, get_current_user, parse_scope_values, tier_of
+from auth import POSITIONS, CurrentUser, all_positions, data_scope, get_current_user, is_position, parse_scope_values, position_label, tier_of
 from redash_client import (
     QUERY_ACTIVE_MISSING, QUERY_COLD_CHAIN, QUERY_DELIVERY_PERFORMANCE, QUERY_HEALTH_V3, QUERY_LH_TIMING, QUERY_OLD_ROUTE,
     QUERY_RDO_PUSH_OFF, QUERY_RESTOCK_NXD, QUERY_RPU, QUERY_SHIPMENT_TRACKER, QUERY_TOTAL_SHIPMENTS, QUERY_UNSWEEP,
@@ -752,6 +752,7 @@ async def lifespan(app: FastAPI):
     global _refresh_task, _warm_task, _launch_task, _pull_task
     await db.init_pool()
     if os.getenv("DATABASE_URL"):
+        await role_access.ensure_roles(force=True)  # custom roles (Access Setting) known from the first request
         await attendance_launch.refresh_rules()
         _launch_task = asyncio.create_task(_launch_refresh_loop())
         _refresh_task = asyncio.create_task(_hourly_refresh_loop())
@@ -861,6 +862,7 @@ async def me(
     )
     if row is None:
         return {"email": x_forwarded_email, "provisioned": False}
+    await role_access.ensure_roles()  # custom roles (Access Setting) must be known before their tier is read
     await db.execute("UPDATE users SET last_seen_at=%s WHERE email=%s", (datetime.now(timezone.utc), x_forwarded_email))
     real_role = tier_of(row[1])
     # Same "View As" overrides as auth.get_current_user -- gated on real_role
@@ -3531,7 +3533,7 @@ def _auto_display_name(email: str, role: str, scope_type: str, scope_values: lis
     """"Afnan Roslan (Station staff - Larkin)" from the email when nobody typed a name, so the PIC box always shows who a
     person is and where (2026-10-02: the picker searches by station, and a bare email says neither)."""
     name = " ".join(p.capitalize() for p in email.split("@")[0].replace("_", ".").split(".") if p)
-    tag = _SHORT_TAG.get(role) or POSITIONS.get(role, (role,))[0]
+    tag = _SHORT_TAG.get(role) or position_label(role)
     where = "" if scope_type in ("all", "hq") else " - " + " & ".join(scope_values)
     return f"{name} ({tag}{where})" if name else email
 
@@ -3603,13 +3605,12 @@ async def list_users(user: CurrentUser = Depends(get_current_user)):
 
 # 2026-10-02: roles are job positions (auth.POSITIONS). HQ staff have no dedicated region / zone / station, so they get the
 # scope 'hq' (read as 'all' for the data they see today); the position decides the permissions through its access tier.
-_VALID_ROLES = set(POSITIONS)
 _VALID_SCOPE_TYPES = {"all", "hq", "region", "zone", "station"}
 
 
 def _validate_user_in(payload: UserIn) -> None:
-    if payload.role not in _VALID_ROLES:
-        raise HTTPException(status_code=422, detail=f"role must be one of {sorted(_VALID_ROLES)}")
+    if not is_position(payload.role):
+        raise HTTPException(status_code=422, detail=f"role must be one of {sorted(all_positions())}")
     if payload.scope_type not in _VALID_SCOPE_TYPES:
         raise HTTPException(status_code=422, detail=f"scope_type must be one of {sorted(_VALID_SCOPE_TYPES)}")
     if payload.scope_type == "hq" and tier_of(payload.role) not in ("admin", "manager", "hq_staff"):
@@ -3797,6 +3798,13 @@ async def list_stations(user: CurrentUser = Depends(get_current_user)):
 class RegionMeta(BaseModel):
     region: str
     zones: list[str]
+
+
+@app.get("/api/freshness")
+async def freshness(user: CurrentUser = Depends(get_current_user)):
+    """When the data was last refreshed -- just the time, no metrics -- for the header's "Data as of" on pages that do not load the station metrics (open to everyone signed in)."""
+    latest = await db.fetch_one("SELECT MAX(captured_at) FROM station_metrics")
+    return {"captured_at": _iso(latest[0]) if latest and latest[0] is not None else None}
 
 
 @app.get("/api/regions", response_model=list[RegionMeta])

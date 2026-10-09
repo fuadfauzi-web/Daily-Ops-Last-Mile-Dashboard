@@ -3568,6 +3568,42 @@
         ]
       }
     },
+    "/api/roles": {
+      "get": {
+        "summary": "Every role (built-in and custom) -- the Users page, the Role Tester and the pickers use this instead of a fixed list.",
+        "description": "Every role (built-in and custom) -- the Users page, the Role Tester and the pickers use this instead of a fixed list.",
+        "operationId": "list_roles_api_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleOut"
+                  },
+                  "title": "Response List Roles Api Roles Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/admin/role-access": {
       "get": {
         "summary": "Get Role Access",
@@ -3611,6 +3647,181 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/role_access__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/module-beta": {
+      "put": {
+        "summary": "Switch Beta availability of ONE module / sub-module on or off (nothing else changes; the feature's data and settings are untouched).",
+        "description": "Switch Beta availability of ONE module / sub-module on or off (nothing else changes; the feature's data and settings are untouched).",
+        "operationId": "save_module_beta_api_admin_module_beta_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BetaIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/role_access__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/roles": {
+      "post": {
+        "summary": "Add Role",
+        "operationId": "add_role_api_admin_roles_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/role_access__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/roles/{key}": {
+      "put": {
+        "summary": "Edit Role",
+        "operationId": "edit_role_api_admin_roles__key__put",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/role_access__OkOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "delete": {
+        "summary": "Delete Role",
+        "operationId": "delete_role_api_admin_roles__key__delete",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -10726,6 +10937,36 @@
         ]
       }
     },
+    "/api/freshness": {
+      "get": {
+        "summary": "When the data was last refreshed -- just the time, no metrics -- for the header's \"Data as of\" on pages that do not load the station metrics (open to everyone signed in).",
+        "description": "When the data was last refreshed -- just the time, no metrics -- for the header's \"Data as of\" on pages that do not load the station metrics (open to everyone signed in).",
+        "operationId": "freshness_api_freshness_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
     "/api/regions": {
       "get": {
         "summary": "List all regions and the zones within each, for building region/zone pickers in the UI.",
@@ -11373,6 +11614,24 @@
           "selfie"
         ],
         "title": "AppClock"
+      },
+      "BetaIn": {
+        "properties": {
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "module",
+          "enabled"
+        ],
+        "title": "BetaIn"
       },
       "Body_import_workers_api_attendance_ptwh_import_post": {
         "properties": {
@@ -15708,6 +15967,27 @@
           "group": {
             "type": "string",
             "title": "Group"
+          },
+          "beta": {
+            "type": "boolean",
+            "title": "Beta",
+            "default": false
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "beta_on": {
+            "type": "boolean",
+            "title": "Beta On",
+            "default": true
           }
         },
         "type": "object",
@@ -18273,6 +18553,35 @@
         ],
         "title": "RoleAccessOut"
       },
+      "RoleIn": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "default": "station"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "RoleIn"
+      },
       "RoleOut": {
         "properties": {
           "key": {
@@ -18286,13 +18595,39 @@
           "tier": {
             "type": "string",
             "title": "Tier"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "builtin": {
+            "type": "boolean",
+            "title": "Builtin"
+          },
+          "users": {
+            "type": "integer",
+            "title": "Users",
+            "default": 0
           }
         },
         "type": "object",
         "required": [
           "key",
           "label",
-          "tier"
+          "tier",
+          "group",
+          "builtin"
         ],
         "title": "RoleOut"
       },
@@ -23547,6 +23882,28 @@
             "type": "boolean",
             "title": "Ok",
             "default": true
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
           }
         },
         "type": "object",

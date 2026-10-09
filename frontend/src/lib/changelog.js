@@ -20,6 +20,17 @@
 //    size, wording, a small fix nobody would notice.
 export const CHANGELOG = [
   {
+    date: "2026-10-10",
+    title: "Access Setting: roles, module access and Beta in one place",
+    type: "improved",
+    area: "System",
+    points: [
+      "Superadmin -> Department is now Access Setting with three tabs: Roles & departments (create, edit and delete your own roles per department), Module access (what each role may open or do, with a default row so a role can be limited to only the modules it needs) and Beta (one switch per Beta module and sub-page).",
+      "A Restock-only role no longer needs Action Board access: every page now loads on its own data, and the server enforces the same settings the menu shows (also in View As).",
+      "Existing users, roles and settings are unchanged.",
+    ],
+  },
+  {
     date: "2026-10-09",
     title: "Hypercare: Fujifilm added",
     feature: "shipperRadar",

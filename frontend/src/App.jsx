@@ -15,7 +15,7 @@ import UserMenu from "./components/UserMenu";
 import { useDensity } from "./lib/density";
 import { formatTime } from "./lib/format";
 import { FEATURES } from "./lib/features";
-import { positionLabel } from "./lib/roles";
+import { positionLabel, registerRoles } from "./lib/roles";
 import KpiDashboard from "./KpiDashboard";
 import ManagementViewTab from "./ManagementViewTab";
 import ManagerDashboardTab from "./ManagerDashboardTab";
@@ -173,7 +173,11 @@ export default function App() {
   const loadMe = () =>
     api
       .me()
-      .then(setMe)
+      .then(async (m) => {
+        // custom roles (Superadmin -> Access Setting) join the built-in ones before anything renders a role name
+        if (m?.provisioned) await api.roles().then(registerRoles).catch(() => {});
+        setMe(m);
+      })
       .catch(() => setMe(null));
 
   useEffect(() => {

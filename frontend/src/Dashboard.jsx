@@ -306,7 +306,19 @@ function useSessionState(key, initial) {
   return [value, setValue];
 }
 
+// The pages that read the station metrics (/api/dashboard); the rest of the Dashboard's pages bring their own data.
+const DATA_TABS = ["action", "health", "dod"];
+// A tab that holds several menu modules is blocked only when every one of them is (module ids as in lib/sideNav.js).
+const TAB_MODULES = {
+  recovery: ["rec:activemissing", "rec:lostdeclared", "rec:pdcnr", "rec:damage", "rec:nolabel"],
+  restock: ["restock:nxd", "restock:onhold"],
+  docCompliance: ["restock:compliance"],
+};
+
 export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefreshStatus, notifCounts, sidebar = false, requestedTab = null, onTabState, recoveryGroup }) {
+  // Access Setting: a module this role has no access to (me.access, module id = the tab key) is not opened, not even as the first page.
+  const isBlocked = (key) => (TAB_MODULES[key] || [key]).every((m) => me.access?.[m]?.level === "none");
+  const [metaStations, setMetaStations] = useState([]); // the stations in this person's scope, without metrics -- the filters of the pages that do not use the station metrics
   const { rows: thresholdRows } = useThresholds();
   const [data, setData] = useState(null);
   const [regions, setRegions] = useState([]);
@@ -324,12 +336,16 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
   const [tab, setTabState] = useState(() => {
     try {
       const saved = localStorage.getItem(tabStorageKey);
-      if (saved && tabs.some((t) => t.key === saved)) return saved;
+      if (saved && tabs.some((t) => t.key === saved) && !isBlocked(saved)) return saved;
     } catch {
       /* private browsing / storage blocked -- just use the default */
     }
-    return "action";
+    const first = ["action", ...tabs.map((t) => t.key)].find((k) => tabs.some((t) => t.key === k) && !isBlocked(k));
+    return first || "action";
   });
+  // The station metrics (/api/dashboard) feed only these pages. Every other page (Restock, Shipment Details, Recovery ...) loads its own data, so it opens without them -- a role
+  // that has Restock but not the Action Board never needs the Action Board's data (Access Setting, 2026-10-10).
+  const needsData = DATA_TABS.includes(tab) && !isBlocked(tab);
   const setTab = (key) => {
     setTabState(key);
     try {
@@ -497,11 +513,10 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
   const canToggleEastMalaysia = me.scope_type === "all";
 
   const scopedStations = useMemo(() => {
-    if (!data) return [];
-    return canToggleEastMalaysia && !includeEastMalaysia
-      ? data.stations.filter((s) => s.region !== "East Malaysia")
-      : data.stations;
-  }, [data, includeEastMalaysia, canToggleEastMalaysia]);
+    const all = data ? data.stations : metaStations;
+    if (!all.length) return [];
+    return canToggleEastMalaysia && !includeEastMalaysia ? all.filter((s) => s.region !== "East Malaysia") : all;
+  }, [data, metaStations, includeEastMalaysia, canToggleEastMalaysia]);
 
   const visibleRegions = useMemo(() => {
     let out = regions;
@@ -522,6 +537,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
     zoneFilter !== "all" || ((me.scope_type === "zone" || me.scope_type === "station") && me.scope_values.length <= 1);
 
   const load = () => {
+    if (!needsData) return;
     api
       .dashboard()
       .then((nextData) => {
@@ -547,10 +563,17 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
     return () => clearInterval(id);
   }, []);
 
-  useEffect(load, [refreshTick]);
+  useEffect(load, [refreshTick, needsData]);
   useEffect(() => {
     api.regions().then(setRegions).catch(() => {});
+    api.stations().then(setMetaStations).catch(() => {});
   }, []);
+  // "Data as of" in the header: from the station metrics when this page loads them, otherwise from a light endpoint that carries no metrics.
+  useEffect(() => {
+    if (needsData) return;
+    api.freshness().then((f) => f?.captured_at && onCapturedAt?.(f.captured_at)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsData, refreshTick]);
   // Surfaces the same freshness timestamp in the persistent header (see App.jsx) --
   // every snapshot table is written from the same captured_at in one refresh, so
   // this value is accurate for the whole app, not just Station Health/Action Board.
@@ -608,8 +631,8 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
   // The "N stations in scope" count now lives in the header, as a small footnote after "Data as of"
   // (2026-09-25 feedback) -- reported up here the same way the freshness timestamp is.
   useEffect(() => {
-    if (data) onStationsInScope?.(filteredStations.length);
-  }, [data, filteredStations.length]);
+    if (data || metaStations.length) onStationsInScope?.(filteredStations.length);
+  }, [data, metaStations, filteredStations.length]);
 
   // Restricted to exactly the same stations as filteredStations -- the
   // Action Board aggregates by region/zone, and an aggregate delta is only
@@ -703,15 +726,16 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
     setModal({ stationCode: row.station_code, stationName: row.station_name, metricKey: col.key, metricLabel: col.label });
   };
 
-  if (error)
-    return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
-  if (!data) return <Skeleton />;
-  if (!data.captured_at)
-    return (
-      <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
-        No data yet — the first refresh hasn't run. {me.role === "admin" && "Use Superadmin → Refresh now."}
-      </div>
-    );
+  if (needsData) {
+    if (error) return <div className="rounded-xl bg-white p-6 text-status-critical ring-1 ring-slate-200">{error}</div>;
+    if (!data) return <Skeleton />;
+    if (!data.captured_at)
+      return (
+        <div className="rounded-xl bg-white p-6 ring-1 ring-slate-200 text-slate-600">
+          No data yet — the first refresh hasn't run. {me.role === "admin" && "Use Superadmin → Refresh now."}
+        </div>
+      );
+  }
 
   // Region/zone tables each get their own column set since the colour scale for
   // a reference metric depends on which row set it's being ranked against.

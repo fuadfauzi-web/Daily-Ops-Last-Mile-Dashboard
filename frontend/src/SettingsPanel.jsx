@@ -7,15 +7,14 @@ import FeedbackPanel from "./FeedbackPanel";
 import GuideTab from "./GuideTab";
 import KpiTargetsPanel from "./KpiTargetsPanel";
 import DocumentsPage from "./DocumentsPage";
-import DepartmentsPanel from "./DepartmentsPanel";
-import RoleAccessPanel from "./RoleAccessPanel";
+import AccessSettingPanel from "./AccessSettingPanel";
 import MetricLogicPanel from "./MetricLogicPanel";
 import HypercareSettingsPanel from "./HypercareSettingsPanel";
 import KpiUploadPanel from "./kpi/KpiUploadPanel";
 import { useWhatsNewUnread } from "./lib/whatsNew";
 import MultiSelect from "./components/MultiSelect";
 import LaunchTimelinePanel from "./LaunchTimelinePanel";
-import { GROUPS, POSITIONS, canManagePosition, isHqTier } from "./lib/roles";
+import { GROUPS, POSITIONS, canManagePosition, isHqTier, rolesVersion } from "./lib/roles";
 
 // Route Monitoring's Productivity % isn't a Station Health/Action Board metric (it's
 // not summable as a station-level count the way the rest of BOARD_COLUMNS are),
@@ -30,7 +29,7 @@ const DRIVER_POSITION_SCOPES = ["Hybrid Driver", "Hybrid Rider", "Independent Dr
 const emptyForm = { email: "", role: "fleet_assistant", scope_type: "station", scope_values: [], department: "Last Mile" };
 // Roles are job positions (lib/roles.js): HQ staff, Region staff, Station staff. The old 'region' / 'station' titles are still
 // shown for people who have none yet, but no longer offered.
-const ROLE_LABELS = Object.fromEntries(Object.entries(POSITIONS).map(([k, v]) => [k, v.label]));
+const ROLE_LABELS = new Proxy({}, { get: (_t, k) => POSITIONS[k]?.label }); // read live: custom roles appear after sign-in
 // "Sees: a station/zone/region" -- can be granted more than one, see the
 // multi-select in the add/edit form below. "HQ" is for HQ staff, who have no dedicated region / zone / station.
 const SCOPE_LABELS = { station: "Sees: station(s)", zone: "Sees: zone(s)", region: "Sees: region(s)", all: "Sees: everything", hq: "HQ (no region / zone / station)" };
@@ -614,8 +613,7 @@ const SETTINGS_TABS = [
   { key: "faq", label: "Common Questions", area: "help", visible: () => true },
   { key: "feedback", label: "Feedback", area: "help", visible: () => true },
   { key: "documents", label: "Documents", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "departments", label: "Departments", area: "admin", visible: (me) => me.role === "admin" },
-  { key: "roleaccess", label: "Role Access", area: "admin", visible: (me) => me.role === "admin" },
+  { key: "access", label: "Access Setting", area: "admin", visible: (me) => me.role === "admin" }, // departments, roles, module access, Beta (was two tabs: Departments, Role Access)
   { key: "metriclogic", label: "Metric Logic Summary", area: "admin", visible: (me) => me.role === "admin" }, // Superadmin only
   { key: "hypercare", label: "Hypercare Settings", area: "admin", visible: (me) => me.role === "admin" }, // Superadmin only: High-Value SLAs + Special Handling guideline links
 ];
@@ -627,7 +625,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
   // they're allowed to manage (not just add), so they see the (backend-filtered,
   // see api.users.list) team list too -- previously admin-only.
   const canManageUsers = me.role === "admin" || me.role === "manager" || me.role === "region";
-  const myAllowedRoles = useMemo(() => allowedRoles(me), [me]);
+  const myAllowedRoles = useMemo(() => allowedRoles(me), [me, rolesVersion()]);
   const myAllowedScopeTypes = useMemo(() => allowedScopeTypes(me.role), [me.role]);
   const visibleSettingsTabs = useMemo(
     () =>
@@ -648,7 +646,8 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
     const first = SETTINGS_TABS.find((t) => t.area === mode && t.visible(me))?.key;
     try {
       const saved = localStorage.getItem(tabKey);
-      if (saved && SETTINGS_TABS.some((t) => t.key === saved && t.area === mode && t.visible(me))) return saved;
+      const key = saved === "departments" || saved === "roleaccess" ? "access" : saved; // the two old tabs are one now
+      if (key && SETTINGS_TABS.some((t) => t.key === key && t.area === mode && t.visible(me))) return key;
     } catch {
       /* storage blocked */
     }
@@ -955,9 +954,7 @@ export default function SettingsPanel({ me, mode = "settings", notifCounts }) {
 
       {adminTab === "documents" && <DocumentsPage me={me} driverDetails={<DocumentsPanel />} />}
 
-      {adminTab === "departments" && <DepartmentsPanel />}
-
-      {adminTab === "roleaccess" && <RoleAccessPanel />}
+      {adminTab === "access" && <AccessSettingPanel me={me} />}
       {adminTab === "metriclogic" && <MetricLogicPanel />}
 
       {adminTab === "hypercare" && <HypercareSettingsPanel />}
