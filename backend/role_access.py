@@ -104,7 +104,7 @@ PATHS: list[tuple[str, tuple[str, ...], bool]] = [
     ("/api/hypercare", ("shipper", "aging"), False),
     ("/api/pending-yesterday-route", ("aging",), False),
     ("/api/rpu", ("rpu",), False),  # also /api/rpu-aging
-    ("/api/shipper-watch", ("shipper", "action", "management"), False),
+    ("/api/shipper-watch", ("shipper", "action", "management", "restock:nxd", "restock:onhold"), False),
     # tracking-number lists opened from a number on these pages
     ("/api/shipper-drilldown", ("shipper", "action", "restock:nxd", "restock:onhold", "restock:compliance"), False),
     ("/api/recovery/settings", ("settings",), True),
