@@ -150,7 +150,7 @@ export default function RestockBundlesView({ view, regionFilter, zoneFilter, sea
     ...STATION_COUNT_COLUMNS.map((c) => ({
       key: c.key,
       label: c.label,
-      render: (r) => r[c.key].toLocaleString(),
+      render: (r) => (r[c.key] ?? 0).toLocaleString(),
       className: (r) => (r[c.key] > 0 && c.key !== "bundles" ? "font-semibold text-status-critical" : "text-slate-700"),
       // Click a count to narrow the bundle list below to that station (and flag).
       onClick: (r) => {

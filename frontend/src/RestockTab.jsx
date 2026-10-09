@@ -96,7 +96,7 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
     ...RESTOCK_COLUMNS.map((c) => ({
       key: c.key,
       label: c.label,
-      render: (r) => r[c.key].toLocaleString(),
+      render: (r) => (r[c.key] ?? 0).toLocaleString(),
       className: (r) => (r[c.key] > 0 ? "font-semibold text-status-critical" : "text-slate-700"),
       onClick: (r) => setModal({ stationCode: r.station_code, stationName: r.station_name, metricKey: c.key, metricLabel: c.label }),
     })),
@@ -107,7 +107,7 @@ function RestockNxdView({ regionFilter, zoneFilter, search, me, excludeEastMalay
     ].map((c) => ({
       key: c.key,
       label: c.label,
-      render: (r) => r[c.key].toLocaleString(),
+      render: (r) => (r[c.key] ?? 0).toLocaleString(),
       className: (r) => (r[c.key] > 0 ? "font-semibold text-status-warning" : "text-slate-700"),
       onClick: (r) => setPreset({ station: r.station_name, classes: c.classes, nonce: Date.now() }),
     })),
@@ -314,21 +314,21 @@ function RdoComplianceView({ regionFilter, zoneFilter, search, me, excludeEastMa
       key: "total_tn",
       label: "Total TN",
       className: () => "font-semibold text-status-critical",
-      render: (r) => r.total_tn.toLocaleString(),
+      render: (r) => (r.total_tn ?? 0).toLocaleString(),
       onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: "all", label: "Total TN", documentTypes }),
     },
     ...RDO_STATUS_COLUMNS.map((c) => ({
       key: c.key,
       label: c.label,
       className: (r) => (r[c.key] > 0 ? "text-slate-800" : "text-slate-400"),
-      render: (r) => r[c.key].toLocaleString(),
+      render: (r) => (r[c.key] ?? 0).toLocaleString(),
       onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: c.key, label: c.label, documentTypes }),
     })),
     ...RDO_BREACH_COLUMNS.map((c) => ({
       key: c.key,
       label: c.label,
       className: (r) => (r[c.key] > 0 ? (c.critical ? "font-semibold text-status-critical" : "text-slate-800") : "text-slate-400"),
-      render: (r) => r[c.key].toLocaleString(),
+      render: (r) => (r[c.key] ?? 0).toLocaleString(),
       onClick: (r) => setTnModal({ stationCode: r.station_code, stationName: r.station_name, status: c.key, label: c.label, documentTypes }),
     })),
   ];
