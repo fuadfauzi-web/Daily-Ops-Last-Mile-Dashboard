@@ -1099,7 +1099,7 @@ export default function Dashboard({ me, onCapturedAt, onStationsInScope, onRefre
 
       {!sidebar && (
         <TabBar
-          tabs={tabs.map((t) =>
+          tabs={tabs.filter((t) => !isBlocked(t.key)).map((t) =>
             t.key === "urgent"
               ? {
                   ...t,

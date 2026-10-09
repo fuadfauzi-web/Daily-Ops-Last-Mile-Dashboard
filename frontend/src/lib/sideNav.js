@@ -20,6 +20,16 @@ export const SIDE_GROUP_COLORS = {
   System: { chip: "bg-[#F3F4F6] text-[#4B5563]", dot: "bg-[#9CA3AF]" },
 };
 
+// A menu item whose access is set under several modules (Access Setting): the item is hidden when all of them are "No access", "view only" when none can act.
+const SIDE_MODULES = { restock: ["restock:nxd", "restock:onhold"], docCompliance: ["restock:compliance"] };
+export function sideLevel(access, id) {
+  const mods = SIDE_MODULES[id] || [id];
+  const levels = mods.map((m) => access?.[m]?.level || "edit");
+  if (levels.every((l) => l === "none")) return "none";
+  if (levels.every((l) => l === "none" || l === "view")) return "view";
+  return "edit";
+}
+
 export const SIDE_ITEMS = [
   { id: "action", dash: true, group: "Act", label: "Action Board", code: "AB" },
   { id: "urgent", dash: true, group: "Act", label: "Urgent TN", taskListLabel: "Task List", code: "TL" },
