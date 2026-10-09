@@ -1653,6 +1653,8 @@ class ShipperFields(BaseModel):
     zitron_aging: int = 0
     ceva_zero_attempt: int = 0
     ceva_aging: int = 0
+    fujifilm_zero_attempt: int = 0
+    fujifilm_aging: int = 0
     orca_ovfd: int
     orca_other: int
     sodaxpress_ovfd: int

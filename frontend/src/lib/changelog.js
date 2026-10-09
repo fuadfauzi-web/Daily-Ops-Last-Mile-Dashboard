@@ -21,6 +21,17 @@
 export const CHANGELOG = [
   {
     date: "2026-10-09",
+    title: "Hypercare: Fujifilm added",
+    feature: "shipperRadar",
+    type: "new",
+    area: "Last Mile Ops",
+    points: [
+      "Fujifilm (tracking numbers starting FUJIF) is now a High-Value Shipper: parcels, station x age pivot, tracking numbers and SLA flags, and it is in the Summary View with 0 Attempt and Aging >D0.",
+      "Its SLA starts at Attempt same day / Delivery within 3 days, like Amway; the Superadmin can change it under Superadmin > Hypercare Settings.",
+    ],
+  },
+  {
+    date: "2026-10-09",
     title: "Feedback is now a conversation",
     type: "improved",
     area: "System",

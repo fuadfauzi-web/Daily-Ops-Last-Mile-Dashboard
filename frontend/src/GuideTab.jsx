@@ -601,7 +601,7 @@ const SECTIONS = [
         </p>
         {F.shipperRadar && (
           <p>
-            The tabs are <strong>Summary View</strong> (the shipper SLA table above; Zitron -- tracking numbers starting ZTRON -- and Ceva -- starting LSGMY -- are in it too),
+            The tabs are <strong>Summary View</strong> (the shipper SLA table above; Zitron -- tracking numbers starting ZTRON --, Ceva -- starting LSGMY -- and Fujifilm -- starting FUJIF -- are in it too),
             {F.coldChain ? " " : ""}{F.coldChain && <><strong>Cold Chain</strong>, </>}
             <strong>Special Handling Shippers</strong> (Orca and Soda Express: the note and the slide deck on their special flow, then their numbers),
             <strong>High-Value Shippers</strong>. Restock has its own tab (see Restock).
@@ -609,7 +609,7 @@ const SECTIONS = [
         )}
         {F.shipperRadar && (
           <p>
-            <strong>High-Value Shippers</strong> are Zalora NXD, Amway, Watson, Zitron and Ceva. Pick one for its parcels the way Cold Chain shows them: a station × age pivot
+            <strong>High-Value Shippers</strong> are Zalora NXD, Amway, Watson, Zitron, Ceva and Fujifilm. Pick one for its parcels the way Cold Chain shows them: a station × age pivot
             and every tracking number with its last scan. Each shipper has an <em>SLA Attempt</em> (a valid attempt is needed) and an <em>SLA Delivery</em> (the parcel must be
             delivered) -- Same day, Next day, Within 2 days or Within 3 days, counted from the parcel's first sweep at its hub. Parcels past either are flagged Breached, and Due today on the last allowed day.
             The Superadmin sets the SLAs, and the links to the Special Handling slides, under Superadmin → Hypercare Settings.
