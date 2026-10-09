@@ -24,6 +24,25 @@ export const GROUPS = [
   { key: "station", label: "Station staff", positions: ["station_head", "fleet_assistant"] },
 ];
 
+// Custom roles (Superadmin -> Access Setting, 2026-10-10) are loaded from /api/roles after sign-in and added to the tables above in place, so every list that reads POSITIONS / GROUPS
+// shows them. `rolesVersion()` changes whenever the list changed -- put it in a useMemo dependency list where a list is derived from the roles.
+let _rolesVersion = 0;
+export const rolesVersion = () => _rolesVersion;
+const GROUP_OF_TIER = { admin: "hq", manager: "hq", hq_staff: "hq", region: "region", station: "station" };
+export function registerRoles(list) {
+  const custom = new Set((list || []).filter((r) => !r.builtin).map((r) => r.key));
+  for (const k of Object.keys(POSITIONS)) if (POSITIONS[k].custom && !custom.has(k)) delete POSITIONS[k];
+  for (const g of GROUPS) g.positions = g.positions.filter((p) => !POSITIONS[p]?.custom || custom.has(p));
+  for (const r of list || []) {
+    if (r.builtin) continue;
+    const group = GROUP_OF_TIER[r.tier] || "station";
+    POSITIONS[r.key] = { label: r.label, group, tier: r.tier, custom: true, department: r.department };
+    const g = GROUPS.find((x) => x.key === group);
+    if (g && !g.positions.includes(r.key)) g.positions.push(r.key);
+  }
+  _rolesVersion += 1;
+}
+
 // Station staff see up to stations, region staff up to zones, managers / HQ staff / admins up to regions.
 export const TIER_RANK = { station: 0, region: 1, hq_staff: 2, manager: 2, admin: 3 };
 

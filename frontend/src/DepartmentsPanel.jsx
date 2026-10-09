@@ -4,9 +4,8 @@ import { GROUPS, POSITIONS } from "./lib/roles";
 
 // Superadmin -> Departments (2026-10-08): the departments people belong to (Last Mile, Restock, Recovery ...) and which roles each one includes. On the Users page a person
 // gets a department first and the role list then offers only that department's roles. A department with no roles ticked accepts any role.
-const OFFERED = GROUPS.flatMap((g) => g.positions).filter((p) => p !== "admin"); // the Superadmin is nobody's department role
-
 function RoleChecks({ value, onChange }) {
+  const OFFERED = GROUPS.flatMap((g) => g.positions).filter((p) => p !== "admin"); // the Superadmin is nobody's department role; custom roles included (read live)
   const toggle = (p) => onChange(value.includes(p) ? value.filter((r) => r !== p) : [...value, p]);
   return (
     <div className="space-y-2">

@@ -168,6 +168,12 @@ export const api = {
     remove: (email) =>
       request(`/api/admin/users/${encodeURIComponent(email)}`, { method: "DELETE" }),
   },
+  freshness: () => request("/api/freshness"),
+  roles: () => request("/api/roles"),
+  roleAdd: (payload) => request("/api/admin/roles", { method: "POST", body: JSON.stringify(payload) }),
+  roleEdit: (key, payload) => request(`/api/admin/roles/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify(payload) }),
+  roleRemove: (key) => request(`/api/admin/roles/${encodeURIComponent(key)}`, { method: "DELETE" }),
+  moduleBeta: (module, enabled) => request("/api/admin/module-beta", { method: "PUT", body: JSON.stringify({ module, enabled }) }),
   roleAccess: () => request("/api/admin/role-access"),
   roleAccessSave: (payload) => request("/api/admin/role-access", { method: "PUT", body: JSON.stringify(payload) }),
   departments: {
